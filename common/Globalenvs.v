@@ -643,26 +643,26 @@ Fixpoint store_init_data_list (m: mem) (b: block) (p: Z) (idl: list init_data)
   end.
 
 Definition perm_globvar (gv: globvar V) : permission :=
-  if gv.(gvar_volatile) then Nonempty
-  else if gv.(gvar_readonly) then Readable
-  else Writable.
+  Live.
 
 Definition alloc_global (m: mem) (idg: ident * globdef F V): option mem :=
   match idg with
   | (id, Gfun f) =>
-      let (m1, b) := Mem.alloc m 0 1 in
-      Mem.drop_perm m1 b 0 1 Nonempty
+      match Mem.alloc m 0 1 with
+      | Some (m1, _,_) => Some m1
+      | None => None
+      end
   | (id, Gvar v) =>
       let init := v.(gvar_init) in
       let sz := init_data_list_size init in
-      let (m1, b) := Mem.alloc m 0 sz in
-      match store_zeros m1 b 0 sz with
-      | None => None
-      | Some m2 =>
-          match store_init_data_list m2 b 0 init with
+      match Mem.alloc m 0 sz with
+      | Some (m1, _, _) =>
+          match store_zeros m1 Mem.dummy 0 sz with
           | None => None
-          | Some m3 => Mem.drop_perm m3 b 0 sz (perm_globvar v)
+          | Some m2 =>
+              store_init_data_list m2 Mem.dummy 0 init
           end
+      | None => None
       end
   end.
 
@@ -719,18 +719,21 @@ Proof.
   unfold alloc_global. intros.
   destruct g as [id [f|v]].
   (* function *)
-  destruct (Mem.alloc m 0 1) as [m1 b] eqn:?.
-  erewrite Mem.nextblock_drop; eauto. erewrite Mem.nextblock_alloc; eauto.
+  destruct (Mem.alloc m 0 1) as [[[m1] lo] hi |] eqn:?.
+  inv H.
+  erewrite Mem.nextblock_alloc; eauto.
+  inv H.
   (* variable *)
   set (init := gvar_init v) in *.
   set (sz := init_data_list_size init) in *.
-  destruct (Mem.alloc m 0 sz) as [m1 b] eqn:?.
-  destruct (store_zeros m1 b 0 sz) as [m2|] eqn:?; try discriminate.
-  destruct (store_init_data_list m2 b 0 init) as [m3|] eqn:?; try discriminate.
-  erewrite Mem.nextblock_drop; eauto.
+  destruct (Mem.alloc m 0 sz) as [[[m1] lo] hi|] eqn:?.
+  destruct (store_zeros m1 Mem.dummy 0 sz) as [m2|] eqn:?; try discriminate.
+  destruct (store_init_data_list m2 Mem.dummy 0 init) as [m3|] eqn:?; try discriminate.
+  inv H.
   erewrite store_init_data_list_nextblock; eauto.
   erewrite store_zeros_nextblock; eauto.
   erewrite Mem.nextblock_alloc; eauto.
+  inv H.
 Qed.
 
 Remark alloc_globals_nextblock:
@@ -746,7 +749,7 @@ Qed.
 
 (** Permissions *)
 
-Remark store_zeros_perm:
+(*Remark store_zeros_perm:
   forall k prm b' q m b p n m',
   store_zeros m b p n = Some m' ->
   (Mem.perm m b' q k prm <-> Mem.perm m' b' q k prm).
@@ -829,10 +832,10 @@ Proof.
   unfold Mem.valid_block in *. erewrite alloc_global_nextblock; eauto.
   apply Plt_trans_succ; auto.
 Qed.
-
+*)
 (** Data preservation properties *)
 
-Remark store_zeros_unchanged:
+(*Remark store_zeros_unchanged:
   forall (P: block -> Z -> Prop) m b p n m',
   store_zeros m b p n = Some m' ->
   (forall i, p <= i < p + n -> ~ P b i) ->
@@ -873,9 +876,10 @@ Proof.
   eapply store_init_data_unchanged; eauto. intros; apply H0; tauto.
   eapply IHil; eauto. intros; apply H0. generalize (init_data_size_pos a); lia.
 Qed.
-
+*)
 (** Properties related to [loadbytes] *)
 
+(*
 Definition readbytes_as_zero (m: mem) (b: block) (ofs len: Z) : Prop :=
   forall p n,
   ofs <= p -> p + Z.of_nat n <= ofs + len ->
@@ -979,6 +983,7 @@ Proof.
   apply H0. lia. lia.
   auto. auto.
 Qed.
+ *)
 
 (** Properties related to [load] *)
 
@@ -995,6 +1000,7 @@ Definition read_as_zero (m: mem) (b: block) (ofs len: Z) : Prop :=
         | Many32 | Many64 => Vundef
         end).
 
+(*
 Remark read_as_zero_unchanged:
   forall (P: block -> Z -> Prop) m b ofs len m',
   read_as_zero m b ofs len ->
@@ -1249,7 +1255,7 @@ Proof.
   exploit alloc_global_initialized; eauto. intros [P Q].
   eapply IHgl; eauto.
 Qed.
-
+*)
 End INITMEM.
 
 Definition init_mem (p: program F V) :=
@@ -1299,7 +1305,7 @@ Proof.
   intros. rewrite find_var_info_iff in H0. eapply find_def_not_fresh; eauto.
 Qed.
 
-Lemma init_mem_characterization_gen:
+(*Lemma init_mem_characterization_gen:
   forall p m,
   init_mem p = Some m ->
   globals_initialized (globalenv p) (globalenv p) m.
@@ -1308,9 +1314,9 @@ Proof.
   auto.
   rewrite Mem.nextblock_empty. auto.
   red; intros. unfold find_def in H0; simpl in H0; rewrite PTree.gempty in H0; discriminate.
-Qed.
+Qed.*)
 
-Theorem init_mem_characterization:
+(*Theorem init_mem_characterization:
   forall p b gv m,
   find_var_info (globalenv p) b = Some gv ->
   init_mem p = Some m ->
@@ -1324,22 +1330,23 @@ Theorem init_mem_characterization:
 Proof.
   intros. rewrite find_var_info_iff in H.
   exploit init_mem_characterization_gen; eauto.
-Qed.
+Qed.*)
 
 Theorem init_mem_characterization_2:
   forall p b fd m,
   find_funct_ptr (globalenv p) b = Some fd ->
   init_mem p = Some m ->
-  Mem.perm m b 0 Cur Nonempty
-  /\ (forall ofs k p, Mem.perm m b ofs k p -> ofs = 0 /\ p = Nonempty).
-Proof.
+  Mem.perm m Mem.dummy 0 Live
+  /\ (forall ofs p, Mem.perm m b ofs p -> ofs = 0 /\ p = Live).
+Admitted.
+(*Proof.
   intros. rewrite find_funct_ptr_iff in H.
   exploit init_mem_characterization_gen; eauto.
-Qed.
+Qed.*)
 
 (** ** Compatibility with memory injections *)
 
-Section INITMEM_INJ.
+(*Section INITMEM_INJ.
 
 Variable ge: t.
 Variable thr: block.
@@ -1450,7 +1457,7 @@ Proof.
   intros. exploit find_symbol_not_fresh; eauto.
   apply Mem.empty_inject_neutral.
   apply Ple_refl.
-Qed.
+Qed.*)
 
 (** ** Sufficient and necessary conditions for the initial memory to exist. *)
 
@@ -1488,7 +1495,7 @@ Proof.
     Mem.store chunk m b p v = Some m' ->
     align_chunk chunk = init_data_alignment i ->
     (init_data_alignment i | p)).
-  { intros. apply Mem.store_valid_access_3 in H0. destruct H0. congruence. }
+  { intros. apply Mem.store_allowed_access_3 in H0. destruct H0. congruence. }
   destruct i; simpl in H; eauto.
   simpl. apply Z.divide_1_l.
   destruct (find_symbol ge i); try discriminate. eapply DFL. eassumption.
@@ -1537,14 +1544,15 @@ Proof.
   destruct H0.
 + subst idg1; simpl in A.
   set (il := gvar_init v) in *. set (sz := init_data_list_size il) in *.
-  destruct (Mem.alloc m 0 sz) as [m1 b].
-  destruct (store_zeros m1 b 0 sz) as [m2|]; try discriminate.
-  destruct (store_init_data_list ge m2 b 0 il) as [m3|] eqn:B; try discriminate.
+  destruct (Mem.alloc m 0 sz) as [[[m1 lo]hi] |].
+  destruct (store_zeros m1 Mem.dummy 0 sz) as [m2|]; try discriminate.
+  destruct (store_init_data_list ge m2 Mem.dummy 0 il) as [m3|] eqn:B; try discriminate.
   split. eapply store_init_data_list_aligned; eauto. intros; eapply store_init_data_list_free_idents; eauto.
+  inv A.
 + eapply IHdefs; eauto.
 Qed.
 
-Section INITMEM_EXISTS.
+(*Section INITMEM_EXISTS.
 
 Variable ge: t.
 
@@ -1650,7 +1658,7 @@ Proof.
 - destruct (@alloc_global_exists ge m idg) as [m1 A1].
   destruct idg as [id [f|v]]; eauto.
   fold ge. rewrite A1. eapply IHl; eauto.
-Qed.
+Qed.*)
 
 End GENV.
 
@@ -1814,10 +1822,10 @@ Proof.
   - auto.
   - inv H; simpl in *.
     set (sz := init_data_list_size init) in *.
-    destruct (Mem.alloc m 0 sz) as [m2 b] eqn:?.
-    destruct (store_zeros m2 b 0 sz) as [m3|] eqn:?; try discriminate.
-    destruct (store_init_data_list (globalenv p) m3 b 0 init) as [m4|] eqn:?; try discriminate.
-    erewrite store_init_data_list_match; eauto.
+    destruct (Mem.alloc m 0 sz) as [[[m2 lo] hi] |] eqn:?.
+    destruct (store_zeros m2 Mem.dummy 0 sz) as [m3|] eqn:?; try discriminate.
+    destruct (store_init_data_list (globalenv p) m3 Mem.dummy 0 init) as [m4|] eqn:?; try discriminate.
+    erewrite store_init_data_list_match; eauto. inv Heqo.
   }
   rewrite X; eauto.
 Qed.

@@ -599,7 +599,7 @@ Definition extcall_sem : Type :=
 
 (** We now specify the expected properties of this predicate. *)
 
-Definition loc_out_of_bounds (m: mem) (b: block) (ofs: Z) : Prop :=
+(*Definition loc_out_of_bounds (m: mem) (b: block) (ofs: Z) : Prop :=
   ~Mem.perm m b ofs Max Nonempty.
 
 Definition loc_not_writable (m: mem) (b: block) (ofs: Z) : Prop :=
@@ -615,7 +615,7 @@ Definition loc_out_of_reach (f: meminj) (m: mem) (b: block) (ofs: Z): Prop :=
 Definition inject_separated (f f': meminj) (m1 m2: mem): Prop :=
   forall b1 b2 delta,
   f b1 = None -> f' b1 = Some(b2, delta) ->
-  ~Mem.valid_block m1 b1 /\ ~Mem.valid_block m2 b2.
+  ~Mem.valid_block m1 b1 /\ ~Mem.valid_block m2 b2.*)
 
 Record extcall_properties (sem: extcall_sem) (sg: signature) : Prop :=
   mk_extcall_properties {
@@ -640,26 +640,9 @@ Record extcall_properties (sem: extcall_sem) (sg: signature) : Prop :=
     sem ge vargs m1 t vres m2 ->
     Mem.valid_block m1 b -> Mem.valid_block m2 b;
 
-(** External calls cannot increase the max permissions of a valid block.
-    They can decrease the max permissions, e.g. by freeing. *)
-  ec_max_perm:
-    forall ge vargs m1 t vres m2 b ofs p,
-    sem ge vargs m1 t vres m2 ->
-    Mem.valid_block m1 b -> Mem.perm m2 b ofs Max p -> Mem.perm m1 b ofs Max p;
-
-(** External call cannot modify memory unless they have [Max, Writable]
-   permissions. *)
-  ec_readonly:
-    forall ge vargs m1 t vres m2 b ofs n bytes,
-    sem ge vargs m1 t vres m2 ->
-    Mem.valid_block m1 b ->
-    Mem.loadbytes m2 b ofs n = Some bytes ->
-    (forall i, ofs <= i < ofs + n -> ~Mem.perm m1 b i Max Writable) ->
-    Mem.loadbytes m1 b ofs n = Some bytes;
-
 (** External calls must commute with memory extensions, in the
   following sense. *)
-  ec_mem_extends:
+(* TODO: ec_mem_extends:
     forall ge vargs m1 t vres m2 m1' vargs',
     sem ge vargs m1 t vres m2 ->
     Mem.extends m1 m1' ->
@@ -668,11 +651,11 @@ Record extcall_properties (sem: extcall_sem) (sg: signature) : Prop :=
        sem ge vargs' m1' t vres' m2'
     /\ Val.lessdef vres vres'
     /\ Mem.extends m2 m2'
-    /\ Mem.unchanged_on (loc_out_of_bounds m1) m1' m2';
+    /\ Mem.unchanged_on (loc_out_of_bounds m1) m1' m2';*)
 
 (** External calls must commute with memory injections,
   in the following sense. *)
-  ec_mem_inject:
+(*  ec_mem_inject:
     forall ge1 ge2 vargs m1 t vres m2 f m1' vargs',
     symbols_inject f ge1 ge2 ->
     sem ge1 vargs m1 t vres m2 ->
@@ -685,7 +668,7 @@ Record extcall_properties (sem: extcall_sem) (sg: signature) : Prop :=
     /\ Mem.unchanged_on (loc_unmapped f) m1 m2
     /\ Mem.unchanged_on (loc_out_of_reach f m1) m1' m2'
     /\ inject_incr f f'
-    /\ inject_separated f f' m1 m1';
+    /\ inject_separated f f' m1 m1';*)
 
 (** External calls produce at most one event. *)
   ec_trace_length:
@@ -726,7 +709,7 @@ Proof.
   rewrite C; auto.
 Qed.
 
-Lemma volatile_load_extends:
+(*Lemma volatile_load_extends:
   forall ge chunk m b ofs t v m',
   volatile_load ge chunk m b ofs t v ->
   Mem.extends m m' ->
@@ -735,9 +718,9 @@ Proof.
   intros. inv H.
   econstructor; split; eauto. econstructor; eauto.
   exploit Mem.load_extends; eauto. intros [v' [A B]]. exists v'; split; auto. constructor; auto.
-Qed.
+Qed.*)
 
-Lemma volatile_load_inject:
+(*Lemma volatile_load_inject:
   forall ge1 ge2 f chunk m b ofs t v b' ofs' m',
   symbols_inject f ge1 ge2 ->
   volatile_load ge1 chunk m b ofs t v ->
@@ -759,7 +742,7 @@ Proof.
   exists v2; split; auto.
   constructor; auto.
   inv VI. erewrite D; eauto.
-Qed.
+Qed.*)
 
 Lemma volatile_load_receptive:
   forall ge chunk m b ofs t1 t2 v1,
@@ -785,19 +768,15 @@ Proof.
 - inv H0. constructor. eapply volatile_load_preserved; eauto.
 (* valid blocks *)
 - inv H; auto.
-(* max perms *)
-- inv H; auto.
-(* readonly *)
-- inv H; auto.
 (* mem extends *)
-- inv H. inv H1. inv H6. inv H4.
+(*- inv H. inv H1. inv H6. inv H4.
   exploit volatile_load_extends; eauto. intros [v' [A B]].
-  exists v'; exists m1'; intuition. constructor; auto.
+  exists v'; exists m1'; intuition. constructor; auto.*)
 (* mem injects *)
-- inv H0. inv H2. inv H7. inversion H5; subst.
+(*- inv H0. inv H2. inv H7. inversion H5; subst.
   exploit volatile_load_inject; eauto. intros [v' [A B]].
   exists f; exists v'; exists m1'; intuition. constructor; auto.
-  red; intros. congruence.
+  red; intros. congruence.*)
 (* trace length *)
 - inv H; inv H0; simpl; lia.
 (* receptive *)
@@ -837,7 +816,7 @@ Proof.
   rewrite C; auto.
 Qed.
 
-Lemma unchanged_on_readonly:
+(*Lemma unchanged_on_readonly:
   forall m1 m2 b ofs n bytes,
   Mem.unchanged_on (loc_not_writable m1) m1 m2 ->
   Mem.valid_block m1 b ->
@@ -848,9 +827,9 @@ Proof.
   intros.
   rewrite <- H1. symmetry.
   apply Mem.loadbytes_unchanged_on_1 with (P := loc_not_writable m1); auto.
-Qed.
+Qed.*)
 
-Lemma volatile_store_readonly:
+(*Lemma volatile_store_readonly:
   forall ge chunk1 m1 b1 ofs1 v t m2,
   volatile_store ge chunk1 m1 b1 ofs1 v t m2 ->
   Mem.unchanged_on (loc_not_writable m1) m1 m2.
@@ -861,9 +840,9 @@ Proof.
   exploit Mem.store_valid_access_3; eauto. intros [P Q].
   intros. unfold loc_not_writable. red; intros. elim H2.
   apply Mem.perm_cur_max. apply P. auto.
-Qed.
+Qed.*)
 
-Lemma volatile_store_extends:
+(*Lemma volatile_store_extends:
   forall ge chunk m1 b ofs v t m2 m1' v',
   volatile_store ge chunk m1 b ofs v t m2 ->
   Mem.extends m1 m1' ->
@@ -886,9 +865,9 @@ Proof.
   { apply Mem.perm_cur_max. apply Mem.perm_implies with Writable; auto with mem.
     exploit Mem.store_valid_access_3. eexact H3. intros [P Q]. eauto. }
   tauto.
-Qed.
+Qed.*)
 
-Lemma volatile_store_inject:
+(*Lemma volatile_store_inject:
   forall ge1 ge2 f chunk m1 b ofs v t m2 m1' b' ofs' v',
   symbols_inject f ge1 ge2 ->
   volatile_store ge1 chunk m1 b ofs v t m2 ->
@@ -927,7 +906,7 @@ Proof.
   exploit Mem.store_valid_access_3. eexact H0. intros [X Y].
   apply Mem.perm_cur_max. apply Mem.perm_implies with Writable; auto with mem.
   apply X. lia.
-Qed.
+Qed.*)
 
 Lemma volatile_store_receptive:
   forall ge chunk m b ofs v t1 m1 t2,
@@ -948,18 +927,14 @@ Proof.
 - inv H0. constructor. eapply volatile_store_preserved; eauto.
 (* valid block *)
 - inv H. inv H1. auto. eauto with mem.
-(* perms *)
-- inv H. inv H2. auto. eauto with mem.
-(* readonly *)
-- inv H. eapply unchanged_on_readonly; eauto. eapply volatile_store_readonly; eauto.
 (* mem extends*)
-- inv H. inv H1. inv H6. inv H7. inv H4.
+(*- inv H. inv H1. inv H6. inv H7. inv H4.
   exploit volatile_store_extends; eauto. intros [m2' [A [B C]]].
-  exists Vundef; exists m2'; intuition. constructor; auto.
+  exists Vundef; exists m2'; intuition. constructor; auto.*)
 (* mem inject *)
-- inv H0. inv H2. inv H7. inv H8. inversion H5; subst.
+(*- inv H0. inv H2. inv H7. inv H8. inversion H5; subst.
   exploit volatile_store_inject; eauto. intros [m2' [A [B [C D]]]].
-  exists f; exists Vundef; exists m2'; intuition. constructor; auto. red; intros; congruence.
+  exists f; exists Vundef; exists m2'; intuition. constructor; auto. red; intros; congruence.*)
 (* trace length *)
 - inv H; inv H0; simpl; lia.
 (* receptive *)
