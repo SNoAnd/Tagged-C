@@ -2,4 +2,55 @@
 
 \begin{document}
 
+\section{Values, Atoms, Tags}
+
+Values, ranged over by \(v\), are as in CompCert C.
+
+\section{Memory Model}
+
+Tagged C models memory as a flat address space in which each address \(a\)
+has {\it contents} and {\it access permissions}. The contents of an address
+is a pair of an atom and a tag
+
+\[\mathit{con} \rightarrow A \rightharpoonup \]
+
+\begin{tabular}{l l}
+  
+\end{tabular}
+
+\subsection{The Allocation Oracle}
+
+\subsection{Compiler Perturbations}
+
+We call the oracle's perturb function when:
+\begin{itemize}
+\item 
+\end{itemize}
+
+\subsection{Permissions}
+
+There are now only 3 permissions:
+{\it Live}, representing allocated blocks which can always be accessed;
+{\it MostlyDead}, representing memory that is not allocated but also is
+not shadowed by the compiler; and
+{\it Dead}, representing memory that is shadowed by the compiler.
+
+Memory still carries a {\it nextblock} identifying the next block to be allocated,
+and all blocks lower than it are considered valid blocks. We additionally keep track
+of whether addresses are within a given block. A {\it valid access} is an offset that
+is appropriately aligned and for which all elements have {\it Live} access; we require
+that if 
+
+
+
+\section{Axioms and Theorems}
+
+As much as possible, I have tried to keep the existing memory theorems intact.
+Some differences:
+
+\begin{itemize}
+\item We now need to use ``allowed access'' much more often than ``valid access,'' so
+  
+\end{itemize}
+
 \end{document}
