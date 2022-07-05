@@ -51,7 +51,7 @@ Set Implicit Arguments.
 
 Function store_zeros (m: mem) (b: block) (p: Z) (n: Z) {wf (Zwf 0) n}: option mem :=
   if zle n 0 then Some m else
-    match Mem.store Mint8unsigned m b p Vzero with
+    match Mem.store Mint8unsigned m b p (Vzero,def_tag,def_tag) with
     | Some m' => store_zeros m' b (p + 1) (n - 1)
     | None => None
     end.
@@ -74,11 +74,9 @@ Module Senv.
 
 Record t: Type := mksenv {
   (** Operations *)
-  find_symbol: ident -> option block;
+  find_symbol: ident -> option (Z*Z);
   public_symbol: ident -> bool;
-  invert_symbol: block -> option ident;
-  block_is_volatile: block -> bool;
-  nextblock: block;
+  invert_symbol: (Z*Z) -> option ident;
   (** Properties *)
   find_symbol_injective:
     forall id1 id2 b, find_symbol id1 = Some b -> find_symbol id2 = Some b -> id1 = id2;
@@ -88,15 +86,11 @@ Record t: Type := mksenv {
     forall id b, find_symbol id = Some b -> invert_symbol b = Some id;
   public_symbol_exists:
     forall id, public_symbol id = true -> exists b, find_symbol id = Some b;
-  find_symbol_below:
-    forall id b, find_symbol id = Some b -> Plt b nextblock;
-  block_is_volatile_below:
-    forall b, block_is_volatile b = true -> Plt b nextblock
 }.
 
 Definition symbol_address (ge: t) (id: ident) (ofs: ptrofs) : val :=
   match find_symbol ge id with
-  | Some b => Vptr b ofs
+  | Some (lo,_) => Vptr Mem.dummy (Ptrofs.add (Ptrofs.repr lo) ofs)
   | None => Vundef
   end.
 
@@ -104,7 +98,9 @@ Theorem shift_symbol_address:
   forall ge id ofs delta,
   symbol_address ge id (Ptrofs.add ofs delta) = Val.offset_ptr (symbol_address ge id ofs) delta.
 Proof.
-  intros. unfold symbol_address, Val.offset_ptr. destruct (find_symbol ge id); auto.
+  intros. unfold symbol_address, Val.offset_ptr.
+  destruct (find_symbol ge id) as [[lo hi]|]; auto.
+  erewrite Ptrofs.add_assoc. auto.
 Qed.
 
 Theorem shift_symbol_address_32:
@@ -112,8 +108,8 @@ Theorem shift_symbol_address_32:
   Archi.ptr64 = false ->
   symbol_address ge id (Ptrofs.add ofs (Ptrofs.of_int n)) = Val.add (symbol_address ge id ofs) (Vint n).
 Proof.
-  intros. unfold symbol_address. destruct (find_symbol ge id).
-- unfold Val.add. rewrite H. auto.
+  intros. unfold symbol_address. destruct (find_symbol ge id) as [[lo hi]|].
+- unfold Val.add. rewrite H. erewrite Ptrofs.add_assoc. auto.
 - auto.
 Qed.
 
@@ -122,15 +118,15 @@ Theorem shift_symbol_address_64:
   Archi.ptr64 = true ->
   symbol_address ge id (Ptrofs.add ofs (Ptrofs.of_int64 n)) = Val.addl (symbol_address ge id ofs) (Vlong n).
 Proof.
-  intros. unfold symbol_address. destruct (find_symbol ge id).
-- unfold Val.addl. rewrite H. auto.
+  intros. unfold symbol_address.
+  destruct (find_symbol ge id) as [[lo hi]|].
+- unfold Val.addl. rewrite H. erewrite Ptrofs.add_assoc. auto.
 - auto.
 Qed.
 
 Definition equiv (se1 se2: t) : Prop :=
      (forall id, find_symbol se2 id = find_symbol se1 id)
-  /\ (forall id, public_symbol se2 id = public_symbol se1 id)
-  /\ (forall b, block_is_volatile se2 b = block_is_volatile se1 b).
+  /\ (forall id, public_symbol se2 id = public_symbol se1 id).
 
 End Senv.
 
@@ -143,24 +139,44 @@ Section GENV.
 Variable F: Type.  (**r The type of function descriptions *)
 Variable V: Type.  (**r The type of information attached to variables *)
 
+(* We need to figure out where to put all of our blocks;
+   for now let's parameterize by a counter. *)
+Parameter layout : positive -> (Z*Z).
+Axiom layout_disjoint :
+  forall p1 p2 lo1 lo2 hi1 hi2 a,
+    (lo1, hi1) = layout p1 ->
+    (lo2, hi2) = layout p2 ->
+    lo1 <= a -> a < hi1 ->
+    lo2 <= a -> a < hi2 ->
+    p1 = p2.
+
 (** The type of global environments. *)
 
 Record t: Type := mkgenv {
   genv_public: list ident;              (**r which symbol names are public *)
-  genv_symb: PTree.t block;             (**r mapping symbol -> block *)
-  genv_defs: PTree.t (globdef F V);     (**r mapping block -> definition *)
-  genv_next: block;                     (**r next symbol pointer *)
-  genv_symb_range: forall id b, PTree.get id genv_symb = Some b -> Plt b genv_next;
-  genv_defs_range: forall b g, PTree.get b genv_defs = Some g -> Plt b genv_next;
-  genv_vars_inj: forall id1 id2 b,
-    PTree.get id1 genv_symb = Some b -> PTree.get id2 genv_symb = Some b -> id1 = id2
+  genv_symb: PTree.t (Z*Z);             (**r mapping symbol -> bounds *)
+  genv_defs: PTree.t (Z*Z*globdef F V); (**r mapping symbol -> bounds and defs *)
+  genv_next: positive;
+  genv_symb_range:
+    forall id lo hi,
+      PTree.get id genv_symb = Some (lo,hi) ->
+      exists p,
+        Plt p genv_next /\ layout p = (lo,hi);
+  genv_defs_range:
+    forall id g lo hi,
+      PTree.get id genv_defs = Some (lo,hi,g) ->
+      exists p,
+        Plt p genv_next /\ layout p = (lo,hi);
+  
+  genv_vars_inj: forall id1 id2 lo hi,
+    PTree.get id1 genv_symb = Some (lo, hi) -> PTree.get id2 genv_symb = Some (lo, hi) -> id1 = id2
 }.
 
 (** ** Lookup functions *)
 
 (** [find_symbol ge id] returns the block associated with the given name, if any *)
 
-Definition find_symbol (ge: t) (id: ident) : option block :=
+Definition find_symbol (ge: t) (id: ident) : option (Z*Z) :=
   PTree.get id ge.(genv_symb).
 
 (** [symbol_address ge id ofs] returns a pointer into the block associated
@@ -169,7 +185,7 @@ Definition find_symbol (ge: t) (id: ident) : option block :=
 
 Definition symbol_address (ge: t) (id: ident) (ofs: ptrofs) : val :=
   match find_symbol ge id with
-  | Some b => Vptr b ofs
+  | Some (lo,_) => Vptr Mem.dummy (Ptrofs.repr lo)
   | None => Vundef
   end.
 
@@ -181,66 +197,64 @@ Definition public_symbol (ge: t) (id: ident) : bool :=
   | Some _ => In_dec ident_eq id ge.(genv_public)
   end.
 
-(** [find_def ge b] returns the global definition associated with the given address. *)
+(** [find_def ge lo] returns the global definition associated with the given (base) address. *)
 
-Definition find_def (ge: t) (b: block) : option (globdef F V) :=
-  PTree.get b ge.(genv_defs).
+Definition find_def (ge: t) (lo: Z) : option (globdef F V) :=
+  option_map snd (ZTree.get lo ge.(genv_defs)).
 
-(** [find_funct_ptr ge b] returns the function description associated with
+(** [find_funct_ptr ge lo] returns the function description associated with
     the given address. *)
 
-Definition find_funct_ptr (ge: t) (b: block) : option F :=
-  match find_def ge b with Some (Gfun f) => Some f | _ => None end.
+Definition find_funct_ptr (ge: t) (lo: Z) : option F :=
+  match find_def ge lo with Some (Gfun f) => Some f | _ => None end.
 
 (** [find_funct] is similar to [find_funct_ptr], but the function address
-    is given as a value, which must be a pointer with offset 0. *)
+    is given as a value, which must be a pointer. *)
 
 Definition find_funct (ge: t) (v: val) : option F :=
   match v with
-  | Vptr b ofs => if Ptrofs.eq_dec ofs Ptrofs.zero then find_funct_ptr ge b else None
+  | Vptr b ofs => find_funct_ptr ge (Ptrofs.intval ofs) (* TODO: intval or signed?*)
   | _ => None
   end.
 
-(** [invert_symbol ge b] returns the name associated with the given block, if any *)
+(** [invert_symbol ge lo] returns the name associated with the given address, if any *)
 
-Definition invert_symbol (ge: t) (b: block) : option ident :=
+Definition invert_symbol (ge: t) (lo: Z) : option ident :=
   PTree.fold
-    (fun res id b' => if eq_block b b' then Some id else res)
+    (fun res id '(lo',_) => if lo =? lo' then Some id else res)
     ge.(genv_symb) None.
 
-(** [find_var_info ge b] returns the information attached to the variable
-   at address [b]. *)
+(** [find_var_info ge lo] returns the information attached to the variable
+   at address [lo]. *)
 
-Definition find_var_info (ge: t) (b: block) : option (globvar V) :=
-  match find_def ge b with Some (Gvar v) => Some v | _ => None end.
-
-(** [block_is_volatile ge b] returns [true] if [b] points to a global variable
-  of volatile type, [false] otherwise. *)
-
-Definition block_is_volatile (ge: t) (b: block) : bool :=
-  match find_var_info ge b with
-  | None => false
-  | Some gv => gv.(gvar_volatile)
-  end.
+Definition find_var_info (ge: t) (lo:Z) : option (globvar V) :=
+  match find_def ge lo with Some (Gvar v) => Some v | _ => None end.
 
 (** ** Constructing the global environment *)
 
 Program Definition add_global (ge: t) (idg: ident * globdef F V) : t :=
   @mkgenv
     ge.(genv_public)
-    (PTree.set idg#1 ge.(genv_next) ge.(genv_symb))
-    (PTree.set ge.(genv_next) idg#2 ge.(genv_defs))
+    (PTree.set idg#1 (layout ge.(genv_next)) ge.(genv_symb))
+    (PTree.set idg#1 ((layout ge.(genv_next)),idg#2) ge.(genv_defs))
     (Pos.succ ge.(genv_next))
     _ _ _.
 Next Obligation.
   destruct ge; simpl in *.
-  rewrite PTree.gsspec in H. destruct (peq id i). inv H. apply Plt_succ.
+  rewrite PTree.gsspec in H. destruct (peq id i). inv H.
+  exists genv_next0; split; auto.
+  apply Plt_succ.
+  eapply genv_symb_range0 in H.
+  destruct H as [id' H]; destruct H. exists id'. split; auto.  
   apply Plt_trans_succ; eauto.
 Qed.
 Next Obligation.
   destruct ge; simpl in *.
-  rewrite PTree.gsspec in H. destruct (peq b genv_next0).
-  inv H. apply Plt_succ.
+  rewrite PTree.gsspec in H. destruct (peq id i).
+  inv H. exists genv_next0. split; auto.
+  apply Plt_succ.
+  eapply genv_defs_range0 in H.
+  destruct H as [id' H]; destruct H. exists id'. split; auto.
   apply Plt_trans_succ; eauto.
 Qed.
 Next Obligation.
@@ -248,6 +262,8 @@ Next Obligation.
   rewrite PTree.gsspec in H. rewrite PTree.gsspec in H0.
   destruct (peq id1 i); destruct (peq id2 i).
   congruence.
+  eapply genv_symb_range0 in H0.
+  destruct H0 as [p  H0]; destruct H0.
   inv H. eelim Plt_strict. eapply genv_symb_range0; eauto.
   inv H0. eelim Plt_strict. eapply genv_symb_range0; eauto.
   eauto.
@@ -719,14 +735,14 @@ Proof.
   unfold alloc_global. intros.
   destruct g as [id [f|v]].
   (* function *)
-  destruct (Mem.alloc m 0 1) as [[[m1] lo] hi |] eqn:?.
+  destruct (Mem.alloc m 0 1) as [[[m1 lo] hi] |] eqn:?.
   inv H.
   erewrite Mem.nextblock_alloc; eauto.
   inv H.
   (* variable *)
   set (init := gvar_init v) in *.
   set (sz := init_data_list_size init) in *.
-  destruct (Mem.alloc m 0 sz) as [[[m1] lo] hi|] eqn:?.
+  destruct (Mem.alloc m 0 sz) as [[[m1 lo] hi]|] eqn:?.
   destruct (store_zeros m1 Mem.dummy 0 sz) as [m2|] eqn:?; try discriminate.
   destruct (store_init_data_list m2 Mem.dummy 0 init) as [m3|] eqn:?; try discriminate.
   inv H.

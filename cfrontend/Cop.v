@@ -1419,7 +1419,7 @@ Qed.
 
 End GENERIC_INJECTION.
 
-Lemma sem_cast_inject:
+(*Lemma sem_cast_inject:
   forall f v1 ty1 ty m v tv1 tm,
   sem_cast v1 ty1 ty m = Some v ->
   Val.inject f v1 tv1 ->
@@ -1464,7 +1464,7 @@ Lemma bool_val_inject:
 Proof.
   intros. eapply bool_val_inj; eauto.
   intros; eapply Mem.weak_valid_pointer_inject_val; eauto.
-Qed.
+Qed.*)
 
 (** * Some properties of operator semantics *)
 

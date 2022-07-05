@@ -80,24 +80,24 @@ Parameter free: forall (m: mem) (b: block) (lo hi: Z), option mem.
   addresses [b, ofs] to [b, ofs + size_chunk chunk - 1] in memory state
   [m].  Returns the value read, or [None] if the accessed addresses
   are not readable. *)
-Parameter load: forall (chunk: memory_chunk) (m: mem) (b: block) (ofs: Z), option val.
+Parameter load: forall (chunk: memory_chunk) (m: mem) (b: block) (ofs: Z), option (atom*tag).
 
 (** [store chunk m b ofs v] writes value [v] as memory quantity [chunk]
   from addresses [b, ofs] to [b, ofs + size_chunk chunk - 1] in memory state
   [m].  Returns the updated memory state, or [None] if the accessed addresses
   are not writable. *)
-Parameter store: forall (chunk: memory_chunk) (m: mem) (b: block) (ofs: Z) (v: val), option mem.
+Parameter store: forall (chunk: memory_chunk) (m: mem) (b: block) (ofs: Z) (a: atom*tag), option mem.
 
 (** [loadv] and [storev] are variants of [load] and [store] where
   the address being accessed is passed as a value (of the [Vptr] kind). *)
 
-Definition loadv (chunk: memory_chunk) (m: mem) (addr: val) : option val :=
+Definition loadv (chunk: memory_chunk) (m: mem) (addr: val) : option (atom*tag) :=
   match addr with
   | Vptr b ofs => load chunk m b (Ptrofs.unsigned ofs)
   | _ => None
   end.
 
-Definition storev (chunk: memory_chunk) (m: mem) (addr v: val) : option mem :=
+Definition storev (chunk: memory_chunk) (m: mem) (addr: val) (v: atom*tag) : option mem :=
   match addr with
   | Vptr b ofs => store chunk m b (Ptrofs.unsigned ofs) v
   | _ => None
@@ -252,20 +252,20 @@ Axiom allowed_access_load:
   accessed: [Vundef], [Vint] or [Vptr] for an integer quantity,
   [Vundef] or [Vfloat] for a float quantity. *)
 Axiom load_type:
-  forall m chunk b ofs v,
-  load chunk m b ofs = Some v ->
+  forall m chunk b ofs v t t',
+  load chunk m b ofs = Some (v, t, t') ->
   Val.has_type v (type_of_chunk chunk).
 
 Axiom load_rettype:
-  forall m chunk b ofs v,
-  load chunk m b ofs = Some v ->
+  forall m chunk b ofs v t t',
+  load chunk m b ofs = Some (v, t, t') ->
   Val.has_rettype v (rettype_of_chunk chunk).
 
 (** For a small integer or float type, the value returned by [load]
   is invariant under the corresponding cast. *)
 Axiom load_cast:
-  forall m chunk b ofs v,
-  load chunk m b ofs = Some v ->
+  forall m chunk b ofs v t t',
+  load chunk m b ofs = Some (v,t,t') ->
   match chunk with
   | Mint8signed => v = Val.sign_ext 8 v
   | Mint8unsigned => v = Val.zero_ext 8 v
@@ -276,11 +276,11 @@ Axiom load_cast:
 
 Axiom load_int8_signed_unsigned:
   forall m b ofs,
-  load Mint8signed m b ofs = option_map (Val.sign_ext 8) (load Mint8unsigned m b ofs).
+  load Mint8signed m b ofs = opt_at_map (Val.sign_ext 8) (load Mint8unsigned m b ofs).
 
 Axiom load_int16_signed_unsigned:
   forall m b ofs,
-  load Mint16signed m b ofs = option_map (Val.sign_ext 16) (load Mint16unsigned m b ofs).
+  load Mint16signed m b ofs = opt_at_map (Val.sign_ext 16) (load Mint16unsigned m b ofs).
 
 
 (** ** Properties of [loadbytes]. *)
@@ -347,20 +347,20 @@ Axiom loadbytes_split:
   Moreover, a [store] succeeds if and only if the corresponding access is allowed. *)
 
 Axiom nextblock_store:
-  forall chunk m1 b ofs v m2, store chunk m1 b ofs v = Some m2 ->
+  forall chunk m1 b ofs v t t' m2, store chunk m1 b ofs (v,t,t') = Some m2 ->
   nextblock m2 = nextblock m1.
 Axiom store_valid_block_1:
-  forall chunk m1 b ofs v m2, store chunk m1 b ofs v = Some m2 ->
+  forall chunk m1 b ofs v t t' m2, store chunk m1 b ofs (v,t,t') = Some m2 ->
   forall b', valid_block m1 b' -> valid_block m2 b'.
 Axiom store_valid_block_2:
-  forall chunk m1 b ofs v m2, store chunk m1 b ofs v = Some m2 ->
+  forall chunk m1 b ofs v t t' m2, store chunk m1 b ofs (v,t,t') = Some m2 ->
   forall b', valid_block m2 b' -> valid_block m1 b'.
 
 Axiom perm_store_1:
-  forall chunk m1 b ofs v m2, store chunk m1 b ofs v = Some m2 ->
+  forall chunk m1 b ofs v t t' m2, store chunk m1 b ofs (v,t,t') = Some m2 ->
   forall b' ofs' p, perm m1 b' ofs' p -> perm m2 b' ofs' p.
 Axiom perm_store_2:
-  forall chunk m1 b ofs v m2, store chunk m1 b ofs v = Some m2 ->
+  forall chunk m1 b ofs v t t' m2, store chunk m1 b ofs (v,t,t') = Some m2 ->
   forall b' ofs' p, perm m2 b' ofs' p -> perm m1 b' ofs' p.
 
 Axiom allowed_access_store:
@@ -372,29 +372,29 @@ Axiom disallowed_access_store:
   ~ allowed_access m1 chunk b ofs ->
   store chunk m1 b ofs v = None.
 Axiom store_valid_access_1:
-  forall chunk m1 b ofs v m2, store chunk m1 b ofs v = Some m2 ->
+  forall chunk m1 b ofs v t t' m2, store chunk m1 b ofs (v,t,t') = Some m2 ->
   forall chunk' b' ofs',
   valid_access m1 chunk' b' ofs' -> valid_access m2 chunk' b' ofs'.
 Axiom store_valid_access_2:
-  forall chunk m1 b ofs v m2, store chunk m1 b ofs v = Some m2 ->
+  forall chunk m1 b ofs v t t' m2, store chunk m1 b ofs (v,t,t') = Some m2 ->
   forall chunk' b' ofs',
   valid_access m2 chunk' b' ofs' -> valid_access m1 chunk' b' ofs'.
 
 (** Load-store properties. *)
 
 Axiom load_store_similar:
-  forall chunk m1 b ofs v m2, store chunk m1 b ofs v = Some m2 ->
+  forall chunk m1 b ofs v t t' m2, store chunk m1 b ofs (v,t,t') = Some m2 ->
   forall chunk',
   size_chunk chunk' = size_chunk chunk ->
   align_chunk chunk' <= align_chunk chunk ->
-  exists v', load chunk' m2 b ofs = Some v' /\ decode_encode_val v chunk chunk' v'.
+  exists v', load chunk' m2 b ofs = Some v' /\ decode_encode_val (v,t,t') chunk chunk' v'.
 
 Axiom load_store_same:
-  forall chunk m1 b ofs v m2, store chunk m1 b ofs v = Some m2 ->
-  load chunk m2 b ofs = Some (Val.load_result chunk v).
+  forall chunk m1 b ofs v t t' m2, store chunk m1 b ofs (v,t,t') = Some m2 ->
+  load chunk m2 b ofs = Some (Val.load_result chunk v, t, t').
 
 Axiom load_store_other:
-  forall chunk m1 b ofs v m2, store chunk m1 b ofs v = Some m2 ->
+  forall chunk m1 b ofs v t t' m2, store chunk m1 b ofs (v,t,t') = Some m2 ->
   forall chunk' b' ofs',
   b' <> b
   \/ ofs' + size_chunk chunk' <= ofs
@@ -410,7 +410,8 @@ Definition compat_pointer_chunks (chunk1 chunk2: memory_chunk) : Prop :=
   | _, _ => False
   end.
 
-Axiom load_store_pointer_overlap:
+(* TODO: should this continue to be true? *)
+(*Axiom load_store_pointer_overlap:
   forall chunk m1 b ofs v_b v_o m2 chunk' ofs' v,
   store chunk m1 b ofs (Vptr v_b v_o) = Some m2 ->
   load chunk' m2 b ofs' = Some v ->
@@ -429,15 +430,15 @@ Axiom load_pointer_store:
   store chunk m1 b ofs v = Some m2 ->
   load chunk' m2 b' ofs' = Some(Vptr v_b v_o) ->
   (v = Vptr v_b v_o /\ compat_pointer_chunks chunk chunk' /\ b' = b /\ ofs' = ofs)
-  \/ (b' <> b \/ ofs' + size_chunk chunk' <= ofs \/ ofs + size_chunk chunk <= ofs').
+  \/ (b' <> b \/ ofs' + size_chunk chunk' <= ofs \/ ofs + size_chunk chunk <= ofs').*)
 
 (** Load-store properties for [loadbytes]. *)
 
 Axiom loadbytes_store_same:
-  forall chunk m1 b ofs v m2, store chunk m1 b ofs v = Some m2 ->
-  loadbytes m2 b ofs (size_chunk chunk) = Some(encode_val chunk v).
+  forall chunk m1 b ofs v t t' m2, store chunk m1 b ofs (v,t,t') = Some m2 ->
+  loadbytes m2 b ofs (size_chunk chunk) = Some(encode_val chunk (v,t,t')).
 Axiom loadbytes_store_other:
-  forall chunk m1 b ofs v m2, store chunk m1 b ofs v = Some m2 ->
+  forall chunk m1 b ofs v t t' m2, store chunk m1 b ofs (v,t,t') = Some m2 ->
   forall b' ofs' n,
   b' <> b \/ n <= 0 \/ ofs' + n <= ofs \/ ofs + size_chunk chunk <= ofs' ->
   loadbytes m2 b' ofs' n = loadbytes m1 b' ofs' n.
@@ -452,21 +453,21 @@ Axiom store_signed_unsigned_16:
   forall m b ofs v,
   store Mint16signed m b ofs v = store Mint16unsigned m b ofs v.
 Axiom store_int8_zero_ext:
-  forall m b ofs n,
-  store Mint8unsigned m b ofs (Vint (Int.zero_ext 8 n)) =
-  store Mint8unsigned m b ofs (Vint n).
+  forall m b ofs n t t',
+  store Mint8unsigned m b ofs (Vint (Int.zero_ext 8 n), t, t') =
+  store Mint8unsigned m b ofs (Vint n, t, t').
 Axiom store_int8_sign_ext:
-  forall m b ofs n,
-  store Mint8signed m b ofs (Vint (Int.sign_ext 8 n)) =
-  store Mint8signed m b ofs (Vint n).
+  forall m b ofs n t t',
+  store Mint8signed m b ofs (Vint (Int.sign_ext 8 n), t, t') =
+  store Mint8signed m b ofs (Vint n, t, t').
 Axiom store_int16_zero_ext:
-  forall m b ofs n,
-  store Mint16unsigned m b ofs (Vint (Int.zero_ext 16 n)) =
-  store Mint16unsigned m b ofs (Vint n).
+  forall m b ofs n t t',
+  store Mint16unsigned m b ofs (Vint (Int.zero_ext 16 n), t, t') =
+  store Mint16unsigned m b ofs (Vint n, t, t').
 Axiom store_int16_sign_ext:
-  forall m b ofs n,
-  store Mint16signed m b ofs (Vint (Int.sign_ext 16 n)) =
-  store Mint16signed m b ofs (Vint n).
+  forall m b ofs n t t',
+  store Mint16signed m b ofs (Vint (Int.sign_ext 16 n), t, t') =
+  store Mint16signed m b ofs (Vint n, t, t').
 
 (** ** Properties of [storebytes]. *)
 
@@ -658,7 +659,7 @@ Axiom valid_block_free_2:
 
 (** Effect of [free] on permissions. *)
 (*
-Axiom` perm_free_1:
+Axiom perm_free_1:
   forall m1 bf lo hi m2, free m1 bf lo hi = Some m2 ->
   forall b ofs p,
   b <> bf \/ ofs < lo \/ hi <= ofs ->

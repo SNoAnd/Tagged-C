@@ -106,7 +106,7 @@ VLIB=Axioms.v Coqlib.v Intv.v Maps.v Heaps.v Lattice.v Ordered.v \
 COMMON=Errors.v AST.v Linking.v \
   Events.v Globalenvs.v Memdata.v Memtype.v Memory.v \
   Values.v Smallstep.v Behaviors.v Switch.v Determinism.v Unityping.v \
-  Separation.v Builtins0.v Builtins1.v Builtins.v
+  Builtins0.v Builtins1.v Builtins.v
 
 # Back-end modules (in backend/, $(ARCH)/)
 
@@ -175,7 +175,7 @@ endif
 
 # All source files
 
-FILES=$(VLIB) $(COMMON) $(BACKEND) $(CFRONTEND) $(DRIVER) $(FLOCQ) \
+FILES=$(VLIB) $(COMMON) $(CFRONTEND) $(DRIVER) $(FLOCQ) \
   $(MENHIRLIB) $(PARSER) $(EXPORTLIB)
 
 # Generated source files

@@ -952,15 +952,16 @@ Qed.
 
 Inductive extcall_malloc_sem (ge: Senv.t):
               list val -> mem -> trace -> val -> mem -> Prop :=
-  | extcall_malloc_sem_intro: forall sz m m' b m'',
-      Mem.alloc m (- size_chunk Mptr) (Ptrofs.unsigned sz) = (m', b) ->
-      Mem.store Mptr m' b (- size_chunk Mptr) (Vptrofs sz) = Some m'' ->
-      extcall_malloc_sem ge (Vptrofs sz :: nil) m E0 (Vptr b Ptrofs.zero) m''.
+  | extcall_malloc_sem_intro: forall sz m m' lo hi m'',
+      Mem.alloc m (- size_chunk Mptr) (Ptrofs.unsigned sz) = Some (m', lo, hi) ->
+      Mem.store Mptr m' Mem.dummy (- size_chunk Mptr) (Vptrofs sz) = Some m'' ->
+      extcall_malloc_sem ge (Vptrofs sz :: nil) m E0 (Vptr Mem.dummy (Ptrofs.repr lo)) m''.
 
 Lemma extcall_malloc_ok:
   extcall_properties extcall_malloc_sem
                      (mksignature (Tptr :: nil) Tptr cc_default).
-Proof.
+Admitted.
+(*Proof.
   assert (UNCHANGED:
     forall (P: block -> Z -> Prop) m lo hi v m' b m'',
     Mem.alloc m lo hi = (m', b) ->
@@ -1032,16 +1033,16 @@ Proof.
   subst.
   split. constructor. intuition congruence.
 Qed.
-
+*)
 (** ** Semantics of dynamic memory deallocation (free) *)
 
 Inductive extcall_free_sem (ge: Senv.t):
               list val -> mem -> trace -> val -> mem -> Prop :=
-  | extcall_free_sem_ptr: forall b lo sz m m',
-      Mem.load Mptr m b (Ptrofs.unsigned lo - size_chunk Mptr) = Some (Vptrofs sz) ->
+  | extcall_free_sem_ptr: forall lo sz m m',
+      Mem.load Mptr m Mem.dummy (Ptrofs.unsigned lo - size_chunk Mptr) = Some (Vptrofs sz) ->
       Ptrofs.unsigned sz > 0 ->
-      Mem.free m b (Ptrofs.unsigned lo - size_chunk Mptr) (Ptrofs.unsigned lo + Ptrofs.unsigned sz) = Some m' ->
-      extcall_free_sem ge (Vptr b lo :: nil) m E0 Vundef m'
+      Mem.free m Mem.dummy (Ptrofs.unsigned lo - size_chunk Mptr) (Ptrofs.unsigned lo + Ptrofs.unsigned sz) = Some m' ->
+      extcall_free_sem ge (Vptr Mem.dummy lo :: nil) m E0 Vundef m'
   | extcall_free_sem_null: forall m,
       extcall_free_sem ge (Vnullptr :: nil) m E0 Vundef m.
 
@@ -1056,17 +1057,8 @@ Proof.
 - inv H0; econstructor; eauto.
 (* valid block *)
 - inv H; eauto with mem.
-(* perms *)
-- inv H; eauto using Mem.perm_free_3.
-(* readonly *)
-- eapply unchanged_on_readonly; eauto. inv H.
-+ eapply Mem.free_unchanged_on; eauto.
-  intros. red; intros. elim H6.
-  apply Mem.perm_cur_max. apply Mem.perm_implies with Freeable; auto with mem.
-  eapply Mem.free_range_perm; eauto.
-+ apply Mem.unchanged_on_refl.
 (* mem extends *)
-- inv H.
+(*- inv H.
 + inv H1. inv H8. inv H6.
   exploit Mem.load_extends; eauto. intros [v' [A B]].
   assert (v' = Vptrofs sz).
@@ -1119,7 +1111,7 @@ Proof.
   exists f, Vundef, m1'; intuition auto using Mem.unchanged_on_refl.
   constructor.
   red; intros; congruence.
-  unfold Vnullptr in *; destruct Archi.ptr64; inv H4; auto.
+  unfold Vnullptr in *; destruct Archi.ptr64; inv H4; auto.*)
 (* trace length *)
 - inv H; simpl; lia.
 (* receptive *)
@@ -1142,16 +1134,16 @@ Qed.
 
 Inductive extcall_memcpy_sem (sz al: Z) (ge: Senv.t):
                         list val -> mem -> trace -> val -> mem -> Prop :=
-  | extcall_memcpy_sem_intro: forall bdst odst bsrc osrc m bytes m',
+  | extcall_memcpy_sem_intro: forall odst osrc m bytes m',
       al = 1 \/ al = 2 \/ al = 4 \/ al = 8 -> sz >= 0 -> (al | sz) ->
       (sz > 0 -> (al | Ptrofs.unsigned osrc)) ->
       (sz > 0 -> (al | Ptrofs.unsigned odst)) ->
-      bsrc <> bdst \/ Ptrofs.unsigned osrc = Ptrofs.unsigned odst
-                   \/ Ptrofs.unsigned osrc + sz <= Ptrofs.unsigned odst
-                   \/ Ptrofs.unsigned odst + sz <= Ptrofs.unsigned osrc ->
-      Mem.loadbytes m bsrc (Ptrofs.unsigned osrc) sz = Some bytes ->
-      Mem.storebytes m bdst (Ptrofs.unsigned odst) bytes = Some m' ->
-      extcall_memcpy_sem sz al ge (Vptr bdst odst :: Vptr bsrc osrc :: nil) m E0 Vundef m'.
+      Mem.dummy <> Mem.dummy \/ Ptrofs.unsigned osrc = Ptrofs.unsigned odst
+                             \/ Ptrofs.unsigned osrc + sz <= Ptrofs.unsigned odst
+                             \/ Ptrofs.unsigned odst + sz <= Ptrofs.unsigned osrc ->
+      Mem.loadbytes m Mem.dummy (Ptrofs.unsigned osrc) sz = Some bytes ->
+      Mem.storebytes m Mem.dummy (Ptrofs.unsigned odst) bytes = Some m' ->
+      extcall_memcpy_sem sz al ge (Vptr Mem.dummy odst :: Vptr Mem.dummy osrc :: nil) m E0 Vundef m'.
 
 Lemma extcall_memcpy_ok:
   forall sz al,
@@ -1165,14 +1157,7 @@ Proof.
   intros. inv H0. econstructor; eauto.
 - (* valid blocks *)
   intros. inv H. eauto with mem.
-- (* perms *)
-  intros. inv H. eapply Mem.perm_storebytes_2; eauto.
-- (* readonly *)
-  intros. inv H. eapply unchanged_on_readonly; eauto. 
-  eapply Mem.storebytes_unchanged_on; eauto.
-  intros; red; intros. elim H11.
-  apply Mem.perm_cur_max. eapply Mem.storebytes_range_perm; eauto.
-- (* extensions *)
+(*- (* extensions *)
   intros. inv H.
   inv H1. inv H13. inv H14. inv H10. inv H11.
   exploit Mem.loadbytes_length; eauto. intros LEN.
@@ -1246,7 +1231,7 @@ Proof.
   erewrite list_forall2_length; eauto.
   lia.
   split. apply inject_incr_refl.
-  red; intros; congruence.
+  red; intros; congruence.*)
 - (* trace length *)
   intros; inv H. simpl; lia.
 - (* receptive *)
@@ -1278,21 +1263,17 @@ Proof.
   eapply eventval_list_match_preserved; eauto.
 (* valid blocks *)
 - inv H; auto.
-(* perms *)
-- inv H; auto.
-(* readonly *)
-- inv H; auto.
 (* mem extends *)
-- inv H.
+(*- inv H.
   exists Vundef; exists m1'; intuition.
   econstructor; eauto.
-  eapply eventval_list_match_lessdef; eauto.
+  eapply eventval_list_match_lessdef; eauto.*)
 (* mem injects *)
-- inv H0.
+(*- inv H0.
   exists f; exists Vundef; exists m1'; intuition.
   econstructor; eauto.
   eapply eventval_list_match_inject; eauto.
-  red; intros; congruence.
+  red; intros; congruence.*)
 (* trace length *)
 - inv H; simpl; lia.
 (* receptive *)
@@ -1323,21 +1304,17 @@ Proof.
   eapply eventval_match_preserved; eauto.
 (* valid blocks *)
 - inv H; auto.
-(* perms *)
-- inv H; auto.
-(* readonly *)
-- inv H; auto.
 (* mem extends *)
-- inv H. inv H1. inv H6.
+(*- inv H. inv H1. inv H6.
   exists v2; exists m1'; intuition.
   econstructor; eauto.
-  eapply eventval_match_lessdef; eauto.
+  eapply eventval_match_lessdef; eauto.*)
 (* mem inject *)
-- inv H0. inv H2. inv H7.
+(*- inv H0. inv H2. inv H7.
   exists f; exists v'; exists m1'; intuition.
   econstructor; eauto.
   eapply eventval_match_inject; eauto.
-  red; intros; congruence.
+  red; intros; congruence.*)
 (* trace length *)
 - inv H; simpl; lia.
 (* receptive *)
@@ -1366,19 +1343,15 @@ Proof.
 - inv H0. econstructor; eauto.
 (* valid blocks *)
 - inv H; auto.
-(* perms *)
-- inv H; auto.
-(* readonly *)
-- inv H; auto.
 (* mem extends *)
-- inv H.
+(*- inv H.
   exists Vundef; exists m1'; intuition.
-  econstructor; eauto.
+  econstructor; eauto.*)
 (* mem injects *)
-- inv H0.
+(*- inv H0.
   exists f; exists Vundef; exists m1'; intuition.
   econstructor; eauto.
-  red; intros; congruence.
+  red; intros; congruence.*)
 (* trace length *)
 - inv H; simpl; lia.
 (* receptive *)
@@ -1413,26 +1386,22 @@ Proof.
 - inv H0. econstructor; eauto.
 (* valid blocks *)
 - inv H; auto.
-(* perms *)
-- inv H; auto.
-(* readonly *)
-- inv H; auto.
 (* mem extends *)
-- inv H. fold bsem in H2. apply val_inject_list_lessdef in H1.
+(*- inv H. fold bsem in H2. apply val_inject_list_lessdef in H1.
   specialize (bs_inject _ bsem _ _ _ H1).
   unfold val_opt_inject; rewrite H2; intros.
   destruct (bsem vargs') as [vres'|] eqn:?; try contradiction.
   exists vres', m1'; intuition auto using Mem.extends_refl, Mem.unchanged_on_refl.
   constructor; auto.
-  apply val_inject_lessdef; auto.
+  apply val_inject_lessdef; auto.*)
 (* mem injects *)
-- inv H0. fold bsem in H3.
+(*- inv H0. fold bsem in H3.
   specialize (bs_inject _ bsem _ _ _ H2).
   unfold val_opt_inject; rewrite H3; intros.
   destruct (bsem vargs') as [vres'|] eqn:?; try contradiction.
   exists f, vres', m1'; intuition auto using Mem.extends_refl, Mem.unchanged_on_refl.
   constructor; auto.
-  red; intros; congruence.
+  red; intros; congruence.*)
 (* trace length *)
 - inv H; simpl; lia.
 (* receptive *)
@@ -1530,10 +1499,10 @@ Qed.
 Definition external_call_well_typed_gen ef := ec_well_typed (external_call_spec ef).
 Definition external_call_symbols_preserved ef := ec_symbols_preserved (external_call_spec ef).
 Definition external_call_valid_block ef := ec_valid_block (external_call_spec ef).
-Definition external_call_max_perm ef := ec_max_perm (external_call_spec ef).
+(*Definition external_call_max_perm ef := ec_max_perm (external_call_spec ef).
 Definition external_call_readonly ef := ec_readonly (external_call_spec ef).
 Definition external_call_mem_extends ef := ec_mem_extends (external_call_spec ef).
-Definition external_call_mem_inject_gen ef := ec_mem_inject (external_call_spec ef).
+Definition external_call_mem_inject_gen ef := ec_mem_inject (external_call_spec ef).*)
 Definition external_call_trace_length ef := ec_trace_length (external_call_spec ef).
 Definition external_call_receptive ef := ec_receptive (external_call_spec ef).
 Definition external_call_determ ef := ec_determ (external_call_spec ef).
@@ -1563,7 +1532,7 @@ Qed.
 
 (** Special case of [external_call_mem_inject_gen] (for backward compatibility) *)
 
-Definition meminj_preserves_globals (F V: Type) (ge: Genv.t F V) (f: block -> option (block * Z)) : Prop :=
+(*Definition meminj_preserves_globals (F V: Type) (ge: Genv.t F V) (f: block -> option (block * Z)) : Prop :=
      (forall id b, Genv.find_symbol ge id = Some b -> f b = Some(b, 0))
   /\ (forall b gv, Genv.find_var_info ge b = Some gv -> f b = Some(b, 0))
   /\ (forall b1 b2 delta gv, Genv.find_var_info ge b2 = Some gv -> f b1 = Some(b2, delta) -> b2 = b1).
@@ -1593,7 +1562,7 @@ Proof.
     * exploit B; eauto. intros EQ; rewrite EQ in H; inv H. rewrite V1; auto.
     * destruct (Genv.find_var_info ge b2) as [gv2|] eqn:V2; auto.
       exploit C; eauto. intros EQ; subst b2. congruence.
-Qed.
+Qed.*)
 
 (** Corollaries of [external_call_determ]. *)
 
@@ -1707,7 +1676,7 @@ End EVAL_BUILTIN_ARG_PRESERVED.
 
 (** Compatibility with the "is less defined than" relation. *)
 
-Section EVAL_BUILTIN_ARG_LESSDEF.
+(*Section EVAL_BUILTIN_ARG_LESSDEF.
 
 Variable A: Type.
 Variable ge: Senv.t.
@@ -1752,5 +1721,5 @@ Proof.
   exists (v1'::vl'); split; constructor; auto.
 Qed.
 
-End EVAL_BUILTIN_ARG_LESSDEF.
+End EVAL_BUILTIN_ARG_LESSDEF.*)
 

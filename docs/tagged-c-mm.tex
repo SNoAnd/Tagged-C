@@ -4,19 +4,27 @@
 
 \section{Values, Atoms, Tags}
 
-Values, ranged over by \(v\), are as in CompCert C.
+Values, ranged over by \(v\), are as in CompCert C. A pointer is, rather than a pair of
+a block and an offset, just an offset into the entirety of memory
+(but in the Coq development, they still carry a dummy block identifier.)
+An {\it atom} \(a\) is a pair of a value and a tag.
 
 \section{Memory Model}
 
 Tagged C models memory as a flat address space in which each address \(a\)
 has {\it contents} and {\it access permissions}. The contents of an address
-is a pair of an atom and a tag
+is a pair of an atom and a tag.
 
 \[\mathit{con} \rightarrow A \rightharpoonup \]
 
 \begin{tabular}{l l}
   
 \end{tabular}
+
+\subsection{Loading tags}
+
+In order to handle tags in memory, some adjustments are required to {\tt memdata.v}.
+There is no longer such a thing as a 
 
 \subsection{The Allocation Oracle}
 
