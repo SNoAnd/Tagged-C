@@ -433,7 +433,7 @@ Fixpoint getN (n: nat) (p: Z) (c: ZMap.t memval) {struct n}: list memval :=
   at that address.  [None] is returned if the accessed bytes
   are not readable. *)
 
-Definition load (chunk: memory_chunk) (m: mem) (b: block) (ofs: Z): option (atom*tag) :=
+Definition load (chunk: memory_chunk) (m: mem) (b: block) (ofs: Z): option val :=
   if allowed_access_dec m chunk b ofs
   then Some(decode_val chunk (getN (size_chunk_nat chunk) ofs (m.(mem_contents)#b)))
   else None.
@@ -441,7 +441,7 @@ Definition load (chunk: memory_chunk) (m: mem) (b: block) (ofs: Z): option (atom
 (** [loadv chunk m addr] is similar, but the address and offset are given
   as a single value [addr], which must be a pointer value. *)
 
-Definition loadv (chunk: memory_chunk) (m: mem) (addr: val) : option (atom*tag) :=
+Definition loadv (chunk: memory_chunk) (m: mem) (addr: val) : option val :=
   match addr with
   | Vptr b ofs => load chunk m b (Ptrofs.unsigned ofs)
   | _ => None
@@ -536,7 +536,7 @@ Qed.
   Return the updated memory store, or [None] if the accessed bytes
   are not writable. *)
 
-Program Definition store (chunk: memory_chunk) (m: mem) (b: block) (ofs: Z) (v: atom*tag): option mem :=
+Program Definition store (chunk: memory_chunk) (m: mem) (b: block) (ofs: Z) (v: val): option mem :=
   if allowed_access_dec m chunk b ofs then
     Some (mkmem (PMap.set b
                           (setN (encode_val chunk v) ofs (m.(mem_contents)#b))
@@ -556,7 +556,7 @@ Qed.
 (** [storev chunk m addr v] is similar, but the address and offset are given
   as a single value [addr], which must be a pointer value. *)
 
-Definition storev (chunk: memory_chunk) (m: mem) (addr: val) (v: atom*tag) : option mem :=
+Definition storev (chunk: memory_chunk) (m: mem) (addr v: val) : option mem :=
   match addr with
   | Vptr b ofs => store chunk m b (Ptrofs.unsigned ofs) v
   | _ => None
@@ -668,28 +668,26 @@ Qed.
 Local Hint Resolve load_allowed_access valid_access_load: mem.
 
 Theorem load_type:
-  forall m chunk b ofs v t t',
-  load chunk m b ofs = Some (v, t, t') ->
+  forall m chunk b ofs v,
+  load chunk m b ofs = Some v ->
   Val.has_type v (type_of_chunk chunk).
-Admitted.
-  (*Proof.
+Proof.
   intros. exploit load_result; eauto; intros. rewrite H0.
   apply decode_val_type.
-Qed.*)
+Qed.
 
 Theorem load_rettype:
-  forall m chunk b ofs v t t',
-  load chunk m b ofs = Some (v, t, t') ->
+  forall m chunk b ofs v,
+  load chunk m b ofs = Some v ->
   Val.has_rettype v (rettype_of_chunk chunk).
-Admitted.
-(*Proof.
+Proof.
   intros. exploit load_result; eauto; intros. rewrite H0.
   apply decode_val_rettype.
-Qed.*)
+Qed.
 
 Theorem load_cast:
-  forall m chunk b ofs v t t',
-  load chunk m b ofs = Some (v,t,t') ->
+  forall m chunk b ofs v,
+  load chunk m b ofs = Some v ->
   match chunk with
   | Mint8signed => v = Val.sign_ext 8 v
   | Mint8unsigned => v = Val.zero_ext 8 v
@@ -697,18 +695,16 @@ Theorem load_cast:
   | Mint16unsigned => v = Val.zero_ext 16 v
   | _ => True
   end.
-Admitted.
-(*Proof.
+Proof.
   intros. exploit load_result; eauto.
   set (l := getN (size_chunk_nat chunk) ofs m.(mem_contents)#b).
   intros. subst v. apply decode_val_cast.
-Qed.*)
+Qed.
 
 Theorem load_int8_signed_unsigned:
   forall m b ofs,
-      load Mint8signed m b ofs = opt_at_map (Val.sign_ext 8) (load Mint8unsigned m b ofs).
-Admitted.
-  (*Proof.
+  load Mint8signed m b ofs = option_map (Val.sign_ext 8) (load Mint8unsigned m b ofs).
+Proof.
   intros. unfold load.
   change (size_chunk_nat Mint8signed) with (size_chunk_nat Mint8unsigned).
   set (cl := getN (size_chunk_nat Mint8unsigned) ofs m.(mem_contents)#b).
@@ -717,13 +713,12 @@ Admitted.
   destruct (proj_bytes cl); auto.
   simpl. decEq. decEq. rewrite Int.sign_ext_zero_ext. auto. compute; auto.
   rewrite pred_dec_false; auto.
-Qed.*)
+Qed.
 
 Theorem load_int16_signed_unsigned:
   forall m b ofs,
-  load Mint16signed m b ofs = opt_at_map (Val.sign_ext 16) (load Mint16unsigned m b ofs).
-Admitted.
-(*Proof.
+  load Mint16signed m b ofs = option_map (Val.sign_ext 16) (load Mint16unsigned m b ofs).
+Proof.
   intros. unfold load.
   change (size_chunk_nat Mint16signed) with (size_chunk_nat Mint16unsigned).
   set (cl := getN (size_chunk_nat Mint16unsigned) ofs m.(mem_contents)#b).
@@ -732,7 +727,7 @@ Admitted.
   destruct (proj_bytes cl); auto.
   simpl. decEq. decEq. rewrite Int.sign_ext_zero_ext. auto. compute; auto.
   rewrite pred_dec_false; auto.
-Qed.*)
+Qed.
 
 (** ** Properties related to [loadbytes] *)
 
@@ -889,7 +884,7 @@ Proof.
   rewrite Nat2Z.inj_succ. lia.
 Qed.
 
-(*Theorem load_int64_split:
+Theorem load_int64_split:
   forall m b ofs v,
   load Mint64 m b ofs = Some v -> Archi.ptr64 = false ->
   exists v1 v2,
@@ -918,7 +913,7 @@ Proof.
   rewrite EQ. rewrite APP. apply decode_val_int64; auto.
   erewrite loadbytes_length; eauto. reflexivity.
   erewrite loadbytes_length; eauto. reflexivity.
-Qed.*)
+Qed.
 
 Lemma addressing_int64_split:
   forall i,
@@ -940,7 +935,7 @@ Proof.
   unfold Ptrofs.max_unsigned. lia.
 Qed.
 
-(*Theorem loadv_int64_split:
+Theorem loadv_int64_split:
   forall m a v,
   loadv Mint64 m a = Some v -> Archi.ptr64 = false ->
   exists v1 v2,
@@ -960,7 +955,7 @@ Opaque Ptrofs.repr.
   split. auto.
   split. simpl. rewrite NV. auto.
   auto.
-Qed.*)
+Qed.
 
 (** ** Properties related to [store] *)
 
@@ -1006,10 +1001,8 @@ Variable m1: mem.
 Variable b: block.
 Variable ofs: Z.
 Variable v: val.
-Variable t: tag.
-Variable t': tag.
 Variable m2: mem.
-Hypothesis STORE: store chunk m1 b ofs (v,t,t') = Some m2.
+Hypothesis STORE: store chunk m1 b ofs v = Some m2.
 
 Lemma store_access: mem_access m2 = mem_access m1.
 Proof.
@@ -1018,7 +1011,7 @@ Proof.
 Qed.
 
 Lemma store_mem_contents:
-  mem_contents m2 = PMap.set b (setN (encode_val chunk (v,t,t')) ofs m1.(mem_contents)#b) m1.(mem_contents).
+  mem_contents m2 = PMap.set b (setN (encode_val chunk v) ofs m1.(mem_contents)#b) m1.(mem_contents).
 Proof.
   unfold store in STORE. destruct (allowed_access_dec m1 chunk b ofs); inv STORE. simpl.
   auto.
@@ -1110,9 +1103,8 @@ Theorem load_store_similar:
   forall chunk',
   size_chunk chunk' = size_chunk chunk ->
   align_chunk chunk' <= align_chunk chunk ->
-  exists v', load chunk' m2 b ofs = Some v' /\ decode_encode_val (v,t,t') chunk chunk' v'.
-Admitted.
-(*Proof.
+  exists v', load chunk' m2 b ofs = Some v' /\ decode_encode_val v chunk chunk' v'.
+Proof.
   intros.
   exploit (allowed_access_load m2 chunk' b).
     eapply allowed_access_compat. symmetry; eauto. auto. eauto with mem.
@@ -1121,26 +1113,25 @@ Admitted.
   exploit load_result; eauto. intros B.
   rewrite B. rewrite store_mem_contents; simpl.
   rewrite PMap.gss.
-  replace (size_chunk_nat chunk') with (length (encode_val chunk (v,t,t'))).
+  replace (size_chunk_nat chunk') with (length (encode_val chunk v)).
   rewrite getN_setN_same. apply decode_encode_val_general.
   rewrite encode_val_length. repeat rewrite size_chunk_conv in H.
   apply Nat2Z.inj; auto.
-Qed.*)
+Qed.
 
 Theorem load_store_similar_2:
   forall chunk',
   size_chunk chunk' = size_chunk chunk ->
   align_chunk chunk' <= align_chunk chunk ->
   type_of_chunk chunk' = type_of_chunk chunk ->
-  load chunk' m2 b ofs = Some (Val.load_result chunk' v, t, t').
-Admitted.
-(*Proof.
-  intros. destruct (load_store_similar chunk') as [v'' [A B]]; auto.
+  load chunk' m2 b ofs = Some (Val.load_result chunk' v).
+Proof.
+  intros. destruct (load_store_similar chunk') as [v' [A B]]; auto.
   rewrite A. decEq. eapply decode_encode_val_similar with (chunk1 := chunk); eauto.
-Qed.*)
+Qed.
 
 Theorem load_store_same:
-  load chunk m2 b ofs = Some ((Val.load_result chunk v), t,t').
+  load chunk m2 b ofs = Some (Val.load_result chunk v).
 Proof.
   apply load_store_similar_2; auto. lia.
 Qed.
@@ -1166,13 +1157,13 @@ Proof.
 Qed.
 
 Theorem loadbytes_store_same:
-  loadbytes m2 b ofs (size_chunk chunk) = Some(encode_val chunk (v,t,t')).
+  loadbytes m2 b ofs (size_chunk chunk) = Some(encode_val chunk v).
 Proof.
   intros.
   assert (allowed_access m2 chunk b ofs) by eauto with mem.
   unfold loadbytes. rewrite pred_dec_true. rewrite store_mem_contents; simpl.
   rewrite PMap.gss.
-  replace (Z.to_nat (size_chunk chunk)) with (length (encode_val chunk (v,t,t'))).
+  replace (Z.to_nat (size_chunk chunk)) with (length (encode_val chunk v)).
   rewrite getN_setN_same. auto.
   rewrite encode_val_length. auto.
   apply H.
@@ -1235,7 +1226,7 @@ Local Hint Resolve store_valid_block_1 store_valid_block_2: mem.
 Local Hint Resolve store_allowed_access_1 store_allowed_access_2
              store_allowed_access_3 store_allowed_access_4: mem.
 
-(*Lemma load_store_overlap:
+Lemma load_store_overlap:
   forall chunk m1 b ofs v m2 chunk' ofs' v',
   store chunk m1 b ofs v = Some m2 ->
   load chunk' m2 b ofs' = Some v' ->
@@ -1284,7 +1275,7 @@ Proof.
   { rewrite size_chunk_conv. rewrite SIZE'. rewrite Nat2Z.inj_succ; auto. }
   lia.
   unfold c'. simpl. rewrite setN_outside by lia. apply ZMap.gss.
-Qed.*)
+Qed.
 
 Definition compat_pointer_chunks (chunk1 chunk2: memory_chunk) : Prop :=
   match chunk1, chunk2 with
@@ -1293,7 +1284,7 @@ Definition compat_pointer_chunks (chunk1 chunk2: memory_chunk) : Prop :=
   | _, _ => False
   end.
 
-(*Lemma compat_pointer_chunks_true:
+Lemma compat_pointer_chunks_true:
   forall chunk1 chunk2,
   (chunk1 = Mint32 \/ chunk1 = Many32 \/ chunk1 = Mint64 \/ chunk1 = Many64) ->
   (chunk2 = Mint32 \/ chunk2 = Many32 \/ chunk2 = Mint64 \/ chunk2 = Many64) ->
@@ -1302,9 +1293,9 @@ Definition compat_pointer_chunks (chunk1 chunk2: memory_chunk) : Prop :=
 Proof.
   intros. destruct H as [P|[P|[P|P]]]; destruct H0 as [Q|[Q|[Q|Q]]];
   subst; red; auto; discriminate.
-Qed.*)
+Qed.
 
-(*Theorem load_pointer_store:
+Theorem load_pointer_store:
   forall chunk m1 b ofs v m2 chunk' b' ofs' v_b v_o,
   store chunk m1 b ofs v = Some m2 ->
   load chunk' m2 b' ofs' = Some(Vptr v_b v_o) ->
@@ -1335,9 +1326,9 @@ Proof.
   + exploit H2; eauto. congruence.
 - (* ofs' < ofs *)
   exploit H7; eauto. intros (j & P & Q). subst mv1. inv ENC. congruence.
-Qed.*)
+Qed.
 
-(*Theorem load_store_pointer_overlap:
+Theorem load_store_pointer_overlap:
   forall chunk m1 b ofs v_b v_o m2 chunk' ofs' v,
   store chunk m1 b ofs (Vptr v_b v_o) = Some m2 ->
   load chunk' m2 b ofs' = Some v ->
@@ -1359,9 +1350,9 @@ Proof.
   + exploit H10; eauto. intros (j & P & Q). subst mv1. inv ENC. congruence.
   + exploit H8; eauto. intros (n & P). subst mv1. inv ENC. contradiction.
   + auto.
-Qed.*)
+Qed.
 
-(*Theorem load_store_pointer_mismatch:
+Theorem load_store_pointer_mismatch:
   forall chunk m1 b ofs v_b v_o m2 chunk' v,
   store chunk m1 b ofs (Vptr v_b v_o) = Some m2 ->
   load chunk' m2 b ofs = Some v ->
@@ -1377,7 +1368,7 @@ Proof.
   inv ENC; inv DEC; auto.
 - elim H1. apply compat_pointer_chunks_true; auto.
 - contradiction.
-Qed.*)
+Qed.
 
 Lemma store_similar_chunks:
   forall chunk1 chunk2 v1 v2 m b ofs,
@@ -1410,32 +1401,28 @@ Theorem store_signed_unsigned_16:
 Proof. intros. apply store_similar_chunks. apply encode_val_int16_signed_unsigned. auto. Qed.
 
 Theorem store_int8_zero_ext:
-  forall m b ofs n t t',
-  store Mint8unsigned m b ofs (Vint (Int.zero_ext 8 n), t, t') =
-  store Mint8unsigned m b ofs (Vint n, t, t').
-Admitted.
-(*Proof. intros. apply store_similar_chunks. apply encode_val_int8_zero_ext. auto. Qed.*)
+  forall m b ofs n,
+  store Mint8unsigned m b ofs (Vint (Int.zero_ext 8 n)) =
+  store Mint8unsigned m b ofs (Vint n).
+Proof. intros. apply store_similar_chunks. apply encode_val_int8_zero_ext. auto. Qed.
 
 Theorem store_int8_sign_ext:
-  forall m b ofs n t t',
-  store Mint8signed m b ofs (Vint (Int.sign_ext 8 n), t, t') =
-    store Mint8signed m b ofs (Vint n, t, t').
-Admitted.
-(*Proof. intros. apply store_similar_chunks. apply encode_val_int8_sign_ext. auto. Qed.*)
+  forall m b ofs n,
+  store Mint8signed m b ofs (Vint (Int.sign_ext 8 n)) =
+  store Mint8signed m b ofs (Vint n).
+Proof. intros. apply store_similar_chunks. apply encode_val_int8_sign_ext. auto. Qed.
 
 Theorem store_int16_zero_ext:
-  forall m b ofs n t t',
-  store Mint16unsigned m b ofs (Vint (Int.zero_ext 16 n), t, t') =
-  store Mint16unsigned m b ofs (Vint n, t, t').
-Admitted.
-(*Proof. intros. apply store_similar_chunks. apply encode_val_int16_zero_ext. auto. Qed.*)
+  forall m b ofs n,
+  store Mint16unsigned m b ofs (Vint (Int.zero_ext 16 n)) =
+  store Mint16unsigned m b ofs (Vint n).
+Proof. intros. apply store_similar_chunks. apply encode_val_int16_zero_ext. auto. Qed.
 
 Theorem store_int16_sign_ext:
-  forall m b ofs n t t',
-  store Mint16signed m b ofs (Vint (Int.sign_ext 16 n), t, t') =
-  store Mint16signed m b ofs (Vint n, t, t').
-Admitted.
-(*Proof. intros. apply store_similar_chunks. apply encode_val_int16_sign_ext. auto. Qed.*)
+  forall m b ofs n,
+  store Mint16signed m b ofs (Vint (Int.sign_ext 16 n)) =
+  store Mint16signed m b ofs (Vint n).
+Proof. intros. apply store_similar_chunks. apply encode_val_int16_sign_ext. auto. Qed.
 
 (*
 Theorem store_float64al32:
@@ -1718,7 +1705,7 @@ Admitted.
   exists m1; split; auto.
 Qed.*)
 
-(*Theorem store_int64_split:
+Theorem store_int64_split:
   forall m b ofs v m',
   store Mint64 m b ofs v = Some m' -> Archi.ptr64 = false ->
   exists m1,
@@ -1736,9 +1723,9 @@ Proof.
   simpl. apply Z.divide_trans with 8; auto. exists 2; auto.
   apply storebytes_store. exact SB2.
   simpl. apply Z.divide_add_r. apply Z.divide_trans with 8; auto. exists 2; auto. exists 1; auto.
-Qed.*)
+Qed.
 
-(*Theorem storev_int64_split:
+Theorem storev_int64_split:
   forall m a v m',
   storev Mint64 m a v = Some m' -> Archi.ptr64 = false ->
   exists m1,
@@ -1752,7 +1739,7 @@ Proof.
   unfold storev, Val.add. rewrite H0.
   rewrite addressing_int64_split; auto.
   exploit store_allowed_access_3. eexact H2. intros [P Q]. exact Q.
-Qed.*)
+Qed.
 
 (** ** Properties related to [alloc]. *)
 
