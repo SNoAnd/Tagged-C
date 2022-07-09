@@ -38,6 +38,7 @@ Require Import Recdef.
 Require Import Zwf.
 Require Import Axioms Coqlib Errors Maps AST Linking.
 Require Import Integers Floats Values Memory.
+Require Import List. Import ListNotations.
 
 Notation "s #1" := (fst s) (at level 9, format "s '#1'") : pair_scope.
 Notation "s #2" := (snd s) (at level 9, format "s '#2'") : pair_scope.
@@ -51,7 +52,7 @@ Set Implicit Arguments.
 
 Function store_zeros (m: mem) (b: block) (p: Z) (n: Z) {wf (Zwf 0) n}: option mem :=
   if zle n 0 then Some m else
-    match Mem.store Mint8unsigned m b p Vzero with
+    match Mem.store Mint8unsigned m b p Vzero def_tag [def_tag] with
     | Some m' => store_zeros m' b (p + 1) (n - 1)
     | None => None
     end.
@@ -615,37 +616,34 @@ Section INITMEM.
 
 Variable ge: t.
 
-Definition store_init_data (m: mem) (b: block) (p: Z) (id: init_data) : option mem :=
+Definition store_init_data (m: mem) (b: block) (p: Z) (id: init_data) (vt: tag) (lts: list tag) : option mem :=
   match id with
-  | Init_int8 n => Mem.store Mint8unsigned m b p (Vint n)
-  | Init_int16 n => Mem.store Mint16unsigned m b p (Vint n)
-  | Init_int32 n => Mem.store Mint32 m b p (Vint n)
-  | Init_int64 n => Mem.store Mint64 m b p (Vlong n)
-  | Init_float32 n => Mem.store Mfloat32 m b p (Vsingle n)
-  | Init_float64 n => Mem.store Mfloat64 m b p (Vfloat n)
+  | Init_int8 n => Mem.store Mint8unsigned m b p (Vint n) vt lts
+  | Init_int16 n => Mem.store Mint16unsigned m b p (Vint n) vt lts
+  | Init_int32 n => Mem.store Mint32 m b p (Vint n) vt lts
+  | Init_int64 n => Mem.store Mint64 m b p (Vlong n) vt lts
+  | Init_float32 n => Mem.store Mfloat32 m b p (Vsingle n) vt lts
+  | Init_float64 n => Mem.store Mfloat64 m b p (Vfloat n) vt lts
   | Init_addrof symb ofs =>
       match find_symbol ge symb with
       | None => None
-      | Some b' => Mem.store Mptr m b p (Vptr b' ofs)
+      | Some b' => Mem.store Mptr m b p (Vptr b' ofs) vt lts
       end
   | Init_space n => Some m
   end.
 
-Fixpoint store_init_data_list (m: mem) (b: block) (p: Z) (idl: list init_data)
+Fixpoint store_init_data_list (m: mem) (b: block) (p: Z) (idl: list (init_data*tag*list tag))
                               {struct idl}: option mem :=
   match idl with
   | nil => Some m
-  | id :: idl' =>
-      match store_init_data m b p id with
+  | (id,vt,lts) :: idl' =>
+      match store_init_data m b p id vt lts with
       | None => None
       | Some m' => store_init_data_list m' b (p + init_data_size id) idl'
       end
   end.
 
-Definition perm_globvar (gv: globvar V) : permission :=
-  if gv.(gvar_volatile) then Nonempty
-  else if gv.(gvar_readonly) then Readable
-  else Writable.
+Definition perm_globvar (gv: globvar V) : permission := Live.
 
 Definition alloc_global (m: mem) (idg: ident * globdef F V): option mem :=
   match idg with
