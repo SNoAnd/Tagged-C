@@ -29,7 +29,7 @@ Require Import Ctypes Cop.
   their types. *)
 
 Inductive expr : Type :=
-  | Eval (v: val) (ty: type)                                  (**r constant *)
+  | Eval (v: atom) (ty: type)                                  (**r constant *)
   | Evar (x: ident) (ty: type)                                (**r variable *)
   | Efield (l: expr) (f: ident) (ty: type)
                                (**r access to a member of a struct or union *)
@@ -56,7 +56,7 @@ Inductive expr : Type :=
                                              (**r function call [r1(rargs)] *)
   | Ebuiltin (ef: external_function) (tyargs: typelist) (rargs: exprlist) (ty: type)
                                                  (**r builtin function call *)
-  | Eloc (b: block) (ofs: ptrofs) (bf: bitfield) (ty: type)
+  | Eloc (b: block) (ofs: ptrofs) (pt:tag) (bf: bitfield) (ty: type)
                        (**r memory location, result of evaluating a l-value *)
   | Eparen (r: expr) (tycast: type) (ty: type)   (**r marked subexpression *)
 
@@ -99,7 +99,7 @@ Definition Eindex (r1 r2: expr) (ty: type) :=
 
 Definition Epreincr (id: incr_or_decr) (l: expr) (ty: type) :=
   Eassignop (match id with Incr => Oadd | Decr => Osub end)
-            l (Eval (Vint Int.one) type_int32s) (typeconv ty) ty.
+            l (Eval (Vint Int.one, def_tag) type_int32s) (typeconv ty) ty.
 
 (** Selection is a conditional expression that always evaluates both arms
   and can be implemented by "conditional move" instructions.
@@ -117,7 +117,7 @@ Definition Eselection (r1 r2 r3: expr) (ty: type) :=
 
 Definition typeof (a: expr) : type :=
   match a with
-  | Eloc _ _ _ ty => ty
+  | Eloc _ _ _ _ ty => ty
   | Evar _ ty => ty
   | Ederef _ ty => ty
   | Efield _ _ ty => ty

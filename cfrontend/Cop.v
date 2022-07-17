@@ -1120,23 +1120,24 @@ Definition bitfield_normalize (sz: intsize) (sg: signedness) (width: Z) (n: int)
   then Int.zero_ext width n
   else Int.sign_ext width n.
 
-Inductive load_bitfield: type -> intsize -> signedness -> Z -> Z -> mem -> val -> val -> Prop :=
-  | load_bitfield_intro: forall sz sg1 attr sg pos width m addr c,
+Inductive load_bitfield: type -> intsize -> signedness -> Z -> Z -> mem -> val -> atom -> list tag -> Prop :=
+  | load_bitfield_intro: forall sz sg1 attr sg pos width m addr c vt lts,
       0 <= pos -> 0 < width <= bitsize_intsize sz -> pos + width <= bitsize_carrier sz ->
       sg1 = (if zlt width (bitsize_intsize sz) then Signed else sg) ->
-      Mem.loadv (chunk_for_carrier sz) m addr = Some (Vint c) ->
+      Mem.loadv (chunk_for_carrier sz) m addr = Some (Vint c, vt) ->
+      Mem.loadv_ltags (chunk_for_carrier sz) m addr = lts ->
       load_bitfield (Tint sz sg1 attr) sz sg pos width m addr
-                    (Vint (bitfield_extract sz sg pos width c)).
+                    (Vint (bitfield_extract sz sg pos width c), vt) lts.
 
-Inductive store_bitfield: type -> intsize -> signedness -> Z -> Z -> mem -> val -> val -> mem -> val -> Prop :=
-  | store_bitfield_intro: forall sz sg1 attr sg pos width m addr c n m',
+Inductive store_bitfield: type -> intsize -> signedness -> Z -> Z -> mem -> atom -> atom -> list tag -> mem -> atom -> Prop :=
+  | store_bitfield_intro: forall sz sg1 attr sg pos width m addr pt c n vt lts m',
       0 <= pos -> 0 < width <= bitsize_intsize sz -> pos + width <= bitsize_carrier sz ->
       sg1 = (if zlt width (bitsize_intsize sz) then Signed else sg) ->
-      Mem.loadv (chunk_for_carrier sz) m addr = Some (Vint c) ->
+      Mem.loadv (chunk_for_carrier sz) m addr = Some (Vint c, vt) ->
       Mem.storev (chunk_for_carrier sz) m addr
-                 (Vint (Int.bitfield_insert (first_bit sz pos width) width c n)) = Some m' ->
-      store_bitfield (Tint sz sg1 attr) sz sg pos width m addr (Vint n)
-                     m' (Vint (bitfield_normalize sz sg width n)).
+                 (Vint (Int.bitfield_insert (first_bit sz pos width) width c n), vt) lts = Some m' ->
+      store_bitfield (Tint sz sg1 attr) sz sg pos width m (addr,pt) (Vint n,vt) lts
+                     m' (Vint (bitfield_normalize sz sg width n),vt).
 
 (** * Compatibility with extensions and injections *)
 

@@ -24,8 +24,9 @@ Require Import AST.
 Require Import Integers.
 Require Import Floats.
 Require Import Values.
+Require Import Tags.
 
-(** * Properties of memory chunks *)
+  (** * Properties of memory chunks *)
 
 (** Memory reads and writes are performed by quantities called memory chunks,
   encoding the type, size and signedness of the chunk being addressed.
@@ -142,22 +143,6 @@ Lemma size_quantity_nat_pos:
 Proof.
   intros. destruct q; [exists 3%nat | exists 7%nat]; auto.
 Qed.
-
-(** * Memory values *)
-
-(** A ``memory value'' is a byte-sized quantity that describes the current
-  content of a memory cell.  It can be either:
-- a concrete 8-bit integer;
-- a byte-sized fragment of an opaque value;
-- the special constant [Undef] that represents uninitialized memory.
-*)
-
-(** Values stored in memory cells. *)
-
-Inductive memval: Type :=
-  | Undef: memval
-  | Byte: byte -> memval
-  | Fragment: val -> quantity -> nat -> memval.
 
 (** * Encoding and decoding integers *)
 
@@ -308,84 +293,119 @@ Proof.
   intros. unfold encode_int. decEq. apply bytes_of_int_mod. auto.
 Qed.
 
+Module Memdata (T: Tag).
+  Module TLib := TagLib T.
+  Import TLib.
+
+(** * Memory values *)
+
+(** A ``memory value'' is a byte-sized quantity that describes the current
+  content of a memory cell.  It can be either:
+- a concrete 8-bit integer;
+- a byte-sized fragment of an opaque value;
+- the special constant [Undef] that represents uninitialized memory.
+*)
+
+(** Values stored in memory cells. *)
+
+Inductive memval: Type :=
+  | Undef: memval
+  | Byte: byte -> tag -> memval
+  | Fragment: atom -> quantity -> nat -> memval.
+
 (** * Encoding and decoding values *)
 
-Definition inj_bytes (bl: list byte) : list memval :=
-  List.map Byte bl.
+Definition inj_bytes (bl: list byte) (t : tag) : list memval :=
+  List.map (fun v => (Byte v t)) bl.
 
-Fixpoint proj_bytes (vl: list memval) : option (list byte) :=
+Fixpoint proj_bytes (vl: list memval) : option (list byte) * option tag :=
   match vl with
-  | nil => Some nil
-  | Byte b :: vl' =>
-      match proj_bytes vl' with None => None | Some bl => Some(b :: bl) end
-  | _ => None
+  | nil => (Some nil, None)
+  | Byte b t :: vl' =>
+      match proj_bytes vl' with
+      | (Some bl, None) => (Some (b :: bl), Some t)
+      | (Some bl, Some t') =>
+          if tag_eq_dec t t'
+          then (Some (b :: bl), Some t)
+          else (None, None)
+      | _ => (None, None)
+      end
+  | _ => (None, None)
   end.
 
 Remark length_inj_bytes:
-  forall bl, length (inj_bytes bl) = length bl.
+  forall bl t, length (inj_bytes bl t) = length bl.
 Proof.
   intros. apply List.map_length.
 Qed.
 
 Remark proj_inj_bytes:
-  forall bl, proj_bytes (inj_bytes bl) = Some bl.
+  forall bl t,
+    proj_bytes (inj_bytes bl t) = (Some bl, Some t) \/
+    proj_bytes (inj_bytes bl t) = (Some nil, None).
 Proof.
-  induction bl; simpl. auto. rewrite IHbl. auto.
-Qed.
+  induction bl; simpl; auto.
+  left. destruct bl; auto.
+  destruct (IHbl t).
+  - rewrite H. destruct (tag_eq_dec t t); auto. destruct n. auto.
+  - admit.
+Admitted.
 
 Lemma inj_proj_bytes:
-  forall cl bl, proj_bytes cl = Some bl -> cl = inj_bytes bl.
-Proof.
+  forall cl bl t, proj_bytes cl = (Some bl, Some t) -> cl = inj_bytes bl t.
+Admitted.
+(*Proof.
   induction cl; simpl; intros.
   inv H; auto.
   destruct a; try congruence. destruct (proj_bytes cl); inv H.
   simpl. decEq. auto.
-Qed.
+Qed.*)
 
-Fixpoint inj_value_rec (n: nat) (v: val) (q: quantity) {struct n}: list memval :=
+Fixpoint inj_value_rec (n: nat) (a:atom) (q: quantity) {struct n}: list memval :=
   match n with
   | O => nil
-  | S m => Fragment v q m :: inj_value_rec m v q
+  | S m => Fragment a q m :: inj_value_rec m a q
   end.
 
-Definition inj_value (q: quantity) (v: val): list memval :=
-  inj_value_rec (size_quantity_nat q) v q.
+Definition inj_value (q: quantity) (a:atom): list memval :=
+  inj_value_rec (size_quantity_nat q) a q.
 
-Fixpoint check_value (n: nat) (v: val) (q: quantity) (vl: list memval)
+Fixpoint check_value (n: nat) (a:atom) (q: quantity) (vl: list memval)
                        {struct n} : bool :=
+  let '(v,t) := a in
   match n, vl with
   | O, nil => true
-  | S m, Fragment v' q' m' :: vl' =>
-      Val.eq v v' && quantity_eq q q' && Nat.eqb m m' && check_value m v q vl'
+  | S m, Fragment (v',t') q' m' :: vl' =>
+      Val.eq v v' && quantity_eq q q' && Nat.eqb m m' && check_value m (v,t) q vl'
   | _, _ => false
   end.
 
-Definition proj_value (q: quantity) (vl: list memval) : val :=
+Definition proj_value (q: quantity) (vl: list memval) : atom :=
   match vl with
-  | Fragment v q' n :: vl' =>
-      if check_value (size_quantity_nat q) v q vl then v else Vundef
-  | _ => Vundef
+  | Fragment (v,t) q' n :: vl' =>
+      if check_value (size_quantity_nat q) (v,t) q vl then (v,t) else (Vundef, def_tag)
+  | _ => (Vundef, def_tag)
   end.
 
-Definition encode_val (chunk: memory_chunk) (v: val) : list memval :=
-  match v, chunk with
-  | Vint n, (Mint8signed | Mint8unsigned) => inj_bytes (encode_int 1%nat (Int.unsigned n))
-  | Vint n, (Mint16signed | Mint16unsigned) => inj_bytes (encode_int 2%nat (Int.unsigned n))
-  | Vint n, Mint32 => inj_bytes (encode_int 4%nat (Int.unsigned n))
-  | Vptr b ofs, Mint32 => if Archi.ptr64 then List.repeat Undef 4%nat else inj_value Q32 v
-  | Vlong n, Mint64 => inj_bytes (encode_int 8%nat (Int64.unsigned n))
-  | Vptr b ofs, Mint64 => if Archi.ptr64 then inj_value Q64 v else List.repeat Undef 8%nat
-  | Vsingle n, Mfloat32 => inj_bytes (encode_int 4%nat (Int.unsigned (Float32.to_bits n)))
-  | Vfloat n, Mfloat64 => inj_bytes (encode_int 8%nat (Int64.unsigned (Float.to_bits n)))
-  | _, Many32 => inj_value Q32 v
-  | _, Many64 => inj_value Q64 v
-  | _, _ => List.repeat Undef (size_chunk_nat chunk)
+Definition encode_val (chunk: memory_chunk) (a:atom) : list memval :=
+  match a, chunk with
+  | (Vint n, t), (Mint8signed | Mint8unsigned) => inj_bytes (encode_int 1%nat (Int.unsigned n)) t
+  | (Vint n, t), (Mint16signed | Mint16unsigned) => inj_bytes (encode_int 2%nat (Int.unsigned n)) t
+  | (Vint n, t), Mint32 => inj_bytes (encode_int 4%nat (Int.unsigned n)) t
+  | (Vptr b ofs, t), Mint32 => if Archi.ptr64 then List.repeat Undef 4%nat else inj_value Q32 (Vptr b ofs, t)
+  | (Vlong n, t), Mint64 => inj_bytes (encode_int 8%nat (Int64.unsigned n)) t
+  | (Vptr b ofs, t), Mint64 => if Archi.ptr64 then inj_value Q64 (Vptr b ofs, t) else List.repeat Undef 8%nat
+  | (Vsingle n, t), Mfloat32 => inj_bytes (encode_int 4%nat (Int.unsigned (Float32.to_bits n))) t
+  | (Vfloat n, t), Mfloat64 => inj_bytes (encode_int 8%nat (Int64.unsigned (Float.to_bits n))) t
+  | (v, t), Many32 => inj_value Q32 a
+  | (v, t), Many64 => inj_value Q64 a
+  | (_, t), _ => List.repeat Undef (size_chunk_nat chunk)
   end.
 
-Definition decode_val (chunk: memory_chunk) (vl: list memval) : val :=
+Definition decode_val (chunk: memory_chunk) (vl: list memval) : atom :=
   match proj_bytes vl with
-  | Some bl =>
-      match chunk with
+  | (Some bl,Some t) =>
+      (match chunk with
       | Mint8signed => Vint(Int.sign_ext 8 (Int.repr (decode_int bl)))
       | Mint8unsigned => Vint(Int.zero_ext 8 (Int.repr (decode_int bl)))
       | Mint16signed => Vint(Int.sign_ext 16 (Int.repr (decode_int bl)))
@@ -396,15 +416,16 @@ Definition decode_val (chunk: memory_chunk) (vl: list memval) : val :=
       | Mfloat64 => Vfloat(Float.of_bits (Int64.repr (decode_int bl)))
       | Many32 => Vundef
       | Many64 => Vundef
-      end
-  | None =>
-      match chunk with
-      | Mint32 => if Archi.ptr64 then Vundef else Val.load_result chunk (proj_value Q32 vl)
-      | Many32 => Val.load_result chunk (proj_value Q32 vl)
-      | Mint64 => if Archi.ptr64 then Val.load_result chunk (proj_value Q64 vl) else Vundef
-      | Many64 => Val.load_result chunk (proj_value Q64 vl)
+      end, t)
+  | (None,None) =>
+      (match chunk with
+      | Mint32 => if Archi.ptr64 then Vundef else Val.load_result chunk (fst (proj_value Q32 vl))
+      | Many32 => Val.load_result chunk (fst (proj_value Q32 vl))
+      | Mint64 => if Archi.ptr64 then Val.load_result chunk (fst (proj_value Q64 vl)) else Vundef
+      | Many64 => Val.load_result chunk (fst (proj_value Q64 vl))
       | _ => Vundef
-      end
+      end, def_tag)
+  | _ => (Vundef, def_tag)
   end.
 
 Ltac solve_encode_val_length :=
@@ -417,15 +438,16 @@ Ltac solve_encode_val_length :=
 
 Lemma encode_val_length:
   forall chunk v, length(encode_val chunk v) = size_chunk_nat chunk.
-Proof.
+Admitted.
+(*Proof.
   intros. destruct v; simpl; destruct chunk; solve_encode_val_length.
-Qed.
+Qed.*)
 
 Lemma check_inj_value:
   forall v q n, check_value n v q (inj_value_rec n v q) = true.
 Proof.
-  induction n; simpl. auto.
-  unfold proj_sumbool. rewrite dec_eq_true. rewrite dec_eq_true.
+  induction n; simpl. destruct v; auto.
+  unfold proj_sumbool. rewrite dec_eq_true. destruct v. rewrite dec_eq_true.
   rewrite <- beq_nat_refl. simpl; auto.
 Qed.
 
@@ -433,7 +455,7 @@ Lemma proj_inj_value:
   forall q v, proj_value q (inj_value q v) = v.
 Proof.
   intros. unfold proj_value, inj_value. destruct (size_quantity_nat_pos q) as [n EQ].
-  rewrite EQ at 1. simpl. rewrite check_inj_value. auto.
+  rewrite EQ at 1. simpl. destruct v. rewrite check_inj_value. auto.
 Qed.
 
 Remark in_inj_value:
@@ -446,14 +468,15 @@ Local Transparent inj_value.
 Qed.
 
 Lemma proj_inj_value_mismatch:
-  forall q1 q2 v, q1 <> q2 -> proj_value q1 (inj_value q2 v) = Vundef.
-Proof.
+  forall q1 q2 v, q1 <> q2 -> proj_value q1 (inj_value q2 v) = (Vundef, def_tag).
+Admitted.
+(*Proof.
   intros. unfold proj_value. destruct (inj_value q2 v) eqn:V. auto. destruct m; auto.
   destruct (in_inj_value (Fragment v0 q n) v q2) as [n' EQ].
   rewrite V; auto with coqlib. inv EQ.
   destruct (size_quantity_nat_pos q1) as [p EQ1]; rewrite EQ1; simpl.
   unfold proj_sumbool. rewrite dec_eq_true. rewrite dec_eq_false by congruence. auto.
-Qed.
+Qed.*)
 
 Definition decode_encode_val (v1: val) (chunk1 chunk2: memory_chunk) (v2: val) : Prop :=
   match v1, chunk1, chunk2 with
@@ -496,13 +519,13 @@ Definition decode_encode_val (v1: val) (chunk1 chunk2: memory_chunk) (v2: val) :
   end.
 
 Remark decode_val_undef:
-  forall bl chunk, decode_val chunk (Undef :: bl) = Vundef.
+  forall bl chunk, decode_val chunk (Undef :: bl) = (Vundef, def_tag).
 Proof.
   intros. unfold decode_val. simpl. destruct chunk, Archi.ptr64; auto.
 Qed.
 
 Remark proj_bytes_inj_value:
-  forall q v, proj_bytes (inj_value q v) = None.
+  forall q v, proj_bytes (inj_value q v) = (None, None).
 Proof.
   intros. destruct q; reflexivity.
 Qed.
@@ -524,9 +547,10 @@ Ltac solve_decode_encode_val_general :=
   end.
 
 Lemma decode_encode_val_general:
-  forall v chunk1 chunk2,
-  decode_encode_val v chunk1 chunk2 (decode_val chunk2 (encode_val chunk1 v)).
-Proof.
+  forall v t chunk1 chunk2,
+  decode_encode_val v chunk1 chunk2 (fst (decode_val chunk2 (encode_val chunk1 (v,t)))).
+Admitted.
+(*Proof.
 Opaque inj_value.
   intros.
   destruct v; destruct chunk1 eqn:C1; try (apply decode_val_undef);
@@ -534,7 +558,7 @@ Opaque inj_value.
   repeat solve_decode_encode_val_general.
 - rewrite Float.of_to_bits; auto.
 - rewrite Float32.of_to_bits; auto.
-Qed.
+Qed.*)
 
 Lemma decode_encode_val_similar:
   forall v1 chunk1 chunk2 v2,
@@ -550,19 +574,20 @@ Qed.
 
 Lemma decode_val_rettype:
   forall chunk cl,
-  Val.has_rettype (decode_val chunk cl) (rettype_of_chunk chunk).
-Proof.
+  Val.has_rettype (fst (decode_val chunk cl)) (rettype_of_chunk chunk).
+Admitted.
+(*Proof.
   intros. unfold decode_val.
   destruct (proj_bytes cl).
 - destruct chunk; simpl; rewrite ? Int.sign_ext_idem, ? Int.zero_ext_idem by lia; auto.
 - Local Opaque Val.load_result.
   destruct chunk; simpl;
   (exact I || apply Val.load_result_type || destruct Archi.ptr64; (exact I || apply Val.load_result_type)).
-Qed.
+Qed.*)
 
 Lemma decode_val_type:
   forall chunk cl,
-  Val.has_type (decode_val chunk cl) (type_of_chunk chunk).
+  Val.has_type (fst (decode_val chunk cl)) (type_of_chunk chunk).
 Proof.
   intros. rewrite <- proj_rettype_of_chunk.
   apply Val.has_proj_rettype. apply decode_val_rettype.
@@ -581,33 +606,33 @@ Proof.
 Qed.
 
 Lemma encode_val_int8_zero_ext:
-  forall n, encode_val Mint8unsigned (Vint (Int.zero_ext 8 n)) = encode_val Mint8unsigned (Vint n).
+  forall n t, encode_val Mint8unsigned (Vint (Int.zero_ext 8 n),t) = encode_val Mint8unsigned (Vint n,t).
 Proof.
   intros; unfold encode_val. decEq. apply encode_int_8_mod. apply Int.eqmod_zero_ext.
   compute; intuition congruence.
 Qed.
 
 Lemma encode_val_int8_sign_ext:
-  forall n, encode_val Mint8signed (Vint (Int.sign_ext 8 n)) = encode_val Mint8signed (Vint n).
+  forall n t, encode_val Mint8signed (Vint (Int.sign_ext 8 n), t) = encode_val Mint8signed (Vint n, t).
 Proof.
   intros; unfold encode_val. decEq. apply encode_int_8_mod. apply Int.eqmod_sign_ext'. compute; auto.
 Qed.
 
 Lemma encode_val_int16_zero_ext:
-  forall n, encode_val Mint16unsigned (Vint (Int.zero_ext 16 n)) = encode_val Mint16unsigned (Vint n).
+  forall n t, encode_val Mint16unsigned (Vint (Int.zero_ext 16 n), t) = encode_val Mint16unsigned (Vint n, t).
 Proof.
   intros; unfold encode_val. decEq. apply encode_int_16_mod. apply Int.eqmod_zero_ext. compute; intuition congruence.
 Qed.
 
 Lemma encode_val_int16_sign_ext:
-  forall n, encode_val Mint16signed (Vint (Int.sign_ext 16 n)) = encode_val Mint16signed (Vint n).
+  forall n t, encode_val Mint16signed (Vint (Int.sign_ext 16 n), t) = encode_val Mint16signed (Vint n, t).
 Proof.
   intros; unfold encode_val. decEq. apply encode_int_16_mod. apply Int.eqmod_sign_ext'. compute; auto.
 Qed.
 
 Lemma decode_val_cast:
   forall chunk l,
-  let v := decode_val chunk l in
+  let '(v,t) := decode_val chunk l in
   match chunk with
   | Mint8signed => v = Val.sign_ext 8 v
   | Mint8unsigned => v = Val.zero_ext 8 v
@@ -615,15 +640,16 @@ Lemma decode_val_cast:
   | Mint16unsigned => v = Val.zero_ext 16 v
   | _ => True
   end.
-Proof.
-  intros. 
+Admitted.
+(*Proof.
+  intros.  destruct (decode_val chunk l).
   assert (A: Val.has_rettype v (rettype_of_chunk chunk)) by apply decode_val_rettype.
   destruct chunk; auto; simpl in A; destruct v; try contradiction; simpl; congruence.
-Qed.
+Qed.*)
 
 (** Pointers cannot be forged. *)
 
-Definition quantity_chunk (chunk: memory_chunk) :=
+(*Definition quantity_chunk (chunk: memory_chunk) :=
   match chunk with
   | Mint64 | Mfloat64 | Many64 => Q64
   | _ => Q32
@@ -748,7 +774,7 @@ Proof.
   exploit (A mv1); eauto with coqlib. intros [b1 EQ1]; subst mv1.
   destruct chunk; (apply shape_decoding_u || apply shape_decoding_b); eauto with coqlib.
   destruct chunk, Archi.ptr64; (apply shape_decoding_u || apply C); auto.
-Qed.
+Qed.*)
 
 (** * Compatibility with memory injections *)
 
@@ -756,11 +782,11 @@ Qed.
 
 Inductive memval_inject (f: meminj): memval -> memval -> Prop :=
   | memval_inject_byte:
-      forall n, memval_inject f (Byte n) (Byte n)
+      forall n t, memval_inject f (Byte n t) (Byte n t)
   | memval_inject_frag:
-      forall v1 v2 q n,
+      forall v1 v2 t q n,
       Val.inject f v1 v2 ->
-      memval_inject f (Fragment v1 q n) (Fragment v2 q n)
+      memval_inject f (Fragment (v1,t) q n) (Fragment (v2,t) q n)
   | memval_inject_undef:
       forall mv, memval_inject f Undef mv.
 
@@ -773,7 +799,7 @@ Qed.
 (** [decode_val], applied to lists of memory values that are pairwise
   related by [memval_inject], returns values that are related by [Val.inject]. *)
 
-Lemma proj_bytes_inject:
+(*Lemma proj_bytes_inject:
   forall f vl vl',
   list_forall2 (memval_inject f) vl vl' ->
   forall bl,
@@ -785,9 +811,9 @@ Proof.
   destruct (proj_bytes al); intros.
   inv H. rewrite (IHlist_forall2 l); auto.
   congruence.
-Qed.
+Qed.*)
 
-Lemma check_value_inject:
+(*Lemma check_value_inject:
   forall f vl vl',
   list_forall2 (memval_inject f) vl vl' ->
   forall v v' q n,
@@ -802,9 +828,9 @@ Proof.
   unfold proj_sumbool; rewrite ! dec_eq_true. rewrite <- beq_nat_refl. simpl; eauto.
   inv H2; try discriminate; inv H4; congruence.
   discriminate.
-Qed.
+Qed.*)
 
-Lemma proj_value_inject:
+(*Lemma proj_value_inject:
   forall f q vl1 vl2,
   list_forall2 (memval_inject f) vl1 vl2 ->
   Val.inject f (proj_value q vl1) (proj_value q vl2).
@@ -814,9 +840,9 @@ Proof.
   destruct (check_value (size_quantity_nat q) v1 q (Fragment v1 q0 n :: al)) eqn:B; auto.
   destruct (Val.eq v1 Vundef). subst; auto.
   erewrite check_value_inject by eauto. auto.
-Qed.
+Qed.*)
 
-Lemma proj_bytes_not_inject:
+(*Lemma proj_bytes_not_inject:
   forall f vl vl',
   list_forall2 (memval_inject f) vl vl' ->
   proj_bytes vl = None -> proj_bytes vl' <> None -> In Undef vl.
@@ -828,28 +854,30 @@ Proof.
   destruct (proj_bytes al); congruence.
   destruct (proj_bytes bl); congruence.
   auto.
-Qed.
+Qed.*)
 
 Lemma check_value_undef:
   forall n q v vl,
   In Undef vl -> check_value n v q vl = false.
-Proof.
+Admitted.
+(*Proof.
   induction n; intros; simpl.
   destruct vl. elim H. auto.
   destruct vl. auto.
   destruct m; auto. simpl in H; destruct H. congruence.
   rewrite IHn; auto. apply andb_false_r.
-Qed.
+Qed.*)
 
 Lemma proj_value_undef:
-  forall q vl, In Undef vl -> proj_value q vl = Vundef.
-Proof.
+  forall q vl, In Undef vl -> proj_value q vl = (Vundef, def_tag).
+Admitted.
+(*Proof.
   intros; unfold proj_value.
   destruct vl; auto. destruct m; auto.
   rewrite check_value_undef. auto. auto.
-Qed.
+Qed.*)
 
-Theorem decode_val_inject:
+(*Theorem decode_val_inject:
   forall f vl1 vl2 chunk,
   list_forall2 (memval_inject f) vl1 vl2 ->
   Val.inject f (decode_val chunk vl1) (decode_val chunk vl2).
@@ -869,13 +897,13 @@ Proof.
     apply Val.load_result_inject. apply proj_value_inject; auto.
   }
   destruct chunk; destruct Archi.ptr64; auto.
-Qed.
+Qed.*)
 
 (** Symmetrically, [encode_val], applied to values related by [Val.inject],
   returns lists of memory values that are pairwise
   related by [memval_inject]. *)
 
-Lemma inj_bytes_inject:
+(*Lemma inj_bytes_inject:
   forall f bl, list_forall2 (memval_inject f) (inj_bytes bl) (inj_bytes bl).
 Proof.
   induction bl; constructor; auto. constructor.
@@ -923,15 +951,15 @@ Local Opaque List.repeat.
 - destruct Archi.ptr64; auto using inj_value_inject, repeat_Undef_inject_self.
 - unfold encode_val. destruct v2; apply inj_value_inject; auto.
 - unfold encode_val. destruct v2; apply inj_value_inject; auto.
-Qed.
+Qed.*)
 
 Definition memval_lessdef: memval -> memval -> Prop := memval_inject inject_id.
 
-Lemma memval_lessdef_refl:
+(*Lemma memval_lessdef_refl:
   forall mv, memval_lessdef mv mv.
 Proof.
   red. destruct mv; econstructor. apply val_inject_id. auto.
-Qed.
+Qed.*)
 
 (** [memval_inject] and compositions *)
 
@@ -975,37 +1003,47 @@ Proof.
 Qed.
 
 Lemma length_proj_bytes:
-  forall l b, proj_bytes l = Some b -> length b = length l.
-Proof.
+  forall l b t, proj_bytes l = (Some b, Some t) -> length b = length l.
+Admitted.
+(*Proof.
   induction l; simpl; intros.
   inv H; auto.
   destruct a; try discriminate.
   destruct (proj_bytes l) eqn:E; inv H.
-  simpl. f_equal. auto.
-Qed.
+  destruct o; inv H1. destruct o0.
+  - admit.
+  -
+  ; inv H0. destruct (tag_eq_dec t0 t1); inv H1.
+  simpl. f_equal. eapply IHl. reflexivity.  
+Qed.*)
 
 Lemma proj_bytes_append:
   forall l2 l1,
   proj_bytes (l1 ++ l2) =
   match proj_bytes l1, proj_bytes l2 with
-  | Some b1, Some b2 => Some (b1 ++ b2)
-  | _, _ => None
+  | (Some b1, Some t1), (Some b2, Some t2) =>
+      if tag_eq_dec t1 t2 then
+        (Some (b1 ++ b2), Some t1)
+      else (None,None)
+  | _, _ => (None,None)
   end.
-Proof.
+Admitted.
+(*Proof.
   induction l1; simpl.
   destruct (proj_bytes l2); auto.
   destruct a; auto. rewrite IHl1.
   destruct (proj_bytes l1); auto. destruct (proj_bytes l2); auto.
-Qed.
+Qed.*)
 
 Lemma decode_val_int64:
   forall l1 l2,
   length l1 = 4%nat -> length l2 = 4%nat -> Archi.ptr64 = false ->
   Val.lessdef
-    (decode_val Mint64 (l1 ++ l2))
-    (Val.longofwords (decode_val Mint32 (if Archi.big_endian then l1 else l2))
-                     (decode_val Mint32 (if Archi.big_endian then l2 else l1))).
-Proof.
+    (fst (decode_val Mint64 (l1 ++ l2)))
+    (Val.longofwords (fst (decode_val Mint32 (if Archi.big_endian then l1 else l2)))
+                     (fst (decode_val Mint32 (if Archi.big_endian then l2 else l1)))).
+Admitted.
+(*Proof.
   intros. unfold decode_val. rewrite H1.
   rewrite proj_bytes_append.
   destruct (proj_bytes l1) as [b1|] eqn:B1; destruct (proj_bytes l2) as [b2|] eqn:B2; auto.
@@ -1028,7 +1066,7 @@ Proof.
   + unfold Val.longofwords. f_equal. rewrite Int64.ofwords_add. f_equal.
     rewrite !UR by auto. rewrite int_of_bytes_append.
     rewrite L1. change (Z.of_nat 4 * 8) with 32. ring.
-Qed.
+Qed.*)
 
 Lemma bytes_of_int_append:
   forall n2 x2 n1 x1,
@@ -1067,9 +1105,10 @@ Lemma encode_val_int64:
   forall v,
   Archi.ptr64 = false ->
   encode_val Mint64 v =
-     encode_val Mint32 (if Archi.big_endian then Val.hiword v else Val.loword v)
-  ++ encode_val Mint32 (if Archi.big_endian then Val.loword v else Val.hiword v).
-Proof.
+     encode_val Mint32 (if Archi.big_endian then atom_map Val.hiword v else atom_map Val.loword v)
+  ++ encode_val Mint32 (if Archi.big_endian then atom_map Val.loword v else atom_map Val.hiword v).
+Admitted.
+(*Proof.
   intros. unfold encode_val. rewrite H.
   destruct v; destruct Archi.big_endian eqn:BI; try reflexivity;
   unfold Val.loword, Val.hiword, encode_val.
@@ -1079,4 +1118,6 @@ Proof.
   unfold inj_bytes. rewrite <- map_app. f_equal.
   unfold encode_int, rev_if_be. rewrite BI.
   apply bytes_of_int64.
-Qed.
+Qed.*)
+
+End Memdata.

@@ -26,9 +26,19 @@ Require Import Coqlib.
 Require Import Events.
 Require Import Globalenvs.
 Require Import Integers.
+Require Import Tags.
 
 Set Implicit Arguments.
 
+Module Smallstep (T:Tag).
+  Module TLib := TagLib T.
+  Import TLib.
+  Module Genv := Genv T.
+  Import Genv.
+  Import Mem.
+  Module Events := Events T.
+  Import Events.
+  
 (** * Closures of transitions relations *)
 
 Section CLOSURES.
@@ -260,7 +270,7 @@ Proof.
          P s0 (t0 ** t) s2).
   induction 1; intros.
   rewrite E0_right. apply BASE; auto.
-  eapply IND. eauto. econstructor; eauto. subst t. eapply IHstar; eauto. auto.
+  eapply IND. eauto. econstructor; eauto. subst t0. eapply IHstar; eauto. auto.
 
   intros. inv H0. eauto.
 Qed.

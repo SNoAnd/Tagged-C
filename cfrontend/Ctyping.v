@@ -334,9 +334,9 @@ Variable ce: composite_env.
 Variable  e: typenv.
 
 Inductive wt_rvalue : expr -> Prop :=
-  | wt_Eval: forall v ty,
+  | wt_Eval: forall v vt ty,
       wt_val v ty ->
-      wt_rvalue (Eval v ty)
+      wt_rvalue (Eval (v,vt) ty)
   | wt_Evalof: forall l,
       wt_lvalue l ->
       wt_rvalue (Evalof l (typeof l))
@@ -410,8 +410,8 @@ Inductive wt_rvalue : expr -> Prop :=
       wt_rvalue (Eparen r tycast ty)
 
 with wt_lvalue : expr -> Prop :=
-  | wt_Eloc: forall b ofs bf ty,
-      wt_lvalue (Eloc b ofs bf ty)
+  | wt_Eloc: forall b ofs pt bf ty,
+      wt_lvalue (Eloc b ofs pt bf ty)
   | wt_Evar: forall x ty,
       e!x = Some ty ->
       wt_lvalue (Evar x ty)
