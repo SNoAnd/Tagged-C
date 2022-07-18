@@ -23,7 +23,20 @@ Require Import Floats.
 Require Import Values.
 Require Import Memory.
 Require Import Ctypes.
+Require Import Tags.
+Require Import Determinism.
 Require Archi.
+
+Module Cop (T:Tag).
+  Module TLib := TagLib T.
+  Import TLib.
+  Module Deterministic := Deterministic T.
+  Import Deterministic.
+  Import Behaviors.
+  Import Smallstep.
+  Import Events.
+  Import Genv.
+  Import Mem.
 
 (** * Syntax of operators. *)
 
@@ -1481,8 +1494,8 @@ Lemma cast_bool_bool_val:
   sem_cast v t (Tint IBool Signed noattr) m =
   match bool_val v t m with None => None | Some b => Some(Val.of_bool b) end.
   intros.
-  assert (A: classify_bool t =
-    match t with
+  assert (A: classify_bool t0 =
+    match t0 with
     | Tint _ _ _ => bool_case_i
     | Tpointer _ _ | Tarray _ _ _ | Tfunction _ _ _ => if Archi.ptr64 then bool_case_l else bool_case_i
     | Tfloat F64 _ => bool_case_f
@@ -1491,10 +1504,10 @@ Lemma cast_bool_bool_val:
     | _ => bool_default
     end).
   {
-    unfold classify_bool; destruct t; simpl; auto. destruct i; auto.
+    unfold classify_bool; destruct t0; simpl; auto. destruct i; auto.
   }
   unfold bool_val. rewrite A.
-  unfold sem_cast, classify_cast; remember Archi.ptr64 as ptr64; destruct t; simpl; auto; destruct v; auto.
+  unfold sem_cast, classify_cast; remember Archi.ptr64 as ptr64; destruct t0; simpl; auto; destruct v; auto.
   destruct (Int.eq i0 Int.zero); auto.
   destruct ptr64; auto. destruct (Mem.weak_valid_pointer m b (Ptrofs.unsigned i0)); auto.
   destruct (Int64.eq i Int64.zero); auto.
@@ -1539,7 +1552,7 @@ Lemma notbool_bool_val:
   sem_notbool v t m =
   match bool_val v t m with None => None | Some b => Some(Val.of_bool (negb b)) end.
 Proof.
-  intros. unfold sem_notbool. destruct (bool_val v t m) as [[] | ]; reflexivity.
+  intros. unfold sem_notbool. destruct (bool_val v t0 m) as [[] | ]; reflexivity.
 Qed.
 
 (** Properties of values obtained by casting to a given type. *)
@@ -1836,6 +1849,7 @@ Qed.
 
 End ArithConv.
 
+End Cop.
 
 
 

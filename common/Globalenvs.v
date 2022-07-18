@@ -53,90 +53,16 @@ Set Implicit Arguments.
 Local Unset Elimination Schemes.
 Local Unset Case Analysis Schemes.
 
-(** * Symbol environments *)
-
-(** Symbol environments are a restricted view of global environments,
-  focusing on symbol names and their associated blocks.  They do not
-  contain mappings from blocks to function or variable definitions. *)
-
-Module Senv (T:Tag).
-  Module TLib := TagLib T.
-  Import TLib.
-  
-Record t: Type := mksenv {
-  (** Operations *)
-  find_symbol: ident -> option (block * tag);
-  public_symbol: ident -> bool;
-  invert_symbol: block -> option ident;
-  block_is_volatile: block -> bool;
-  nextblock: block;
-  (** Properties *)
-  find_symbol_injective:
-    forall id1 id2 b, find_symbol id1 = Some b -> find_symbol id2 = Some b -> id1 = id2;
-  invert_find_symbol:
-    forall id b, invert_symbol b = Some id -> exists t, find_symbol id = Some (b, t);
-  find_invert_symbol:
-    forall id b t, find_symbol id = Some (b,t) -> invert_symbol b = Some id;
-  public_symbol_exists:
-    forall id, public_symbol id = true -> exists b, find_symbol id = Some b;
-  find_symbol_below:
-    forall id b t, find_symbol id = Some (b,t) -> Plt b nextblock;
-  block_is_volatile_below:
-    forall b, block_is_volatile b = true -> Plt b nextblock
-}.
-
-Definition symbol_address (ge: t) (id: ident) (ofs: ptrofs) : atom :=
-  match find_symbol ge id with
-  | Some (b,pt) => (Vptr b ofs, pt)
-  | None => (Vundef, def_tag)
-  end.
-
-Theorem shift_symbol_address:
-  forall ge id ofs delta,
-  symbol_address ge id (Ptrofs.add ofs delta) = atom_map (fun v => Val.offset_ptr v delta) (symbol_address ge id ofs).
-Proof.
-  intros. unfold symbol_address, Val.offset_ptr. destruct (find_symbol ge id); [destruct p|]; auto.
-Qed.
-
-Theorem shift_symbol_address_32:
-  forall ge id ofs n,
-  Archi.ptr64 = false ->
-  symbol_address ge id (Ptrofs.add ofs (Ptrofs.of_int n)) = atom_map (fun v => Val.add v (Vint n)) (symbol_address ge id ofs).
-Proof.
-  intros. unfold symbol_address. destruct (find_symbol ge id).
-- unfold Val.add. destruct p. rewrite H. auto.
-- auto.
-Qed.
-
-Theorem shift_symbol_address_64:
-  forall ge id ofs n,
-  Archi.ptr64 = true ->
-  symbol_address ge id (Ptrofs.add ofs (Ptrofs.of_int64 n)) = atom_map (fun v => Val.addl v (Vlong n))  (symbol_address ge id ofs).
-Proof.
-  intros. unfold symbol_address. destruct (find_symbol ge id).
-- unfold Val.addl. destruct p. rewrite H. auto.
-- auto.
-Qed.
-
-Definition equiv (se1 se2: t) : Prop :=
-     (forall id, find_symbol se2 id = find_symbol se1 id)
-  /\ (forall id, public_symbol se2 id = public_symbol se1 id)
-  /\ (forall b, block_is_volatile se2 b = block_is_volatile se1 b).
-
-End Senv.
-
 Module Genv (T:Tag).
   Module TLib := TagLib T.
   Import TLib.
-  Module Senv := Senv T.
-  Import Senv.
   Module Mem := Mem T.
   Import Mem.
   
 (** * Global environments *)
 
 Section GENV.
-
+  
 Variable F: Type.  (**r The type of function descriptions *)
 Variable V: Type.  (**r The type of information attached to variables *)
 
@@ -593,22 +519,6 @@ Proof.
   rewrite find_var_info_iff in FV. eapply genv_defs_range; eauto.
   discriminate.
 Qed.
-
-(** ** Coercing a global environment into a symbol environment *)
-
-Definition to_senv (ge: t) : Senv.t :=
- @Senv.mksenv
-    (find_symbol ge)
-    (public_symbol ge)
-    (invert_symbol ge)
-    (block_is_volatile ge)
-    ge.(genv_next)
-    ge.(genv_vars_inj)
-    (invert_find_symbol ge)
-    (find_invert_symbol ge)
-    (public_symbol_exists ge)
-    ge.(genv_symb_range)
-    (block_is_volatile_below ge).
 
 (** * Construction of the initial memory state *)
 
@@ -1724,20 +1634,18 @@ Proof.
   intros. destruct globalenvs_match. apply mge_symb0.
 Qed.
 
+Definition equiv (se1: t F1 V1) (se2: t F2 V2) : Prop :=
+     (forall id, find_symbol se2 id = find_symbol se1 id)
+  /\ (forall id, public_symbol se2 id = public_symbol se1 id).
+
 Theorem senv_match:
-  Senv.equiv (to_senv (globalenv p)) (to_senv (globalenv tp)).
+  equiv (globalenv p) (globalenv tp).
 Proof.
   red; simpl. repeat split.
 - apply find_symbol_match.
 - intros. unfold public_symbol. rewrite find_symbol_match.
   rewrite ! globalenv_public.
   destruct progmatch as (P & Q & R). rewrite R. auto.
-- intros. unfold block_is_volatile.
-  destruct globalenvs_match as [P Q R]. specialize (R b).
-  unfold find_var_info, find_def.
-  inv R; auto.
-  inv H1; auto.
-  inv H2; auto.
 Qed.
 
 (*Lemma store_init_data_list_match:
@@ -1822,7 +1730,7 @@ Proof.
 Qed.
 
 Theorem senv_transf_partial:
-  Senv.equiv (to_senv (globalenv p)) (to_senv (globalenv tp)).
+  equiv (globalenv p) (globalenv tp).
 Proof.
   intros. eapply (senv_match progmatch).
 Qed.
@@ -1869,7 +1777,7 @@ Proof.
 Qed.
 
 Theorem senv_transf:
-  Senv.equiv (to_senv (globalenv p)) (to_senv (globalenv tp)).
+  equiv (globalenv p) (globalenv tp).
 Proof.
   intros. eapply (senv_match progmatch).
 Qed.
@@ -1881,7 +1789,5 @@ Proof.
 Qed.
 
 End TRANSFORM_TOTAL.
-
-Coercion Genv.to_senv: Genv.t >-> Senv.t.
 
 End Genv.

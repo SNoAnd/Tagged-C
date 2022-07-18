@@ -272,7 +272,8 @@ Set Implicit Arguments.
 Section EVENTVAL.
 
 (** Symbol environment used to translate between global variable names and their block identifiers. *)
-Variable ge: Senv.t.
+  Variable F V: Type.
+  Variable ge: Genv.t F V.
 
 (** Translation between values and event values. *)
 
@@ -286,8 +287,8 @@ Inductive eventval_match: eventval -> typ -> atom -> Prop :=
   | ev_match_single: forall f t,
       eventval_match (EVsingle f t) Tsingle (Vsingle f, t)
   | ev_match_ptr: forall id b ofs t,
-      Senv.public_symbol ge id = true ->
-      Senv.find_symbol ge id = Some (b,t) ->
+      public_symbol ge id = true ->
+      find_symbol ge id = Some (b,t) ->
       eventval_match (EVptr_global id ofs t) Tptr (Vptr b ofs, t).
 
 Inductive eventval_list_match: list eventval -> list typ -> list atom -> Prop :=
@@ -343,7 +344,7 @@ Lemma eventval_match_determ_2:
   forall ev1 ev2 ty v, eventval_match ev1 ty v -> eventval_match ev2 ty v -> ev1 = ev2.
 Proof.
   intros. inv H; inv H0; auto.
-  decEq. eapply Senv.find_symbol_injective; eauto.
+  decEq. eapply genv_vars_inj; eauto.
 Qed.
 
 Lemma eventval_list_match_determ_2:
@@ -362,7 +363,7 @@ Definition eventval_valid (ev: eventval) : Prop :=
   | EVlong _ _ => True
   | EVfloat _ _ => True
   | EVsingle _ _ => True
-  | EVptr_global id ofs _ => Senv.public_symbol ge id = true
+  | EVptr_global id ofs _ => public_symbol ge id = true
   end.
 
 Definition eventval_type (ev: eventval) : typ :=
@@ -420,10 +421,13 @@ End EVENTVAL.
 
 Section EVENTVAL_INV.
 
-Variables ge1 ge2: Senv.t.
+  Variable F: Type.  (**r The type of function descriptions *)
+  Variable V: Type.  (**r The type of information attached to variables *)
+
+  Variables ge1 ge2: Genv.t F V.
 
 Hypothesis public_preserved:
-  forall id, Senv.public_symbol ge2 id = Senv.public_symbol ge1 id.
+  forall id, public_symbol ge2 id = public_symbol ge1 id.
 
 Lemma eventval_valid_preserved:
   forall ev, eventval_valid ge1 ev -> eventval_valid ge2 ev.
@@ -432,7 +436,7 @@ Proof.
 Qed.
 
 Hypothesis symbols_preserved:
-  forall id, Senv.find_symbol ge2 id = Senv.find_symbol ge1 id.
+  forall id, find_symbol ge2 id = find_symbol ge1 id.
 
 Lemma eventval_match_preserved:
   forall ev ty v,
@@ -456,20 +460,22 @@ End EVENTVAL_INV.
 
 Section EVENTVAL_INJECT.
 
+  Variable F: Type.
+  Variable V: Type.
 Variable f: block -> option (block * Z).
-Variable ge1 ge2: Senv.t.
+Variable ge1 ge2: Genv.t F V.
 
 Definition symbols_inject : Prop :=
-   (forall id, Senv.public_symbol ge2 id = Senv.public_symbol ge1 id)
+   (forall id, public_symbol ge2 id = public_symbol ge1 id)
 /\ (forall id b1 pt1 b2 pt2 delta,
-     f b1 = Some(b2, delta) -> Senv.find_symbol ge1 id = Some (b1, pt1) ->
-     delta = 0 /\ Senv.find_symbol ge2 id = Some (b2, pt2))
+     f b1 = Some(b2, delta) -> find_symbol ge1 id = Some (b1, pt1) ->
+     delta = 0 /\ find_symbol ge2 id = Some (b2, pt2))
 /\ (forall id b1 pt1,
-     Senv.public_symbol ge1 id = true -> Senv.find_symbol ge1 id = Some (b1,pt1) ->
-     exists b2 pt2, f b1 = Some(b2, 0) /\ Senv.find_symbol ge2 id = Some (b2,pt2))
+     public_symbol ge1 id = true -> find_symbol ge1 id = Some (b1,pt1) ->
+     exists b2 pt2, f b1 = Some(b2, 0) /\ find_symbol ge2 id = Some (b2,pt2))
 /\ (forall b1 b2 delta,
      f b1 = Some(b2, delta) ->
-     Senv.block_is_volatile ge2 b2 = Senv.block_is_volatile ge1 b1).
+     block_is_volatile ge2 b2 = block_is_volatile ge1 b1).
 
 Hypothesis symb_inj: symbols_inject.
 
@@ -510,7 +516,8 @@ End EVENTVAL_INJECT.
 
 Section MATCH_TRACES.
 
-Variable ge: Senv.t.
+  Variable F V: Type.
+Variable ge: Genv.t F V.
 
 (** Matching between traces corresponding to single transitions.
   Arguments (provided by the program) must be equal.
@@ -537,10 +544,11 @@ End MATCH_TRACES.
 
 Section MATCH_TRACES_INV.
 
-Variables ge1 ge2: Senv.t.
+  Variable F V:Type.
+Variables ge1 ge2: Genv.t F V.
 
 Hypothesis public_preserved:
-  forall id, Senv.public_symbol ge2 id = Senv.public_symbol ge1 id.
+  forall id, public_symbol ge2 id = public_symbol ge1 id.
 
 Lemma match_traces_preserved:
   forall t1 t2, match_traces ge1 t1 t2 -> match_traces ge2 t1 t2.
@@ -549,6 +557,9 @@ Proof.
 Qed.
 
 End MATCH_TRACES_INV.
+
+Section OUTPUT_EVENTS.
+Variable F V:Type.
 
 (** An output trace is a trace composed only of output events,
   that is, events that do not take any result from the outside world. *)
@@ -569,32 +580,32 @@ Fixpoint output_trace (t: trace) : Prop :=
 
 (** * Semantics of volatile memory accesses *)
 
-Inductive volatile_load (ge: Senv.t):
+Inductive volatile_load (ge: Genv.t F V):
                    memory_chunk -> mem -> block -> ptrofs -> trace -> atom -> list tag -> Prop :=
   | volatile_load_vol: forall chunk m b pt ofs id ev v vt lts,
-      Senv.block_is_volatile ge b = true ->
-      Senv.find_symbol ge id = Some (b,pt) ->
+      block_is_volatile ge b = true ->
+      find_symbol ge id = Some (b,pt) ->
       eventval_match ge ev (type_of_chunk chunk) (v,vt) ->
       volatile_load ge chunk m b ofs
                       (Event_vload chunk id ofs ev :: nil)
                       (Val.load_result chunk v,vt)
                       lts
   | volatile_load_nonvol: forall chunk m b ofs v lts,
-      Senv.block_is_volatile ge b = false ->
+      block_is_volatile ge b = false ->
       Mem.load chunk m b (Ptrofs.unsigned ofs) = Some v ->
       volatile_load ge chunk m b ofs E0 v lts.
 
-Inductive volatile_store (ge: Senv.t):
+Inductive volatile_store (ge: Genv.t F V):
                   memory_chunk -> mem -> block -> ptrofs -> atom -> list tag -> trace -> mem -> Prop :=
   | volatile_store_vol: forall chunk m b pt ofs id ev v vt lts,
-      Senv.block_is_volatile ge b = true ->
-      Senv.find_symbol ge id = Some (b,pt) ->
+      Genv.block_is_volatile ge b = true ->
+      Genv.find_symbol ge id = Some (b,pt) ->
       eventval_match ge ev (type_of_chunk chunk) (Val.load_result chunk v, vt) ->
       volatile_store ge chunk m b ofs (v,vt) lts
                      (Event_vstore chunk id ofs ev :: nil)
                      m
   | volatile_store_nonvol: forall chunk m b ofs v lts m',
-      Senv.block_is_volatile ge b = false ->
+      Genv.block_is_volatile ge b = false ->
       Mem.store chunk m b (Ptrofs.unsigned ofs) v lts = Some m' ->
       volatile_store ge chunk m b ofs v lts E0 m'.
 
@@ -610,7 +621,7 @@ Inductive volatile_store (ge: Senv.t):
 *)
 
 Definition extcall_sem : Type :=
-  Senv.t -> list atom -> mem -> trace -> atom -> mem -> Prop.
+  Genv.t F V -> list atom -> mem -> trace -> atom -> mem -> Prop.
 
 (** We now specify the expected properties of this predicate. *)
 
@@ -644,7 +655,7 @@ Record extcall_properties (sem: extcall_sem) (sg: signature) : Prop :=
 (** The semantics is invariant under change of global environment that preserves symbols. *)
   ec_symbols_preserved:
     forall ge1 ge2 vargs m1 t vres m2,
-    Senv.equiv ge1 ge2 ->
+    Genv.equiv ge1 ge2 ->
     sem ge1 vargs m1 t vres m2 ->
     sem ge2 vargs m1 t vres m2;
 
@@ -705,7 +716,7 @@ Record extcall_properties (sem: extcall_sem) (sg: signature) : Prop :=
 
 (** ** Semantics of volatile loads *)
 
-Inductive volatile_load_sem (chunk: memory_chunk) (ge: Senv.t):
+Inductive volatile_load_sem (chunk: memory_chunk) (ge: Genv.t F V):
               list atom -> mem -> trace -> atom  -> mem -> Prop :=
   | volatile_load_sem_intro: forall b ofs pt m t v vt lts,
       volatile_load ge chunk m b ofs t (v,vt) lts ->
@@ -714,7 +725,7 @@ Inductive volatile_load_sem (chunk: memory_chunk) (ge: Senv.t):
 
 Lemma volatile_load_preserved:
   forall ge1 ge2 chunk m b ofs t v vt lts,
-  Senv.equiv ge1 ge2 ->
+  Genv.equiv ge1 ge2 ->
   volatile_load ge1 chunk m b ofs t (v, vt) lts ->
   volatile_load ge2 chunk m b ofs t (v, vt) lts.
 Admitted.
@@ -816,7 +827,7 @@ Qed.*)
 
 (** ** Semantics of volatile stores *)
 
-Inductive volatile_store_sem (chunk: memory_chunk) (ge: Senv.t):
+Inductive volatile_store_sem (chunk: memory_chunk) (ge: Genv.t F V):
               list atom -> mem -> trace -> atom -> mem -> Prop :=
   | volatile_store_sem_intro: forall b ofs pt m1 v vt lts t m2,
       volatile_store ge chunk m1 b ofs (v,vt) lts t m2 ->
@@ -825,7 +836,7 @@ Inductive volatile_store_sem (chunk: memory_chunk) (ge: Senv.t):
 
 Lemma volatile_store_preserved:
   forall ge1 ge2 chunk m1 b ofs v lts t m2,
-  Senv.equiv ge1 ge2 ->
+  Genv.equiv ge1 ge2 ->
   volatile_store ge1 chunk m1 b ofs v lts t m2 ->
   volatile_store ge2 chunk m1 b ofs v lts t m2.
 Admitted.
@@ -972,7 +983,7 @@ Qed.*)
 
 (** ** Semantics of dynamic memory allocation (malloc) *)
 
-Inductive extcall_malloc_sem (ge: Senv.t):
+Inductive extcall_malloc_sem (ge: Genv.t F V):
               list atom -> mem -> trace -> atom -> mem -> Prop :=
 | extcall_malloc_sem_intro: forall sz st m m' lo hi vt lts pt m'',
     (* TODO: check tags *)
@@ -1059,7 +1070,7 @@ Qed.
 *)
 (** ** Semantics of dynamic memory deallocation (free) *)
 
-Inductive extcall_free_sem (ge: Senv.t):
+Inductive extcall_free_sem (ge: Genv.t F V):
               list atom -> mem -> trace -> atom -> mem -> Prop :=
 | extcall_free_sem_ptr: forall lo pt sz vt m m',
     (* TODO: check tags *)
@@ -1157,7 +1168,7 @@ Qed.*)
 
 (** ** Semantics of [memcpy] operations. *)
 
-Inductive extcall_memcpy_sem (sz al: Z) (ge: Senv.t):
+Inductive extcall_memcpy_sem (sz al: Z) (ge: Genv.t F V):
                         list atom -> mem -> trace -> atom -> mem -> Prop :=
   | extcall_memcpy_sem_intro: forall odst osrc pt1 pt2 m bytes lts m',
       al = 1 \/ al = 2 \/ al = 4 \/ al = 8 -> sz >= 0 -> (al | sz) ->
@@ -1270,7 +1281,7 @@ Qed.*)
 
 (** ** Semantics of annotations. *)
 
-Inductive extcall_annot_sem (text: string) (targs: list typ) (ge: Senv.t):
+Inductive extcall_annot_sem (text: string) (targs: list typ) (ge: Genv.t F V):
               list atom -> mem -> trace -> atom -> mem -> Prop :=
   | extcall_annot_sem_intro: forall vargs m args,
       eventval_list_match ge args targs vargs ->
@@ -1285,7 +1296,7 @@ Proof.
 (* well typed *)
 - inv H. simpl. auto.
 (* symbols *)
-- destruct H as (A & B & C). inv H0. econstructor; eauto.
+- destruct H as (A & B). inv H0. econstructor; eauto.
   eapply eventval_list_match_preserved; eauto.
 (* valid blocks *)
 - inv H; auto.
@@ -1311,7 +1322,7 @@ Proof.
   split. constructor. auto.
 Qed.
 
-Inductive extcall_annot_val_sem (text: string) (targ: typ) (ge: Senv.t):
+Inductive extcall_annot_val_sem (text: string) (targ: typ) (ge: Genv.t F V):
               list atom -> mem -> trace -> atom -> mem -> Prop :=
   | extcall_annot_val_sem_intro: forall varg m arg,
       eventval_match ge arg targ varg ->
@@ -1326,7 +1337,7 @@ Proof.
 (* well typed *)
 - inv H. eapply eventval_match_type; eauto.
 (* symbols *)
-- destruct H as (A & B & C). inv H0. econstructor; eauto.
+- destruct H as (A & B). inv H0. econstructor; eauto.
   eapply eventval_match_preserved; eauto.
 (* valid blocks *)
 - inv H; auto.
@@ -1352,7 +1363,7 @@ Proof.
   split. constructor. auto.
 Qed.
 
-Inductive extcall_debug_sem (ge: Senv.t):
+Inductive extcall_debug_sem (ge: Genv.t F V):
               list atom -> mem -> trace -> atom -> mem -> Prop :=
   | extcall_debug_sem_intro: forall vargs m,
       extcall_debug_sem ge vargs m E0 (Vundef,def_tag) m.
@@ -1393,7 +1404,7 @@ Qed.
   as defined in the [Builtin] modules.
   These built-in functions have no observable effects and do not access memory. *)
 
-Inductive known_builtin_sem (bf: builtin_function) (ge: Senv.t):
+Inductive known_builtin_sem (bf: builtin_function) (ge: Genv.t F V):
               list atom -> mem -> trace -> atom -> mem -> Prop :=
   | known_builtin_sem_intro: forall vargs vres m,
       builtin_function_sem bf vargs = Some vres ->
@@ -1598,12 +1609,14 @@ Proof.
   intros. exploit external_call_determ. eexact H. eexact H0. intuition.
 Qed.
 
+End OUTPUT_EVENTS.
+
 (** * Evaluation of builtin arguments *)
 
 Section EVAL_BUILTIN_ARG.
 
-Variable A: Type.
-Variable ge: Senv.t.
+Variable A F V: Type.
+Variable ge: Genv.t F V.
 Variable e: A -> val.
 Variable sp: val.
 Variable m: mem.
@@ -1625,10 +1638,10 @@ Inductive eval_builtin_arg: builtin_arg A -> val -> Prop :=
   | eval_BA_addrstack: forall ofs,
       eval_builtin_arg (BA_addrstack ofs) (Val.offset_ptr sp ofs)
   | eval_BA_loadglobal: forall chunk id ofs v vt,
-      Mem.loadv chunk m (fst (Senv.symbol_address ge id ofs)) = Some (v,vt) ->
+      Mem.loadv chunk m (fst (symbol_address ge id ofs)) = Some (v,vt) ->
       eval_builtin_arg (BA_loadglobal chunk id ofs) v
   | eval_BA_addrglobal: forall id ofs,
-      eval_builtin_arg (BA_addrglobal id ofs) (fst (Senv.symbol_address ge id ofs))
+      eval_builtin_arg (BA_addrglobal id ofs) (fst (symbol_address ge id ofs))
   | eval_BA_splitlong: forall hi lo vhi vlo,
       eval_builtin_arg hi vhi -> eval_builtin_arg lo vlo ->
       eval_builtin_arg (BA_splitlong hi lo) (Val.longofwords vhi vlo)
@@ -1675,8 +1688,8 @@ Hypothesis symbols_preserved:
 Lemma eval_builtin_arg_preserved:
   forall a v, eval_builtin_arg ge1 e sp m a v -> eval_builtin_arg ge2 e sp m a v.
 Proof.
-  assert (EQ: forall id ofs, Senv.symbol_address ge2 id ofs = Senv.symbol_address ge1 id ofs).
-  { unfold Senv.symbol_address; simpl; intros. rewrite symbols_preserved; auto. }
+  assert (EQ: forall id ofs, symbol_address ge2 id ofs = symbol_address ge1 id ofs).
+  { unfold symbol_address; simpl; intros. rewrite symbols_preserved; auto. }
   induction 1; eauto with barg. rewrite <- EQ in H; eauto with barg. rewrite <- EQ; eauto with barg.
 Qed.
 

@@ -25,6 +25,15 @@ Require Import Events.
 Require Import Globalenvs.
 Require Import Smallstep.
 Require Import Behaviors.
+Require Import Tags.
+
+Module Deterministic (T:Tag).
+  Module Behaviors := Behaviors T.
+  Import Behaviors.
+  Import Smallstep.
+  Import Events.
+  Import Genv.
+  Import Mem.
 
 (** * Deterministic worlds *)
 
@@ -109,8 +118,12 @@ Proof.
   exists w1; split. econstructor; eauto. auto.
 Qed.
 
+Section WITH_GE.
+  Variable F V:Type.
+  Variable ge: Genv.t F V.
+
 Lemma match_possible_traces:
-  forall ge t1 t2 w0 w1 w2,
+  forall t1 t2 w0 w1 w2,
   match_traces ge t1 t2 -> possible_trace w0 t1 w1 -> possible_trace w0 t2 w2 ->
   t1 = t2 /\ w1 = w2.
 Proof.
@@ -259,7 +272,7 @@ Lemma star_step_triangle:
   Star L s1 t s2 /\ t2 = t1 ** t.
 Proof.
   intros. use_star_step_diamond.
-  exists t; auto.
+  exists t0; auto.
   inv P. exists E0. split. constructor. traceEq.
   use_nostep.
 Qed.
@@ -363,12 +376,12 @@ Proof.
   induction 1; intros.
   congruence.
   inv H2. congruence. use_step_deterministic.
-  destruct t3.
+  destruct t4.
   (* inductive case *)
   simpl in *. eapply IHstar; eauto.
   (* base case *)
-  exists s5; exists (e :: t3);
-  exists (t2 *** T1); exists (t4 *** T2).
+  exists s5; exists (e :: t4);
+  exists (t2 *** T1); exists (t5 *** T2).
   split. unfold E0; congruence.
   split. eapply star_forever_reactive; eauto.
   split. eapply star_forever_reactive; eauto.
@@ -383,7 +396,7 @@ Lemma forever_reactive_determ':
 Proof.
   cofix COINDHYP; intros.
   inv H. inv H0.
-  destruct (forever_reactive_inv2 _ _ _ H t s2 T0 T)
+  destruct (forever_reactive_inv2 _ _ _ H t0 s2 T0 T)
   as [s' [t' [T1' [T2' [A [B [C [D E]]]]]]]]; auto.
   rewrite D; rewrite E. constructor. auto.
   eapply COINDHYP; eauto.
@@ -441,7 +454,7 @@ Proof.
   intros until beh2; intros BEH1 BEH2.
   inv BEH1; inv BEH2; red.
 (* terminates, terminates *)
-  assert (t = t0 /\ s' = s'0). eapply steps_deterministic; eauto.
+  assert (t0 = t1 /\ s' = s'0). eapply steps_deterministic; eauto.
   destruct H3. split; auto. subst. eapply det_final_state; eauto.
 (* terminates, diverges *)
   eapply star2_final_not_forever_silent with (s1 := s') (s2 := s'0); eauto.
@@ -476,7 +489,7 @@ Proof.
 (* goes wrong, reacts *)
   eapply star_final_not_forever_reactive; eauto.
 (* goes wrong, goes wrong *)
-  assert (t = t0 /\ s' = s'0). eapply steps_deterministic; eauto.
+  assert (t0 = t1 /\ s' = s'0). eapply steps_deterministic; eauto.
   tauto.
 Qed.
 
@@ -498,6 +511,8 @@ Qed.
 
 End DETERM_SEM.
 
+End WITH_GE.
+
 (** * Integrating an external world in a semantics. *)
 
 (** Given a transition semantics, we can build another semantics that
@@ -515,12 +530,12 @@ Local Open Scope pair_scope.
 
 Definition world_sem : semantics := @Semantics_gen
   (state L * world)%type
-  (genvtype L)
+  (funtype L)
+  (vartype L)
   (fun ge s t s' => step L ge s#1 t s'#1 /\ possible_trace s#2 t s'#2)
   (fun s => initial_state L s#1 /\ s#2 = initial_world)
   (fun s r => final_state L s#1 r)
-  (globalenv L)
-  (symbolenv L).
+  (Smallstep.globalenv L).
 
 (** If the original semantics is determinate, the world-aware semantics is deterministic. *)
 
@@ -548,4 +563,4 @@ Qed.
 
 End WORLD_SEM.
 
-
+End Deterministic.

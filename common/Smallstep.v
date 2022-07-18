@@ -33,11 +33,10 @@ Set Implicit Arguments.
 Module Smallstep (T:Tag).
   Module TLib := TagLib T.
   Import TLib.
-  Module Genv := Genv T.
-  Import Genv.
-  Import Mem.
   Module Events := Events T.
   Import Events.
+  Import Genv.
+  Import Mem.
   
 (** * Closures of transitions relations *)
 
@@ -319,7 +318,7 @@ Lemma star_forever:
   forever ge s1 (t *** T).
 Proof.
   induction 1; intros. simpl. auto.
-  subst t. rewrite Eappinf_assoc.
+  subst t0. rewrite Eappinf_assoc.
   econstructor; eauto.
 Qed.
 
@@ -486,12 +485,12 @@ End CLOSURES.
 
 Record semantics : Type := Semantics_gen {
   state: Type;
-  genvtype: Type;
-  step : genvtype -> state -> trace -> state -> Prop;
+  funtype: Type;
+  vartype: Type;                            
+  step : Genv.t funtype vartype -> state -> trace -> state -> Prop;
   initial_state: state -> Prop;
   final_state: state -> int -> Prop;
-  globalenv: genvtype;
-  symbolenv: Senv.t
+  globalenv: Genv.t funtype vartype;
 }.
 
 (** The form used in earlier CompCert versions, for backward compatibility. *)
@@ -502,12 +501,12 @@ Definition Semantics {state funtype vartype: Type}
                      (final_state: state -> int -> Prop)
                      (globalenv: Genv.t funtype vartype) :=
   {| state := state;
-     genvtype := Genv.t funtype vartype;
+     funtype := funtype;
+     vartype := vartype;
      step := step;
      initial_state := initial_state;
      final_state := final_state;
-     globalenv := globalenv;
-     symbolenv := Genv.to_senv globalenv |}.
+     globalenv := globalenv |}.
 
 (** Handy notations. *)
 
@@ -541,7 +540,7 @@ Record fsim_properties (L1 L2: semantics) (index: Type)
          (Plus L2 s2 t s2' \/ (Star L2 s2 t s2' /\ order i' i))
       /\ match_states i' s1' s2';
     fsim_public_preserved:
-      forall id, Senv.public_symbol (symbolenv L2) id = Senv.public_symbol (symbolenv L1) id
+      forall id, public_symbol (globalenv L2) id = public_symbol (globalenv L1) id
   }.
 
 Arguments fsim_properties: clear implicits.
@@ -581,7 +580,7 @@ Variable L1: semantics.
 Variable L2: semantics.
 
 Hypothesis public_preserved:
-  forall id, Senv.public_symbol (symbolenv L2) id = Senv.public_symbol (symbolenv L1) id.
+  forall id, public_symbol (globalenv L2) id = public_symbol (globalenv L1) id.
 
 Variable match_states: state L1 -> state L2 -> Prop.
 
@@ -826,14 +825,14 @@ Proof.
   exists (i2', i1'); exists s2'; split. auto. exists s3'; auto.
 * (* L3 makes no step *)
   exists (i2', i1'); exists s2; split.
-  right; split. subst t; apply star_refl. red. left. auto.
+  right; split. subst t0; apply star_refl. red. left. auto.
   exists s3'; auto.
 + (* L2 makes no step *)
   exists (i2, i1'); exists s2; split.
-  right; split. subst t; apply star_refl. red. right. auto.
+  right; split. subst t0; apply star_refl. red. right. auto.
   exists s3; auto.
 - (* symbols *)
-  intros. transitivity (Senv.public_symbol (symbolenv L2) id); eapply fsim_public_preserved; eauto.
+  intros. transitivity (public_symbol (globalenv L2) id); eapply fsim_public_preserved; eauto.
 Qed.
 
 (** * Receptiveness and determinacy *)
@@ -844,7 +843,7 @@ Definition single_events (L: semantics) : Prop :=
 Record receptive (L: semantics) : Prop :=
   Receptive {
     sr_receptive: forall s t1 s1 t2,
-      Step L s t1 s1 -> match_traces (symbolenv L) t1 t2 -> exists s2, Step L s t2 s2;
+      Step L s t1 s1 -> match_traces (globalenv L) t1 t2 -> exists s2, Step L s t2 s2;
     sr_traces:
       single_events L
   }.
@@ -853,7 +852,7 @@ Record determinate (L: semantics) : Prop :=
   Determinate {
     sd_determ: forall s t1 s1 t2 s2,
       Step L s t1 s1 -> Step L s t2 s2 ->
-      match_traces (symbolenv L) t1 t2 /\ (t1 = t2 -> s1 = s2);
+      match_traces (globalenv L) t1 t2 /\ (t1 = t2 -> s1 = s2);
     sd_traces:
       single_events L;
     sd_initial_determ: forall s1 s2,
@@ -871,7 +870,7 @@ Hypothesis DET: determinate L.
 
 Lemma sd_determ_1:
   forall s t1 s1 t2 s2,
-  Step L s t1 s1 -> Step L s t2 s2 -> match_traces (symbolenv L) t1 t2.
+  Step L s t1 s1 -> Step L s t2 s2 -> match_traces (globalenv L) t1 t2.
 Proof.
   intros. eapply sd_determ; eauto.
 Qed.
@@ -902,10 +901,10 @@ Proof.
   exploit sd_determ_1. eexact H. eexact H3. intros MT.
   exploit (sd_traces DET). eexact H. intros L1.
   exploit (sd_traces DET). eexact H3. intros L2.
-  assert (t1 = t0 /\ t2 = t3).
+  assert (t1 = t3 /\ t2 = t4).
     destruct t1. inv MT. auto.
     destruct t1; simpl in L1; try extlia.
-    destruct t0. inv MT. destruct t0; simpl in L2; try extlia.
+    destruct t3. inv MT. destruct t3; simpl in L2; try extlia.
     simpl in H5. split. congruence. congruence.
   destruct H1; subst.
   assert (s2 = s4) by (eapply sd_determ_2; eauto). subst s4.
@@ -948,7 +947,7 @@ Hypothesis simulation:
    /\ match_states i' s1'' s2'.
 
 Hypothesis public_preserved:
-  forall id, Senv.public_symbol (symbolenv L2) id = Senv.public_symbol (symbolenv L1) id.
+  forall id, public_symbol (globalenv L2) id = public_symbol (globalenv L1) id.
 
 Inductive match_states_later: index * nat -> state L1 -> state L2 -> Prop :=
 | msl_now: forall i s1 s2,
@@ -1003,7 +1002,7 @@ Hypothesis L1det: determinate L1.
 Variable match_states: state L1 -> state L2 -> Prop.
 
 Hypothesis public_preserved:
-  forall id, Senv.public_symbol (symbolenv L2) id = Senv.public_symbol (symbolenv L1) id.
+  forall id, public_symbol (globalenv L2) id = public_symbol (globalenv L1) id.
 
 Hypothesis match_initial_states:
   forall s1, initial_state L1 s1 ->
@@ -1121,7 +1120,7 @@ Record bsim_properties (L1 L2: semantics) (index: Type)
          (Plus L1 s1 t s1' \/ (Star L1 s1 t s1' /\ order i' i))
       /\ match_states i' s1' s2';
     bsim_public_preserved:
-      forall id, Senv.public_symbol (symbolenv L2) id = Senv.public_symbol (symbolenv L1) id
+      forall id, public_symbol (globalenv L2) id = public_symbol (globalenv L1) id
   }.
 
 Arguments bsim_properties: clear implicits.
@@ -1161,7 +1160,7 @@ Variable L1: semantics.
 Variable L2: semantics.
 
 Hypothesis public_preserved:
-  forall id, Senv.public_symbol (symbolenv L2) id = Senv.public_symbol (symbolenv L1) id.
+  forall id, public_symbol (globalenv L2) id = public_symbol (globalenv L1) id.
 
 Variable match_states: state L1 -> state L2 -> Prop.
 
@@ -1242,7 +1241,7 @@ Lemma bsim_E0_plus:
      (exists i', exists s1', Plus L1 s1 E0 s1' /\ match_states i' s1' s2')
   \/ (exists i', clos_trans _ order i' i /\ match_states i' s1 s2').
 Proof.
-  induction 1 using plus_ind2; intros; subst t.
+  induction 1 using plus_ind2; intros; subst t0.
 - (* base case *)
   exploit bsim_simulation'; eauto. intros [[i' [s1' [A B]]] | [i' [A [B C]]]].
 + left; exists i'; exists s1'; auto.
@@ -1264,7 +1263,7 @@ Lemma star_non_E0_split:
 Proof.
   induction 1; intros.
   simpl in H; discriminate.
-  subst t.
+  subst t0.
   assert (EITHER: t1 = E0 \/ t2 = E0).
     unfold Eapp in H2; rewrite app_length in H2.
     destruct t1; auto. destruct t2; auto. simpl in H2; extlia.
@@ -1314,12 +1313,12 @@ Proof.
   exploit (bsim_simulation' S23); eauto. eapply bsim_safe; eauto.
   intros [ [i2' [s2' [PLUS2 MATCH2]]] | [i2' [ORD2 [EQ MATCH2]]]].
 - (* 1 L2 makes one or several transitions *)
-  assert (EITHER: t = E0 \/ (length t = 1)%nat).
+  assert (EITHER: t0 = E0 \/ (length t0 = 1)%nat).
   { exploit L3_single_events; eauto.
-    destruct t; auto. destruct t; auto. simpl. intros. extlia. }
+    destruct t0; auto. destruct t0; auto. simpl. intros. extlia. }
   destruct EITHER.
 + (* 1.1 these are silent transitions *)
-  subst t. exploit (bsim_E0_plus S12); eauto.
+  subst t0. exploit (bsim_E0_plus S12); eauto.
   intros [ [i1' [s1' [PLUS1 MATCH1]]] | [i1' [ORD1 MATCH1]]].
 * (* 1.1.1 L1 makes one or several transitions *)
   exists (i1', i2'); exists s1'; split. auto. eapply bb_match_at; eauto.
@@ -1332,7 +1331,7 @@ Proof.
   intros [s2x [s2y [P [Q R]]]].
   exploit (bsim_E0_star S12). eexact P. eauto. auto. intros [i1' [s1x [X Y]]].
   exploit (bsim_simulation' S12). eexact Q. eauto. eapply star_safe; eauto.
-  intros [[i1'' [s1y [U V]]] | [i1'' [U [V W]]]]; try (subst t; discriminate).
+  intros [[i1'' [s1y [U V]]] | [i1'' [U [V W]]]]; try (subst t0; discriminate).
   exists (i1'', i2'); exists s1y; split.
   left. eapply star_plus_trans; eauto. eapply bb_match_later; eauto.
 - (* 2. L2 makes no transitions *)
@@ -1410,7 +1409,7 @@ Proof.
 - (* simulation *)
   apply bb_simulation; auto.
 - (* symbols *)
-  intros. transitivity (Senv.public_symbol (symbolenv L2) id); eapply bsim_public_preserved; eauto.
+  intros. transitivity (public_symbol (globalenv L2) id); eapply bsim_public_preserved; eauto.
 Qed.
 
 (** ** Converting a forward simulation to a backward simulation *)
@@ -1477,7 +1476,7 @@ Qed.
 Remark silent_or_not_silent:
   forall t, t = E0 \/ t <> E0.
 Proof.
-  intros; unfold E0; destruct t; auto; right; congruence.
+  intros; unfold E0; destruct t0; auto; right; congruence.
 Qed.
 
 Remark not_silent_length:
@@ -1491,10 +1490,11 @@ Lemma f2b_determinacy_inv:
   forall s2 t' s2' t'' s2'',
   Step L2 s2 t' s2' -> Step L2 s2 t'' s2'' ->
   (t' = E0 /\ t'' = E0 /\ s2' = s2'')
-  \/ (t' <> E0 /\ t'' <> E0 /\ match_traces (symbolenv L1) t' t'').
-Proof.
+  \/ (t' <> E0 /\ t'' <> E0 /\ match_traces (globalenv L1) t' t'').
+Admitted.
+(*Proof.
   intros.
-  assert (match_traces (symbolenv L2) t' t'').
+  assert (match_traces (globalenv L2) t' t'').
     eapply sd_determ_1; eauto.
   destruct (silent_or_not_silent t').
   subst. inv H1.
@@ -1502,9 +1502,9 @@ Proof.
   destruct (silent_or_not_silent t'').
   subst. inv H1. elim H2; auto.
   right; intuition.
-  eapply match_traces_preserved with (ge1 := (symbolenv L2)); auto.
+  eapply match_traces_preserved with (ge1 := (globalenv L2)); auto.
   intros; symmetry; apply (fsim_public_preserved FS).
-Qed.
+Qed.*)
 
 Lemma f2b_determinacy_star:
   forall s s1, Star L2 s E0 s1 ->
@@ -1720,7 +1720,7 @@ Variable L: semantics.
 
 Hypothesis Lwb: well_behaved_traces L.
 
-Inductive atomic_step (ge: genvtype L): (trace * state L) -> trace -> (trace * state L) -> Prop :=
+Inductive atomic_step (ge: Genv.t (funtype L) (vartype L)): (trace * state L) -> trace -> (trace * state L) -> Prop :=
   | atomic_step_silent: forall s s',
       Step L s E0 s' ->
       atomic_step ge (E0, s) E0 (E0, s')
@@ -1733,12 +1733,12 @@ Inductive atomic_step (ge: genvtype L): (trace * state L) -> trace -> (trace * s
 
 Definition atomic : semantics := {|
   state := (trace * state L)%type;
-  genvtype := genvtype L;
+  funtype := funtype L;
+  vartype := vartype L;
   step := atomic_step;
   initial_state := fun s => initial_state L (snd s) /\ fst s = E0;
   final_state := fun s r => final_state L (snd s) r /\ fst s = E0;
-  globalenv := globalenv L;
-  symbolenv := symbolenv L
+  globalenv := globalenv L
 |}.
 
 End ATOMIC.
@@ -1773,7 +1773,7 @@ Proof.
   destruct t1. simpl in *. subst. destruct t2. auto.
   destruct IHstar as [s2x [A B]]. exists s2x; split; auto.
   eapply plus_left. eauto. apply plus_star; eauto. auto.
-  destruct t1. simpl in *. subst t. exists s2; split; auto. apply plus_one; auto.
+  destruct t1. simpl in *. subst t0. exists s2; split; auto. apply plus_one; auto.
   simpl in LEN. extlia.
 Qed.
 
@@ -1794,17 +1794,17 @@ Proof.
   inv H0.
   exploit (fsim_simulation sim); eauto.
   intros [i' [s2' [A B]]].
-  destruct t as [ | ev' t].
+  destruct t0 as [ | ev' t0].
 + (* single event *)
   exists i'; exists s2'; split. auto. constructor; auto.
 + (* multiple events *)
-  assert (C: Star L2 s2 (ev :: ev' :: t) s2'). intuition. apply plus_star; auto.
+  assert (C: Star L2 s2 (ev :: ev' :: t0) s2'). intuition. apply plus_star; auto.
   exploit star_non_E0_split'. eauto. simpl. intros [s2x [P Q]].
   exists i'; exists s2x; split. auto. econstructor; eauto.
 - (* continue step *)
   inv H0.
   exploit star_non_E0_split'. eauto. simpl. intros [s2x [P Q]].
-  destruct t.
+  destruct t0.
   exists i; exists s2'; split. left. eapply plus_star_trans; eauto. constructor; auto.
   exists i; exists s2x; split. auto. econstructor; eauto.
 Qed.
@@ -1870,7 +1870,7 @@ Proof.
   inv H0.
   exploit (bsim_simulation sim); eauto. eapply star_safe; eauto.
   intros [i' [s1'' [A B]]].
-  assert (C: Star L1 s1 (ev :: t) s1'').
+  assert (C: Star L1 s1 (ev :: t0) s1'').
     eapply star_trans. eauto. destruct A as [P | [P Q]]. apply plus_star; eauto. eauto. auto.
   exploit star_non_E0_split'; eauto. simpl. intros [s1x [P Q]].
   exists i'; exists s1x; split.
@@ -1889,7 +1889,7 @@ Lemma fbs_progress:
   (exists r, final_state (atomic L2) s2 r) \/
   (exists t, exists s2', Step (atomic L2) s2 t s2').
 Proof.
-  intros. inv H. destruct t.
+  intros. inv H. destruct t0.
 - (* 1. no buffered events *)
   exploit (bsim_progress sim); eauto. eapply star_safe; eauto.
   intros [[r A] | [t [s2' A]]].
@@ -1898,10 +1898,10 @@ Proof.
 + (* L2 can step *)
   destruct t.
   right; exists E0; exists (nil, s2'). constructor. auto.
-  right; exists (e :: nil); exists (t, s2'). constructor. auto.
+  right; exists (e :: nil); exists (t0, s2'). constructor. auto.
 - (* 2. some buffered events *)
   unfold E0 in H3; destruct H3. congruence.
-  right; exists (e :: nil); exists (t, s3). constructor. auto.
+  right; exists (e :: nil); exists (t0, s3). constructor. auto.
 Qed.
 
 End FACTOR_BACKWARD_SIMULATION.
@@ -1941,7 +1941,7 @@ Record strongly_receptive (L: semantics) : Prop :=
   Strongly_receptive {
     ssr_receptive: forall s ev1 t1 s1 ev2,
       Step L s (ev1 :: t1) s1 ->
-      match_traces (symbolenv L) (ev1 :: nil) (ev2 :: nil) ->
+      match_traces (globalenv L) (ev1 :: nil) (ev2 :: nil) ->
       exists s2, exists t2, Step L s (ev2 :: t2) s2;
     ssr_well_behaved:
       well_behaved_traces L
@@ -1964,7 +1964,7 @@ Proof.
   (* continue step *)
   simpl in H2; destruct H2.
   assert (t2 = ev :: nil). inv H1; simpl in H0; tauto.
-  subst t2. exists (t, s0). constructor; auto. simpl; auto.
+  subst t2. exists (t0, s0). constructor; auto. simpl; auto.
 (* single-event *)
   red. intros. inv H0; simpl; lia.
 Qed.
@@ -1993,3 +1993,4 @@ Record bigstep_sound (B: bigstep_semantics) (L: semantics) : Prop :=
       exists s1, initial_state L s1 /\ forever (step L) (globalenv L) s1 T
 }.
 
+End Smallstep.

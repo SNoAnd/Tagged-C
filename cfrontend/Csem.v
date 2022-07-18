@@ -17,18 +17,37 @@
 (** Dynamic semantics for the Compcert C language *)
 
 Require Import Coqlib Errors Maps.
-Require Import Integers Floats Values AST Memory Builtins Events Globalenvs.
+Require Import Integers Floats Values AST Memory Builtins Events Globalenvs Tags.
 Require Import Ctypes Cop Csyntax.
 Require Import Smallstep.
 Require Import List. Import ListNotations.
 
-Module Type POLICY.
+Module Type Policy (T:Tag).
+  Import T.
+
+  Parameter ConstT : tag.
+  
   Parameter LoadT : tag -> tag -> tag -> tag -> option tag.
 
   Parameter ltag_smoosh : list tag -> tag.
   
   Parameter DummyT : list tag -> option (list tag).
-End POLICY.
+End Policy.
+
+Module Csem (T:Tag) (P: Policy T).
+  Module TLib := TagLib T.
+  Import TLib.
+  Module Csyntax := Csyntax T.
+  Import Csyntax.
+  Import Cop.
+  Import Deterministic.
+  Import Behaviors.
+  Import Smallstep.
+  Import Events.
+  Import Genv.
+  Import Mem.
+
+  Import P.
 
 (** * Operational semantics *)
 
@@ -37,10 +56,9 @@ End POLICY.
   and function pointers to their definitions.  (See module [Globalenvs].)
   It also contains a composite environment, used by type-dependent operations. *)
 
-Record genv := { genv_genv :> Genv.t fundef type; genv_cenv :> composite_env }.
+  Definition gcenv : Type := (Genv.t fundef type * composite_env).
 
-Definition globalenv (p: program) :=
-  {| genv_genv := Genv.globalenv p; genv_cenv := p.(prog_comp_env) |}.
+  Definition globalenv (p: program) := (Genv.globalenv p, p.(prog_comp_env)).
 
 (** The local environment maps local variables to block references and types.
   The current value of the variable is stored in the associated memory
@@ -49,13 +67,10 @@ Definition globalenv (p: program) :=
 Definition env := PTree.t (Z * tag * type). (* map variable -> base address & ptr tag & type *)
 
 Definition empty_env: env := (PTree.empty (Z * tag * type)).
-
-Module SEMANTICS (pol:POLICY).
-  Import pol.
   
   Section SEM.
 
-  Variable ge: genv.
+  Variable ge: gcenv.
 
   (** [deref_loc ty m ofs bf t v] computes the value of a datum
       of type [ty] residing in memory [m] at offset [ofs],
@@ -77,10 +92,10 @@ Module SEMANTICS (pol:POLICY).
       Mem.loadv chunk m (Vptr Mem.dummy ofs) = Some (v,vt) ->
       Mem.loadv_ltags chunk m (Vptr Mem.dummy ofs) = lts ->
       deref_loc ty m ofs Full E0 (v,vt) lts
-  | deref_loc_volatile: forall chunk t v lts,
+  | deref_loc_volatile: forall chunk t v vt lts,
       access_mode ty = By_value chunk -> type_is_volatile ty = true ->
-      volatile_load ge chunk m Mem.dummy ofs t v lts ->
-      deref_loc ty m ofs Full t v lts
+      volatile_load (fst ge) chunk m Mem.dummy ofs t (v,vt) lts ->
+      deref_loc ty m ofs Full t (v,vt) lts
   | deref_loc_reference: forall chunk lts lt,
       (* This one is weird, because we don't actually access the memory to get tags? *)
       (* For now, giving a location tag, to use in addr ops. *)
@@ -93,9 +108,9 @@ Module SEMANTICS (pol:POLICY).
       Mem.loadv_ltags chunk m (Vptr Mem.dummy ofs) = lts ->
       head lts = Some lt ->
       deref_loc ty m ofs Full E0 (Vptr Mem.dummy ofs, lt) lts
-  | deref_loc_bitfield: forall sz sg pos width v lts,
-      load_bitfield ty sz sg pos width m (Vptr Mem.dummy ofs) v lts ->
-      deref_loc ty m ofs (Bits sz sg pos width) E0 v lts.
+  | deref_loc_bitfield: forall sz sg pos width v vt lts,
+      load_bitfield ty sz sg pos width m (Vptr Mem.dummy ofs) (v,vt) lts ->
+      deref_loc ty m ofs (Bits sz sg pos width) E0 (v,vt) lts.
 
   (** Symmetrically, [assign_loc ty m ofs bf v t m' v'] returns the
       memory state after storing the value [v] in the datum
@@ -118,16 +133,16 @@ Module SEMANTICS (pol:POLICY).
       assign_loc ty m ofs Full (v,vt) E0 m' (v,vt) lts
   | assign_loc_volatile: forall v lts chunk t m',
       access_mode ty = By_value chunk -> type_is_volatile ty = true ->
-      volatile_store ge chunk m Mem.dummy ofs v lts t m' ->
+      volatile_store (fst ge) chunk m Mem.dummy ofs v lts t m' ->
       assign_loc ty m ofs Full v t m' v lts
   | assign_loc_copy: forall ofs' pt bytes lts m',
       access_mode ty = By_copy ->
-      (alignof_blockcopy ge ty | Ptrofs.unsigned ofs') ->
-      (alignof_blockcopy ge ty | Ptrofs.unsigned ofs) ->
+      (alignof_blockcopy (snd ge) ty | Ptrofs.unsigned ofs') ->
+      (alignof_blockcopy (snd ge) ty | Ptrofs.unsigned ofs) ->
       Mem.dummy <> Mem.dummy \/ Ptrofs.unsigned ofs' = Ptrofs.unsigned ofs
-                             \/ Ptrofs.unsigned ofs' + sizeof ge ty <= Ptrofs.unsigned ofs
-                             \/ Ptrofs.unsigned ofs + sizeof ge ty <= Ptrofs.unsigned ofs' ->
-      Mem.loadbytes m Mem.dummy (Ptrofs.unsigned ofs') (sizeof ge ty) = Some bytes ->
+                             \/ Ptrofs.unsigned ofs' + sizeof (snd ge) ty <= Ptrofs.unsigned ofs
+                             \/ Ptrofs.unsigned ofs + sizeof (snd ge) ty <= Ptrofs.unsigned ofs' ->
+      Mem.loadbytes m Mem.dummy (Ptrofs.unsigned ofs') (sizeof (snd ge) ty) = Some bytes ->
       Mem.storebytes m Mem.dummy (Ptrofs.unsigned ofs) bytes lts = Some m' ->
       assign_loc ty m ofs Full (Vptr Mem.dummy ofs', pt) E0 m' (Vptr Mem.dummy ofs', pt) lts
   | assign_loc_bitfield: forall sz sg pos width pt v t m' v' lts,
@@ -150,7 +165,7 @@ Inductive alloc_variables: env -> mem ->
       alloc_variables e m nil e m
   | alloc_variables_cons:
       forall e m id ty vars m1 lo1 hi1 m2 e2,
-      Mem.alloc m 0 (sizeof ge ty) = Some (m1, lo1, hi1) ->
+      Mem.alloc m 0 (sizeof (snd ge) ty) = Some (m1, lo1, hi1) ->
       alloc_variables (PTree.set id (lo1, def_tag, ty) e) m1 vars e2 m2 ->
       alloc_variables e m ((id, ty) :: vars) e2 m2.
 
@@ -175,7 +190,7 @@ Inductive bind_parameters (e: env):
 (** Return the list of blocks in the codomain of [e], with low and high bounds. *)
 
 Definition block_of_binding (id_z_ty: ident * (Z * tag * type)) :=
-  match id_z_ty with (id, (z, pt, ty)) => (z, z + (sizeof ge ty)) end.
+  match id_z_ty with (id, (z, pt, ty)) => (z, z + (sizeof (snd ge) ty)) end.
 
 Definition blocks_of_env (e: env) : list (block * Z * Z) :=
   List.map (fun e => let '(lo,hi) := block_of_binding e in
@@ -241,20 +256,20 @@ Inductive lred: expr -> mem -> expr -> mem -> Prop :=
          (Eloc Mem.dummy (Ptrofs.repr lo) pt Full ty) m
 | red_var_global: forall x ty m lo pt,
     e!x = None ->
-    Genv.find_symbol ge x = Some (lo, pt) ->
+    Genv.find_symbol (fst ge) x = Some (lo, pt) ->
     lred (Evar x ty) m
          (Eloc Mem.dummy Ptrofs.zero pt Full ty) m
 | red_deref: forall b ofs vt ty1 ty m,
     lred (Ederef (Eval (Vptr b ofs,vt) ty1) ty) m
          (Eloc b ofs vt Full ty) m
 | red_field_struct: forall b ofs vt id co a f ty m delta bf,
-    ge.(genv_cenv)!id = Some co ->
-    field_offset ge f (co_members co) = OK (delta, bf) ->
+    (snd ge)!id = Some co ->
+    field_offset (snd ge) f (co_members co) = OK (delta, bf) ->
     lred (Efield (Eval (Vptr b ofs, vt) (Tstruct id a)) f ty) m
          (Eloc b (Ptrofs.add ofs (Ptrofs.repr delta)) vt bf ty) m
 | red_field_union: forall b ofs vt id co a f ty m delta bf,
-    ge.(genv_cenv)!id = Some co ->
-    union_field_offset ge f (co_members co) = OK (delta, bf) ->
+    (snd ge)!id = Some co ->
+    union_field_offset (snd ge) f (co_members co) = OK (delta, bf) ->
     lred (Efield (Eval (Vptr b ofs, vt) (Tunion id a)) f ty) m
          (Eloc b (Ptrofs.add ofs (Ptrofs.repr delta)) vt bf ty) m.
 
@@ -276,7 +291,7 @@ Inductive rred (PCT:tag) : expr -> mem -> trace -> tag -> expr -> mem -> Prop :=
     rred PCT (Eunop op (Eval (v1,vt1) ty1) ty) m E0
          PCT' (Eval (v,vt) ty) m
 | red_binop: forall op v1 vt1 ty1 v2 vt2 ty2 ty m PCT' v vt,
-    sem_binary_operation ge op v1 ty1 v2 ty2 m = Some v ->
+    sem_binary_operation (snd ge) op v1 ty1 v2 ty2 m = Some v ->
     DummyT [PCT;vt1;vt2] = Some [PCT'; vt] ->
     rred PCT (Ebinop op (Eval (v1,vt1) ty1) (Eval (v2,vt2) ty2) ty) m E0
          PCT' (Eval (v,vt) ty) m
@@ -313,11 +328,11 @@ Inductive rred (PCT:tag) : expr -> mem -> trace -> tag -> expr -> mem -> Prop :=
 | red_sizeof: forall ty1 ty m PCT' vt,
     DummyT [PCT] = Some [PCT';vt] ->
     rred PCT (Esizeof ty1 ty) m E0
-         PCT' (Eval (Vptrofs (Ptrofs.repr (sizeof ge ty1)), vt) ty) m
+         PCT' (Eval (Vptrofs (Ptrofs.repr (sizeof (snd ge) ty1)), vt) ty) m
 | red_alignof: forall ty1 ty m PCT' vt,
     DummyT [PCT] = Some [PCT';vt] ->
     rred PCT (Ealignof ty1 ty) m E0
-         PCT' (Eval (Vptrofs (Ptrofs.repr (alignof ge ty1)), vt) ty) m
+         PCT' (Eval (Vptrofs (Ptrofs.repr (alignof (snd ge) ty1)), vt) ty) m
 | red_assign: forall ofs ty1 pt bf v2 vt2 ty2 m v vt t PCT' m' v' vt' lts,
     sem_cast v2 ty2 ty1 m = Some v ->
     assign_loc ty1 m ofs bf (v,vt) t m' (v',vt) lts ->
@@ -353,7 +368,7 @@ Inductive rred (PCT:tag) : expr -> mem -> trace -> tag -> expr -> mem -> Prop :=
          PCT' (Eval (v,vt) ty) m
 | red_builtin: forall ef tyargs el ty m vargs t vres m' PCT',
     cast_arguments m el tyargs vargs ->
-    external_call ef ge vargs m t vres m' ->
+    external_call ef (fst ge) vargs m t vres m' ->
     rred PCT (Ebuiltin ef tyargs el ty) m t
          PCT' (Eval vres ty) m'.
 
@@ -363,7 +378,7 @@ Inductive rred (PCT:tag) : expr -> mem -> trace -> tag -> expr -> mem -> Prop :=
 
 Inductive callred: expr -> mem -> fundef -> list atom -> type -> Prop :=
   | red_call: forall vf vft tyf m tyargs tyres cconv el ty fd vargs,
-      Genv.find_funct ge vf = Some fd ->
+      Genv.find_funct (fst ge) vf = Some fd ->
       cast_arguments m el tyargs vargs ->
       type_of_fundef fd = Tfunction tyargs tyres cconv ->
       classify_fun tyf = fun_case_f tyargs tyres cconv ->
@@ -846,7 +861,7 @@ Inductive sstep: state -> trace -> state -> Prop :=
          E0 (State f f.(fn_body) k e m2)
 
   | step_external_function: forall ef targs tres cc vargs k m vres t m',
-      external_call ef  ge vargs m t vres m' ->
+      external_call ef  (fst ge) vargs m t vres m' ->
       sstep (Callstate (External ef targs tres cc) vargs k m)
           t (Returnstate vres k m')
 
@@ -870,8 +885,8 @@ Inductive initial_state (p: program): state -> Prop :=
   | initial_state_intro: forall b pt f m0,
       let ge := globalenv p in
       Genv.init_mem p = Some m0 ->
-      Genv.find_symbol ge p.(prog_main) = Some (b,pt) ->
-      Genv.find_funct_ptr ge b = Some f ->
+      Genv.find_symbol (fst ge) p.(prog_main) = Some (b,pt) ->
+      Genv.find_funct_ptr (fst ge) b = Some f ->
       type_of_fundef f = Tfunction Tnil type_int32s cc_default ->
       initial_state p (Callstate f nil Kstop m0).
 
@@ -884,7 +899,7 @@ Inductive final_state: state -> int -> Prop :=
 (** Wrapping up these definitions in a small-step semantics. *)
 
 Definition semantics (p: program) :=
-  Semantics_gen step (initial_state p) final_state (globalenv p) (globalenv p).
+  Semantics_gen (fun ge => step (ge,snd (globalenv p))) (initial_state p) final_state (fst (globalenv p)).
 
 (** This semantics has the single-event property. *)
 
@@ -903,4 +918,4 @@ Proof.
   inv H; simpl; try lia. eapply external_call_trace_length; eauto.
 Qed.
 
-End SEMANTICS.
+End Csem.

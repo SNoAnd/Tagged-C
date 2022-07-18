@@ -17,8 +17,20 @@
 (** Abstract syntax for the Compcert C language *)
 
 Require Import Coqlib Maps Integers Floats Errors.
-Require Import AST Linking Values.
+Require Import AST Linking Values Tags.
 Require Import Ctypes Cop.
+
+Module Csyntax (T:Tag).
+  Module TLib := TagLib T.
+  Import TLib.
+  Module Cop := Cop T.
+  Import Cop.
+  Import Deterministic.
+  Import Behaviors.
+  Import Smallstep.
+  Import Events.
+  Import Genv.
+  Import Mem.
 
 (** ** Expressions *)
 
@@ -224,3 +236,5 @@ Definition type_of_fundef (f: fundef) : type :=
 - a proof that this environment is consistent with the definitions. *)
 
 Definition program := Ctypes.program function.
+
+End Csyntax.

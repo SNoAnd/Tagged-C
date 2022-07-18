@@ -23,6 +23,7 @@ Require Import Events.
 Require Import Globalenvs.
 Require Import Integers.
 Require Import Smallstep.
+Require Import Tags.
 
 Set Implicit Arguments.
 Set Asymmetric Patterns.
@@ -42,6 +43,13 @@ Set Asymmetric Patterns.
   performed before the program gets stuck.
 *)
 
+Module Behaviors (T:Tag).
+  Module Smallstep := Smallstep T.
+  Import Smallstep.
+  Import Events.
+  Import Genv.
+  Import Mem.
+  
 Inductive program_behavior: Type :=
   | Terminates: trace -> int -> program_behavior
   | Diverges: trace -> program_behavior
@@ -100,7 +108,7 @@ Proof.
   destruct H as [t1 [EQ1 [beh2' EQ1']]].
   destruct H0 as [t2 [EQ2 [beh3' EQ2']]].
   subst. destruct beh2'; simpl in EQ2; try discriminate. inv EQ2.
-  right. exists t1; split; auto. exists (behavior_app t beh3'). apply behavior_app_assoc.
+  right. exists t1; split; auto. exists (behavior_app t0 beh3'). apply behavior_app_assoc.
 Qed.
 
 Lemma behavior_improves_bot:
@@ -116,7 +124,7 @@ Lemma behavior_improves_app:
 Proof.
   intros. red; destruct H. left; congruence.
   destruct H as [t' [A [beh' B]]]. subst.
-  right; exists (t ** t'); split; auto. exists beh'. rewrite behavior_app_assoc; auto.
+  right; exists (t0 ** t'); split; auto. exists beh'. rewrite behavior_app_assoc; auto.
 Qed.
 
 (** Associating behaviors to programs. *)
@@ -207,7 +215,7 @@ Qed.
 Lemma reacts_forever_reactive:
   exists T, Forever_reactive L s0 T.
 Proof.
-  exists (traceinf_of_traceinf' (build_traceinf' (star_refl (step L) (globalenv L) s0))).
+  exists (traceinf_of_traceinf' (build_traceinf' (star_refl (step L) (Smallstep.globalenv L) s0))).
   apply reacts_forever_reactive_rec.
 Qed.
 
@@ -261,7 +269,7 @@ Proof.
 (* 2.2 Going wrong *)
   exists (Goes_wrong t1); econstructor; eauto. red. intros.
   generalize (not_ex_all_not _ _ D s'); intros.
-  generalize (not_ex_all_not _ _ H t); intros.
+  generalize (not_ex_all_not _ _ H t0); intros.
   auto.
 Qed.
 
@@ -293,12 +301,12 @@ Proof.
   intros. inv H0.
 - (* termination *)
   exploit simulation_star; eauto. intros [i' [s2' [A B]]].
-  exists (Terminates t r); split.
+  exists (Terminates t0 r); split.
   econstructor; eauto. eapply fsim_match_final_states; eauto.
   apply behavior_improves_refl.
 - (* silent divergence *)
   exploit simulation_star; eauto. intros [i' [s2' [A B]]].
-  exists (Diverges t); split.
+  exists (Diverges t0); split.
   econstructor; eauto. eapply simulation_forever_silent; eauto.
   apply behavior_improves_refl.
 - (* reactive divergence *)
@@ -308,9 +316,9 @@ Proof.
 - (* going wrong *)
   exploit simulation_star; eauto. intros [i' [s2' [A B]]].
   destruct (state_behaves_exists L2 s2') as [beh' SB].
-  exists (behavior_app t beh'); split.
+  exists (behavior_app t0 beh'); split.
   eapply state_behaves_app; eauto.
-  replace (Goes_wrong t) with (behavior_app t (Goes_wrong E0)).
+  replace (Goes_wrong t0) with (behavior_app t0 (Goes_wrong E0)).
   apply behavior_improves_app. apply behavior_improves_bot.
   simpl. decEq. traceEq.
 Qed.
@@ -396,7 +404,7 @@ Proof.
   exists t1; exists s'.
   split. exists b2; auto.
   split. auto.
-  split. red; intros; red; intros. elim Q. exists t; exists s'0; auto.
+  split. red; intros; red; intros. elim Q. exists t0; exists s'0; auto.
   intros; red; intros. elim P. exists r; auto.
 Qed.
 
@@ -411,7 +419,7 @@ Proof.
   intros [i' [s1' [A B]]].
   assert (Star L1 s0 t1 s1'). intuition. apply plus_star; auto.
   exploit IHstar; eauto. eapply star_safe_along; eauto.
-  subst t; apply behavior_app_assoc.
+  subst t0; apply behavior_app_assoc.
   intros [i'' [s2'' [C D]]].
   exists i''; exists s2''; split; auto. eapply star_trans; eauto.
 Qed.
@@ -423,7 +431,7 @@ Lemma backward_simulation_forever_silent:
 Proof.
   assert (forall i s1 s2,
          Forever_silent L2 s2 -> match_states i s1 s2 -> safe L1 s1 ->
-         forever_silent_N (step L1) order (globalenv L1) i s1).
+         forever_silent_N (step L1) order (Smallstep.globalenv L1) i s1).
     cofix COINDHYP; intros.
     inv H.  destruct (bsim_simulation S _ _ _ H2 _ H0 H1) as [i' [s2' [A B]]].
     destruct A as [C | [C D]].
@@ -454,7 +462,7 @@ Proof.
   exists beh2; split; [idtac|apply behavior_improves_refl].
   inv H0.
 + (* termination *)
-  assert (Terminates t r = behavior_app t (Terminates E0 r)).
+  assert (Terminates t0 r = behavior_app t0 (Terminates E0 r)).
     simpl. rewrite E0_right; auto.
   rewrite H0 in H1.
   exploit backward_simulation_star; eauto.
@@ -464,7 +472,7 @@ Proof.
   intros [s1'' [C D]].
   econstructor. eapply star_trans; eauto. traceEq. auto.
 + (* silent divergence *)
-  assert (Diverges t = behavior_app t (Diverges E0)).
+  assert (Diverges t0 = behavior_app t0 (Diverges E0)).
     simpl. rewrite E0_right; auto.
   rewrite H0 in H1.
   exploit backward_simulation_star; eauto.
@@ -474,7 +482,7 @@ Proof.
 + (* reactive divergence *)
   econstructor. eapply backward_simulation_forever_reactive; eauto.
 + (* goes wrong *)
-  assert (Goes_wrong t = behavior_app t (Goes_wrong E0)).
+  assert (Goes_wrong t0 = behavior_app t0 (Goes_wrong E0)).
     simpl. rewrite E0_right; auto.
   rewrite H0 in H1.
   exploit backward_simulation_star; eauto.
@@ -540,7 +548,7 @@ Hypothesis Lwb: well_behaved_traces L.
 
 Remark atomic_finish: forall s t, output_trace t -> Star (atomic L) (t, s) t (E0, s).
 Proof.
-  induction t; intros.
+  induction t0; intros.
   apply star_refl.
   simpl in H; destruct H. eapply star_left; eauto.
   simpl. apply atomic_step_continue; auto. simpl; auto. auto.
@@ -549,7 +557,7 @@ Qed.
 Lemma step_atomic_plus:
   forall s1 t s2, Step L s1 t s2 -> Plus (atomic L) (E0,s1) t (E0,s2).
 Proof.
-  intros.  destruct t.
+  intros.  destruct t0.
   apply plus_one. simpl; apply atomic_step_silent; auto.
   exploit Lwb; eauto. simpl; intros.
   eapply plus_left. eapply atomic_step_start; eauto. eapply atomic_finish; eauto. auto.
@@ -582,7 +590,7 @@ Proof.
   destruct IHstar as [t' [A B]].
   simpl in H; inv H; simpl in *.
   exists t'; split. eapply star_left; eauto. auto.
-  exists (ev :: t0 ** t'); split. eapply star_left; eauto. rewrite B; auto.
+  exists (ev :: t3 ** t'); split. eapply star_left; eauto. rewrite B; auto.
   exists t'; split. auto. rewrite B; auto.
 Qed.
 
@@ -590,7 +598,7 @@ Lemma atomic_star_star:
   forall s1 t s2, Star (atomic L) (E0,s1) t (E0,s2) -> Star L s1 t s2.
 Proof.
   intros. exploit atomic_star_star_gen; eauto. intros [t' [A B]].
-  simpl in *. replace t with t'. auto. subst; traceEq.
+  simpl in *. replace t0 with t'. auto. subst; traceEq.
 Qed.
 
 Lemma atomic_forever_silent_forever_silent:
@@ -618,17 +626,17 @@ Lemma atomic_forever_reactive_forever_reactive:
 Proof.
   assert (forall t s T, Forever_reactive (atomic L) (t,s) T ->
           exists T', Forever_reactive (atomic L) (E0,s) T' /\ T = t *** T').
-  induction t; intros. exists T; auto.
+  induction t0; intros. exists T; auto.
   inv H. inv H0. congruence. simpl in H; inv H.
-  destruct (IHt s (t2***T0)) as [T' [A B]]. eapply star_forever_reactive; eauto.
+  destruct (IHt0 s (t3***T0)) as [T' [A B]]. eapply star_forever_reactive; eauto.
   exists T'; split; auto. simpl. congruence.
 
   cofix COINDHYP; intros. inv H0. destruct s2 as [t2 s2].
   destruct (H _ _ _ H3) as [T' [A B]].
-  assert (Star (atomic L) (E0, s) (t**t2) (E0, s2)).
+  assert (Star (atomic L) (E0, s) (t0**t2) (E0, s2)).
     eapply star_trans. eauto. apply atomic_finish. eapply star_atomic_output_trace; eauto. auto.
-  replace (t *** T0) with ((t ** t2) *** T'). apply forever_reactive_intro with s2.
-  apply atomic_star_star; auto. destruct t; simpl in *; unfold E0 in *; congruence.
+  replace (t0 *** T0) with ((t0 ** t2) *** T'). apply forever_reactive_intro with s2.
+  apply atomic_star_star; auto. destruct t0; simpl in *; unfold E0 in *; congruence.
   apply COINDHYP. auto.
   subst T0; traceEq.
 Qed.
@@ -670,9 +678,9 @@ Proof.
     destruct t'; auto. eelim H2. simpl. apply atomic_step_continue.
     eapply star_atomic_output_trace; eauto.
   subst t'. econstructor. apply atomic_star_star; eauto.
-  red; intros; red; intros. destruct t0.
+  red; intros; red; intros. destruct t1.
   elim (H2 E0 (E0,s'0)). constructor; auto.
-  elim (H2 (e::nil) (t0,s'0)). constructor; auto.
+  elim (H2 (e::nil) (t1,s'0)). constructor; auto.
   intros; red; intros. elim (H3 r). simpl; auto.
 + (* initial state undefined *)
   apply program_goes_initially_wrong.
@@ -756,7 +764,7 @@ Proof.
   induction 1.
   exists E0; split. apply star_refl. auto.
   inv H. destruct IHtsteps as [t' [A B]].
-  exists (t ** t'); split.
+  exists (t0 ** t'); split.
   simpl; eapply star_left; eauto.
   simpl in *. subst T. traceEq.
 Qed.
@@ -766,10 +774,10 @@ Lemma tsilent_forever_silent:
   tsilent S -> forever_silent step ge (state_of_tstate S).
 Proof.
   cofix COINDHYP; intro S. case S. intros until f. simpl. case f. intros.
-  assert (tstep t (ST s1 (t *** T0) (forever_intro s1 t s0 f0))
+  assert (tstep t0 (ST s1 (t0 *** T0) (forever_intro s1 t0 s0 f0))
                   (ST s2 T0 f0)).
     constructor.
-  assert (t = E0).
+  assert (t0 = E0).
     red in H. eapply H; eauto. apply tsteps_refl.
   apply forever_silent_intro with (state_of_tstate (ST s2 T0 f0)).
   rewrite <- H1. assumption.
@@ -849,3 +857,5 @@ Proof.
 Qed.
 
 End BIGSTEP_BEHAVIORS.
+
+End Behaviors.
