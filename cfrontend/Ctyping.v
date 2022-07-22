@@ -1853,7 +1853,7 @@ Proof.
 - (* condition *) constructor. destruct b; auto. destruct b; auto. red; auto.
 - (* sizeof *)  unfold size_t, Vptrofs; destruct Archi.ptr64; constructor; auto with ty.
 - (* alignof *)  unfold size_t, Vptrofs; destruct Archi.ptr64; constructor; auto with ty.
-- (* assign *) inversion H6. constructor. eapply wt_assign_loc in H0; eauto. eapply pres_sem_cast; eauto.
+- (* assign *) inversion H6. constructor. eapply wt_assign_loc in H1; eauto. eapply pres_sem_cast; eauto. inv H7. auto.
 - (* assignop *) subst tyres l r. constructor. auto.
   constructor. constructor. eapply wt_deref_loc in H; eauto.
   auto. auto. auto.
