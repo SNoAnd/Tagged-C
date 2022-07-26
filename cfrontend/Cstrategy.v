@@ -33,10 +33,27 @@ Require Import Ctypes.
 Require Import Cop.
 Require Import Csyntax.
 Require Import Csem.
+Require Import Tags.
 
+Module Cstrategy (T:Tag) (P: Policy T).
+  Module TLib := TagLib T.
+  Import TLib.
+  Module Csem := Csem T P.
+  Import Csem.
+  Import Csyntax.
+  Import Cop.
+  Import Deterministic.
+  Import Behaviors.
+  Import Smallstep.
+  Import Events.
+  Import Genv.
+  Import Mem.
+  Import P.
+
+  
 Section STRATEGY.
 
-Variable ge: genv.
+Variable ge: gcenv.
 
 (** * Definition of the strategy *)
 
@@ -49,7 +66,7 @@ Variable ge: genv.
 
 Fixpoint simple (a: expr) : bool :=
   match a with
-  | Eloc _ _ _ _ => true
+  | Eloc _ _ _ _ _ => true
   | Evar _ _ => true
   | Ederef r _ => simple r
   | Efield r _ _ => simple r
@@ -85,68 +102,70 @@ Section SIMPLE_EXPRS.
 
 Variable e: env.
 Variable m: mem.
+Variable PCT: tag.
 
 Inductive eval_simple_lvalue: expr -> ptrofs -> bitfield -> Prop :=
-  | esl_loc: forall ofs ty bf,
-      eval_simple_lvalue (Eloc Mem.dummy ofs bf ty) ofs bf
-  | esl_var_local: forall x ty z,
-      e!x = Some(z, ty) ->
+  | esl_loc: forall ofs ty bf pt,
+      eval_simple_lvalue (Eloc Mem.dummy ofs pt bf ty) ofs bf
+  | esl_var_local: forall x ty z pt,
+      e!x = Some(z, pt, ty) ->
       eval_simple_lvalue (Evar x ty) (Ptrofs.repr z) Full
   | esl_var_global: forall x ty b,
       e!x = None ->
-      Genv.find_symbol ge x = Some b ->
+      Genv.find_symbol (fst ge) x = Some b ->
       eval_simple_lvalue (Evar x ty) Ptrofs.zero Full
-  | esl_deref: forall r ty ofs,
-      eval_simple_rvalue r (Vptr Mem.dummy ofs) ->
+  | esl_deref: forall r ty ofs vt,
+      eval_simple_rvalue r (Vptr Mem.dummy ofs,vt) ->
       eval_simple_lvalue (Ederef r ty) ofs Full
-  | esl_field_struct: forall r f ty ofs id co a delta bf,
-      eval_simple_rvalue r (Vptr Mem.dummy ofs) ->
+  | esl_field_struct: forall r f ty ofs vt id co a delta bf,
+      eval_simple_rvalue r (Vptr Mem.dummy ofs, vt) ->
       typeof r = Tstruct id a ->
-      ge.(genv_cenv)!id = Some co ->
-      field_offset ge f (co_members co) = OK (delta, bf) ->
+      (snd ge)!id = Some co ->
+      field_offset (snd ge) f (co_members co) = OK (delta, bf) ->
       eval_simple_lvalue (Efield r f ty) (Ptrofs.add ofs (Ptrofs.repr delta)) bf
-  | esl_field_union: forall r f ty ofs id co a delta bf,
-      eval_simple_rvalue r (Vptr Mem.dummy ofs) ->
+  | esl_field_union: forall r f ty ofs vt id co a delta bf,
+      eval_simple_rvalue r (Vptr Mem.dummy ofs, vt) ->
       typeof r = Tunion id a ->
-      union_field_offset ge f (co_members co) = OK (delta, bf) ->
-      ge.(genv_cenv)!id = Some co ->
+      union_field_offset (snd ge) f (co_members co) = OK (delta, bf) ->
+      (snd ge)!id = Some co ->
       eval_simple_lvalue (Efield r f ty) (Ptrofs.add ofs (Ptrofs.repr delta)) bf
 
-with eval_simple_rvalue: expr -> val -> Prop :=
+with eval_simple_rvalue: expr -> atom -> Prop :=
   | esr_val: forall v ty,
       eval_simple_rvalue (Eval v ty) v
-  | esr_rvalof: forall ofs bf l ty v,
+  | esr_rvalof: forall ofs b pt bf l ty v lts,
       eval_simple_lvalue l ofs bf ->
       ty = typeof l -> type_is_volatile ty = false ->
-      deref_loc ge ty m ofs bf E0 v ->
+      deref_loc ge ty m b ofs pt bf E0 v lts ->
       eval_simple_rvalue (Evalof l ty) v
-  | esr_addrof: forall ofs l ty,
+  | esr_addrof: forall ofs l ty pt,
       eval_simple_lvalue l ofs Full ->
-      eval_simple_rvalue (Eaddrof l ty) (Vptr Mem.dummy ofs)
-  | esr_unop: forall op r1 ty v1 v,
-      eval_simple_rvalue r1 v1 ->
+      eval_simple_rvalue (Eaddrof l ty) (Vptr Mem.dummy ofs, pt)
+  | esr_unop: forall op r1 ty v1 vt v,
+      eval_simple_rvalue r1 (v1,vt) ->
       sem_unary_operation op v1 (typeof r1) m = Some v ->
-      eval_simple_rvalue (Eunop op r1 ty) v
-  | esr_binop: forall op r1 r2 ty v1 v2 v,
-      eval_simple_rvalue r1 v1 -> eval_simple_rvalue r2 v2 ->
-      sem_binary_operation ge op v1 (typeof r1) v2 (typeof r2) m = Some v ->
-      eval_simple_rvalue (Ebinop op r1 r2 ty) v
-  | esr_cast: forall ty r1 v1 v,
-      eval_simple_rvalue r1 v1 ->
+      eval_simple_rvalue (Eunop op r1 ty) (v,vt)
+  | esr_binop: forall op r1 r2 ty v1 vt1 v2 vt2 v vt,
+      eval_simple_rvalue r1 (v1,vt1) -> eval_simple_rvalue r2 (v2,vt2) ->
+      BinopT PCT vt1 vt2 = Some (PCT,vt) ->
+      sem_binary_operation (snd ge) op v1 (typeof r1) v2 (typeof r2) m = Some v ->
+      eval_simple_rvalue (Ebinop op r1 r2 ty) (v,vt)
+  | esr_cast: forall ty r1 v1 vt v,
+      eval_simple_rvalue r1 (v1,vt) ->
       sem_cast v1 (typeof r1) ty m = Some v ->
-      eval_simple_rvalue (Ecast r1 ty) v
+      eval_simple_rvalue (Ecast r1 ty) (v,vt)
   | esr_sizeof: forall ty1 ty,
-      eval_simple_rvalue (Esizeof ty1 ty) (Vptrofs (Ptrofs.repr (sizeof ge ty1)))
+      eval_simple_rvalue (Esizeof ty1 ty) (Vptrofs (Ptrofs.repr (sizeof (snd ge) ty1)), def_tag)
   | esr_alignof: forall ty1 ty,
-      eval_simple_rvalue (Ealignof ty1 ty) (Vptrofs (Ptrofs.repr (alignof ge ty1))).
+      eval_simple_rvalue (Ealignof ty1 ty) (Vptrofs (Ptrofs.repr (alignof (snd ge) ty1)), def_tag).
 
-Inductive eval_simple_list: exprlist -> typelist -> list val -> Prop :=
+Inductive eval_simple_list: exprlist -> typelist -> list atom -> Prop :=
   | esrl_nil:
       eval_simple_list Enil Tnil nil
-  | esrl_cons: forall r rl ty tyl v vl v',
-      eval_simple_rvalue r v' -> sem_cast v' (typeof r) ty m = Some v ->
+  | esrl_cons: forall r rl ty tyl v vl v' vt,
+      eval_simple_rvalue r (v',vt) -> sem_cast v' (typeof r) ty m = Some v ->
       eval_simple_list rl tyl vl ->
-      eval_simple_list (Econs r rl) (Tcons ty tyl) (v :: vl).
+      eval_simple_list (Econs r rl) (Tcons ty tyl) ((v,vt) :: vl).
 
 Scheme eval_simple_rvalue_ind2 := Minimality for eval_simple_rvalue Sort Prop
   with eval_simple_lvalue_ind2 := Minimality for eval_simple_lvalue Sort Prop.
@@ -232,14 +251,14 @@ Local Hint Resolve leftcontext_context : core.
   If there are none, the whole expression is simple and is evaluated in
   one big step. *)
 
-Inductive estep: state -> trace -> state -> Prop :=
+Inductive estep: Csem.state -> trace -> Csem.state -> Prop :=
 
-  | step_expr: forall f r k e m v ty,
-      eval_simple_rvalue e m r v ->
+  | step_expr: forall f PCT r k e m v ty,
+      eval_simple_rvalue PCT e m r v ->
       match r with Eval _ _ => False | _ => True end ->
       ty = typeof r ->
-      estep (ExprState f r k e m)
-         E0 (ExprState f (Eval v ty) k e m)
+      estep (ExprState f PCT r k e m)
+         E0 (ExprState f PCT (Eval v ty) k e m)
 
   | step_rvalof_volatile: forall f C l ty k e m ofs bf t v,
       leftcontext RV RV C ->

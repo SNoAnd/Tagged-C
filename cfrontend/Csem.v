@@ -908,7 +908,7 @@ Inductive sstep: state -> trace -> state -> Prop :=
 
 Definition step (S: state) (t: trace) (S': state) : Prop :=
   estep S t S' \/ sstep S t S'.
-
+  
 End SEM.
 
 (** * Whole-program semantics *)

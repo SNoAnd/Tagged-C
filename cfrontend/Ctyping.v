@@ -1725,8 +1725,8 @@ Proof.
 Qed.
 
 Lemma wt_deref_loc:
-  forall ge ty m ofs bf t v lts,
-  deref_loc ge ty m ofs bf t v lts ->
+  forall ge ty m b ofs pt bf t v lts,
+  deref_loc ge ty m b ofs pt bf t v lts ->
   wt_atom v ty.
 Proof.
   induction 1.
@@ -1756,8 +1756,8 @@ Proof.
 Qed.
 
 Lemma wt_assign_loc:
-  forall ge ty m ofs bf v t m' v' lts,
-  assign_loc ge ty m ofs bf v t m' v' lts ->
+  forall ge ty m b ofs pt bf v t m' v' lts,
+  assign_loc ge ty m b ofs pt bf v t m' v' lts ->
   wt_atom v ty -> wt_atom v' ty.
 Proof.
   induction 1; intros; auto.
@@ -2136,25 +2136,25 @@ Proof.
 Qed.
 
 Inductive wt_state: Csem.state -> Prop :=
-  | wt_stmt_state: forall f s k e m te
+  | wt_stmt_state: forall f PCT s k e m te
         (WTK: wt_stmt_cont te f k)
         (WTB: wt_stmt ce te f.(fn_return) f.(fn_body))
         (WTS: wt_stmt ce te f.(fn_return) s),
-      wt_state (State f s k e m)
-  | wt_expr_state: forall f r k e m te
+      wt_state (State f PCT s k e m)
+  | wt_expr_state: forall f PCT r k e m te
         (WTK: wt_expr_cont te f k)
         (WTB: wt_stmt ce te f.(fn_return) f.(fn_body))
         (WTE: wt_rvalue ce te r),
-      wt_state (ExprState f r k e m)
-  | wt_call_state: forall b fd vargs k m
+      wt_state (ExprState f PCT r k e m)
+  | wt_call_state: forall b fd PCT vargs k m
         (WTK: wt_call_cont k (fundef_return fd))
         (WTFD: wt_fundef ce gtenv fd)
         (FIND: Genv.find_funct ge b = Some fd),
-      wt_state (Callstate fd vargs k m)
-  | wt_return_state: forall v vt k m ty
+      wt_state (Callstate fd PCT vargs k m)
+  | wt_return_state: forall PCT v vt k m ty
         (WTK: wt_call_cont k ty)
         (VAL: wt_val v ty),
-      wt_state (Returnstate (v,vt) k m)
+      wt_state (Returnstate PCT (v,vt) k m)
   | wt_stuck_state:
       wt_state Stuckstate.
 
@@ -2248,7 +2248,8 @@ Proof.
 - inv WTK; eauto with ty.
 - inv WTK; eauto with ty.
 - inv WTS; eauto with ty.
-- inv WTK; destruct b; eauto with ty.
+- inv WTK; destruct b; eauto with ty; admit.
+- admit.
 - inv WTS; eauto with ty.
 - inv WTK; eauto with ty.
 - inv WTK; eauto with ty.
@@ -2284,7 +2285,8 @@ Proof.
   apply has_rettype_wt_val. simpl; rewrite <- H1.
   eapply external_call_well_typed_gen in H; eauto.
 - inv WTK. eauto with ty.
-Qed.
+Admitted.
+(*Qed.*)
 
 Theorem preservation:
   forall S t S', Csem.step gce S t S' -> wt_state S -> wt_state S'.
