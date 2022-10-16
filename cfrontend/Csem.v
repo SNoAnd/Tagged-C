@@ -108,8 +108,8 @@ Definition empty_env: env := (PTree.empty (Z * tag * type)).
   | deref_loc_value: forall chunk v vt lts,
       access_mode ty = By_value chunk ->
       type_is_volatile ty = false ->
-      Mem.load chunk m b (Ptrofs.intval ofs) = Some (v,vt) ->
-      Mem.load_ltags chunk m b (Ptrofs.intval ofs) = lts ->
+      Mem.load chunk m b (Ptrofs.unsigned ofs) = Some (v,vt) ->
+      Mem.load_ltags chunk m b (Ptrofs.unsigned ofs) = lts ->
       deref_loc ty m b ofs pt Full E0 (v,vt) lts
   | deref_loc_volatile: forall chunk t v vt lts,
       access_mode ty = By_value chunk -> type_is_volatile ty = true ->

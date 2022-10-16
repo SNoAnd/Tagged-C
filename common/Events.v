@@ -582,33 +582,41 @@ Fixpoint output_trace (t: trace) : Prop :=
 
 Inductive volatile_load (ge: Genv.t F V):
                    memory_chunk -> mem -> block -> ptrofs -> trace -> atom -> list tag -> Prop :=
-  | volatile_load_vol: forall chunk m b pt ofs id ev v vt lts,
-      block_is_volatile ge b = true ->
-      find_symbol ge id = Some (b,pt) ->
+  | volatile_load_vol: forall chunk m pt ofs id ev v vt lts,
+      addr_is_volatile ge ofs = true ->
+      find_symbol ge id = Some (dummy,pt) ->
       eventval_match ge ev (type_of_chunk chunk) (v,vt) ->
-      volatile_load ge chunk m b ofs
+      volatile_load ge chunk m dummy ofs
                       (Event_vload chunk id ofs ev :: nil)
                       (Val.load_result chunk v,vt)
                       lts
-  | volatile_load_nonvol: forall chunk m b ofs v lts,
-      block_is_volatile ge b = false ->
+  | volatile_load_nonvol: forall chunk m ofs v lts,
+      addr_is_volatile ge ofs = false ->
+      Mem.load chunk m dummy (Ptrofs.unsigned ofs) = Some v ->
+      volatile_load ge chunk m dummy ofs E0 v lts
+  | volatile_load_block: forall chunk m b ofs v lts,
+      b <> dummy ->
       Mem.load chunk m b (Ptrofs.unsigned ofs) = Some v ->
       volatile_load ge chunk m b ofs E0 v lts.
 
 Inductive volatile_store (ge: Genv.t F V):
                   memory_chunk -> mem -> block -> ptrofs -> atom -> list tag -> trace -> mem -> Prop :=
-  | volatile_store_vol: forall chunk m b pt ofs id ev v vt lts,
-      Genv.block_is_volatile ge b = true ->
-      Genv.find_symbol ge id = Some (b,pt) ->
+  | volatile_store_vol: forall chunk m pt ofs id ev v vt lts,
+      Genv.addr_is_volatile ge ofs = true ->
+      Genv.find_symbol ge id = Some (dummy,pt) ->
       eventval_match ge ev (type_of_chunk chunk) (Val.load_result chunk v, vt) ->
-      volatile_store ge chunk m b ofs (v,vt) lts
+      volatile_store ge chunk m dummy ofs (v,vt) lts
                      (Event_vstore chunk id ofs ev :: nil)
                      m
-  | volatile_store_nonvol: forall chunk m b ofs v lts m',
-      Genv.block_is_volatile ge b = false ->
+  | volatile_store_nonvol: forall chunk m dummy ofs v lts m',
+      Genv.addr_is_volatile ge ofs = false ->
+      Mem.store chunk m dummy (Ptrofs.unsigned ofs) v lts = Some m' ->
+      volatile_store ge chunk m dummy ofs v lts E0 m'
+  | volatile_store_block: forall chunk m b ofs v lts m',
+      b <> dummy ->
       Mem.store chunk m b (Ptrofs.unsigned ofs) v lts = Some m' ->
       volatile_store ge chunk m b ofs v lts E0 m'.
-
+  
 (** * Semantics of external functions *)
 
 (** For each external function, its behavior is defined by a predicate relating:

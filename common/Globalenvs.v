@@ -69,10 +69,12 @@ Variable V: Type.  (**r The type of information attached to variables *)
 (** The type of global environments. *)
 
 Record t: Type := mkgenv {
-  genv_public: list ident;              (**r which symbol names are public *)
-  genv_symb: PTree.t (block*tag);             (**r mapping symbol -> block *)
-  genv_defs: PTree.t (globdef F V);     (**r mapping block -> definition *)
-  genv_next: block;                     (**r next symbol pointer *)
+  genv_public: list ident;               (**r which symbol names are public *)
+  genv_symb: PTree.t (block*tag);        (**r mapping symbol -> block, static tag associated with symbol *)
+  genv_defs: PTree.t (globdef F V);      (**r mapping block -> definition *)
+  genv_regions: PTree.t (ptrofs * ptrofs); (**r mapping block -> low and high address bound *)
+  genv_next: block;                      (**r next symbol pointer *)
+  genv_next_addr : ptrofs;                (**r base address for next block *)
   genv_symb_range: forall id b t, PTree.get id genv_symb = Some (b,t) -> Plt b genv_next;
   genv_defs_range: forall b g, PTree.get b genv_defs = Some g -> Plt b genv_next;
   genv_vars_inj: forall id1 id2 b,
@@ -146,14 +148,32 @@ Definition block_is_volatile (ge: t) (b: block) : bool :=
   | Some gv => gv.(gvar_volatile)
   end.
 
+Definition addr_is_volatile (ge: t) (p: ptrofs) : bool :=
+  existsb (fun '(b,(lo,hi)) => negb (Ptrofs.lt p lo) && (Ptrofs.lt p hi) && block_is_volatile ge b)
+          (PTree.elements ge.(genv_regions)).
+
 (** ** Constructing the global environment *)
+
+Definition alloc_global_var (ge: t) (idg: ident * globdef F V) (regions: PTree.t (ptrofs*ptrofs)) :
+  (ptrofs * PTree.t (ptrofs*ptrofs)) :=
+  match (snd idg) with
+  | Gvar gv =>
+      let base := ge.(genv_next_addr) in
+      let size := init_data_list_size gv.(gvar_init) in
+      let bound := Ptrofs.add base (Ptrofs.repr size) in
+      let regions' := PTree.set ge.(genv_next) (base, bound) regions in
+      (bound, regions')
+  | _ => (ge.(genv_next_addr), regions)
+  end.
 
 Program Definition add_global (ge: t) (idg: ident * globdef F V) : t :=
   @mkgenv
     ge.(genv_public)
     (PTree.set idg#1 (ge.(genv_next),def_tag) ge.(genv_symb))
     (PTree.set ge.(genv_next) idg#2 ge.(genv_defs))
+    (snd (alloc_global_var ge idg ge.(genv_regions)))
     (Pos.succ ge.(genv_next))
+    (fst (alloc_global_var ge idg ge.(genv_regions)))
     _ _ _.
 Next Obligation.
   destruct ge; simpl in *.
@@ -187,7 +207,7 @@ Proof.
 Qed.
 
 Program Definition empty_genv (pub: list ident): t :=
-  @mkgenv pub (PTree.empty _) (PTree.empty _) 1%positive _ _ _.
+  @mkgenv pub (PTree.empty _) (PTree.empty _) (PTree.empty _) 1%positive Ptrofs.zero _ _ _.
 
 Definition globalenv (p: program F V) :=
   add_globals (empty_genv p.(prog_public)) p.(prog_defs).

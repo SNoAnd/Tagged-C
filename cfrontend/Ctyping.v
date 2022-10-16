@@ -1740,6 +1740,8 @@ Proof.
   + (* not really volatile *)
     exploit Mem.load_result; eauto. intros EQ; rewrite EQ.
     apply wt_decode_val; auto.
+  + exploit Mem.load_result; eauto. intros EQ; rewrite EQ.
+    apply wt_decode_val; auto.
 - (* by reference *)
   simpl.
   destruct ty; simpl in H; try discriminate; auto with ty.
