@@ -150,7 +150,7 @@ Definition link_vardef {V: Type} {LV: Linker V} (v1 v2: globvar V) :=
       | Some init =>
           if eqb v1.(gvar_readonly) v2.(gvar_readonly)
           && eqb v1.(gvar_volatile) v2.(gvar_volatile)
-          then Some {| gvar_info := info; gvar_init := init;
+          then Some {| gvar_info := info; gvar_init := init; gvar_size := v1.(gvar_size);
                        gvar_readonly := v1.(gvar_readonly);
                        gvar_volatile := v1.(gvar_volatile) |}
           else None
@@ -158,10 +158,10 @@ Definition link_vardef {V: Type} {LV: Linker V} (v1 v2: globvar V) :=
   end.
 
 Inductive linkorder_vardef {V: Type} {LV: Linker V}: globvar V -> globvar V -> Prop :=
-  | linkorder_vardef_intro: forall info1 info2 i1 i2 ro vo,
+  | linkorder_vardef_intro: forall info1 info2 s1 s2 i1 i2 ro vo,
       linkorder info1 info2 ->
       linkorder i1 i2 ->
-      linkorder_vardef (mkglobvar info1 i1 ro vo) (mkglobvar info2 i2 ro vo).
+      linkorder_vardef (mkglobvar info1 s1 i1 ro vo) (mkglobvar info2 s2 i2 ro vo).
 
 Global Program Instance Linker_vardef (V: Type) {LV: Linker V}: Linker (globvar V) := {
   link := link_vardef;
@@ -175,7 +175,7 @@ Next Obligation.
 Defined.
 Next Obligation.
   revert H; unfold link_vardef.
-  destruct x as [f1 i1 r1 v1], y as [f2 i2 r2 v2]; simpl.
+  destruct x as [f1 s1 i1 r1 v1], y as [f2 s2 i2 r2 v2]; simpl.
   destruct (link f1 f2) as [f|] eqn:LF; try discriminate.
   destruct (link i1 i2) as [i|] eqn:LI; try discriminate.
   destruct (eqb r1 r2) eqn:ER; try discriminate.
@@ -404,9 +404,9 @@ Variable match_fundef: C -> F1 -> F2 -> Prop.
 Variable match_varinfo: V1 -> V2 -> Prop.
 
 Inductive match_globvar: globvar V1 -> globvar V2 -> Prop :=
-  | match_globvar_intro: forall i1 i2 init ro vo,
+  | match_globvar_intro: forall i1 i2 s init ro vo,
       match_varinfo i1 i2 ->
-      match_globvar (mkglobvar i1 init ro vo) (mkglobvar i2 init ro vo).
+      match_globvar (mkglobvar i1 s init ro vo) (mkglobvar i2 s init ro vo).
 
 Inductive match_globdef (ctx: C): globdef F1 V1 -> globdef F2 V2 -> Prop :=
   | match_globdef_fun: forall ctx' f1 f2,
