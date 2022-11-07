@@ -31,7 +31,7 @@ module Nat = struct
 
   let rec to_int = function
   | O -> 0
-  | S n -> Int.succ (to_int n)
+  | S n -> succ (to_int n)
 
   let rec to_int32 = function
   | O -> 0l
@@ -56,7 +56,7 @@ module P = struct
 
   let one = Coq_xH
   let succ = Pos.succ
-(*  let pred = Pos.pred *)
+  let pred = Pos.pred
   let eq x y = (Pos.compare x y = Eq)
   let lt x y = (Pos.compare x y = Lt)
   let gt x y = (Pos.compare x y = Gt)

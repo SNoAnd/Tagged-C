@@ -2285,8 +2285,7 @@ Proof.
 - inv WTFD. inv H3. econstructor; eauto. apply wt_call_cont_stmt_cont; auto.
 - inv WTFD. destruct vres. econstructor; eauto.
   apply has_rettype_wt_val. simpl; rewrite <- H1.
-  admit.
-  (*eapply external_call_well_typed_gen in H; eauto.*)
+  eapply external_call_well_typed_gen in H; eauto.
 - inv WTK. eauto with ty.
 Admitted.
 (*Qed.*)
@@ -2301,7 +2300,7 @@ Theorem wt_initial_state:
   forall S, Csem.initial_state prog S -> wt_state S.
 Proof.
   intros. inv H. econstructor. constructor.
-  apply Genv.find_funct_ptr_prop with (p := prog) (b := b) (ofs := Ptrofs.zero); auto.
+  apply Genv.find_funct_ptr_prop with (p := prog) (b := b); auto.
   intros. inv WTPROG. apply H4 with id; auto.
   instantiate (1 := (Vptr b Ptrofs.zero)). rewrite Genv.find_funct_find_funct_ptr. auto.
 Qed.

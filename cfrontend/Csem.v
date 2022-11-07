@@ -53,51 +53,6 @@ Module Type Policy (T:Tag).
   Parameter DummyT : list tag -> option (list tag).
 End Policy.
 
-Module NullTag <: Tag.
-  Definition tag := unit.
-  Theorem tag_eq_dec : forall (t1 t2:tag), {t1 = t2} + {t1 <> t2}.
-  Proof.
-    unfold tag. intros. left. destruct t1. destruct t2. auto.
-  Qed.
-  Definition def_tag := tt.
-End NullTag.
-
-Module NullPolicy <: Policy NullTag.
-  Import NullTag.
-  
-  Definition InitPCT : tag := tt.
-
-  Definition VarTag (id:ident) := tt.
-
-  Definition LocalAllocT (pct ft : tag) : option (tag * tag * tag) := Some (tt, tt, tt).
-  
-  Definition ConstT : tag := tt.
-
-  Definition VarAddrT (pct vt : tag) : option (tag * tag) := Some (tt,tt).
-  
-  Definition UnopT (pct vt : tag) : option (tag * tag) := Some (tt, tt).
-
-  Definition BinopT (pct vt1 vt2 : tag) : option (tag * tag) := Some (tt, tt).
-  
-  Definition LoadT (pct pt vt lt : tag) : option tag := Some tt.
-
-  Definition StoreT (pct pt ovt vt lt : tag) : option (tag * tag * tag) := Some (tt, tt, tt).
-
-  Definition IfSplitT (pct vt : tag) : option (tag * tag) := Some (tt, tt).
-
-  Definition IfJoinT (pct opct : tag) : option tag := Some tt.
-  
-  Definition ltag_smoosh (lts : list tag) : tag := tt.
-
-  Fixpoint ltag_unsmoosh (lt : tag) (n : nat) : list tag :=
-    match n with
-    | O => []
-    | S n => lt::(ltag_unsmoosh lt n)
-    end. 
-  
-  Definition DummyT (ts : list tag) : option (list tag) := Some ts.
-End NullPolicy.  
- 
 Module Csem (T:Tag) (P: Policy T).
   Module TLib := TagLib T.
   Import TLib.
@@ -186,25 +141,25 @@ Definition empty_env: env := (PTree.empty (Z * tag * type)).
   | assign_loc_value: forall v vt lts chunk m',
       access_mode ty = By_value chunk ->
       type_is_volatile ty = false ->
-      Mem.storev chunk m (Vptr b ofs) (v,vt) lts = Some m' ->
+      Mem.storev chunk m (Vptr Mem.dummy ofs) (v,vt) lts = Some m' ->
       assign_loc ty m b ofs pt Full (v,vt) E0 m' (v,vt) lts
   | assign_loc_volatile: forall v lts chunk t m',
       access_mode ty = By_value chunk -> type_is_volatile ty = true ->
-      volatile_store (fst ge) chunk m b ofs v lts t m' ->
+      volatile_store (fst ge) chunk m Mem.dummy ofs v lts t m' ->
       assign_loc ty m b ofs pt Full v t m' v lts
-  | assign_loc_copy: forall ofs' bytes lts m' b' pt',
+  | assign_loc_copy: forall ofs' bytes lts m',
       access_mode ty = By_copy ->
       (alignof_blockcopy (snd ge) ty | Ptrofs.unsigned ofs') ->
       (alignof_blockcopy (snd ge) ty | Ptrofs.unsigned ofs) ->
-      b' <> b \/ Ptrofs.unsigned ofs' = Ptrofs.unsigned ofs
-      \/ Ptrofs.unsigned ofs' + sizeof (snd ge) ty <= Ptrofs.unsigned ofs
-      \/ Ptrofs.unsigned ofs + sizeof (snd ge) ty <= Ptrofs.unsigned ofs' ->
-      Mem.loadbytes m b' (Ptrofs.unsigned ofs') (sizeof (snd ge) ty) = Some bytes ->
-      (* check on this: Mem.loadtags m b' (Ptrofs.unsigned ofs') (sizeof (snd ge) ty) = Some lts ->*)
-      Mem.storebytes m b (Ptrofs.unsigned ofs) bytes lts = Some m' ->
-      assign_loc ty m b ofs pt Full (Vptr b' ofs', pt') E0 m' (Vptr b' ofs', pt') lts
+      Mem.dummy <> Mem.dummy \/ Ptrofs.unsigned ofs' = Ptrofs.unsigned ofs
+                             \/ Ptrofs.unsigned ofs' + sizeof (snd ge) ty <= Ptrofs.unsigned ofs
+                             \/ Ptrofs.unsigned ofs + sizeof (snd ge) ty <= Ptrofs.unsigned ofs' ->
+      Mem.loadbytes m Mem.dummy (Ptrofs.unsigned ofs') (sizeof (snd ge) ty) = Some bytes ->
+      Mem.loadtags m Mem.dummy (Ptrofs.unsigned ofs') (sizeof (snd ge) ty) = Some lts ->
+      Mem.storebytes m Mem.dummy (Ptrofs.unsigned ofs) bytes lts = Some m' ->
+      assign_loc ty m b ofs pt Full (Vptr Mem.dummy ofs', pt) E0 m' (Vptr Mem.dummy ofs', pt) lts
   | assign_loc_bitfield: forall sz sg pos width v m' v' lts,
-      store_bitfield ty sz sg pos width m (Vptr b ofs, pt) v lts m' v' ->
+      store_bitfield ty sz sg pos width m (Vptr Mem.dummy ofs, pt) v lts m' v' ->
       assign_loc ty m b ofs pt (Bits sz sg pos width) v E0 m' v' lts.
 
 (** Allocation of function-local variables.
@@ -240,9 +195,9 @@ Inductive bind_parameters (e: env):
       forall m,
       bind_parameters e m nil nil m
   | bind_parameters_cons:
-      forall m id ty params v1 vl v1' lo pt m1 m2 lts,
-      PTree.get id e = Some(lo, pt, ty) ->
-      assign_loc ty m Mem.dummy (Ptrofs.repr lo) pt Full v1 E0 m1 v1' lts ->
+      forall m id ty params v1 vl v1' lo m1 m2 lts,
+      PTree.get id e = Some(lo, ty) ->
+      assign_loc ty m Mem.dummy Ptrofs.zero def_tag Full v1 E0 m1 v1' lts ->
       bind_parameters e m1 params vl m2 ->
       bind_parameters e m ((id, ty) :: params) (v1 :: vl) m2.
 
@@ -964,11 +919,11 @@ End SEM.
   without arguments and with an empty continuation. *)
 
 Inductive initial_state (p: program): state -> Prop :=
-  | initial_state_intro: forall b base bound pt f m0,
+  | initial_state_intro: forall b pt f m0,
       let ge := globalenv p in
       Genv.init_mem p = Some m0 ->
-      Genv.find_symbol (fst ge) p.(prog_main) = Some (b,base,bound,pt) ->
-      Genv.find_funct_ptr (fst ge) b Ptrofs.zero = Some f ->
+      Genv.find_symbol (fst ge) p.(prog_main) = Some (b,pt) ->
+      Genv.find_funct_ptr (fst ge) b = Some f ->
       type_of_fundef f = Tfunction Tnil type_int32s cc_default ->
       initial_state p (Callstate f InitPCT nil Kstop m0).
 
@@ -987,8 +942,7 @@ Definition semantics (p: program) :=
 
 Lemma semantics_single_events:
   forall p, single_events (semantics p).
-Admitted.
-(*Proof.
+Proof.
   unfold semantics; intros; red; simpl; intros.
   set (ge := globalenv p) in *.
   assert (DEREF: forall chunk m b ofs pt bf t v lts, deref_loc ge chunk m b ofs pt bf t v lts -> (length t <= 1)%nat).
@@ -999,6 +953,6 @@ Admitted.
   inv H; simpl; try lia. inv H0; eauto; simpl; try lia.
   eapply external_call_trace_length; eauto.
   inv H; simpl; try lia. eapply external_call_trace_length; eauto.
-Qed.*)
+Qed.
 
 End Csem.

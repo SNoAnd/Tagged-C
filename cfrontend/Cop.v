@@ -1143,10 +1143,10 @@ Inductive load_bitfield: type -> intsize -> signedness -> Z -> Z -> mem -> val -
                     (Vint (bitfield_extract sz sg pos width c), vt) lts.
 
 Inductive store_bitfield: type -> intsize -> signedness -> Z -> Z -> mem -> atom -> atom -> list tag -> mem -> atom -> Prop :=
-  | store_bitfield_intro: forall sz sg1 attr sg pos width m addr pt c n vt ovt lts m',
+  | store_bitfield_intro: forall sz sg1 attr sg pos width m addr pt c n vt lts m',
       0 <= pos -> 0 < width <= bitsize_intsize sz -> pos + width <= bitsize_carrier sz ->
       sg1 = (if zlt width (bitsize_intsize sz) then Signed else sg) ->
-      Mem.loadv (chunk_for_carrier sz) m addr = Some (Vint c, ovt) ->
+      Mem.loadv (chunk_for_carrier sz) m addr = Some (Vint c, vt) ->
       Mem.storev (chunk_for_carrier sz) m addr
                  (Vint (Int.bitfield_insert (first_bit sz pos width) width c n), vt) lts = Some m' ->
       store_bitfield (Tint sz sg1 attr) sz sg pos width m (addr,pt) (Vint n,vt) lts

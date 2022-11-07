@@ -33,14 +33,12 @@ Require Import Ctypes.
 Require Import Cop.
 Require Import Csyntax.
 Require Import Csem.
-Require Import Ctyping.
 Require Import Tags.
 
 Module Cstrategy (T:Tag) (P: Policy T).
   Module TLib := TagLib T.
   Import TLib.
-  Module Ctyping := Ctyping T P.
-  Import Ctyping.
+  Module Csem := Csem T P.
   Import Csem.
   Import Csyntax.
   Import Cop.
@@ -112,9 +110,9 @@ Inductive eval_simple_lvalue: expr -> block -> ptrofs -> tag -> bitfield -> Prop
   | esl_var_local: forall x ty lo pt,
       e!x = Some(lo, pt, ty) ->
       eval_simple_lvalue (Evar x ty) Mem.dummy (Ptrofs.repr lo) pt Full
-  | esl_var_global: forall x ty b base bound pt,
+  | esl_var_global: forall x ty b pt,
       e!x = None ->
-      Genv.find_symbol (fst ge) x = Some (b, base, bound, pt) ->
+      Genv.find_symbol (fst ge) x = Some (b, pt) ->
       eval_simple_lvalue (Evar x ty) b Ptrofs.zero pt Full
   | esl_deref: forall r ty b ofs pt,
       eval_simple_rvalue PCT r (Vptr b ofs, pt) ->
