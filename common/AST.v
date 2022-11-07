@@ -279,6 +279,7 @@ Qed.
 
 Record globvar (V: Type) : Type := mkglobvar {
   gvar_info: V;                    (**r language-dependent info, e.g. a type *)
+  gvar_size: positive;
   gvar_init: list init_data;       (**r initialization data *)
   gvar_readonly: bool;             (**r read-only variable? (const) *)
   gvar_volatile: bool              (**r volatile variable? *)
@@ -400,7 +401,7 @@ Variable transf_var: ident -> V -> res W.
 
 Definition transf_globvar (i: ident) (g: globvar V) : res (globvar W) :=
   do info' <- transf_var i g.(gvar_info);
-  OK (mkglobvar info' g.(gvar_init) g.(gvar_readonly) g.(gvar_volatile)).
+  OK (mkglobvar info' g.(gvar_size) g.(gvar_init) g.(gvar_readonly) g.(gvar_volatile)).
 
 Fixpoint transf_globdefs (l: list (ident * globdef A V)) : res (list (ident * globdef B W)) :=
   match l with

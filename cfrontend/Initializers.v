@@ -14,9 +14,29 @@
 
 Require Import Coqlib Maps Errors.
 Require Import Integers Floats Values AST Memory Globalenvs.
-Require Import Ctypes Cop Csyntax.
+Require Import Ctypes Cop Csyntax Csem.
+Require Import Cexec Tags.
 
 Open Scope error_monad_scope.
+
+Module Initializers (T:Tag) (P:Policy T).
+  Module TLib := TagLib T.
+  Import TLib.
+  Module Cexec := Cexec T P.
+  Import Cexec.
+  Import Cstrategy.
+  Import Ctyping.
+  Import Csem.
+  Import Csyntax.
+  Import Cop.
+  Import Deterministic.
+  Import Behaviors.
+  Import Smallstep.
+  Import Events.
+  Import Genv.
+  Import Mem.
+  Import P.
+
 
 (** * Evaluation of compile-time constant expressions *)
 
@@ -51,7 +71,7 @@ Definition lookup_composite (ce: composite_env) (id: ident) : res composite :=
 
 Fixpoint constval (ce: composite_env) (a: expr) : res val :=
   match a with
-  | Eval v ty =>
+  | Eval (v,vt) ty =>
       match v with
       | Vint _ | Vfloat _ | Vsingle _ | Vlong _ => OK v
       | Vptr _ _ | Vundef => Error(msg "illegal constant")
@@ -470,3 +490,5 @@ Definition transl_init (ce: composite_env) (ty: type) (i: initializer)
   let s0 := initial_state (sizeof ce ty) in
   do s1 <- transl_init_rec ce s0 ty i 0;
   init_data_list_of_state s1.
+
+End Initializers.

@@ -157,11 +157,11 @@ let transf_outputs loc env = function
 let check_clobbers loc clob =
   List.iter
     (fun c ->
-      if Machregsnames.register_by_name c <> None
+      (*if Machregsnames.register_by_name c <> None
       || Machregsaux.is_scratch_register c
       || c = "memory" || c = "cc" (* GCC does not accept MEMORY or CC *)
       then ()
-      else error loc "unrecognized asm register clobber '%s'" c)
+      else*) error loc "unrecognized asm register clobber '%s'" c)
     clob
 
 (* Renaming of the %nnn and %[ident] placeholders in the asm text *)
