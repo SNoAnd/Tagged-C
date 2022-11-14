@@ -15,6 +15,10 @@ open Printf
 open Clflags
 open Commandline
 open Driveraux
+open Csem
+
+module Init = Initializers.Initializers (NullTag) (NullPolicy)
+module Csyntax = Init.Cexec.Cstrategy.Ctyping.Csem.Csyntax
 
 (* Common frontend functions between clightgen and ccomp *)
 
@@ -75,7 +79,6 @@ let preprocess ifile ofile =
 let parse_c_file sourcename ifile =
   Debug.init_compile_unit sourcename;
   Sections.initialize();
-  CPragmas.reset();
   (* Simplification options *)
   let simplifs =
     "b" (* blocks: mandatory *)

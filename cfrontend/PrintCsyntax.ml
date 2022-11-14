@@ -21,32 +21,36 @@ open Camlcoq
 open Values
 open AST
 open! Ctypes
-open Cop
-open Csyntax
+open Csem
+
+module Init = Initializers.Initializers (NullTag) (NullPolicy)
+module Ctyping = Init.Cexec.Cstrategy.Ctyping
+module Csyntax = Ctyping.Csem.Csyntax
+module Cop = Csyntax.Cop
 
 let name_unop = function
-  | Onotbool -> "!"
-  | Onotint  -> "~"
-  | Oneg     -> "-"
-  | Oabsfloat -> "__builtin_fabs"
+  | Cop.Onotbool -> "!"
+  | Cop.Onotint  -> "~"
+  | Cop.Oneg     -> "-"
+  | Cop.Oabsfloat -> "__builtin_fabs"
 
 let name_binop = function
-  | Oadd -> "+"
-  | Osub -> "-"
-  | Omul -> "*"
-  | Odiv -> "/"
-  | Omod -> "%"
-  | Oand -> "&"
-  | Oor  -> "|"
-  | Oxor -> "^"
-  | Oshl -> "<<"
-  | Oshr -> ">>"
-  | Oeq  -> "=="
+  | Cop.Oadd -> "+"
+  | Cop.Osub -> "-"
+  | Cop.Omul -> "*"
+  | Cop.Odiv -> "/"
+  | Cop.Omod -> "%"
+  | Cop.Oand -> "&"
+  | Cop.Oor  -> "|"
+  | Cop.Oxor -> "^"
+  | Cop.Oshl -> "<<"
+  | Cop.Oshr -> ">>"
+  | Cop.Oeq  -> "=="
   | Cop.One  -> "!="
-  | Olt  -> "<"
-  | Ogt  -> ">"
-  | Ole  -> "<="
-  | Oge  -> ">="
+  | Cop.Olt  -> "<"
+  | Cop.Ogt  -> ">"
+  | Cop.Ole  -> "<="
+  | Cop.Oge  -> ">="
 
 let name_inttype sz sg =
   match sz, sg with
@@ -138,58 +142,59 @@ let name_type ty = name_cdecl "" ty
 type associativity = LtoR | RtoL | NA
 
 let rec precedence = function
-  | Eloc _ -> (16, NA)
-  | Evar _ -> (16, NA)
-  | Ederef _ -> (15, RtoL)
-  | Efield _ -> (16, LtoR)
-  | Eval _ -> (16, NA)
-  | Evalof(l, _) -> precedence l
-  | Esizeof _ -> (15, RtoL)
-  | Ealignof _ -> (15, RtoL)
-  | Ecall _ | Ebuiltin _ -> (16, LtoR)
-  | Epostincr _ -> (16, LtoR)
-  | Eunop _ -> (15, RtoL)
-  | Eaddrof _ -> (15, RtoL)
-  | Ecast _ -> (14, RtoL)
-  | Ebinop((Omul|Odiv|Omod), _, _, _) -> (13, LtoR)
-  | Ebinop((Oadd|Osub), _, _, _) -> (12, LtoR)
-  | Ebinop((Oshl|Oshr), _, _, _) -> (11, LtoR)
-  | Ebinop((Olt|Ogt|Ole|Oge), _, _, _) -> (10, LtoR)
-  | Ebinop((Oeq|Cop.One), _, _, _) -> (9, LtoR)
-  | Ebinop(Oand, _, _, _) -> (8, LtoR)
-  | Ebinop(Oxor, _, _, _) -> (7, LtoR)
-  | Ebinop(Oor, _, _, _) -> (6, LtoR)
-  | Eseqand _ -> (5, LtoR)
-  | Eseqor _ -> (4, LtoR)
-  | Econdition _ -> (3, RtoL)
-  | Eassign _ -> (2, RtoL)
-  | Eassignop _ -> (2, RtoL)
-  | Ecomma _ -> (1, LtoR)
-  | Eparen _ -> (14, RtoL)
+  | Csyntax.Eloc _ -> (16, NA)
+  | Csyntax.Evar _ -> (16, NA)
+  | Csyntax.Ederef _ -> (15, RtoL)
+  | Csyntax.Efield _ -> (16, LtoR)
+  | Csyntax.Eval _ -> (16, NA)
+  | Csyntax.Evalof(l, _) -> precedence l
+  | Csyntax.Esizeof _ -> (15, RtoL)
+  | Csyntax.Ealignof _ -> (15, RtoL)
+  | Csyntax.Ecall _ | Csyntax.Ebuiltin _ -> (16, LtoR)
+  | Csyntax.Epostincr _ -> (16, LtoR)
+  | Csyntax.Eunop _ -> (15, RtoL)
+  | Csyntax.Eaddrof _ -> (15, RtoL)
+  | Csyntax.Ecast _ -> (14, RtoL)
+  | Csyntax.Ebinop((Cop.Omul|Cop.Odiv|Cop.Omod), _, _, _) -> (13, LtoR)
+  | Csyntax.Ebinop((Cop.Oadd|Cop.Osub), _, _, _) -> (12, LtoR)
+  | Csyntax.Ebinop((Cop.Oshl|Cop.Oshr), _, _, _) -> (11, LtoR)
+  | Csyntax.Ebinop((Cop.Olt|Cop.Ogt|Cop.Ole|Cop.Oge), _, _, _) -> (10, LtoR)
+  | Csyntax.Ebinop((Cop.Oeq|Cop.One), _, _, _) -> (9, LtoR)
+  | Csyntax.Ebinop(Cop.Oand, _, _, _) -> (8, LtoR)
+  | Csyntax.Ebinop(Cop.Oxor, _, _, _) -> (7, LtoR)
+  | Csyntax.Ebinop(Cop.Oor, _, _, _) -> (6, LtoR)
+  | Csyntax.Eseqand _ -> (5, LtoR)
+  | Csyntax.Eseqor _ -> (4, LtoR)
+  | Csyntax.Econdition _ -> (3, RtoL)
+  | Csyntax.Eassign _ -> (2, RtoL)
+  | Csyntax.Eassignop _ -> (2, RtoL)
+  | Csyntax.Ecomma _ -> (1, LtoR)
+  | Csyntax.Eparen _ -> (14, RtoL)
 
 (* Expressions *)
 
 let print_pointer_hook
+(*   : (formatter -> (((BinNums.coq_Z * BinNums.coq_Z) * Csem/2.NullTag.tag) * Ctypes.coq_type) -> unit) ref*)
    : (formatter -> Values.block * Integers.Int.int -> unit) ref
    = ref (fun p (b, ofs) -> ())
 
 let print_typed_value p v ty =
   match v, ty with
-  | Vint n, Ctypes.Tint(I32, Unsigned, _) ->
+  | (Vint n,_), Ctypes.Tint(I32, Unsigned, _) ->
       fprintf p "%luU" (camlint_of_coqint n)
-  | Vint n, _ ->
+  | (Vint n,_), _ ->
       fprintf p "%ld" (camlint_of_coqint n)
-  | Vfloat f, _ ->
+  | (Vfloat f,_), _ ->
       fprintf p "%.15F" (camlfloat_of_coqfloat f)
-  | Vsingle f, _ ->
+  | (Vsingle f,_), _ ->
       fprintf p "%.15Ff" (camlfloat_of_coqfloat32 f)
-  | Vlong n, Ctypes.Tlong(Unsigned, _) ->
+  | (Vlong n,_), Ctypes.Tlong(Unsigned, _) ->
       fprintf p "%LuLLU" (camlint64_of_coqint n)
-  | Vlong n, _ ->
+  | (Vlong n,_), _ ->
       fprintf p "%LdLL" (camlint64_of_coqint n)
-  | Vptr(b, ofs), _ ->
+  | (Vptr(b, ofs),_), _ ->
       fprintf p "<ptr%a>" !print_pointer_hook (b, ofs)
-  | Vundef, _ ->
+  | (Vundef,_), _ ->
       fprintf p "<undef>"
 
 let print_value p v = print_typed_value p v Tvoid
@@ -204,85 +209,83 @@ let rec expr p (prec, e) =
   then fprintf p "@[<hov 2>("
   else fprintf p "@[<hov 2>";
   begin match e with
-  | Eloc(b, ofs, _, _) ->
+  | Csyntax.Eloc(b, ofs, _, _, _) ->
       fprintf p "<loc%a>" !print_pointer_hook (b, ofs)
-  | Evar(id, _) ->
+  | Csyntax.Evar(id, _) ->
       fprintf p "%s" (extern_atom id)
-  | Ederef(a1, _) ->
+  | Csyntax.Ederef(a1, _) ->
       fprintf p "*%a" expr (prec', a1)
-  | Efield(a1, f, _) ->
+  | Csyntax.Efield(a1, f, _) ->
       fprintf p "%a.%s" expr (prec', a1) (extern_atom f)
-  | Evalof(l, _) ->
+  | Csyntax.Evalof(l, _) ->
       expr p (prec, l)
-  | Eval(v, ty) ->
+  | Csyntax.Eval(v, ty) ->
       print_typed_value p v ty
-  | Esizeof(ty, _) ->
+  | Csyntax.Esizeof(ty, _) ->
       fprintf p "sizeof(%s)" (name_type ty)
-  | Ealignof(ty, _) ->
+  | Csyntax.Ealignof(ty, _) ->
       fprintf p "__alignof__(%s)" (name_type ty)
-  | Eunop(Oabsfloat, a1, _) ->
+  | Csyntax.Eunop(Cop.Oabsfloat, a1, _) ->
       fprintf p "__builtin_fabs(%a)" expr (2, a1)
-  | Eunop(op, a1, _) ->
+  | Csyntax.Eunop(op, a1, _) ->
       fprintf p "%s%a" (name_unop op) expr (prec', a1)
-  | Eaddrof(a1, _) ->
+  | Csyntax.Eaddrof(a1, _) ->
       fprintf p "&%a" expr (prec', a1)
-  | Epostincr(id, a1, _) ->
+  | Csyntax.Epostincr(id, a1, _) ->
       fprintf p "%a%s" expr (prec', a1)
-                        (match id with Incr -> "++" | Decr -> "--")
-  | Ebinop(op, a1, a2, _) ->
+                        (match id with Cop.Incr -> "++" | Cop.Decr -> "--")
+  | Csyntax.Ebinop(op, a1, a2, _) ->
       fprintf p "%a@ %s %a"
                  expr (prec1, a1) (name_binop op) expr (prec2, a2)
-  | Ecast(a1, ty) ->
+  | Csyntax.Ecast(a1, ty) ->
       fprintf p "(%s) %a" (name_type ty) expr (prec', a1)
-  | Eassign(res, Ebuiltin(EF_inline_asm(txt, sg, clob), _, args, _), _) ->
-      extended_asm p txt (Some res) args clob
-  | Eassign(a1, a2, _) ->
+  | Csyntax.Eassign(a1, a2, _) ->
       fprintf p "%a =@ %a" expr (prec1, a1) expr (prec2, a2)
-  | Eassignop(op, a1, a2, _, _) ->
+  | Csyntax.Eassignop(op, a1, a2, _, _) ->
       fprintf p "%a %s=@ %a" expr (prec1, a1) (name_binop op) expr (prec2, a2)
-  | Eseqand(a1, a2, _) ->
+  | Csyntax.Eseqand(a1, a2, _) ->
       fprintf p "%a@ && %a" expr (prec1, a1) expr (prec2, a2)
-  | Eseqor(a1, a2, _) ->
+  | Csyntax.Eseqor(a1, a2, _) ->
       fprintf p "%a@ || %a" expr (prec1, a1) expr (prec2, a2)
-  | Econdition(a1, a2, a3, _) ->
+  | Csyntax.Econdition(a1, a2, a3, _) ->
       fprintf p "%a@ ? %a@ : %a" expr (4, a1) expr (4, a2) expr (4, a3)
-  | Ecomma(a1, a2, _) ->
+  | Csyntax.Ecomma(a1, a2, _) ->
       fprintf p "%a,@ %a" expr (prec1, a1) expr (prec2, a2)
-  | Ecall(a1, al, _) ->
+  | Csyntax.Ecall(a1, al, _) ->
       fprintf p "%a@[<hov 1>(%a)@]" expr (prec', a1) exprlist (true, al)
-  | Ebuiltin(EF_memcpy(sz, al), _, args, _) ->
+(*  | Csyntax.Ebuiltin(Csyntax.EF_memcpy(sz, al), _, args, _) ->
       fprintf p "__builtin_memcpy_aligned@[<hov 1>(%ld,@ %ld,@ %a)@]"
                 (camlint_of_coqint sz) (camlint_of_coqint al)
                 exprlist (true, args)
-  | Ebuiltin(EF_annot(_,txt, _), _, args, _) ->
+  | Csyntax.Ebuiltin(Csyntax.EF_annot(_,txt, _), _, args, _) ->
       fprintf p "__builtin_annot@[<hov 1>(%S%a)@]"
                 (camlstring_of_coqstring txt) exprlist (false, args)
-  | Ebuiltin(EF_annot_val(_,txt, _), _, args, _) ->
+  | Csyntax.Ebuiltin(Csyntax.EF_annot_val(_,txt, _), _, args, _) ->
       fprintf p "__builtin_annot_intval@[<hov 1>(%S%a)@]"
                 (camlstring_of_coqstring txt) exprlist (false, args)
-  | Ebuiltin(EF_external(id, sg), _, args, _) ->
+  | Csyntax.Ebuiltin(Csyntax.EF_external(id, sg), _, args, _) ->
       fprintf p "%s@[<hov 1>(%a)@]" (camlstring_of_coqstring id) exprlist (true, args)
-  | Ebuiltin(EF_runtime(id, sg), _, args, _) ->
+  | Csyntax.Ebuiltin(Csyntax.EF_runtime(id, sg), _, args, _) ->
       fprintf p "%s@[<hov 1>(%a)@]" (camlstring_of_coqstring id) exprlist (true, args)
-  | Ebuiltin(EF_inline_asm(txt, sg, clob), _, args, _) ->
+  | Csyntax.Ebuiltin(Csyntax.EF_inline_asm(txt, sg, clob), _, args, _) ->
       extended_asm p txt None args clob
-  | Ebuiltin(EF_debug(kind,txt,_),_,args,_) ->
+  | Csyntax.Ebuiltin(Csyntax.EF_debug(kind,txt,_),_,args,_) ->
       fprintf p "__builtin_debug@[<hov 1>(%d,%S%a)@]"
         (P.to_int kind) (extern_atom txt) exprlist (false,args)
-  | Ebuiltin(EF_builtin(name, _), _, args, _) ->
+  | Csyntax.Ebuiltin(Csyntax.EF_builtin(name, _), _, args, _) ->
       fprintf p "%s@[<hov 1>(%a)@]"
-                (camlstring_of_coqstring name) exprlist (true, args)
-  | Ebuiltin(_, _, args, _) ->
+                (camlstring_of_coqstring name) exprlist (true, args)*)
+  | Csyntax.Ebuiltin(_, _, args, _) ->
       fprintf p "<unknown builtin>@[<hov 1>(%a)@]" exprlist (true, args)
-  | Eparen(a1, tycast, ty) ->
+  | Csyntax.Eparen(a1, tycast, ty) ->
       fprintf p "(%s) %a" (name_type tycast) expr (prec', a1)
   end;
   if prec' < prec then fprintf p ")@]" else fprintf p "@]"
 
 and exprlist p (first, rl) =
   match rl with
-  | Enil -> ()
-  | Econs(r, rl) ->
+  | Csyntax.Enil -> ()
+  | Csyntax.Econs(r, rl) ->
       if not first then fprintf p ",@ ";
       expr p (2, r);
       exprlist p (false, rl)
@@ -296,8 +299,8 @@ and extended_asm p txt res args clob =
   end;
   let rec inputs p (first, el) =
     match el with
-    | Enil -> ()
-    | Econs(e1, el) ->
+    | Csyntax.Enil -> ()
+    | Csyntax.Econs(e1, el) ->
         if not first then fprintf p ",@ ";
         fprintf p "\"r\"(%a)" expr (0, e1);
         inputs p (false, el) in
@@ -320,61 +323,61 @@ let print_exprlist p el = exprlist p (true, el)
 
 let rec print_stmt p s =
   match s with
-  | Sskip ->
+  | Csyntax.Sskip ->
       fprintf p "/*skip*/;"
-  | Sdo e ->
+  | Csyntax.Sdo e ->
       fprintf p "%a;" print_expr e
-  | Ssequence(s1, s2) ->
+  | Csyntax.Ssequence(s1, s2) ->
       fprintf p "%a@ %a" print_stmt s1 print_stmt s2
-  | Sifthenelse(e, s1, Sskip) ->
+  | Csyntax.Sifthenelse(e, s1, Csyntax.Sskip) ->
       fprintf p "@[<v 2>if (%a) {@ %a@;<0 -2>}@]"
               print_expr e
               print_stmt s1
-  | Sifthenelse(e, s1, s2) ->
+  | Csyntax.Sifthenelse(e, s1, s2) ->
       fprintf p "@[<v 2>if (%a) {@ %a@;<0 -2>} else {@ %a@;<0 -2>}@]"
               print_expr e
               print_stmt s1
               print_stmt s2
-  | Swhile(e, s) ->
+  | Csyntax.Swhile(e, s) ->
       fprintf p "@[<v 2>while (%a) {@ %a@;<0 -2>}@]"
               print_expr e
               print_stmt s
-  | Sdowhile(e, s) ->
+  | Csyntax.Sdowhile(e, s) ->
       fprintf p "@[<v 2>do {@ %a@;<0 -2>} while(%a);@]"
               print_stmt s
               print_expr e
-  | Sfor(s_init, e, s_iter, s_body) ->
+  | Csyntax.Sfor(s_init, e, s_iter, s_body) ->
       fprintf p "@[<v 2>for (@[<hv 0>%a;@ %a;@ %a) {@]@ %a@;<0 -2>}@]"
               print_stmt_for s_init
               print_expr e
               print_stmt_for s_iter
               print_stmt s_body
-  | Sbreak ->
+  | Csyntax.Sbreak ->
       fprintf p "break;"
-  | Scontinue ->
+  | Csyntax.Scontinue ->
       fprintf p "continue;"
-  | Sswitch(e, cases) ->
+  | Csyntax.Sswitch(e, cases) ->
       fprintf p "@[<v 2>switch (%a) {@ %a@;<0 -2>}@]"
               print_expr e
               print_cases cases
-  | Sreturn None ->
+  | Csyntax.Sreturn None ->
       fprintf p "return;"
-  | Sreturn (Some e) ->
+  | Csyntax.Sreturn (Some e) ->
       fprintf p "return %a;" print_expr e
-  | Slabel(lbl, s1) ->
+  | Csyntax.Slabel(lbl, s1) ->
       fprintf p "%s:@ %a" (extern_atom lbl) print_stmt s1
-  | Sgoto lbl ->
+  | Csyntax.Sgoto lbl ->
       fprintf p "goto %s;" (extern_atom lbl)
 
 and print_cases p cases =
   match cases with
-  | LSnil ->
+  | Csyntax.LSnil ->
       ()
-  | LScons(lbl, Sskip, rem) ->
+  | Csyntax.LScons(lbl, Csyntax.Sskip, rem) ->
       fprintf p "%a:@ %a"
               print_case_label lbl
               print_cases rem
-  | LScons(lbl, s, rem) ->
+  | Csyntax.LScons(lbl, s, rem) ->
       fprintf p "@[<v 2>%a:@ %a@]@ %a"
               print_case_label lbl
               print_stmt s
@@ -386,11 +389,11 @@ and print_case_label p = function
 
 and print_stmt_for p s =
   match s with
-  | Sskip ->
+  | Csyntax.Sskip ->
       fprintf p "/*nothing*/"
-  | Sdo e ->
+  | Csyntax.Sdo e ->
       print_expr p e
-  | Ssequence(s1, s2) ->
+  | Csyntax.Ssequence(s1, s2) ->
       fprintf p "%a, %a" print_stmt_for s1 print_stmt_for s2
   | _ ->
       fprintf p "({ %a })" print_stmt s
@@ -418,19 +421,19 @@ let name_function_parameters name_param fun_name params cconv =
 let print_function p id f =
   fprintf p "%s@ "
             (name_cdecl (name_function_parameters extern_atom
-                             (extern_atom id) f.fn_params f.fn_callconv)
-                        f.fn_return);
+                             (extern_atom id) f.Csyntax.fn_params f.Csyntax.fn_callconv)
+                        f.Csyntax.fn_return);
   fprintf p "@[<v 2>{@ ";
   List.iter
     (fun (id, ty) ->
       fprintf p "%s;@ " (name_cdecl (extern_atom id) ty))
-    f.fn_vars;
-  print_stmt p f.fn_body;
+    f.Csyntax.fn_vars;
+  print_stmt p f.Csyntax.fn_body;
   fprintf p "@;<0 -2>}@]@ @ "
 
 let print_fundef p id fd =
   match fd with
-  | Ctypes.External((EF_external _ | EF_runtime _| EF_malloc | EF_free), args, res, cconv) ->
+  | Ctypes.External((AST.EF_external _ | AST.EF_runtime _| AST.EF_malloc | AST.EF_free), args, res, cconv) ->
       fprintf p "extern %s;@ @ "
                 (name_cdecl (extern_atom id) (Tfunction(args, res, cconv)))
   | Ctypes.External(_, _, _, _) ->

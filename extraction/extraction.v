@@ -99,7 +99,8 @@ Cd "extraction".
 
 Separate Extraction
    Cexec.do_initial_state Cexec.do_step Cexec.at_final_state
-   Ctypes.merge_attributes Ctypes.remove_attributes Ctypes.build_composite_env
+   Ctypes.merge_attributes Ctypes.remove_attributes
+   Ctypes.build_composite_env Ctypes.signature_of_type Ctypes.typlist_of_typelist
    transl_init constval
    Csyntax.Eindex Csyntax.Epreincr Csyntax.Eselection
    Ctyping.typecheck_program

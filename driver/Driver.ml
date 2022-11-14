@@ -36,63 +36,13 @@ let object_filename sourcename =
   else
     tmp_file ".o"
 
-(* From CompCert C AST to asm *)
-
-let compile_c_file sourcename ifile ofile =
-  (* Prepare to dump Clight, RTL, etc, if requested *)
-  let set_dest dst opt ext =
-    dst := if !opt then Some (output_filename sourcename ~suffix:ext)
-      else None in
-  set_dest Cprint.destination option_dparse ".parsed.c";
-  set_dest PrintCsyntax.destination option_dcmedium ".compcert.c";
-  set_dest PrintClight.destination option_dclight ".light.c";
-  set_dest PrintCminor.destination option_dcminor ".cm";
-  set_dest PrintRTL.destination option_drtl ".rtl";
-  set_dest Regalloc.destination_alloctrace option_dalloctrace ".alloctrace";
-  set_dest PrintLTL.destination option_dltl ".ltl";
-  set_dest PrintMach.destination option_dmach ".mach";
-  set_dest AsmToJSON.destination option_sdump !sdump_suffix;
-  (* Parse the ast *)
-  let csyntax = parse_c_file sourcename ifile in
-  (* Convert to Asm *)
-  let asm =
-    match Compiler.apply_partial
-               (Compiler.transf_c_program csyntax)
-               Asmexpand.expand_program with
-    | Errors.OK asm ->
-        asm
-    | Errors.Error msg ->
-      let loc = file_loc sourcename in
-        fatal_error loc "%a"  print_error msg in
-  (* Dump Asm in binary and JSON format *)
-  AsmToJSON.print_if asm sourcename;
-  (* Print Asm in text form *)
-  let oc = open_out ofile in
-  PrintAsm.print_program oc asm;
-  close_out oc
-
 (* From C source to asm *)
 
 let compile_i_file sourcename preproname =
-  if !option_interp then begin
-    Machine.config := Machine.compcert_interpreter !Machine.config;
-    let csyntax = parse_c_file sourcename preproname in
-    Interp.execute csyntax;
-        ""
-  end else if !option_S then begin
-    compile_c_file sourcename preproname
-      (output_filename ~final:true sourcename ~suffix:".s");
-    ""
-  end else begin
-    let asmname =
-      if !option_dasm
-      then output_filename sourcename ~suffix:".s"
-      else tmp_file ".s" in
-    compile_c_file sourcename preproname asmname;
-    let objname = object_filename sourcename  in
-    assemble asmname objname;
-    objname
-  end
+  Machine.config := Machine.compcert_interpreter !Machine.config;
+  let csyntax = parse_c_file sourcename preproname in
+  Interp.execute csyntax;
+  ""
 
 (* Processing of a .c file *)
 
@@ -181,7 +131,7 @@ Processing options:
 |} ^
   prepro_help ^
   language_support_help ^
- DebugInit.debugging_help ^
+ (*DebugInit.debugging_help ^*)
 {|Optimization options: (use -fno-<opt> to turn off -f<opt>)
   -O             Optimize the compiled code [on by default]
   -O0            Do not optimize the compiled code
@@ -242,7 +192,6 @@ let print_usage_and_exit () =
 let dump_mnemonics destfile =
   let oc = open_out_bin destfile in
   let pp = Format.formatter_of_out_channel oc in
-  AsmToJSON.pp_mnemonics pp;
   Format.pp_print_flush pp ();
   close_out oc;
   exit 0
@@ -286,9 +235,9 @@ let cmdline_actions =
   (* Preprocessing options *)
     @ prepro_actions @
   (* Language support options *)
-    language_support_options
+    language_support_options @
   (* Debugging options *)
-    @ DebugInit.debugging_actions @
+   (* @ DebugInit.debugging_actions @ *)
 (* Code generation options -- more below *)
  [
   Exact "-O0", Unit (unset_all optimization_options);
@@ -345,8 +294,7 @@ let cmdline_actions =
     option_dmach := true;
     option_dasm := true);
   Exact "-sdump", Set option_sdump;
-  Exact "-sdump-suffix", String (fun s -> option_sdump := true; sdump_suffix:= s);
-  Exact "-sdump-folder", String (fun s -> AsmToJSON.sdump_folder := s);] @
+  Exact "-sdump-suffix", String (fun s -> option_sdump := true; sdump_suffix:= s);] @
 (* General options *)
    general_options @
 (* Diagnostic options *)
@@ -407,7 +355,7 @@ let _ =
     Printexc.record_backtrace true;
     Frontend.init ();
     parse_cmdline cmdline_actions;
-    DebugInit.init (); (* Initialize the debug functions *)
+    (*DebugInit.init (); (* Initialize the debug functions *)*)
     if nolink () && !option_o <> None && !num_source_files >= 2 then
       fatal_error no_loc "ambiguous '-o' option (multiple source files)";
     if !num_input_files = 0 then

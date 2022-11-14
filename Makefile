@@ -148,9 +148,6 @@ all:
 	$(MAKE) proof
 	$(MAKE) extraction
 	$(MAKE) ccomp
-ifeq ($(HAS_RUNTIME_LIB),true)
-	$(MAKE) runtime
-endif
 ifeq ($(INSTALL_COQDEV),true)
 	$(MAKE) compcert.config
 endif

@@ -48,20 +48,6 @@ let process_use_section_pragma classname id =
       C2C.error "unknown section name `%s'" classname
   end
 
-(* #pragma reserve_register *)
-
-let reserved_registers = ref ([]: Machregs.mreg list)
-
-let process_reserve_register_pragma name =
-  match Machregsnames.register_by_name name with
-  | None ->
-      C2C.error "unknown register in `reserve_register' pragma"
-  | Some r ->
-      if Conventions1.is_callee_save r then
-        reserved_registers := r :: !reserved_registers
-      else
-        C2C.error "cannot reserve this register (not a callee-save)"
-
 (* Parsing of pragmas *)
 
 let process_pragma name =
@@ -80,15 +66,8 @@ let process_pragma name =
       true
   | "use_section" :: _ ->
       C2C.error "ill-formed `use_section' pragma"; true
-  | ["reserve_register"; reg] ->
-      process_reserve_register_pragma reg; true
-  | "reserve_register" :: _ ->
-      C2C.error "ill-formed `reserve_register' pragma"; true
   | _ ->
       false
-
-let reset () =
-  reserved_registers := []
 
 let initialize () =
   C2C.process_pragma_hook := process_pragma
