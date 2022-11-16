@@ -37,7 +37,6 @@ Module Initializers (T:Tag) (P:Policy T).
   Import Mem.
   Import P.
 
-
 (** * Evaluation of compile-time constant expressions *)
 
 (** To evaluate constant expressions at compile-time, we use the same [value]

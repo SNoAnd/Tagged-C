@@ -128,9 +128,9 @@ Module Csem (T:Tag) (P: Policy T).
   The current value of the variable is stored in the associated memory
   block. *)
 
-Definition env := PTree.t (Z * tag * type). (* map variable -> base address & ptr tag & type *)
+Definition env := PTree.t (Z * Z * tag * type). (* map variable -> base address & bound & ptr tag & type *)
 
-Definition empty_env: env := (PTree.empty (Z * tag * type)).
+Definition empty_env: env := (PTree.empty (Z * Z * tag * type)).
   
   Section SEM.
 
@@ -225,7 +225,7 @@ Inductive alloc_variables: tag -> env -> mem ->
         LocalAllocT PCT (VarTag id) = Some (PCT', pt, lt) ->
         Mem.store (chunk_of_type (typ_of_type ty)) m1 Mem.dummy lo1 (Vundef, def_tag) (ltag_unsmoosh lt (Z.abs_nat (sizeof (snd ge) ty))) = Some m2 ->
         (* initialize location tags *)
-        alloc_variables PCT' (PTree.set id (lo1, pt, ty) e) m2 vars PCT'' e2 m3 ->
+        alloc_variables PCT' (PTree.set id (lo1, hi1, pt, ty) e) m2 vars PCT'' e2 m3 ->
         alloc_variables PCT e m ((id, ty) :: vars) PCT'' e2 m2.
 
 (** Initialization of local variables that are parameters to a function.
@@ -240,20 +240,16 @@ Inductive bind_parameters (e: env):
       forall m,
       bind_parameters e m nil nil m
   | bind_parameters_cons:
-      forall m id ty params v1 vl v1' lo pt m1 m2 lts,
-      PTree.get id e = Some(lo, pt, ty) ->
+      forall m id ty params v1 vl v1' lo hi pt m1 m2 lts,
+      PTree.get id e = Some(lo, hi, pt, ty) ->
       assign_loc ty m Mem.dummy (Ptrofs.repr lo) pt Full v1 E0 m1 v1' lts ->
       bind_parameters e m1 params vl m2 ->
       bind_parameters e m ((id, ty) :: params) (v1 :: vl) m2.
 
 (** Return the list of blocks in the codomain of [e], with low and high bounds. *)
 
-Definition block_of_binding (id_z_ty: ident * (Z * tag * type)) :=
-  match id_z_ty with (id, (z, pt, ty)) => (z, z + (sizeof (snd ge) ty)) end.
-
 Definition blocks_of_env (e: env) : list (block * Z * Z) :=
-  List.map (fun e => let '(lo,hi) := block_of_binding e in
-                     (Mem.dummy, lo, hi)) (PTree.elements e).
+  List.map (fun '(id,(lo,hi,ty,t)) => (Mem.dummy, lo, hi)) (PTree.elements e).
 
 (** Selection of the appropriate case of a [switch], given the value [n]
   of the selector expression. *)
@@ -309,8 +305,8 @@ Variable e: env.
 (** Head reduction for l-values. *)
 
 Inductive lred: expr -> mem -> expr -> mem -> Prop :=
-| red_var_local: forall PCT PCT' x pt pt' ty m lo,
-    e!x = Some(lo, pt, ty) ->
+| red_var_local: forall PCT PCT' x pt pt' ty m lo hi,
+    e!x = Some(lo, hi, pt, ty) ->
     VarAddrT PCT pt = Some (PCT',pt') ->
     lred (Evar x ty) m
          (Eloc Mem.dummy (Ptrofs.repr lo) pt Full ty) m

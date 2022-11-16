@@ -109,8 +109,8 @@ Variable PCT: tag.
 Inductive eval_simple_lvalue: expr -> block -> ptrofs -> tag -> bitfield -> Prop :=
   | esl_loc: forall b ofs pt ty bf,
       eval_simple_lvalue (Eloc b ofs pt bf ty) b ofs pt bf
-  | esl_var_local: forall x ty lo pt,
-      e!x = Some(lo, pt, ty) ->
+  | esl_var_local: forall x ty lo hi pt,
+      e!x = Some(lo, hi, pt, ty) ->
       eval_simple_lvalue (Evar x ty) Mem.dummy (Ptrofs.repr lo) pt Full
   | esl_var_global: forall x ty b base bound pt,
       e!x = None ->

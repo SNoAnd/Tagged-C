@@ -456,7 +456,7 @@ Proof.
   split. eapply assign_loc_copy; eauto. constructor.
 - mydestr. InvBooleans.
   destruct ty; mydestr. destruct v; mydestr. destruct v; mydestr. InvBooleans. subst s i.
-  split. eapply assign_loc_bitfield; eauto. About store_bitfield. econstructor; eauto. constructor.
+  split. eapply assign_loc_bitfield; eauto. econstructor; eauto. constructor.
 Qed.
 
 Lemma do_assign_loc_complete:
@@ -821,7 +821,7 @@ Fixpoint step_expr (k: kind) (pct: tag) (a: expr) (m: mem): reducts expr :=
       nil
   | LV, Evar x ty =>
       match e!x with
-      | Some(base, t, ty') =>
+      | Some(base, bound, t, ty') =>
           check type_eq ty ty';
           topred (Lred "red_var_local" (Eloc dummy (Ptrofs.repr base) t Full ty) m)
       | None =>
@@ -1068,9 +1068,9 @@ Definition invert_expr_prop (a: expr) (m: mem) : Prop :=
   match a with
   | Eloc b ofs pt bf ty => False
   | Evar x ty =>
-      exists base pt,
-      e!x = Some(base, pt, ty)
-      \/ (exists b bound, (e!x = None /\ Genv.find_symbol (fst ge) x = Some (b,base,bound,pt)))
+      exists base bound pt,
+      e!x = Some(base, bound, pt, ty)
+      \/ (exists b, (e!x = None /\ Genv.find_symbol (fst ge) x = Some (b,base,bound,pt)))
   | Ederef (Eval v ty1) ty =>
       exists b ofs pt, v = (Vptr b ofs,pt)
   | Eaddrof (Eloc b ofs pt bf ty1) ty =>
@@ -2012,7 +2012,7 @@ Fixpoint do_alloc_variables (pct: tag) (e: env) (m: mem) (l: list (ident * type)
   | (id, ty) :: l' =>
       match Mem.alloc m 0 (sizeof (snd ge) ty) with
       | Some (m1,base1,bound1) =>
-          do_alloc_variables pct (PTree.set id (base1, def_tag, ty) e) m1 l'
+          do_alloc_variables pct (PTree.set id (base1, bound1, def_tag, ty) e) m1 l'
       | None =>
           (pct,e,m)
       end
@@ -2046,7 +2046,7 @@ Function sem_bind_parameters (w: world) (e: env) (m: mem) (l: list (ident * type
   | nil, nil => Some m
   | (id, ty) :: params, (v1,vt1)::lv =>
       match e!id with
-         | Some (base, pt, ty') =>
+         | Some (base, bound, pt, ty') =>
              check (type_eq ty ty');
              do w', t, m1, v' <- do_assign_loc w ty m dummy (Ptrofs.repr base) pt Full (v1,vt1) [];
              match t with nil => sem_bind_parameters w e m1 params lv | _ => None end
@@ -2120,7 +2120,7 @@ Definition do_step (w: world) (s: Csem.state) : list transition :=
             else ret "step_for_false" (State f pct Sskip k e m)
         | Kreturn k =>
             do v' <- sem_cast v ty f.(fn_return) m;
-            do m' <- Mem.free_list m (blocks_of_env ge e);
+            do m' <- Mem.free_list m (blocks_of_env e);
             ret "step_return_2" (Returnstate pct (v',def_tag) (call_cont k) m')
         | Kswitch1 sl k =>
             do n <- sem_switch_arg v ty;
@@ -2172,12 +2172,12 @@ Definition do_step (w: world) (s: Csem.state) : list transition :=
       ret "step_skip_for4" (State f pct (Sfor Sskip a2 a3 s) k e m)
 
   | State f pct (Sreturn None) k e m =>
-      do m' <- Mem.free_list m (blocks_of_env ge e);
+      do m' <- Mem.free_list m (blocks_of_env e);
       ret "step_return_0" (Returnstate pct (Vundef,def_tag) (call_cont k) m')
   | State f pct (Sreturn (Some x)) k e m =>
       ret "step_return_1" (ExprState f pct x (Kreturn k) e m)
   | State f pct Sskip ((Kstop | Kcall _ _ _ _ _) as k) e m =>
-      do m' <- Mem.free_list m (blocks_of_env ge e);
+      do m' <- Mem.free_list m (blocks_of_env e);
       ret "step_skip_call" (Returnstate pct (Vundef, def_tag) k m')
 
   | State f pct (Sswitch x sl) k e m =>
