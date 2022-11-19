@@ -271,8 +271,6 @@ Next Obligation.
   - eauto.
 Qed.
 
-
-
 Definition add_globals (ge: t) (gl: list (ident * globdef F V)) : t :=
   List.fold_left add_global gl ge.
 

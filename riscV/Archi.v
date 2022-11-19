@@ -20,7 +20,8 @@
 From Flocq Require Import Binary Bits.
 Require Import ZArith List.
 
-Parameter ptr64 : bool.
+(*Parameter ptr64 : bool.*)
+Definition ptr64 := false.
 
 Definition big_endian := false.
 

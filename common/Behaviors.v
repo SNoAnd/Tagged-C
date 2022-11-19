@@ -175,7 +175,7 @@ Qed.
 (** The most difficult part of the proof is to show the existence
   of an infinite trace in the case of reactive divergence. *)
 
-Section TRACEINF_REACTS.
+(*Section TRACEINF_REACTS.
 
 Variable s0: state L.
 
@@ -185,7 +185,7 @@ Hypothesis reacts:
 
 Lemma reacts':
   forall s1 t1, Star L s0 t1 s1 ->
-  { s2 : state L & { t2 : trace | Star L s1 t2 s2 /\ t2 <> E0 } }.
+                { s2 : state L & { t2 : trace | Star L s1 t2 s2 /\ t2 <> E0 } }.
 Proof.
   intros.
   destruct (constructive_indefinite_description _ (reacts H)) as [s2 A].
@@ -283,13 +283,13 @@ Proof.
 (* 2. Initial state is undefined *)
   exists (Goes_wrong E0). apply program_goes_initially_wrong.
   intros. eapply not_ex_all_not; eauto.
-Qed.
+Qed.*)
 
 End PROGRAM_BEHAVIORS.
 
 (** * Forward simulations and program behaviors *)
 
-Section FORWARD_SIMULATIONS.
+(*Section FORWARD_SIMULATIONS.
 
 Context L1 L2 index order match_states (S: fsim_properties L1 L2 index order match_states).
 
@@ -856,6 +856,6 @@ Proof.
   right. exists t; split. econstructor; eauto. econstructor; eauto. exists T'; auto.
 Qed.
 
-End BIGSTEP_BEHAVIORS.
+End BIGSTEP_BEHAVIORS.*)
 
 End Behaviors.
