@@ -366,14 +366,14 @@ Program Definition alloc (m: mem) (lo hi: Z) : option (mem*Z*Z) :=
                             (ZMap.init (Undef, def_tag))
                             m.(mem_contents))
                   (PMap.set dummy
-                            (fun ofs => if zle lo ofs && zlt ofs hi
+                            (fun ofs => if zle lo' ofs && zlt ofs hi'
                                         then Live
                                         else m.(mem_access) !! dummy ofs)
                             m.(mem_access))
                   al_state'
                   ((lo',hi')::m.(live))
                   _,
-             lo', hi)
+             lo', hi')
   | None => None
   end.
 Next Obligation.
