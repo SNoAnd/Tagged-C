@@ -105,20 +105,23 @@ let invert_local_variable e b ofs =
     e None
 
 let print_pointer ge e p (b, ofs) =
-  match invert_local_variable e b ofs with
+  if P.eq b Mem.dummy
+  then fprintf p "M,%ld" (camlint_of_coqint ofs)
+  else fprintf p "M,%ld" (camlint_of_coqint ofs)
+(*  match invert_local_variable e b ofs with
   | Some id ->
     (match Maps.PTree.get id e with
     | Some (((base,bound),ty),t) ->
       print_id_ofs p (id, Z.of_sint ((Z.to_int ofs) - (Z.to_int base)))
-    | None -> ())
+    | None -> fprintf p "Not sure what this means\n")
   | None ->
       match Genv.invert_symbol ge b ofs with
       | Some id ->
         (match Maps.PTree.get id e with
         | Some (((base,bound),ty),t) ->
           print_id_ofs p (id, Z.of_sint ((Z.to_int ofs) - (Z.to_int base)))
-        | None -> ())
-      | None -> ()
+        | None -> fprintf p "Not sure what this means again\n")
+      | None -> fprintf p "Not a global or a local\n" *)
 
 let print_val = PrintCsyntax.print_value
 
