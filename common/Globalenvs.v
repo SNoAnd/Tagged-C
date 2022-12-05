@@ -671,7 +671,7 @@ Definition perm_globvar (gv: globvar V) : permission := Live.
 
 Definition global_block (m: mem) (id: ident) (sz: Z) : mem :=
   let mem_access' := (PMap.set id (fun ofs : Z => if zle 0 ofs && zlt ofs sz then Live else Dead) (Mem.mem_access m)) in
-  Mem.mkmem m.(Mem.mem_contents) mem_access' m.(Mem.al_state) m.(Mem.live) m.(Mem.contents_default).
+  Mem.mkmem m.(Mem.mem_contents) mem_access' m.(Mem.al_state) m.(Mem.live).
 
 Definition alloc_global (m: mem) (idg: ident * globdef F V): option mem :=
   match idg with

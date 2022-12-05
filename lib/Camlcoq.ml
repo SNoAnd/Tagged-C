@@ -275,6 +275,7 @@ let coqint_of_camlint64 : int64 -> Integers.Int64.int = Z.of_uint64
    (* interpret the int64 as unsigned so that result Z is in range for int *)
 let camlint64_of_ptrofs : Integers.Ptrofs.int -> int64 =
   fun x -> Z.to_int64 (Integers.Ptrofs.signed x)
+let camlint_of_coqnat : Datatypes.nat -> int = Nat.to_int
 
 (* Atoms (positive integers representing strings) *)
 

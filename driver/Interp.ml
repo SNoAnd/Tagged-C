@@ -19,6 +19,7 @@ open! Integers
 open Values
 open! Ctypes
 open Csem
+open Maps
 
 module Init = Initializers.Initializers (NullTag) (NullPolicy)
 module Cexec = Init.Cexec
@@ -132,13 +133,32 @@ let print_val_list p vl =
       print_val p v1;
       List.iter (fun v -> fprintf p ",@ %a" print_val v) vl
 
+let print_mem p m =
+  fprintf p "|";
+  let rec print_at i max =
+    if i <= max then
+     (fprintf p " %ld " (Int32.of_int i);
+      (match (PMap.get Mem.dummy (Mem.mem_access m)) (coqint_of_camlint (Int32.of_int i)) with
+      | Memtype.Live -> fprintf p "L"
+      | Memtype.Dead -> fprintf p "D"
+      | Memtype.MostlyDead -> fprintf p "/");
+      let (mv,t) = (ZMap.get (coqint_of_camlint (Int32.of_int i)) (PMap.get Mem.dummy (Mem.mem_contents m))) in
+      match mv with
+      | Mem.MD.Undef -> fprintf p " U |"; print_at (i+1) max
+      | Mem.MD.Byte (b,t) -> fprintf p " %lu |" (camlint_of_coqint b); print_at (i+1) max
+      | Mem.MD.Fragment (v, q, n) -> fprintf p "| %a |" print_val v; print_at (i+(camlint_of_coqnat (Memdata.size_quantity_nat q))) max)
+    else () in
+  print_at 1000 1015;
+  fprintf p "\n"
+
 let print_state p (prog, ge, s) =
   match s with
   | Csem.State(f, pct, s, k, e, m) ->
       PrintCsyntax.print_pointer_hook := print_pointer (fst ge) e;
-      fprintf p "in function %s, statement@ @[<hv 0>%a@]"
+      fprintf p "in function %s, statement@ @[<hv 0>%a@]\n"
               (name_of_function prog f)
-              PrintCsyntax.print_stmt s
+              PrintCsyntax.print_stmt s;
+      print_mem p m
   | Csem.ExprState(f, pct, r, k, e, m) ->
       PrintCsyntax.print_pointer_hook := print_pointer (fst ge) e;
       fprintf p "in function %s, expression@ @[<hv 0>%a@]"

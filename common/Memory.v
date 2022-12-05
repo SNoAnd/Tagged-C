@@ -80,16 +80,14 @@ Record mem' : Type := mkmem {
   al_state: al.(t);
 
   live: list (Z*Z);
-  contents_default:
-    forall b, fst mem_contents#b = (Undef, def_tag)
 }.
 
 Definition mem := mem'.
 
 Lemma mkmem_ext:
- forall cont1 cont2 acc1 acc2 alloc1 alloc2 next1 next2 a1 a2,
+ forall cont1 cont2 acc1 acc2 alloc1 alloc2 next1 next2,
   cont1=cont2 -> alloc1=alloc2 -> acc1=acc2 -> next1=next2 ->
-  mkmem cont1 acc1 alloc1 next1 a1 = mkmem cont2 acc2 alloc2 next2 a2.
+  mkmem cont1 acc1 alloc1 next1 = mkmem cont2 acc2 alloc2 next2.
 Proof.
   intros. subst. f_equal; apply proof_irr.
 Qed.
@@ -352,7 +350,7 @@ Program Definition empty: mem :=
   mkmem (PMap.init (ZMap.init (Undef, def_tag)))
         (PMap.init (fun ofs => if init_dead ofs then Dead else MostlyDead))
         al.(init)
-        [] _.
+        [].
 
 (** Allocation of a fresh block with the given bounds.  Return an updated
   memory state and the address of the fresh block, which initially contains
@@ -363,7 +361,7 @@ Program Definition alloc (m: mem) (lo hi: Z) : option (mem*Z*Z) :=
   match al.(stkalloc) m.(al_state) (hi - lo) with
   | Some (al_state', lo', hi') =>
       Some (mkmem (PMap.set dummy
-                            (ZMap.init (Undef, def_tag))
+                            (ZMap.set lo' (Undef, def_tag) (PMap.get dummy m.(mem_contents)))
                             m.(mem_contents))
                   (PMap.set dummy
                             (fun ofs => if zle lo' ofs && zlt ofs hi'
@@ -371,14 +369,10 @@ Program Definition alloc (m: mem) (lo hi: Z) : option (mem*Z*Z) :=
                                         else m.(mem_access) !! dummy ofs)
                             m.(mem_access))
                   al_state'
-                  ((lo',hi')::m.(live))
-                  _,
+                  ((lo',hi')::m.(live)),
              lo', hi')
   | None => None
   end.
-Next Obligation.
-  rewrite PMap.gsspec. destruct (peq b dummy). auto. apply contents_default.
-Qed.
 
 (** Freeing a block between the given bounds.
   Return the updated memory state where the given range of the given block
@@ -401,10 +395,7 @@ Program Definition unchecked_free (m: mem) (b: block) (lo hi: Z): mem :=
                   m.(mem_access))
         (al.(stkfree) m.(al_state) lo hi)
         (remove region_eq_dec (lo,hi) m.(live))
-        _.
-Next Obligation.
-  apply contents_default.
-Qed.
+        .
 
 Definition free (m: mem) (b: block) (lo hi: Z): option mem :=
   if range_perm_dec m b lo hi Live
@@ -575,9 +566,10 @@ Qed.
   are not writable. *)
 
 Fixpoint merge_vals_tags (vs:list memval) (lts:list tag) :=
-  match vs, lts with
-  | v::vs', t::lts' =>  (v,t)::(merge_vals_tags vs' lts')
-  | _, _ => nil
+  match vs with
+  | v::vs' =>
+      (v,hd def_tag lts)::(merge_vals_tags vs' (tl lts))
+  | _ => []
   end.
 
 Program Definition store (chunk: memory_chunk) (m: mem) (b: block) (ofs: Z) (a:atom) (lts:list tag): option mem :=
@@ -587,15 +579,9 @@ Program Definition store (chunk: memory_chunk) (m: mem) (b: block) (ofs: Z) (a:a
                           m.(mem_contents))
                 m.(mem_access)
                 m.(al_state)
-                m.(live)
-                _)
+                m.(live))
   else
     None.
-Next Obligation.
-  rewrite PMap.gsspec. destruct (peq b0 b).
-  rewrite setN_default. apply contents_default.
-  apply contents_default.
-Qed.
 
 (** [storev chunk m addr v] is similar, but the address and offset are given
   as a single value [addr], which must be a pointer value. *)
@@ -616,15 +602,9 @@ Program Definition storebytes (m: mem) (b: block) (ofs: Z) (bytes: list memval) 
              (PMap.set b (setN (merge_vals_tags bytes lts) ofs (m.(mem_contents)#b)) m.(mem_contents))
              m.(mem_access)
              m.(al_state)
-             m.(live)
-             _)
+             m.(live))
   else
     None.
-Next Obligation.
-  rewrite PMap.gsspec. destruct (peq b0 b).
-  rewrite setN_default. apply contents_default.
-  apply contents_default.
-Qed.
 
 (** [drop_perm m b lo hi p] sets the max permissions of the byte range
     [(b, lo) ... (b, hi - 1)] to [p].  These bytes must have current permissions
@@ -1525,7 +1505,7 @@ Proof.
   unfold storebytes, store. intros.
   destruct (range_perm_neg_dec m1 b ofs (ofs + Z.of_nat (length (encode_val chunk (v,vt)))) Dead); inv H.
   destruct (allowed_access_dec m1 chunk b ofs).
-  f_equal. apply mkmem_ext; auto.
+  f_equal.
   elim n. constructor; auto.
   rewrite encode_val_length in r. rewrite size_chunk_conv. auto.
 Qed.
@@ -1538,7 +1518,7 @@ Proof.
   unfold storebytes, store. intros.
   destruct (allowed_access_dec m1 chunk b ofs); inv H.
   destruct (range_perm_neg_dec m1 b ofs (ofs + Z.of_nat (length (encode_val chunk v))) Dead).
-  f_equal. apply mkmem_ext; auto.
+  f_equal.
   elim n.
   rewrite encode_val_length. rewrite <- size_chunk_conv.
   unfold allowed_access in *. destruct a. auto.
