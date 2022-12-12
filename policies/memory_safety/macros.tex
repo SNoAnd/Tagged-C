@@ -1,0 +1,211 @@
+\newcommand{\color}{C}
+
+\newcommand{\vt}{\mathit{vt}}
+\newcommand{\pt}{\mathit{pt}}
+\newcommand{\lt}{\mathit{lt}}
+\newcommand{\PCT}{\mathcal{P}}
+
+\newcommand{\trule}[2]{#1 \leftarrow #2}
+
+\newcommand{\truledef}[1]{
+  & \multispan{3} \(#1\) \\}
+
+\newcommand{\assert}[1]{& & & \multispan{2} \(\mathbf{assert} ~ #1\) \\}
+
+\newcommand{\caseof}[1]{\textnormal{case } #1 \textnormal{ of}}
+\newcommand{\caseentry}[2]{& & & #1 \Rightarrow #2}
+
+\newcommand{\settag}[2]{\boldsymbol{#1} & \longleftarrow & & \mathit{#2}\\}
+
+\newcommand{\loadt}[4]{\mathbf{LoadT}(#1,#2,#3,#4)}
+\newcommand{\storet}[5]{\mathbf{StoreT}(#1,#2,#3,#4,#5)}
+\newcommand{\constt}{\mathbf{ConstT}}
+\newcommand{\unopt}[2]{\mathbf{UnopT}(#1,#2)}
+\newcommand{\binopt}[3]{\mathbf{BinopT}(#1,#2,#3)}
+\newcommand{\globalt}[2]{\mathbf{GlobalT}(#1,#2)}
+\newcommand{\localt}[3]{\mathbf{LocalT}(#1,#2,#3)}
+\newcommand{\vart}[2]{\mathbf{VarT}(#1,#2)}
+\newcommand{\malloct}[2]{\mathbf{MallocT}(#1,#2)}
+\newcommand{\picastt}[2]{\mathbf{PICastT}(#1,#2)}
+\newcommand{\ipcastt}[4]{\mathbf{IPCastT}(#1,#2,#3,#4)}
+
+\newcommand{\estate}[6]{#1, #2, #3, #4, \mathit{ctx}\left[#5 : #6\right]}
+\newcommand{\mem}{m}
+\newcommand{\genv}{\mathit{ge}}
+\newcommand{\lenv}{\mathit{le}}
+\newcommand{\defestate}[2]
+           {\estate{\PCT}{\mem}{\genv}{\lenv}{#1}{#2}}
+
+\newcommand{\valof}[1]{* #1}
+\newcommand{\assignop}[3]{#2 ~~ [#1]\!\!= #3}
+\newcommand{\postinc}[2]{#2 #1\!\!#1}
+\newcommand{\assign}[2]{#1 := #2}
+\newcommand{\loc}[2]{\underline{#1}@#2}
+\newcommand{\val}[2]{(\mathit{#1} @ #2)}
+\newcommand{\binop}[3]{#2 #1 #3}
+\newcommand{\unop}[2]{#1 #2}
+\newcommand{\comma}[2]{#1, #2}
+\newcommand{\builtin}[2]{\mathit{builtin} ~ #1(#2)}
+\newcommand{\var}[1]{#1}
+\newcommand{\cast}[2]{(#1) #2}
+
+\newcommand{\vundef}{\mathbf{undef}}
+
+\newcommand{\tptr}[1]{\mathit{ptr(#1)}}
+
+\newcommand{\judgment}[3][]{
+  {\centering
+  \smallskip
+  \begin{tabular}{c}
+    #2 \\
+    \hline
+    #3
+  \end{tabular}{\sc #1}
+  \smallskip\par}}
+
+\newcommand{\judgmentbr}[4][]{
+  {\centering
+  \smallskip
+  \begin{tabular}{c}
+    #2 \\
+    #3 \\
+    \hline
+    #4
+  \end{tabular}{\sc #1}
+   \smallskip\par}}
+
+\newcommand{\judgmentbrbr}[5][]{
+  {\centering
+  \smallskip
+  \begin{tabular}{c}
+    #2 \\
+    #3 \\
+    #4 \\
+    \hline
+    #5
+  \end{tabular}{\sc #1}
+   \smallskip\par}}
+
+\newcommand{\judgmentbrbrbr}[6][]{
+  {\centering
+  \smallskip
+  \begin{tabular}{c}
+    #2 \\
+    #3 \\
+    #4 \\
+    #5 \\
+    \hline
+    #6
+  \end{tabular}{\sc #1}
+   \smallskip\par}}
+
+\newcommand{\judgmenttwobr}[6][]{
+  {
+    \centering
+    \smallskip
+    \begin{tabular}{c c}
+       #2 & #3 \\
+       #4 & #5 \\
+       \hline
+       \multicolumn{2}{c}{#6}
+    \end{tabular}{\sc #1}
+    \vspace{\belowdisplayskip}\par
+  }}
+
+\newcommand{\judgmenttwobrlong}[5][]{
+  {
+    \centering
+    \smallskip
+    \begin{tabular}{c c}
+       #2 & #3 \\
+       \multicolumn{2}{c}{#4} \\
+       \hline
+       \multicolumn{2}{c}{#5}
+    \end{tabular}{\sc #1}
+    \vspace{\belowdisplayskip}\par
+  }}
+
+\newcommand{\judgmentthreebrlong}[6][]{
+  {
+    \centering
+    \smallskip
+    \begin{tabular}{c c c}
+       #2 & #3 & #4 \\
+       \multicolumn{3}{c}{#5} \\
+       \hline
+       \multicolumn{3}{c}{#6}
+    \end{tabular}{\sc #1}
+    \vspace{\belowdisplayskip}\par
+  }}
+
+\newcommand{\judgmentthreebrtwo}[7][]{
+  {
+    \centering
+    \smallskip
+    \begin{tabular}{c c c}
+       #2 & #3 & #4 \\
+       \multicolumn{3}{c}{#5 \hfill #6} \\
+       \hline
+       \multicolumn{3}{c}{#7}
+    \end{tabular}{\sc #1}
+    \vspace{\belowdisplayskip}\par
+  }}
+
+\newcommand{\judgmenttwobrlongbrlong}[6][]{
+  {
+    \centering
+    \smallskip
+    \begin{tabular}{c c}
+       #2 & #3 \\
+       \multicolumn{2}{c}{#4} \\
+       \multicolumn{2}{c}{#5} \\
+       \hline
+       \multicolumn{2}{c}{#6} \\
+    \end{tabular}{\sc #1}
+    \vspace{\belowdisplayskip}\par
+  }}
+
+
+\newcommand{\judgmentthreebr}[8][]{
+  {
+    \centering
+    \smallskip
+    \begin{tabular}{c c c}
+       #2 & #3 & #4 \\
+       #5 & #6 & #7 \\
+       \hline
+       \multicolumn{3}{c}{#8}
+    \end{tabular}{\sc #1}
+    \vspace{\belowdisplayskip}\par
+  }}
+
+
+\newcommand{\judgmenttwo}[4][]{
+  {\centering
+  \smallskip
+  \begin{tabular}{c c}
+    #2 & #3 \\
+    \hline
+    \multicolumn{2}{c}{#4}
+  \end{tabular}{\sc #1}
+  \smallskip\par}}
+
+\newcommand{\judgmentthree}[5][]{
+  {\centering
+  \smallskip
+  \begin{tabular}{c c c}
+    #2 & #3 & #4 \\
+    \hline
+    \multicolumn{3}{c}{#5}
+  \end{tabular}{\sc #1}
+  \smallskip\par}}
+
+\newcommand{\judgmentfour}[6][]{
+  {\centering
+  \smallskip
+  \begin{tabular}{c c c c}
+    #2 & #3 & #4 & #5 \\
+    \hline
+    \multicolumn{4}{c}{#6}
+  \end{tabular}{\sc #1}
+  \smallskip\par}}
