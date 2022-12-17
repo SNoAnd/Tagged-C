@@ -17,7 +17,7 @@ open Commandline
 open Driveraux
 open Csem
 
-module Init = Initializers.Initializers (NullTag) (NullPolicy)
+module Init = Initializers.Initializers (ColorTags) (PVI)
 module Csyntax = Init.Cexec.Cstrategy.Ctyping.Csem.Csyntax
 
 (* Common frontend functions between clightgen and ccomp *)

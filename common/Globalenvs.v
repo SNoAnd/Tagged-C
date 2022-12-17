@@ -53,10 +53,10 @@ Set Implicit Arguments.
 Local Unset Elimination Schemes.
 Local Unset Case Analysis Schemes.
 
-Module Genv (T:Tag).
-  Module TLib := TagLib T.
+Module Genv (P:Policy).
+  Module TLib := TagLib P.
   Import TLib.
-  Module Mem := Mem T.
+  Module Mem := Mem P.
   Import Mem.
   
 (** * Global environments *)

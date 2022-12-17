@@ -20,10 +20,10 @@ Require Import Coqlib Maps Integers Floats Errors.
 Require Import AST Linking Values Tags.
 Require Import Ctypes Cop.
 
-Module Csyntax (T:Tag).
-  Module TLib := TagLib T.
+Module Csyntax (P:Policy).
+  Module TLib := TagLib P.
   Import TLib.
-  Module Cop := Cop T.
+  Module Cop := Cop P.
   Import Cop.
   Import Deterministic.
   Import Behaviors.

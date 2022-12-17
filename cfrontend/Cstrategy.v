@@ -36,10 +36,10 @@ Require Import Csem.
 Require Import Ctyping.
 Require Import Tags.
 
-Module Cstrategy (T:Tag) (P: Policy T).
-  Module TLib := TagLib T.
+Module Cstrategy (P: Policy).
+  Module TLib := TagLib P.
   Import TLib.
-  Module Ctyping := Ctyping T P.
+  Module Ctyping := Ctyping P.
   Import Ctyping.
   Import Csem.
   Import Csyntax.

@@ -24,10 +24,10 @@ Require Import Ctypes Cop Csyntax Csem.
 
 Local Open Scope error_monad_scope.
 
-Module Ctyping (T:Tag) (P: Policy T).
-  Module TLib := TagLib T.
+Module Ctyping (P: Policy).
+  Module TLib := TagLib P.
   Import TLib.
-  Module Csem := Csem T P.
+  Module Csem := Csem P.
   Import Csem.
   Import Csyntax.
   Import Cop.
@@ -1856,14 +1856,14 @@ Proof.
 - (* condition *) constructor. destruct b; auto. destruct b; auto. red; auto.
 - (* sizeof *)  unfold size_t, Vptrofs; destruct Archi.ptr64; constructor; auto with ty.
 - (* alignof *)  unfold size_t, Vptrofs; destruct Archi.ptr64; constructor; auto with ty.
-- (* assign *) inversion H6. constructor. eapply wt_assign_loc in H1; eauto. eapply pres_sem_cast; eauto. inv H7. auto.
+- (* assign *) inversion H6. constructor. eapply wt_assign_loc in H2; eauto. eapply pres_sem_cast; eauto. inv H7. auto.
 - (* assignop *) subst tyres l r. constructor. auto.
   constructor. constructor. eapply wt_deref_loc in H; eauto.
   auto. auto. auto.
 - (* postincr *) simpl in *. subst id0 l.
   exploit wt_deref_loc; eauto. intros WTV1.
   constructor.
-  constructor. auto. rewrite <- H2 in H7. constructor.
+  constructor. auto. rewrite <- H1 in H6. constructor.
   constructor; auto. constructor. constructor. auto with ty.
   subst op. destruct id.
   erewrite <- type_add_int32s by eauto. auto.

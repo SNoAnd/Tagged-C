@@ -28,10 +28,10 @@ Require Import Globalenvs.
 Require Import Builtins.
 Require Import Tags.
 
-Module Events (T:Tag).
-  Module TLib := TagLib T.
+Module Events (P:Policy).
+  Module TLib := TagLib P.
   Import TLib.
-  Module Genv := Genv T.
+  Module Genv := Genv P.
   Import Genv.
   Import Mem.
 

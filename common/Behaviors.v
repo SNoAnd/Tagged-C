@@ -43,8 +43,8 @@ Set Asymmetric Patterns.
   performed before the program gets stuck.
 *)
 
-Module Behaviors (T:Tag).
-  Module Smallstep := Smallstep T.
+Module Behaviors (P:Policy).
+  Module Smallstep := Smallstep P.
   Import Smallstep.
   Import Events.
   Import Genv.

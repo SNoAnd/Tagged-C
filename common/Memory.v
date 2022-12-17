@@ -49,10 +49,10 @@ Local Unset Case Analysis Schemes.
 
 Local Notation "a # b" := (PMap.get b a) (at level 1).
 
-Module Mem (T:Tag) <: MEM T.
-  Module TLib := TagLib T.
+Module Mem (P:Policy) <: MEM P.
+  Module TLib := TagLib P.
   Import TLib.
-  Module MD := Memdata T.
+  Module MD := Memdata P.
   Export MD.
   
 Record allocator : Type := mkallocator {

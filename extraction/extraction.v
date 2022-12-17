@@ -27,7 +27,9 @@ Require Initializers.
 
 Require Import Tags Initializers Csem.
 
-Module I := Initializers NullTag NullPolicy.
+Module Extracted (P : Policy).
+
+Module I := Initializers P.
 Import I.
 Import Cexec.
 Import Cstrategy.
@@ -95,7 +97,7 @@ Set Extraction AccessOpaque.
 
 (* Go! *)
 
-Cd "extraction".
+(* Cd "extraction".*)
 
 Separate Extraction
    Cexec.do_initial_state Cexec.do_step Cexec.at_final_state

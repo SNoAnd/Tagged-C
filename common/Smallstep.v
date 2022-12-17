@@ -30,10 +30,10 @@ Require Import Tags.
 
 Set Implicit Arguments.
 
-Module Smallstep (T:Tag).
-  Module TLib := TagLib T.
+Module Smallstep (P:Policy).
+  Module TLib := TagLib P.
   Import TLib.
-  Module Events := Events T.
+  Module Events := Events P.
   Import Events.
   Import Genv.
   Import Mem.

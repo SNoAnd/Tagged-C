@@ -27,23 +27,18 @@ int cmpint(const void * i, const void * j)
   return 1;
 }
 
-#define NITER 10
-
 int main()
 {
-  int n, i, j;
-  int * a, * b;
+  int n = 100;
+  int i;
+  int a[100];
+  int b[100];
 
-  n = 100;
-  a = malloc(n * sizeof(int));
-  b = malloc(n * sizeof(int));
-  for (j = 0; j < NITER; j++) {
-    for (i = 0; i < n; i++) b[i] = a[i] = rand() & 0xFFFF;
+  for (i = 0; i < n; i++) b[i] = a[i] = i % 7;
     quicksort(0, n - 1, a);
-  }
-  qsort(b, n, sizeof(int), cmpint);
-  for (i = 0; i < n; i++) {
-    if (a[i] != b[i]) { return 2; }
+  
+  for (i = 0; i < (n-1); i++) {
+    if (a[i] > a[i+1]) { return 2; }
   }
   return 0;
 }

@@ -23,7 +23,7 @@ open AST
 open! Ctypes
 open Csem
 
-module Init = Initializers.Initializers (NullTag) (NullPolicy)
+module Init = Initializers.Initializers (ColorTags) (PVI)
 module Ctyping = Init.Cexec.Cstrategy.Ctyping
 module Csyntax = Ctyping.Csem.Csyntax
 module Cop = Csyntax.Cop
@@ -174,7 +174,7 @@ let rec precedence = function
 (* Expressions *)
 
 let print_pointer_hook
-(*   : (formatter -> (((BinNums.coq_Z * BinNums.coq_Z) * Csem/2.NullTag.tag) * Ctypes.coq_type) -> unit) ref*)
+(*   : (formatter -> (((BinNums.coq_Z * BinNums.coq_Z) * Csem/2.ColorTags.tag) * Ctypes.coq_type) -> unit) ref*)
    : (formatter -> Values.block * Integers.Int.int -> unit) ref
    = ref (fun p (b, ofs) -> ())
 

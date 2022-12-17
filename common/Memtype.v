@@ -53,10 +53,10 @@ Inductive permission: Type :=
 | Dead: permission          (* Shadowed by compiler data *)
 .
 
-Module Type MEM (T:Tag).
-  Module TLib := TagLib T.
+Module Type MEM (P:Policy).
+  Module TLib := TagLib P.
   Import TLib.
-  Module MD := Memdata T.
+  Module MD := Memdata P.
   Import MD.
 
 (** The abstract type of memory states. *)

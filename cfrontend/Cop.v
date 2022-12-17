@@ -27,10 +27,10 @@ Require Import Tags.
 Require Import Determinism.
 Require Archi.
 
-Module Cop (T:Tag).
-  Module TLib := TagLib T.
+Module Cop (P:Policy).
+  Module TLib := TagLib P.
   Import TLib.
-  Module Deterministic := Deterministic T.
+  Module Deterministic := Deterministic P.
   Import Deterministic.
   Import Behaviors.
   Import Smallstep.

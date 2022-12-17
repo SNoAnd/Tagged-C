@@ -19,10 +19,10 @@ Require Import Cexec Tags.
 
 Open Scope error_monad_scope.
 
-Module Initializers (T:Tag) (P:Policy T).
-  Module TLib := TagLib T.
+Module Initializers (P:Policy).
+  Module TLib := TagLib P.
   Import TLib.
-  Module Cexec := Cexec T P.
+  Module Cexec := Cexec P.
   Import Cexec.
   Import Cstrategy.
   Import Ctyping.

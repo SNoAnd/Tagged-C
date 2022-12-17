@@ -21,7 +21,7 @@ open! Ctypes
 open Csem
 open Maps
 
-module Init = Initializers.Initializers (NullTag) (NullPolicy)
+module Init = Initializers.Initializers (ColorTags) (PVI)
 module Cexec = Init.Cexec
 module Csem = Cexec.Cstrategy.Ctyping.Csem
 module Csyntax = Csem.Csyntax
@@ -187,7 +187,7 @@ let compare_mem m1 m2 =
 
 (* Comparing continuations *)
 
-let some_expr = Csyntax.Eval((Vint Int.zero, NullTag.def_tag), Tvoid)
+let some_expr = Csyntax.Eval((Vint Int.zero, ColorTags.def_tag), Tvoid)
 
 let rank_cont = function
   | Csem.Kstop -> 0
@@ -430,7 +430,7 @@ let do_external_function id sg ge w args m =
       Format.print_string fmt';
       flush stdout;
       convert_external_args ge args sg.sig_args >>= fun eargs ->
-      Some(((w, [Events.Event_syscall(id, eargs, Events.EVint (len,NullTag.def_tag))]), Vint len), m)
+      Some(((w, [Events.Event_syscall(id, eargs, Events.EVint (len,ColorTags.def_tag))]), Vint len), m)
   | _ ->
       None
 
@@ -634,7 +634,7 @@ let change_main_function p new_main_fn =
 
 let call_main3_function main_id main_ty =
   let main_var = Csyntax.Evalof(Csyntax.Evar(main_id, main_ty), main_ty) in
-  let arg1 = Csyntax.Eval((Vint(coqint_of_camlint 0l), NullTag.def_tag), type_int32s) in
+  let arg1 = Csyntax.Eval((Vint(coqint_of_camlint 0l), ColorTags.def_tag), type_int32s) in
   let arg2 = arg1 in
   let body =
     Csyntax.Sreturn(Some(Csyntax.Ecall(main_var, Csyntax.Econs(arg1, Csyntax.Econs(arg2, Csyntax.Enil)), type_int32s)))
@@ -646,7 +646,7 @@ let call_other_main_function main_id main_ty main_ty_res =
   let main_var = Csyntax.Evalof(Csyntax.Evar(main_id, main_ty), main_ty) in
   let body =
     Csyntax.Ssequence(Csyntax.Sdo(Csyntax.Ecall(main_var, Csyntax.Enil, main_ty_res)),
-              Csyntax.Sreturn(Some(Csyntax.Eval((Vint(coqint_of_camlint 0l),NullTag.def_tag), type_int32s)))) in
+              Csyntax.Sreturn(Some(Csyntax.Eval((Vint(coqint_of_camlint 0l),ColorTags.def_tag), type_int32s)))) in
   { Csyntax.fn_return = type_int32s; Csyntax.fn_callconv = cc_default;
     Csyntax.fn_params = []; Csyntax.fn_vars = []; Csyntax.fn_body = body }
 

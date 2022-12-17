@@ -1,5 +1,5 @@
-#include <stdlib.h>
-#include <stdio.h>
+//#include <stdlib.h>
+//#include <stdio.h>
 
 int fib(int n)
 {
@@ -9,11 +9,12 @@ int fib(int n)
     return fib(n-1) + fib(n-2);
 }
 
-int main(int argc, char ** argv)
+int main()
 {
   int n, r;
-  if (argc >= 2) n = atoi(argv[1]); else n = 35;
+  //if (argc >= 2) n = atoi(argv[1]); else 
+  n = 5;
   r = fib(n);
-  printf("fib(%d) = %d\n", n, r);
-  return 0;
+  //printf("fib(%d) = %d\n", n, r);
+  return r;
 }

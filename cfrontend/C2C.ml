@@ -22,7 +22,11 @@ open Values
 open Ctypes
 open Csem
 
-module Init = Initializers.Initializers (NullTag) (NullPolicy)
+module C2C =
+        functor (T:Tag) (P: Policy T) ->
+                struct
+
+module Init = Initializers.Initializers (T) (P)
 module Ctyping = Init.Cexec.Cstrategy.Ctyping
 module Csyntax = Ctyping.Csem.Csyntax
 module Cop = Csyntax.Cop
@@ -466,7 +470,7 @@ let make_builtin_va_arg env ty e =
         "__compcert_va_composite" ty e
   | _ ->
       unsupported "va_arg at this type";
-      Csyntax.Eval((Vint(coqint_of_camlint 0l), NullTag.def_tag), type_int32s)
+      Csyntax.Eval((Vint(coqint_of_camlint 0l), ColorTags.def_tag), type_int32s)
 
 (** ** Translation functions *)
 
@@ -740,7 +744,7 @@ let check_volatile_bitfield env e =
   && List.mem AVolatile (Cutil.attributes_of_type env e.etyp) then
     warning Diagnostics.Unnamed "access to a volatile bit field, the 'volatile' qualifier is ignored"
 
-let ezero = Csyntax.Eval((Vint(coqint_of_camlint 0l), NullTag.def_tag), type_int32s)
+let ezero = Csyntax.Eval((Vint(coqint_of_camlint 0l), ColorTags.def_tag), type_int32s)
 
 let ewrap = function
   | Errors.OK e -> e
@@ -1557,3 +1561,4 @@ let convertProgram p =
         p'
   with Env.Error msg ->
     fatal_error "%s" (Env.error_message msg)
+                end

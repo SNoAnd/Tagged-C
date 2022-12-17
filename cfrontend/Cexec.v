@@ -55,10 +55,10 @@ Notation " 'check' A ; B" := (if A then B else nil)
   (at level 200, A at level 100, B at level 200)
   : list_monad_scope.
 
-Module Cexec (T:Tag) (P:Policy T).
-  Module TLib := TagLib T.
+Module Cexec (P:Policy).
+  Module TLib := TagLib P.
   Import TLib.
-  Module Cstrategy := Cstrategy T P.
+  Module Cstrategy := Cstrategy P.
   Import Cstrategy.
   Import Ctyping.
   Import Csem.

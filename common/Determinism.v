@@ -27,8 +27,8 @@ Require Import Smallstep.
 Require Import Behaviors.
 Require Import Tags.
 
-Module Deterministic (T:Tag).
-  Module Behaviors := Behaviors T.
+Module Deterministic (P:Policy).
+  Module Behaviors := Behaviors P.
   Import Behaviors.
   Import Smallstep.
   Import Events.

@@ -22,86 +22,10 @@ Require Import Ctypes Cop Csyntax.
 Require Import Smallstep.
 Require Import List. Import ListNotations.
 
-Module Type Policy (T:Tag).
-  Import T.
-
-  Parameter InitPCT : tag.
-
-  Parameter VarTag : ident -> tag.
-
-  Parameter LocalAllocT : tag -> tag -> option (tag * tag * tag).
-  
-  Parameter ConstT : tag.
-
-  Parameter VarAddrT : tag -> tag -> option (tag * tag).
-  
-  Parameter UnopT : tag -> tag -> option (tag * tag).
-
-  Parameter BinopT : tag -> tag -> tag -> option (tag * tag).
-  
-  Parameter LoadT : tag -> tag -> tag -> tag -> option tag.
-
-  Parameter StoreT : tag -> tag -> tag -> tag -> tag -> option (tag * tag * tag).
-
-  Parameter IfSplitT : tag -> tag -> option (tag * tag).
-
-  Parameter IfJoinT : tag -> tag -> option tag.
-  
-  Parameter ltag_smoosh : list tag -> tag.
-  Parameter ltag_unsmoosh : tag -> nat -> list tag.
-  
-  Parameter DummyT : list tag -> option (list tag).
-End Policy.
-
-Module NullTag <: Tag.
-  Definition tag := unit.
-  Theorem tag_eq_dec : forall (t1 t2:tag), {t1 = t2} + {t1 <> t2}.
-  Proof.
-    unfold tag. intros. left. destruct t1. destruct t2. auto.
-  Qed.
-  Definition def_tag := tt.
-End NullTag.
-
-Module NullPolicy <: Policy NullTag.
-  Import NullTag.
-  
-  Definition InitPCT : tag := tt.
-
-  Definition VarTag (id:ident) := tt.
-
-  Definition LocalAllocT (pct ft : tag) : option (tag * tag * tag) := Some (tt, tt, tt).
-  
-  Definition ConstT : tag := tt.
-
-  Definition VarAddrT (pct vt : tag) : option (tag * tag) := Some (tt,tt).
-  
-  Definition UnopT (pct vt : tag) : option (tag * tag) := Some (tt, tt).
-
-  Definition BinopT (pct vt1 vt2 : tag) : option (tag * tag) := Some (tt, tt).
-  
-  Definition LoadT (pct pt vt lt : tag) : option tag := Some tt.
-
-  Definition StoreT (pct pt ovt vt lt : tag) : option (tag * tag * tag) := Some (tt, tt, tt).
-
-  Definition IfSplitT (pct vt : tag) : option (tag * tag) := Some (tt, tt).
-
-  Definition IfJoinT (pct opct : tag) : option tag := Some tt.
-  
-  Definition ltag_smoosh (lts : list tag) : tag := tt.
-
-  Fixpoint ltag_unsmoosh (lt : tag) (n : nat) : list tag :=
-    match n with
-    | O => []
-    | S n => lt::(ltag_unsmoosh lt n)
-    end. 
-  
-  Definition DummyT (ts : list tag) : option (list tag) := Some ts.
-End NullPolicy.  
- 
-Module Csem (T:Tag) (P: Policy T).
-  Module TLib := TagLib T.
+Module Csem (P: Policy).
+  Module TLib := TagLib P.
   Import TLib.
-  Module Csyntax := Csyntax T.
+  Module Csyntax := Csyntax P.
   Import Csyntax.
   Import Cop.
   Import Deterministic.
@@ -220,10 +144,10 @@ Inductive alloc_variables: tag -> env -> mem ->
       forall PCT e m,
       alloc_variables PCT e m nil PCT e m
   | alloc_variables_cons:
-      forall PCT PCT' PCT'' e m id ty vars m1 lo1 hi1 pt lt m2 m3 e2,
+      forall PCT PCT' PCT'' e m id ty vars m1 lo1 hi1 pt lts m2 m3 e2,
         Mem.alloc m 0 (sizeof (snd ge) ty) = Some (m1, lo1, hi1) ->
-        LocalAllocT PCT (VarTag id) = Some (PCT', pt, lt) ->
-        Mem.store (chunk_of_type (typ_of_type ty)) m1 Mem.dummy lo1 (Vundef, def_tag) (ltag_unsmoosh lt (Z.abs_nat (sizeof (snd ge) ty))) = Some m2 ->
+        LocalT (Z.to_nat (alignof (snd ge) ty)) PCT = Some (PCT', pt, lts) ->
+        Mem.store (chunk_of_type (typ_of_type ty)) m1 Mem.dummy lo1 (Vundef, def_tag) lts = Some m2 ->
         (* initialize location tags *)
         alloc_variables PCT' (PTree.set id (lo1, hi1, pt, ty) e) m2 vars PCT'' e2 m3 ->
         alloc_variables PCT e m ((id, ty) :: vars) PCT'' e2 m2.
@@ -305,9 +229,9 @@ Variable e: env.
 (** Head reduction for l-values. *)
 
 Inductive lred: expr -> mem -> expr -> mem -> Prop :=
-| red_var_local: forall PCT PCT' x pt pt' ty m lo hi,
+| red_var_local: forall PCT x pt pt' ty m lo hi,
     e!x = Some(lo, hi, pt, ty) ->
-    VarAddrT PCT pt = Some (PCT',pt') ->
+    VarT PCT pt = Some pt' ->
     lred (Evar x ty) m
          (Eloc Mem.dummy (Ptrofs.repr lo) pt Full ty) m
 | red_var_global: forall x ty m lo pt,
@@ -330,11 +254,11 @@ Inductive lred: expr -> mem -> expr -> mem -> Prop :=
          (Eloc b (Ptrofs.add ofs (Ptrofs.repr delta)) vt bf ty) m.
 
 (** Head reductions for r-values *)
-
+Print val. Print type.
 Inductive rred (PCT:tag) : expr -> mem -> trace -> tag -> expr -> mem -> Prop :=
 | red_rvalof: forall b ofs pt lts bf ty m t v vt PCT' vt',
     deref_loc ty m b ofs pt bf t (v,vt) lts ->
-    LoadT PCT pt vt (ltag_smoosh lts) = Some vt' ->
+    LoadT PCT pt vt lts = Some vt' ->
     rred PCT (Evalof (Eloc b ofs pt bf ty) ty) m t
          PCT' (Eval (v,vt') ty) m
 | red_addrof: forall b ofs pt ty1 ty pt' m,
@@ -388,23 +312,22 @@ Inductive rred (PCT:tag) : expr -> mem -> trace -> tag -> expr -> mem -> Prop :=
     DummyT [PCT] = Some [PCT';vt] ->
     rred PCT (Ealignof ty1 ty) m E0
          PCT' (Eval (Vptrofs (Ptrofs.repr (alignof (snd ge) ty1)), vt) ty) m
-| red_assign: forall b ofs ty1 pt bf v1 ovt v2 vt2 ty2 m v vt t1 t2 PCT' m' v' vt' lts lt,
+| red_assign: forall b ofs ty1 pt bf v1 ovt v2 vt2 ty2 m v vt t1 t2 PCT' m' v' vt' lts lts',
     sem_cast v2 ty2 ty1 m = Some v ->
-    deref_loc ty1 m b ofs pt bf t1 (v1,ovt) lts -> (* implicitly enforces type safety? *)
-    assign_loc ty1 m b ofs pt bf (v,vt) t2 m' (v',vt) (ltag_unsmoosh lt (length lts)) ->
-    StoreT PCT pt ovt vt (ltag_smoosh lts) = Some (PCT', vt', lt) ->
+    deref_loc ty1 m b ofs pt bf t1 (v1,ovt) lts ->
+    StoreT PCT pt ovt vt lts = Some (PCT', vt', lts') ->
+    assign_loc ty1 m b ofs pt bf (v,vt) t2 m' (v',vt) lts' ->
     rred PCT (Eassign (Eloc b ofs pt bf ty1) (Eval (v2, vt2) ty2) ty1) m t2
          PCT' (Eval (v',vt') ty1) m'
 | red_assignop: forall op b ofs pt ty1 bf v2 ty2 tyres m t v1 vt1 vt1' lts PCT',
     deref_loc ty1 m b ofs pt bf t (v1,vt1) lts ->
-    DummyT [PCT;pt;vt1;ltag_smoosh lts] = Some [PCT';vt1'] ->
+    LoadT PCT pt vt1 lts = Some vt1' -> (* Do we want to do this in this order? *)
     rred PCT (Eassignop op (Eloc b ofs pt bf ty1) (Eval v2 ty2) tyres ty1) m t
          PCT' (Eassign (Eloc b ofs pt bf ty1)
                     (Ebinop op (Eval (v1,vt1') ty1) (Eval v2 ty2) tyres) ty1) m
 | red_postincr: forall id b ofs pt ty bf m t v1 vt1 vt1' vt2 lts op PCT',
     deref_loc ty m b ofs pt bf t (v1,vt1) lts ->
-    DummyT [PCT;pt;vt1;ltag_smoosh lts] = Some [PCT';vt1'] ->
-    DummyT [PCT] = Some [vt2] ->
+    LoadT PCT pt vt1 lts = Some vt1' ->
     op = match id with Incr => Oadd | Decr => Osub end ->
     rred PCT (Epostincr id (Eloc Mem.dummy ofs pt bf ty) ty) m t
          PCT' (Ecomma (Eassign (Eloc Mem.dummy ofs pt bf ty)
@@ -959,7 +882,7 @@ End SEM.
   corresponding to the invocation of the ``main'' function of the program
   without arguments and with an empty continuation. *)
 
-Inductive initial_state (p: program): state -> Prop :=
+  Inductive initial_state (p: program): state -> Prop :=
   | initial_state_intro: forall b base bound pt f m0,
       let ge := globalenv p in
       Genv.init_mem p = Some m0 ->
