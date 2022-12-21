@@ -15,10 +15,10 @@ open Printf
 open Clflags
 open Commandline
 open Driveraux
-open Csem
-
-module Init = Initializers.Initializers (ColorTags) (PVI)
-module Csyntax = Init.Cexec.Cstrategy.Ctyping.Csem.Csyntax
+open Tags
+open PrintCsyntax
+open CPragmas
+open Interp
 
 (* Common frontend functions between clightgen and ccomp *)
 
@@ -73,61 +73,6 @@ let preprocess ifile ofile =
     if ofile <> "-" then safe_remove ofile;
     command_error "preprocessor" exc;
   end
-
-(* From preprocessed C to Csyntax *)
-
-let parse_c_file sourcename ifile =
-  Debug.init_compile_unit sourcename;
-  Sections.initialize();
-  (* Simplification options *)
-  let simplifs =
-    "b" (* blocks: mandatory *)
-  ^ (if !option_fstruct_passing then "s" else "")
-  ^ (if !option_fpacked_structs then "p" else "")
-  in
-  (* Parsing and production of a simplified C AST *)
-  let ast = Parse.preprocessed_file simplifs sourcename ifile in
-  (* Save C AST if requested *)
-  Cprint.print_if ast;
-  (* Conversion to Csyntax *)
-  let csyntax = Timing.time "CompCert C generation" C2C.convertProgram ast in
-  (* Save CompCert C AST if requested *)
-  PrintCsyntax.print_if csyntax;
-  csyntax
-
-let init () =
-  Machine.config:=
-    begin match Configuration.arch with
-    | "powerpc" -> if Configuration.model = "e5500" || Configuration.model = "ppc64"
-                   then if Configuration.abi = "linux" then Machine.ppc_32_r64_linux_bigendian
-                   else if Configuration.gnu_toolchain then Machine.ppc_32_r64_bigendian
-                   else Machine.ppc_32_r64_diab_bigendian
-                   else if Configuration.abi = "linux" then Machine.ppc_32_linux_bigendian
-                   else if Configuration.gnu_toolchain then Machine.ppc_32_bigendian
-                   else Machine.ppc_32_diab_bigendian
-    | "arm"     -> if Configuration.is_big_endian
-                   then Machine.arm_bigendian
-                   else Machine.arm_littleendian
-    | "x86"     -> if Configuration.model = "64" then
-                     Machine.x86_64
-                   else
-                     if Configuration.abi = "macos"
-                     then Machine.x86_32_macos
-                     else if Configuration.system = "bsd"
-                     then Machine.x86_32_bsd
-                     else Machine.x86_32
-    | "riscV"   -> if Configuration.model = "64"
-                   then Machine.rv64
-                   else Machine.rv32
-    | "aarch64" -> if Configuration.abi = "apple"
-                   then Machine.aarch64_apple
-                   else Machine.aarch64
-    | _         -> assert false
-  end;
-  Env.set_builtins C2C.builtins;
-  Cutil.declare_attributes C2C.attributes;
-  CPragmas.initialize()
-
 
 (* Add gnu preprocessor list *)
 let gnu_prepro_opt_key key s =
@@ -213,3 +158,76 @@ let prepro_help = {|Preprocessing options:
   -Xpreprocessor <opt> Pass option <opt> to the preprocessor
 |}
   ^ (if Configuration.gnu_toolchain then gnu_prepro_help else "")
+
+let init () =
+  Machine.config:=
+    begin match Configuration.arch with
+    | "powerpc" -> if Configuration.model = "e5500" || Configuration.model = "ppc64"
+                   then if Configuration.abi = "linux" then Machine.ppc_32_r64_linux_bigendian
+                   else if Configuration.gnu_toolchain then Machine.ppc_32_r64_bigendian
+                   else Machine.ppc_32_r64_diab_bigendian
+                   else if Configuration.abi = "linux" then Machine.ppc_32_linux_bigendian
+                   else if Configuration.gnu_toolchain then Machine.ppc_32_bigendian
+                   else Machine.ppc_32_diab_bigendian
+    | "arm"     -> if Configuration.is_big_endian
+                   then Machine.arm_bigendian
+                   else Machine.arm_littleendian
+    | "x86"     -> if Configuration.model = "64" then
+                     Machine.x86_64
+                   else
+                     if Configuration.abi = "macos"
+                     then Machine.x86_32_macos
+                     else if Configuration.system = "bsd"
+                     then Machine.x86_32_bsd
+                     else Machine.x86_32
+    | "riscV"   -> if Configuration.model = "64"
+                   then Machine.rv64
+                   else Machine.rv32
+    | "aarch64" -> if Configuration.abi = "apple"
+                   then Machine.aarch64_apple
+                   else Machine.aarch64
+    | _         -> assert false
+  end
+ 
+module FrontendP =
+        functor (Pol: Policy) -> struct
+
+                module InterpInst = InterpP (Pol)
+                module Printing = PrintCsyntaxP (Pol)
+                module PragmaInst = Pragma (Pol)
+                module C2CPInst = Printing.C2CPInst
+ 
+                let init_with () =
+                Env.set_builtins C2CPInst.builtins;
+                Cutil.declare_attributes C2CPInst.attributes;
+                PragmaInst.initialize()
+
+  (* From preprocessed C to Csyntax *)
+
+  let parse_c_file sourcename ifile =
+    Debug.init_compile_unit sourcename;
+    Sections.initialize();
+    (* Simplification options *)
+    let simplifs =
+      "b" (* blocks: mandatory *)
+    ^ (if !option_fstruct_passing then "s" else "")
+    ^ (if !option_fpacked_structs then "p" else "")
+    in
+    (* Parsing and production of a simplified C AST *)
+    let ast = Parse.preprocessed_file simplifs sourcename ifile in
+    (* Save C AST if requested *)
+    Cprint.print_if ast;
+    (* Conversion to Csyntax *)
+    let csyntax = Timing.time "CompCert C generation" C2CPInst.convertProgram ast in
+    (* Save CompCert C AST if requested *)
+    Printing.print_if csyntax;
+    csyntax
+
+  let run_i_file sourcename preproname =
+  Machine.config := Machine.compcert_interpreter !Machine.config;
+  let csyntax = parse_c_file sourcename preproname in
+  InterpInst.execute csyntax
+end
+
+module WithNull = FrontendP (NullPolicy)
+module WithPVI = FrontendP (PVI)

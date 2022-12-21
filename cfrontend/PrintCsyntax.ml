@@ -21,9 +21,15 @@ open Camlcoq
 open Values
 open AST
 open! Ctypes
-open Csem
+open Tags
+open C2C
 
-module Init = Initializers.Initializers (ColorTags) (PVI)
+module PrintCsyntaxP =
+        functor (Pol: Policy) ->
+                struct
+
+module C2CPInst = C2CP (Pol)
+module Init = C2CPInst.Init
 module Ctyping = Init.Cexec.Cstrategy.Ctyping
 module Csyntax = Ctyping.Csem.Csyntax
 module Cop = Csyntax.Cop
@@ -444,7 +450,7 @@ let print_fundef p id fd =
 let print_fundecl p id fd =
   match fd with
   | Ctypes.Internal f ->
-      let linkage = if C2C.atom_is_static id then "static" else "extern" in
+      let linkage = if C2CPInst.atom_is_static id then "static" else "extern" in
       fprintf p "%s %s;@ @ " linkage
                 (name_cdecl (extern_atom id) (Csyntax.type_of_function f))
   | _ -> ()
@@ -519,7 +525,7 @@ let print_globvar p id v =
 let print_globvardecl p  id v =
   let name = extern_atom id in
   let name = if v.gvar_readonly then "const "^name else name in
-  let linkage = if C2C.atom_is_static id then "static" else "extern" in
+  let linkage = if C2CPInst.atom_is_static id then "static" else "extern" in
   fprintf p "%s %s;@ @ " linkage (name_cdecl name v.gvar_info)
 
 let print_globdecl p (id,gd) =
@@ -568,3 +574,5 @@ let print_if prog =
       let oc = open_out f in
       print_program (formatter_of_out_channel oc) prog;
       close_out oc
+
+                end

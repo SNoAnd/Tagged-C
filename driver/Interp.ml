@@ -18,17 +18,9 @@ open AST
 open! Integers
 open Values
 open! Ctypes
-open Csem
 open Maps
-
-module Init = Initializers.Initializers (ColorTags) (PVI)
-module Cexec = Init.Cexec
-module Csem = Cexec.Cstrategy.Ctyping.Csem
-module Csyntax = Csem.Csyntax
-module Determinism = Csyntax.Cop.Deterministic
-module Events = Determinism.Behaviors.Smallstep.Events
-module Genv = Events.Genv
-module Mem = Genv.Mem
+open Tags
+open PrintCsyntax
 
 (* Configuration *)
 
@@ -37,6 +29,20 @@ let trace = ref 1   (* 0 if quiet, 1 if normally verbose, 2 if full trace *)
 type mode = First | Random | All
 
 let mode = ref First
+
+module InterpP =
+        functor (Pol: Policy) ->
+        struct
+
+module Printing = PrintCsyntaxP (Pol)
+module Init = Printing.Init
+module Cexec = Init.Cexec
+module Csem = Cexec.Cstrategy.Ctyping.Csem
+module Csyntax = Csem.Csyntax
+module Determinism = Csyntax.Cop.Deterministic
+module Events = Determinism.Behaviors.Smallstep.Events
+module Genv = Events.Genv
+module Mem = Genv.Mem
 
 (* Printing events *)
 
@@ -124,7 +130,7 @@ let print_pointer ge e p (b, ofs) =
         | None -> fprintf p "Not sure what this means again\n")
       | None -> fprintf p "Not a global or a local\n" *)
 
-let print_val = PrintCsyntax.print_value
+let print_val = Printing.print_value
 
 let print_val_list p vl =
   match vl with
@@ -154,23 +160,23 @@ let print_mem p m =
 let print_state p (prog, ge, s) =
   match s with
   | Csem.State(f, pct, s, k, e, m) ->
-      PrintCsyntax.print_pointer_hook := print_pointer (fst ge) e;
+      Printing.print_pointer_hook := print_pointer (fst ge) e;
       fprintf p "in function %s, statement@ @[<hv 0>%a@]\n"
               (name_of_function prog f)
-              PrintCsyntax.print_stmt s;
+              Printing.print_stmt s;
       print_mem p m
   | Csem.ExprState(f, pct, r, k, e, m) ->
-      PrintCsyntax.print_pointer_hook := print_pointer (fst ge) e;
+      Printing.print_pointer_hook := print_pointer (fst ge) e;
       fprintf p "in function %s, expression@ @[<hv 0>%a@]"
               (name_of_function prog f)
-              PrintCsyntax.print_expr r
+              Printing.print_expr r
   | Csem.Callstate(fd, pct, args, k, m) ->
-      PrintCsyntax.print_pointer_hook := print_pointer (fst ge) Maps.PTree.empty;
+      Printing.print_pointer_hook := print_pointer (fst ge) Maps.PTree.empty;
       fprintf p "calling@ @[<hov 2>%s(%a)@]"
               (name_of_fundef prog fd)
               print_val_list args
   | Csem.Returnstate(pct, res, k, m) ->
-      PrintCsyntax.print_pointer_hook := print_pointer (fst ge) Maps.PTree.empty;
+      Printing.print_pointer_hook := print_pointer (fst ge) Maps.PTree.empty;
       fprintf p "returning@ %a"
               print_val res
   | Csem.Stuckstate ->
@@ -187,7 +193,7 @@ let compare_mem m1 m2 =
 
 (* Comparing continuations *)
 
-let some_expr = Csyntax.Eval((Vint Int.zero, ColorTags.def_tag), Tvoid)
+let some_expr = Csyntax.Eval((Vint Int.zero, Pol.def_tag), Tvoid)
 
 let rank_cont = function
   | Csem.Kstop -> 0
@@ -430,7 +436,7 @@ let do_external_function id sg ge w args m =
       Format.print_string fmt';
       flush stdout;
       convert_external_args ge args sg.sig_args >>= fun eargs ->
-      Some(((w, [Events.Event_syscall(id, eargs, Events.EVint (len,ColorTags.def_tag))]), Vint len), m)
+      Some(((w, [Events.Event_syscall(id, eargs, Events.EVint (len,Pol.def_tag))]), Vint len), m)
   | _ ->
       None
 
@@ -502,9 +508,9 @@ let diagnose_stuck_expr p ge w f a kont pct e m =
   if found then true else begin
     let l = Cexec.step_expr ge (*do_external_function do_inline_assembly*) e w k pct a m in
     if List.exists (fun (ctx,red) -> red = Cexec.Stuckred) l then begin
-      PrintCsyntax.print_pointer_hook := print_pointer (fst ge) e;
+      Printing.print_pointer_hook := print_pointer (fst ge) e;
       fprintf p "@[<hov 2>Stuck subexpression:@ %a@]@."
-              PrintCsyntax.print_expr a;
+              Printing.print_expr a;
       true
     end else false
   end
@@ -539,10 +545,17 @@ let do_step p prog ge time s w =
       || List.exists (fun (Cexec.TR(r,t,s)) -> s = Csem.Stuckstate) l
       then begin
         pp_set_max_boxes p 1000;
-        fprintf p "@[<hov 2>Stuck state: %a@]@." print_state (prog, ge, s);
-        diagnose_stuck_state p ge w s;
-        fprintf p "ERROR: Undefined behavior@.";
-        exit 126
+        if s = Csem.Failstop 
+        then begin
+                fprintf p "@[<hov 2>Failstop@]@.";
+                exit 0
+        end
+        else begin
+                fprintf p "@[<hov 2>Stuck state: %a@]@." print_state (prog, ge, s);
+                diagnose_stuck_state p ge w s;
+                fprintf p "ERROR: Undefined behavior@.";
+                exit 126
+        end
       end else begin
         List.map (fun (Cexec.TR(r, t, s')) -> (r, s', do_events p ge time w t)) l
       end
@@ -634,7 +647,7 @@ let change_main_function p new_main_fn =
 
 let call_main3_function main_id main_ty =
   let main_var = Csyntax.Evalof(Csyntax.Evar(main_id, main_ty), main_ty) in
-  let arg1 = Csyntax.Eval((Vint(coqint_of_camlint 0l), ColorTags.def_tag), type_int32s) in
+  let arg1 = Csyntax.Eval((Vint(coqint_of_camlint 0l), Pol.def_tag), type_int32s) in
   let arg2 = arg1 in
   let body =
     Csyntax.Sreturn(Some(Csyntax.Ecall(main_var, Csyntax.Econs(arg1, Csyntax.Econs(arg2, Csyntax.Enil)), type_int32s)))
@@ -646,7 +659,7 @@ let call_other_main_function main_id main_ty main_ty_res =
   let main_var = Csyntax.Evalof(Csyntax.Evar(main_id, main_ty), main_ty) in
   let body =
     Csyntax.Ssequence(Csyntax.Sdo(Csyntax.Ecall(main_var, Csyntax.Enil, main_ty_res)),
-              Csyntax.Sreturn(Some(Csyntax.Eval((Vint(coqint_of_camlint 0l),ColorTags.def_tag), type_int32s)))) in
+              Csyntax.Sreturn(Some(Csyntax.Eval((Vint(coqint_of_camlint 0l),Pol.def_tag), type_int32s)))) in
   { Csyntax.fn_return = type_int32s; Csyntax.fn_callconv = cc_default;
     Csyntax.fn_params = []; Csyntax.fn_vars = []; Csyntax.fn_body = body }
 
@@ -707,3 +720,5 @@ let execute prog =
               explore_one p prog1 (ge,prog1.prog_comp_env) 0 s (world (wge,prog1.prog_comp_env) wm)
           | All ->
               explore_all p prog1 (ge,prog1.prog_comp_env) 0 [(1, s, world (wge,prog1.prog_comp_env) wm)]
+
+        end

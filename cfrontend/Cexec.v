@@ -752,10 +752,12 @@ Qed.*)
 (** * Reduction of expressions *)
 
 Inductive reduction: Type :=
-  | Lred (rule: string) (l': expr) (m': mem)
-  | Rred (rule: string) (pct': tag) (r': expr) (m': mem) (t: trace)
-  | Callred (rule: string) (fd: fundef) (args: list atom) (tyres: type) (m': mem)
-  | Stuckred.
+| Lred (rule: string) (l': expr) (m': mem)
+| Rred (rule: string) (pct': tag) (r': expr) (m': mem) (t: trace)
+| Callred (rule: string) (fd: fundef) (args: list atom) (tyres: type) (m': mem)
+| Stuckred
+| Failstopred
+.
 
 Section EXPRS.
 
@@ -784,6 +786,9 @@ Definition topred (r: reduction) : reducts expr :=
 
 Definition stuck : reducts expr :=
   ((fun (x: expr) => x), Stuckred) :: nil.
+
+Definition failstop : reducts expr :=
+  [((fun (x: expr) => x), Failstopred)].
 
 Definition incontext {A B: Type} (ctx: A -> B) (ll: reducts A) : reducts B :=
   map (fun z => ((fun (x: expr) => ctx(fst z x)), snd z)) ll.
@@ -815,6 +820,24 @@ Notation " 'check' A ; B" := (if A then B else stuck)
 
 Local Open Scope reducts_monad_scope.
 
+Notation "'trule' X <- A ; B" := (match A with Some X => B | None => failstop end)
+  (at level 200, X ident, A at level 100, B at level 200)
+  : tag_monad_scope.
+
+Notation "'trule' X , Y <- A ; B" := (match A with Some (X, Y) => B | None => failstop end)
+  (at level 200, X ident, Y ident, A at level 100, B at level 200)
+  : tag_monad_scope.
+
+Notation "'trule' X , Y , Z <- A ; B" := (match A with Some (X, Y, Z) => B | None => failstop end)
+  (at level 200, X ident, Y ident, Z ident, A at level 100, B at level 200)
+  : tag_monad_scope.
+
+Notation "'trule' X , Y , Z , W <- A ; B" := (match A with Some (X, Y, Z, W) => B | None => failstop end)
+  (at level 200, X ident, Y ident, Z ident, W ident, A at level 100, B at level 200)
+  : tag_monad_scope.
+
+Local Open Scope tag_monad_scope.
+
 Fixpoint step_expr (k: kind) (pct: tag) (a: expr) (m: mem): reducts expr :=
   match k, a with
   | LV, Eloc b ofs pt bf ty =>
@@ -823,11 +846,13 @@ Fixpoint step_expr (k: kind) (pct: tag) (a: expr) (m: mem): reducts expr :=
       match e!x with
       | Some(base, bound, t, ty') =>
           check type_eq ty ty';
-          topred (Lred "red_var_local" (Eloc dummy (Ptrofs.repr base) t Full ty) m)
+          trule t' <- VarT pct t;
+          topred (Lred "red_var_local" (Eloc dummy (Ptrofs.repr base) t' Full ty) m)
       | None =>
           do bt <- Genv.find_symbol (fst ge) x;
           let '(b, base, bound, t) := bt in
-          topred (Lred "red_var_global" (Eloc b (Ptrofs.repr base) t Full ty) m)
+          trule t' <- VarT pct t;
+          topred (Lred "red_var_global" (Eloc b (Ptrofs.repr base) t' Full ty) m)
       end
   | LV, Ederef r ty =>
       match is_val r with
@@ -865,10 +890,12 @@ Fixpoint step_expr (k: kind) (pct: tag) (a: expr) (m: mem): reducts expr :=
       nil
   | RV, Evalof l ty =>
       match is_loc l with
-      | Some(b, ofs, t, bf, ty') =>
+      | Some(b, ofs, pt, bf, ty') =>
           check type_eq ty ty';
-          do w',t,v,lts <- do_deref_loc w ty m b ofs t bf;
-          topred (Rred "red_rvalof" pct (Eval v ty) m t)
+          do w',t,vvt,lts <- do_deref_loc w ty m b ofs pt bf;
+          let (v,vt) := vvt in
+          trule vt' <- LoadT pct pt vt lts;
+          topred (Rred "red_rvalof" pct (Eval (v,vt) ty) m t)
       | None =>
           incontext (fun x => Evalof x ty) (step_expr LV pct l m)
       end
@@ -937,22 +964,27 @@ Fixpoint step_expr (k: kind) (pct: tag) (a: expr) (m: mem): reducts expr :=
       topred (Rred "red_alignof" pct (Eval (Vptrofs (Ptrofs.repr (alignof (snd ge) ty')), def_tag) ty) m E0)
   | RV, Eassign l1 r2 ty =>
       match is_loc l1, is_val r2 with
-      | Some(b, ofs, t1, bf, ty1), Some(v2, t2, ty2) =>
+      | Some(b, ofs, pt1, bf, ty1), Some(v2, vt2, ty2) =>
           check type_eq ty1 ty;
           do v <- sem_cast v2 ty2 ty1 m;
-          do w',t,m',v' <- do_assign_loc w ty1 m b ofs t1 bf (v,t2) [];
-          topred (Rred "red_assign" pct (Eval v' ty) m' t)
+          do w',t,vvt,lts <- do_deref_loc w ty1 m b ofs pt1 bf;
+          let (_,vt1) := vvt in
+          trule pct',vt',lts' <- StoreT pct pt1 vt1 vt2 lts;
+          do w'',t,m',vvt' <- do_assign_loc w' ty1 m b ofs pt1 bf (v,vt') lts';
+          topred (Rred "red_assign" pct (Eval vvt' ty) m' t)
       | _, _ =>
          incontext2 (fun x => Eassign x r2 ty) (step_expr LV pct l1 m)
                     (fun x => Eassign l1 x ty) (step_expr RV pct r2 m)
       end
   | RV, Eassignop op l1 r2 tyres ty =>
       match is_loc l1, is_val r2 with
-      | Some(b, ofs, t1, bf, ty1), Some(v2, t2, ty2) =>
+      | Some(b, ofs, pt1, bf, ty1), Some(v2, vt2, ty2) =>
           check type_eq ty1 ty;
-          do w',t,vt1,lts <- do_deref_loc w ty1 m b ofs t1 bf;
-          let r' := Eassign (Eloc b ofs t1 bf ty1)
-                           (Ebinop op (Eval vt1 ty1) (Eval (v2,t2) ty2) tyres) ty1 in
+          do w',t,vvt,lts <- do_deref_loc w ty m b ofs pt1 bf; 
+          let (v1,vt1) := vvt in
+          trule vt' <- LoadT pct pt1 vt1 lts;
+          let r' := Eassign (Eloc b ofs pt1 bf ty1)
+                           (Ebinop op (Eval (v1,vt') ty1) (Eval (v2,vt2) ty2) tyres) ty1 in
           topred (Rred "red_assignop" pct r' m t)
       | _, _ =>
          incontext2 (fun x => Eassignop op x r2 tyres ty) (step_expr LV pct l1 m)
@@ -960,15 +992,17 @@ Fixpoint step_expr (k: kind) (pct: tag) (a: expr) (m: mem): reducts expr :=
       end
   | RV, Epostincr id l ty =>
       match is_loc l with
-      | Some(b, ofs, pt, bf, ty1) =>
+      | Some(b, ofs, pt1, bf, ty1) =>
           check type_eq ty1 ty;
-          do w',t, v1, lts <- do_deref_loc w ty m b ofs pt bf;
+          do w',t, vvt, lts <- do_deref_loc w ty m b ofs pt1 bf;
+          let (v1,vt1) := vvt in
+          trule vt' <- LoadT pct pt1 vt1 lts;
           let op := match id with Incr => Oadd | Decr => Osub end in
           let r' :=
-            Ecomma (Eassign (Eloc b ofs pt bf ty)
-                           (Ebinop op (Eval v1 ty) (Eval (Vint Int.one,def_tag) type_int32s) (incrdecr_type ty))
+            Ecomma (Eassign (Eloc b ofs pt1 bf ty)
+                           (Ebinop op (Eval (v1,vt') ty) (Eval (Vint Int.one,def_tag) type_int32s) (incrdecr_type ty))
                            ty)
-                   (Eval v1 ty) ty in
+                   (Eval (v1,vt') ty) ty in
           topred (Rred "red_postincr" pct r' m t)
       | None =>
           incontext (fun x => Epostincr id x ty) (step_expr LV pct l m)
@@ -2085,6 +2119,7 @@ Definition expr_final_state (f: function) (k: cont) (pct: tag) (e: env) (C_rd: (
   | Rred rule pct a m t => TR rule t (ExprState f pct (fst C_rd a) k e m)
   | Callred rule fd vargs ty m => TR rule E0 (Callstate fd pct vargs (Kcall f e (fst C_rd) ty k) m)
   | Stuckred => TR "step_stuck" E0 Stuckstate
+  | Failstopred => TR "monitor_failstop" E0 Failstop
   end.
 
 Local Open Scope list_monad_scope.

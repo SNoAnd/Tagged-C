@@ -36,15 +36,9 @@ let object_filename sourcename =
   else
     tmp_file ".o"
 
-(* From C source to asm *)
-
-let compile_i_file sourcename preproname =
-  Machine.config := Machine.compcert_interpreter !Machine.config;
-  let csyntax = parse_c_file sourcename preproname in
-  Interp.execute csyntax;
-  ""
-
 (* Processing of a .c file *)
+let runner = ref (WithNull.run_i_file)
+let initter = ref (WithNull.init_with)
 
 let process_c_file sourcename =
   ensure_inputfile_exists sourcename;
@@ -57,35 +51,16 @@ let process_c_file sourcename =
     else
       tmp_file ".i" in
     preprocess sourcename preproname;
-    compile_i_file sourcename preproname
+    !runner sourcename preproname;
+    ""
   end
 
 (* Processing of a .i / .p file (preprocessed C) *)
 
 let process_i_file sourcename =
   ensure_inputfile_exists sourcename;
-  compile_i_file sourcename sourcename
-
-(* Processing of .S and .s files *)
-
-let process_s_file sourcename =
-  ensure_inputfile_exists sourcename;
-  let objname = object_filename sourcename in
-  assemble sourcename objname;
-  objname
-
-let process_S_file sourcename =
-  ensure_inputfile_exists sourcename;
-  if !option_E then begin
-    preprocess sourcename (output_filename_default "-");
-    ""
-  end else begin
-    let preproname = tmp_file ".s" in
-    preprocess sourcename preproname;
-    let objname = object_filename sourcename in
-    assemble preproname objname;
-    objname
-  end
+  !runner sourcename sourcename;
+  ""
 
 (* Processing of .h files *)
 
@@ -307,6 +282,16 @@ let cmdline_actions =
   Exact "-all", Unit (fun () -> Interp.mode := Interp.All);
   Exact "-main", String (fun s -> main_function_name := s)
  ]
+ (* Policy options *)
+  @ [
+  Exact "-p", String
+        (fun arg ->
+                if arg = "pvi"
+                then (runner := WithPVI.run_i_file; initter := WithPVI.init_with)
+                else (if arg = "null"
+                then (runner := WithNull.run_i_file; initter := WithNull.init_with)
+                else error no_loc "Unknown policy `%s'" arg))
+  ]
 (* Optimization options *)
 (* -f options: come in -f and -fno- variants *)
   @ f_opt "tailcalls" option_ftailcalls
@@ -330,12 +315,6 @@ let cmdline_actions =
       push_action process_i_file s; incr num_source_files; incr num_input_files);
   Suffix ".p", Self (fun s ->
       push_action process_i_file s; incr num_source_files; incr num_input_files);
-  Suffix ".s", Self (fun s ->
-      push_action process_s_file s; incr num_source_files; incr num_input_files);
-  Suffix ".S", Self (fun s ->
-      push_action process_S_file s; incr num_source_files; incr num_input_files);
-  Suffix ".sx", Self (fun s ->
-      push_action process_S_file s; incr num_source_files; incr num_input_files);
   Suffix ".o", Self (fun s -> push_linker_arg s; incr num_input_files);
   Suffix ".a", Self (fun s -> push_linker_arg s; incr num_input_files);
   (* GCC compatibility: .o.ext files and .so files are also object files *)
@@ -354,6 +333,7 @@ let _ =
            };
     Printexc.record_backtrace true;
     Frontend.init ();
+    !initter ();
     parse_cmdline cmdline_actions;
     (*DebugInit.init (); (* Initialize the debug functions *)*)
     if nolink () && !option_o <> None && !num_source_files >= 2 then

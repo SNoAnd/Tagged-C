@@ -24,92 +24,92 @@ Require Ctypes.
 Require Csyntax.
 Require Parser.
 Require Initializers.
-
 Require Import Tags Initializers Csem.
 
 Module Extracted (P : Policy).
 
-Module I := Initializers P.
-Import I.
-Import Cexec.
-Import Cstrategy.
-Import Ctyping.
-Import Csem.
-Import Csyntax.
-Import Cop.
-Import Deterministic.
-Import Behaviors.
-Import Smallstep.
-Import Events.
-Import Genv.
-Import Mem.
+  Module I := Initializers P.
+  Import I.
+  Import Cexec.
+  Import Cstrategy.
+  Import Ctyping.
+  Import Csem.
+  Import Csyntax.
+  Import Cop.
+  Import Deterministic.
+  Import Behaviors.
+  Import Smallstep.
+  Import Events.
+  Import Genv.
+  Import Mem.
 
-(* Standard lib *)
-Require Import ExtrOcamlBasic.
-Require Import ExtrOcamlString.
+  (* Memory - work around an extraction bug. *)
+  Extraction NoInline valid_pointer.
 
-(* Coqlib *)
-Extract Inlined Constant Coqlib.proj_sumbool => "(fun x -> x)".
+End Extracted.
+  
+  (* Standard lib *)
+  Require Import ExtrOcamlBasic.
+  Require Import ExtrOcamlString.
 
-(* Datatypes *)
-Extract Inlined Constant Datatypes.fst => "fst".
-Extract Inlined Constant Datatypes.snd => "snd".
+  (* Coqlib *)
+  Extract Inlined Constant Coqlib.proj_sumbool => "(fun x -> x)".
 
-(* Decidable *)
+  (* Datatypes *)
+  Extract Inlined Constant Datatypes.fst => "fst".
+  Extract Inlined Constant Datatypes.snd => "snd".
 
-Extraction Inline DecidableClass.Decidable_witness DecidableClass.decide
-   Decidableplus.Decidable_and Decidableplus.Decidable_or
-   Decidableplus.Decidable_not Decidableplus.Decidable_implies.
+  (* Decidable *)
+  Extraction Inline DecidableClass.Decidable_witness DecidableClass.decide
+             Decidableplus.Decidable_and Decidableplus.Decidable_or
+             Decidableplus.Decidable_not Decidableplus.Decidable_implies.
 
-(* Wfsimpl *)
-Extraction Inline Wfsimpl.Fix Wfsimpl.Fixm.
+  (* Wfsimpl *)
+  Extraction Inline Wfsimpl.Fix Wfsimpl.Fixm.
 
-(* Memory - work around an extraction bug. *)
-Extraction NoInline valid_pointer.
+  (* Errors *)
+  Extraction Inline Errors.bind Errors.bind2.
 
-(* Errors *)
-Extraction Inline Errors.bind Errors.bind2.
+  (* Iteration *)
+  Extract Constant Iteration.GenIter.iterate =>
+            "let rec iter f a =
+            match f a with Coq_inl b -> Some b | Coq_inr a' -> iter f a'
+            in iter".
 
-(* Iteration *)
+  (* Cabs *)
+  Extract Constant Cabs.loc =>
+            "{ lineno : int;
+            filename: string;
+            byteno: int;
+            ident : int;
+            }".
+  Extract Inlined Constant Cabs.string => "String.t".
+  Extract Constant Cabs.char_code => "int64".
 
-Extract Constant Iteration.GenIter.iterate =>
-  "let rec iter f a =
-     match f a with Coq_inl b -> Some b | Coq_inr a' -> iter f a'
-   in iter".
+  (* Processor-specific extraction directives *)
 
-(* Cabs *)
-Extract Constant Cabs.loc =>
-"{ lineno : int;
-   filename: string;
-   byteno: int;
-   ident : int;
- }".
-Extract Inlined Constant Cabs.string => "String.t".
-Extract Constant Cabs.char_code => "int64".
+  (* Avoid name clashes *)
+  Extraction Blacklist List String Int.
 
-(* Processor-specific extraction directives *)
+  (* Needed in Coq 8.4 to avoid problems with Function definitions. *)
+  Set Extraction AccessOpaque.
 
-(* Avoid name clashes *)
-Extraction Blacklist List String Int.
+  (* Go! *)
+  
+  Cd "extraction".
 
-(* Needed in Coq 8.4 to avoid problems with Function definitions. *)
-Set Extraction AccessOpaque.
-
-(* Go! *)
-
-(* Cd "extraction".*)
-
-Separate Extraction
-   Cexec.do_initial_state Cexec.do_step Cexec.at_final_state
-   Ctypes.merge_attributes Ctypes.remove_attributes
-   Ctypes.build_composite_env Ctypes.signature_of_type Ctypes.typlist_of_typelist
-   transl_init constval
-   Csyntax.Eindex Csyntax.Epreincr Csyntax.Eselection
-   Ctyping.typecheck_program
-   Ctyping.epostincr Ctyping.epostdecr Ctyping.epreincr Ctyping.epredecr
-   Ctyping.eselection
-   Ctypes.make_program
-   AST
-   Floats.Float32.from_parsed Floats.Float.from_parsed
-   invert_symbol
-   Parser.translation_unit_file.
+  Separate Extraction
+           Tags
+           Extracted
+           Ctypes.merge_attributes Ctypes.remove_attributes
+           Ctypes.build_composite_env Ctypes.signature_of_type Ctypes.typlist_of_typelist
+           (*transl_init constval
+           Csyntax.Eindex Csyntax.Epreincr Csyntax.Eselection
+           Ctyping.typecheck_program
+           Ctyping.epostincr Ctyping.epostdecr Ctyping.epreincr Ctyping.epredecr
+           Ctyping.eselection
+           Ctypes.make_program*)
+           AST
+           Floats.Float32.from_parsed Floats.Float.from_parsed
+           (*invert_symbol*)
+           Parser.translation_unit_file.
