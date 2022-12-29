@@ -254,7 +254,7 @@ Inductive lred: expr -> mem -> expr -> mem -> Prop :=
          (Eloc b (Ptrofs.add ofs (Ptrofs.repr delta)) vt bf ty) m.
 
 (** Head reductions for r-values *)
-Print val. Print type.
+
 Inductive rred (PCT:tag) : expr -> mem -> trace -> tag -> expr -> mem -> Prop :=
 | red_rvalof: forall b ofs pt lts bf ty m t v vt PCT' vt',
     deref_loc ty m b ofs pt bf t (v,vt) lts ->
