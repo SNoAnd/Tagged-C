@@ -1734,16 +1734,9 @@ Proof.
   { destruct c; auto. }
   intros; unfold cmpu_bool. rewrite ! E. destruct Archi.ptr64 eqn:SF, x, y; auto.
 - rewrite Int.swap_cmpu. auto.
-- destruct (eq_block) rewrite Int.swap_cmpu. auto.
-- destruct (eq_block b b0); subst.
-  rewrite dec_eq_true.
-  destruct (valid_ptr b0 (Ptrofs.unsigned i) || valid_ptr b0 (Ptrofs.unsigned i - 1));
-  destruct (valid_ptr b0 (Ptrofs.unsigned i0) || valid_ptr b0 (Ptrofs.unsigned i0 - 1));
-  simpl; auto.
-  rewrite Ptrofs.swap_cmpu. auto.
-  rewrite dec_eq_false by auto.
-  destruct (valid_ptr b (Ptrofs.unsigned i));
-    destruct (valid_ptr b0 (Ptrofs.unsigned i0)); simpl; auto.
+- destruct (eq_block b b0); destruct (eq_block b0 b); subst; auto; contradiction.
+- rewrite Int.swap_cmpu. auto.
+- destruct (eq_block b b0); destruct (eq_block b0 b); subst; auto; contradiction.
 Qed.
 
 Theorem swap_cmpl_bool:
@@ -1754,8 +1747,8 @@ Proof.
 Qed.
 
 Theorem swap_cmplu_bool:
-  forall valid_ptr c x y,
-  cmplu_bool valid_ptr (swap_comparison c) x y = cmplu_bool valid_ptr c y x.
+  forall c x y,
+  cmplu_bool (swap_comparison c) x y = cmplu_bool c y x.
 Proof.
   assert (E: forall c, cmp_different_blocks (swap_comparison c) = cmp_different_blocks c).
   { destruct c; auto. }
