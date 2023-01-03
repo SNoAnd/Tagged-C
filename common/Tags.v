@@ -14,7 +14,7 @@ Module Type Policy.
 
   Parameter InitPCT : tag.
 
-  Parameter GlobalT : ident -> tag.
+  Parameter GlobalT : ident -> nat -> tag * list tag.
   
   Parameter VarT : tag -> tag -> option tag.
 
@@ -77,11 +77,11 @@ Module NullPolicy <: Policy.
   
   Definition InitPCT : tag := tt.
 
-  Definition GlobalT (id : ident) := tt.
+  Definition GlobalT (id : ident) (align : nat) := (tt, repeat tt align).
   
   Definition VarT (pct pt : tag) := Some tt.
 
-  Definition LocalT (align : nat) (pct : tag) : option (tag * tag * list tag) := Some (tt, tt, [tt]).
+  Definition LocalT (align : nat) (pct : tag) : option (tag * tag * list tag) := Some (tt, tt, repeat tt align).
   
   Definition ConstT : tag := tt.
   
@@ -119,7 +119,7 @@ Module PVI <: Policy.
 
   Definition InitPCT := Dyn 0.
 
-  Definition GlobalT (id : ident) := Glob id.
+  Definition GlobalT (id : ident) (align : nat) : tag * list tag := (X, repeat (Glob id) align).
   
   Definition LocalT (align : nat) (pct : tag) : option (tag * tag * list tag) :=
     match pct with
@@ -179,7 +179,7 @@ Module PNVI <: Policy.
 
   Definition InitPCT := Dyn 0.
 
-  Definition GlobalT (id : ident) := Glob id.
+  Definition GlobalT (id : ident) (align : nat) := (X, repeat (Glob id) align).
   
   Definition LocalT (align : nat) (pct : tag) : option (tag * tag * list tag) :=
     match pct with
@@ -220,3 +220,89 @@ Module PNVI <: Policy.
     
   Definition DummyT (ts : list tag) : option (list tag) := Some ts.
 End PNVI.
+
+Definition Source : Type := (ident * ident).
+Program Definition seq : forall s1 s2: Source, {s1 = s2} + {s1 <> s2}.
+repeat decide equality.
+Qed.
+
+Inductive IFC_Rule : Type :=
+| NoFlowGlobal (s:Source) (g:ident)
+| NoFlowHeap (s:Source) (f ind:ident)
+| NoLeak (s:Source)
+| Declassify (s d:Source)
+.
+
+Definition SrcOf (r:IFC_Rule) : Source :=
+  match r with
+  | NoFlowGlobal s _ => s
+  | NoFlowHeap s _ _ => s
+  | NoLeak s => s
+  | Declassify s _ => s
+  end.
+
+Module Type IFC_Spec.
+  Parameter Rules : list IFC_Rule.
+End IFC_Spec.
+
+Module IFC (S:IFC_Spec) <: Policy.
+  Import S.
+
+  Inductive myTag : Type :=
+  | Tainted (ss: list Source)
+  | Forbid (ss: list Source)
+  | X
+  .
+  
+  Definition tag : Type := myTag.
+  Theorem tag_eq_dec : forall (t1 t2:tag), {t1 = t2} + {t1 <> t2}. Proof. repeat decide equality. Qed.
+
+  Definition merge (t1 t2: tag) : tag :=
+    match t1, t2 with
+    | Tainted ss1, Tainted ss2 => Tainted (ss1 ++ ss2)
+    | Tainted ss1, _ => Tainted ss1
+    | _, Tainted ss2 => Tainted ss2
+    | _, _ => X
+    end.
+
+  Definition check (st dt: tag) : bool :=
+    match st, dt with
+    | Tainted ss1, Forbid ss2 => forallb (fun s => negb (existsb (fun s' => seq s s') ss1)) ss2
+    | _,_ => true
+    end.
+  
+  Definition def_tag : tag := X.
+
+  Definition InitPCT : tag := X.
+
+  Definition GlobalT (gid : ident) (align : nat) : (tag * list tag) :=
+    let lt := Forbid (map SrcOf (List.filter (fun r =>
+                                                match r with
+                                                | NoFlowGlobal _ g => (g =? gid)%positive
+                                                | _ => false end) Rules)) in
+    (X, repeat lt align).
+  
+  Definition VarT (pct vt: tag) : option tag := Some vt.
+
+  Definition LocalT (align: nat) (pct: tag) : option (tag * tag * list tag) :=
+    Some (X, X, repeat X align).
+  
+  Definition ConstT : tag := X.
+
+  Definition UnopT (pct vt: tag) : option (tag * tag) := Some (pct, vt).
+
+  Definition BinopT (pct vt1 vt2: tag) : option (tag * tag) := Some (pct, merge vt1 vt2).
+  
+  Definition LoadT (pct pt vt: tag) (lts: list tag) : option tag :=
+    Some vt.
+
+  Definition StoreT (pct pt ovt vt: tag) (lts: list tag) : option (tag * tag * list tag) :=
+    let st := merge (merge pct pt) vt in
+    if forallb (check st) lts then Some (pct, st, lts) else None.
+
+  Parameter IfSplitT : tag -> tag -> option (tag * tag).
+
+  Parameter IfJoinT : tag -> tag -> option tag.
+    
+  Parameter DummyT : list tag -> option (list tag).  
+End IFC.
