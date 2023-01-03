@@ -40,7 +40,7 @@ Inductive val: Type :=
   | Vlong: int64 -> val
   | Vfloat: float -> val
   | Vsingle: float32 -> val
-  | Vptr: block -> ptrofs -> val.
+  | Vfptr: block -> val.
 
 Definition Vzero: val := Vint Int.zero.
 Definition Vone: val := Vint Int.one.
@@ -54,6 +54,13 @@ Definition Vnullptr :=
 
 Definition Vptrofs (n: ptrofs) :=
   if Archi.ptr64 then Vlong (Ptrofs.to_int64 n) else Vint (Ptrofs.to_int n).
+
+Definition ptrofs_map (f: ptrofs -> ptrofs) (v: val) : val :=
+  match v, Archi.ptr64 with
+  | Vlong p, true => Vlong (Ptrofs.to_int64 (f (Ptrofs.of_int64 p)))
+  | Vint p, false => Vint (Ptrofs.to_int (f (Ptrofs.of_int p)))
+  | _, _ => Vundef
+  end.         
 
 (** * Operations over values *)
 
@@ -70,7 +77,6 @@ Proof.
   apply Int64.eq_dec.
   apply Float.eq_dec.
   apply Float32.eq_dec.
-  apply Ptrofs.eq_dec.
   apply eq_block.
 Defined.
 Global Opaque eq.
@@ -82,10 +88,10 @@ Definition has_type (v: val) (t: typ) : Prop :=
   | Vlong _, Tlong => True
   | Vfloat _, Tfloat => True
   | Vsingle _, Tsingle => True
-  | Vptr _ _, Tint => Archi.ptr64 = false
-  | Vptr _ _, Tlong => Archi.ptr64 = true
+  | Vfptr _, Tint => Archi.ptr64 = false
+  | Vfptr _, Tlong => Archi.ptr64 = true
   | (Vint _ | Vsingle _), Tany32 => True
-  | Vptr _ _, Tany32 => Archi.ptr64 = false
+  | Vfptr _, Tany32 => Archi.ptr64 = false
   | _, Tany64 => True
   | _, _ => False
   end.
@@ -104,7 +110,7 @@ Definition has_opttype (v: val) (ot: option typ) : Prop :=
   end.
 
 Lemma Vptr_has_type:
-  forall b ofs, has_type (Vptr b ofs) Tptr.
+  forall b, has_type (Vfptr b) Tptr.
 Proof.
   intros. unfold Tptr, has_type; destruct Archi.ptr64; reflexivity.
 Qed.
@@ -275,14 +281,14 @@ Definition of_bool (b: bool): val := if b then Vtrue else Vfalse.
 Definition boolval (v: val) : val :=
   match v with
   | Vint n => of_bool (negb (Int.eq n Int.zero))
-  | Vptr b ofs => Vtrue
+  | Vfptr b => Vtrue
   | _ => Vundef
   end.
 
 Definition notbool (v: val) : val :=
   match v with
   | Vint n => of_bool (Int.eq n Int.zero)
-  | Vptr b ofs => Vfalse
+  | Vfptr b => Vfalse
   | _ => Vundef
   end.
 
@@ -313,18 +319,12 @@ Definition floatofsingle (v: val) : val :=
 Definition add (v1 v2: val): val :=
   match v1, v2 with
   | Vint n1, Vint n2 => Vint(Int.add n1 n2)
-  | Vptr b1 ofs1, Vint n2 => if Archi.ptr64 then Vundef else Vptr b1 (Ptrofs.add ofs1 (Ptrofs.of_int n2))
-  | Vint n1, Vptr b2 ofs2 => if Archi.ptr64 then Vundef else Vptr b2 (Ptrofs.add ofs2 (Ptrofs.of_int n1))
   | _, _ => Vundef
   end.
 
 Definition sub (v1 v2: val): val :=
   match v1, v2 with
   | Vint n1, Vint n2 => Vint(Int.sub n1 n2)
-  | Vptr b1 ofs1, Vint n2 => if Archi.ptr64 then Vundef else Vptr b1 (Ptrofs.sub ofs1 (Ptrofs.of_int n2))
-  | Vptr b1 ofs1, Vptr b2 ofs2 =>
-      if Archi.ptr64 then Vundef else
-      if eq_block b1 b2 then Vint(Ptrofs.to_int (Ptrofs.sub ofs1 ofs2)) else Vundef
   | _, _ => Vundef
   end.
 
@@ -628,19 +628,12 @@ Definition singleoflongu (v: val) : option val :=
 Definition addl (v1 v2: val): val :=
   match v1, v2 with
   | Vlong n1, Vlong n2 => Vlong(Int64.add n1 n2)
-  | Vptr b1 ofs1, Vlong n2 => if Archi.ptr64 then Vptr b1 (Ptrofs.add ofs1 (Ptrofs.of_int64 n2)) else Vundef
-  | Vlong n1, Vptr b2 ofs2 => if Archi.ptr64 then Vptr b2 (Ptrofs.add ofs2 (Ptrofs.of_int64 n1)) else Vundef
   | _, _ => Vundef
   end.
 
 Definition subl (v1 v2: val): val :=
   match v1, v2 with
   | Vlong n1, Vlong n2 => Vlong(Int64.sub n1 n2)
-  | Vptr b1 ofs1, Vlong n2 =>
-      if Archi.ptr64 then Vptr b1 (Ptrofs.sub ofs1 (Ptrofs.of_int64 n2)) else Vundef
-  | Vptr b1 ofs1, Vptr b2 ofs2 =>
-      if negb Archi.ptr64 then Vundef else
-      if eq_block b1 b2 then Vlong(Ptrofs.to_int64 (Ptrofs.sub ofs1 ofs2)) else Vundef
   | _, _ => Vundef
   end.
 
@@ -837,28 +830,7 @@ Definition cmpu_bool (c: comparison) (v1 v2: val): option bool :=
   match v1, v2 with
   | Vint n1, Vint n2 =>
       Some (Int.cmpu c n1 n2)
-  | Vint n1, Vptr b2 ofs2 =>
-      if Archi.ptr64 then None else
-      if Int.eq n1 Int.zero && weak_valid_ptr b2 (Ptrofs.unsigned ofs2)
-      then cmp_different_blocks c
-      else None
-  | Vptr b1 ofs1, Vptr b2 ofs2 =>
-      if Archi.ptr64 then None else
-      if eq_block b1 b2 then
-        if weak_valid_ptr b1 (Ptrofs.unsigned ofs1)
-           && weak_valid_ptr b2 (Ptrofs.unsigned ofs2)
-        then Some (Ptrofs.cmpu c ofs1 ofs2)
-        else None
-      else
-        if valid_ptr b1 (Ptrofs.unsigned ofs1)
-           && valid_ptr b2 (Ptrofs.unsigned ofs2)
-        then cmp_different_blocks c
-        else None
-  | Vptr b1 ofs1, Vint n2 =>
-      if Archi.ptr64 then None else
-      if Int.eq n2 Int.zero && weak_valid_ptr b1 (Ptrofs.unsigned ofs1)
-      then cmp_different_blocks c
-      else None
+  | Vfptr b1, Vfptr b2 => option_map (xorb (eq_block b1 b2)) (cmp_different_blocks c)
   | _, _ => None
   end.
 
@@ -883,28 +855,7 @@ Definition cmpl_bool (c: comparison) (v1 v2: val): option bool :=
 Definition cmplu_bool (c: comparison) (v1 v2: val): option bool :=
   match v1, v2 with
   | Vlong n1, Vlong n2 => Some (Int64.cmpu c n1 n2)
-  | Vlong n1, Vptr b2 ofs2 =>
-      if negb Archi.ptr64 then None else
-      if Int64.eq n1 Int64.zero && weak_valid_ptr b2 (Ptrofs.unsigned ofs2)
-      then cmp_different_blocks c
-      else None
-  | Vptr b1 ofs1, Vptr b2 ofs2 =>
-      if negb Archi.ptr64 then None else
-      if eq_block b1 b2 then
-        if weak_valid_ptr b1 (Ptrofs.unsigned ofs1)
-           && weak_valid_ptr b2 (Ptrofs.unsigned ofs2)
-        then Some (Ptrofs.cmpu c ofs1 ofs2)
-        else None
-      else
-        if valid_ptr b1 (Ptrofs.unsigned ofs1)
-           && valid_ptr b2 (Ptrofs.unsigned ofs2)
-        then cmp_different_blocks c
-        else None
-  | Vptr b1 ofs1, Vlong n2 =>
-      if negb Archi.ptr64 then None else
-      if Int64.eq n2 Int64.zero && weak_valid_ptr b1 (Ptrofs.unsigned ofs1)
-      then cmp_different_blocks c
-      else None
+  | Vfptr b1, Vfptr b2 => option_map (xorb (eq_block b1 b2)) (cmp_different_blocks c)
   | _, _ => None
   end.
 
@@ -940,14 +891,10 @@ End COMPARISONS.
 (** Add the given offset to the given pointer. *)
 
 Definition offset_ptr (v: val) (delta: ptrofs) : val :=
-  match v with
-  | Vptr b ofs => Vptr b (Ptrofs.add ofs delta)
-  | _ => Vundef
-  end.
+  ptrofs_map (Ptrofs.add delta) v.
 
 (** Normalize a value to the given type, turning it into Vundef if it does not
     match the type. *)
-
 Definition normalize (v: val) (ty: typ) : val :=
   match v, ty with
   | Vundef, _ => Vundef
@@ -955,8 +902,8 @@ Definition normalize (v: val) (ty: typ) : val :=
   | Vlong _, Tlong => v
   | Vfloat _, Tfloat => v
   | Vsingle _, Tsingle => v
-  | Vptr _ _, (Tint | Tany32) => if Archi.ptr64 then Vundef else v
-  | Vptr _ _, Tlong => if Archi.ptr64 then v else Vundef
+  | Vfptr _, (Tint | Tany32) => if Archi.ptr64 then Vundef else v
+  | Vfptr _, Tlong => if Archi.ptr64 then v else Vundef
   | (Vint _ | Vsingle _), Tany32 => v
   | _, Tany64 => v
   | _, _ => Vundef
@@ -1010,13 +957,13 @@ Definition load_result (chunk: memory_chunk) (v: val) :=
   | Mint16signed, Vint n => Vint (Int.sign_ext 16 n)
   | Mint16unsigned, Vint n => Vint (Int.zero_ext 16 n)
   | Mint32, Vint n => Vint n
-  | Mint32, Vptr b ofs => if Archi.ptr64 then Vundef else Vptr b ofs
+  | Mint32, Vfptr b => if Archi.ptr64 then Vundef else Vfptr b
   | Mint64, Vlong n => Vlong n
-  | Mint64, Vptr b ofs => if Archi.ptr64 then Vptr b ofs else Vundef
+  | Mint64, Vfptr b => if Archi.ptr64 then Vfptr b else Vundef
   | Mfloat32, Vsingle f => Vsingle f
   | Mfloat64, Vfloat f => Vfloat f
   | Many32, (Vint _ | Vsingle _) => v
-  | Many32, Vptr _ _ => if Archi.ptr64 then Vundef else v
+  | Many32, Vfptr _ => if Archi.ptr64 then Vundef else v
   | Many64, _ => v
   | _, _ => Vundef
   end.
@@ -1126,12 +1073,6 @@ Proof.
   unfold add; intros; destruct Archi.ptr64 eqn:SF, x, y, z; simpl; auto.
 - rewrite Int.add_assoc; auto.
 - rewrite Int.add_assoc; auto.
-- rewrite ! Ptrofs.add_assoc. f_equal. f_equal.
-  rewrite Ptrofs.add_commut. auto with ptrofs.
-- rewrite ! Ptrofs.add_assoc. f_equal. f_equal.
-  apply Ptrofs.add_commut.
-- rewrite ! Ptrofs.add_assoc. f_equal. f_equal.
-  symmetry. auto with ptrofs.
 Qed.
 
 Theorem add_permut: forall x y z, add x (add y z) = add y (add x z).
@@ -1167,7 +1108,6 @@ Proof.
   unfold sub, add; intros; destruct Archi.ptr64 eqn:SF, x; auto.
 - rewrite Int.sub_add_opp; auto.
 - rewrite Int.sub_add_opp; auto.
-- rewrite Ptrofs.sub_add_opp. f_equal. f_equal. symmetry. auto with ptrofs.
 Qed.
 
 Theorem sub_opp_add: forall x y, sub x (Vint (Int.neg y)) = add x (Vint y).
@@ -1181,9 +1121,6 @@ Proof.
   unfold sub, add; intros; destruct Archi.ptr64 eqn:SF, v1, v2; auto.
 - rewrite Int.sub_add_l; auto.
 - rewrite Int.sub_add_l; auto.
-- rewrite Ptrofs.sub_add_l; auto.
-- destruct (eq_block b b0); auto.
-  f_equal. rewrite Ptrofs.sub_add_l. auto with ptrofs.
 Qed.
 
 Theorem sub_add_r:
@@ -1192,12 +1129,6 @@ Proof.
   unfold sub, add; intros; destruct Archi.ptr64 eqn:SF, v1, v2; auto.
 - rewrite Int.add_commut. rewrite Int.sub_add_r. auto.
 - rewrite Int.add_commut. rewrite Int.sub_add_r. auto.
-- f_equal. replace (Ptrofs.of_int (Int.add i1 i)) with (Ptrofs.add (Ptrofs.of_int i) (Ptrofs.of_int i1)).
-  rewrite Ptrofs.sub_add_r. f_equal.
-  symmetry. auto with ptrofs.
-  symmetry. rewrite Int.add_commut. auto with ptrofs.
-- destruct (eq_block b b0); auto.
-  f_equal. rewrite Ptrofs.add_commut. rewrite Ptrofs.sub_add_r. auto with ptrofs.
 Qed.
 
 Theorem mul_commut: forall x y, mul x y = mul y x.
@@ -1507,13 +1438,7 @@ Theorem addl_assoc: forall x y z, addl (addl x y) z = addl x (addl y z).
 Proof.
   unfold addl; intros; destruct Archi.ptr64 eqn:SF, x, y, z; simpl; auto.
 - rewrite Int64.add_assoc; auto.
-- rewrite ! Ptrofs.add_assoc. f_equal. f_equal.
-  rewrite Ptrofs.add_commut. auto with ptrofs.
-- rewrite ! Ptrofs.add_assoc. f_equal. f_equal.
-  apply Ptrofs.add_commut.
-- rewrite ! Ptrofs.add_assoc. f_equal. f_equal.
-  symmetry. auto with ptrofs.
-- rewrite Int64.add_assoc; auto.
+- rewrite ! Int64.add_assoc. f_equal.
 Qed.
 
 Theorem addl_permut: forall x y z, addl x (addl y z) = addl y (addl x z).
@@ -1538,8 +1463,7 @@ Theorem subl_addl_opp: forall x y, subl x (Vlong y) = addl x (Vlong (Int64.neg y
 Proof.
   unfold subl, addl; intros; destruct Archi.ptr64 eqn:SF, x; auto.
 - rewrite Int64.sub_add_opp; auto.
-- rewrite Ptrofs.sub_add_opp. f_equal. f_equal. symmetry. auto with ptrofs.
-- rewrite Int64.sub_add_opp; auto.
+- rewrite Int64.sub_add_opp. f_equal.
 Qed.
 
 Theorem subl_opp_addl: forall x y, subl x (Vlong (Int64.neg y)) = addl x (Vlong y).
@@ -1552,9 +1476,6 @@ Theorem subl_addl_l:
 Proof.
   unfold subl, addl; intros; destruct Archi.ptr64 eqn:SF, v1, v2; auto.
 - rewrite Int64.sub_add_l; auto.
-- rewrite Ptrofs.sub_add_l; auto.
-- destruct (eq_block b b0); auto.
-  simpl. f_equal. rewrite Ptrofs.sub_add_l. auto with ptrofs.
 - rewrite Int64.sub_add_l; auto.
 Qed.
 
@@ -1563,12 +1484,6 @@ Theorem subl_addl_r:
 Proof.
   unfold subl, addl; intros; destruct Archi.ptr64 eqn:SF, v1, v2; auto.
 - rewrite Int64.add_commut. rewrite Int64.sub_add_r. auto.
-- f_equal. replace (Ptrofs.of_int64 (Int64.add i1 i)) with (Ptrofs.add (Ptrofs.of_int64 i) (Ptrofs.of_int64 i1)).
-  rewrite Ptrofs.sub_add_r. f_equal.
-  symmetry. auto with ptrofs.
-  symmetry. rewrite Int64.add_commut. auto with ptrofs.
-- destruct (eq_block b b0); auto.
-  simpl; f_equal. rewrite Ptrofs.add_commut. rewrite Ptrofs.sub_add_r. auto with ptrofs.
 - rewrite Int64.add_commut. rewrite Int64.sub_add_r. auto.
 Qed.
 
@@ -1737,23 +1652,23 @@ Proof.
 Qed.
 
 Theorem negate_cmpu_bool:
-  forall valid_ptr c x y,
-  cmpu_bool valid_ptr (negate_comparison c) x y = option_map negb (cmpu_bool valid_ptr c x y).
+  forall c x y,
+  cmpu_bool (negate_comparison c) x y = option_map negb (cmpu_bool c x y).
 Proof.
   assert (forall c,
     cmp_different_blocks (negate_comparison c) = option_map negb (cmp_different_blocks c)).
   { destruct c; auto. }
   unfold cmpu_bool; intros; destruct Archi.ptr64 eqn:SF, x, y; auto.
 - rewrite Int.negate_cmpu. auto.
+- rewrite H.
+  destruct (cmp_different_blocks  c); simpl.
+  + unfold xorb; unfold negb; destruct b1; destruct (eq_block b b0); auto.
+  + auto.
 - rewrite Int.negate_cmpu. auto.
-- destruct (Int.eq i Int.zero && (valid_ptr b (Ptrofs.unsigned i0) || valid_ptr b (Ptrofs.unsigned i0 - 1))); auto.
-- destruct (Int.eq i0 Int.zero && (valid_ptr b (Ptrofs.unsigned i) || valid_ptr b (Ptrofs.unsigned i - 1))); auto.
-- destruct (eq_block b b0).
-  destruct ((valid_ptr b (Ptrofs.unsigned i) || valid_ptr b (Ptrofs.unsigned i - 1)) &&
-            (valid_ptr b0 (Ptrofs.unsigned i0) || valid_ptr b0 (Ptrofs.unsigned i0 - 1))).
-  rewrite Ptrofs.negate_cmpu. auto.
-  auto.
-  destruct (valid_ptr b (Ptrofs.unsigned i) && valid_ptr b0 (Ptrofs.unsigned i0)); auto.
+- rewrite H.
+  destruct (cmp_different_blocks  c); simpl.
+  + unfold xorb; unfold negb; destruct b1; destruct (eq_block b b0); auto.
+  + auto.
 Qed.
 
 Theorem negate_cmpl_bool:
@@ -1763,23 +1678,23 @@ Proof.
 Qed.
 
 Theorem negate_cmplu_bool:
-  forall valid_ptr c x y,
-  cmplu_bool valid_ptr (negate_comparison c) x y = option_map negb (cmplu_bool valid_ptr c x y).
+  forall c x y,
+  cmplu_bool (negate_comparison c) x y = option_map negb (cmplu_bool c x y).
 Proof.
   assert (forall c,
     cmp_different_blocks (negate_comparison c) = option_map negb (cmp_different_blocks c)).
   { destruct c; auto. }
   unfold cmplu_bool; intros; destruct Archi.ptr64 eqn:SF, x, y; auto.
 - rewrite Int64.negate_cmpu. auto.
-- simpl. destruct (Int64.eq i Int64.zero && (valid_ptr b (Ptrofs.unsigned i0) || valid_ptr b (Ptrofs.unsigned i0 - 1))); auto.
-- simpl. destruct (Int64.eq i0 Int64.zero && (valid_ptr b (Ptrofs.unsigned i) || valid_ptr b (Ptrofs.unsigned i - 1))); auto.
-- simpl. destruct (eq_block b b0).
-  destruct ((valid_ptr b (Ptrofs.unsigned i) || valid_ptr b (Ptrofs.unsigned i - 1)) &&
-            (valid_ptr b0 (Ptrofs.unsigned i0) || valid_ptr b0 (Ptrofs.unsigned i0 - 1))).
-  rewrite Ptrofs.negate_cmpu. auto.
-  auto.
-  destruct (valid_ptr b (Ptrofs.unsigned i) && valid_ptr b0 (Ptrofs.unsigned i0)); auto.
+- rewrite H.
+  destruct (cmp_different_blocks  c); simpl.
+  + unfold xorb; unfold negb; destruct b1; destruct (eq_block b b0); auto.
+  + auto.
 - rewrite Int64.negate_cmpu. auto.
+- rewrite H.
+  destruct (cmp_different_blocks  c); simpl.
+  + unfold xorb; unfold negb; destruct b1; destruct (eq_block b b0); auto.
+  + auto.
 Qed.
 
 Lemma not_of_optbool:
@@ -1796,9 +1711,9 @@ Proof.
 Qed.
 
 Theorem negate_cmpu:
-  forall valid_ptr c x y,
-  cmpu valid_ptr (negate_comparison c) x y =
-    notbool (cmpu valid_ptr c x y).
+  forall c x y,
+  cmpu (negate_comparison c) x y =
+    notbool (cmpu c x y).
 Proof.
   intros. unfold cmpu. rewrite negate_cmpu_bool. apply not_of_optbool.
 Qed.
@@ -1811,24 +1726,17 @@ Proof.
 Qed.
 
 Theorem swap_cmpu_bool:
-  forall valid_ptr c x y,
-  cmpu_bool valid_ptr (swap_comparison c) x y =
-    cmpu_bool valid_ptr c y x.
+  forall c x y,
+  cmpu_bool (swap_comparison c) x y =
+    cmpu_bool c y x.
 Proof.
   assert (E: forall c, cmp_different_blocks (swap_comparison c) = cmp_different_blocks c).
   { destruct c; auto. }
   intros; unfold cmpu_bool. rewrite ! E. destruct Archi.ptr64 eqn:SF, x, y; auto.
 - rewrite Int.swap_cmpu. auto.
+- destruct (eq_block b b0); destruct (eq_block b0 b); subst; auto; contradiction.
 - rewrite Int.swap_cmpu. auto.
-- destruct (eq_block b b0); subst.
-  rewrite dec_eq_true.
-  destruct (valid_ptr b0 (Ptrofs.unsigned i) || valid_ptr b0 (Ptrofs.unsigned i - 1));
-  destruct (valid_ptr b0 (Ptrofs.unsigned i0) || valid_ptr b0 (Ptrofs.unsigned i0 - 1));
-  simpl; auto.
-  rewrite Ptrofs.swap_cmpu. auto.
-  rewrite dec_eq_false by auto.
-  destruct (valid_ptr b (Ptrofs.unsigned i));
-    destruct (valid_ptr b0 (Ptrofs.unsigned i0)); simpl; auto.
+- destruct (eq_block b b0); destruct (eq_block b0 b); subst; auto; contradiction.
 Qed.
 
 Theorem swap_cmpl_bool:
@@ -1839,8 +1747,8 @@ Proof.
 Qed.
 
 Theorem swap_cmplu_bool:
-  forall valid_ptr c x y,
-  cmplu_bool valid_ptr (swap_comparison c) x y = cmplu_bool valid_ptr c y x.
+  forall c x y,
+  cmplu_bool (swap_comparison c) x y = cmplu_bool c y x.
 Proof.
   assert (E: forall c, cmp_different_blocks (swap_comparison c) = cmp_different_blocks c).
   { destruct c; auto. }
