@@ -62,7 +62,6 @@ Module TagLib (P:Policy).
     apply Int64.eq_dec.
     apply Float.eq_dec.
     apply Float32.eq_dec.
-    apply Ptrofs.eq_dec.
   Qed.  
 End TagLib.
 

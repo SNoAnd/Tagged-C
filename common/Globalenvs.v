@@ -69,21 +69,18 @@ Variable V: Type.  (**r The type of information attached to variables *)
 (** The type of global environments. *)
 Record t: Type := mkgenv {
   genv_public: list ident;                 (**r which symbol names are public *)
-  genv_symb: PTree.t (block*Z*Z*tag);      (**r mapping symbol -> block, base, bound, tag *)
-  genv_glob_defs: ZTree.t (globdef F V);   (**r mapping base in "dummy" -> definition *)
+  genv_symb: PTree.t ((block*tag) + (Z*Z*tag));      (**r mapping symbol -> block (functions) or base, bound, tag *)
+  genv_glob_defs: ZTree.t (globdef F V);   (**r mapping base -> definition *)
   genv_fun_defs: PTree.t (globdef F V);    (**r mapping block -> definition *)        
   genv_next_block: block;                  (**r next block for functions *)
-  genv_next_addr: Z;                       (**r base addr in "dummy" for variables *)
-  genv_next_block_not_dummy:
-    genv_next_block <> dummy;
+  genv_next_addr: Z;                       (**r base addr for variables *)
   genv_symb_range_glob:
     forall id base bound t,
-      PTree.get id genv_symb = Some (dummy,base,bound,t) ->
+      PTree.get id genv_symb = Some (inr (base,bound,t)) ->
       base < genv_next_addr;
   genv_symb_range_fun:
-    forall id b base bound t,
-      PTree.get id genv_symb = Some (b,base,bound,t) ->
-      b <> dummy ->
+    forall id b t,
+      PTree.get id genv_symb = Some (inl (b,t)) ->
       Plt b genv_next_block;
   (*  genv_defs_range: forall b g, PTree.get b genv_defs = Some g -> Plt b genv_next;*)
   genv_vars_inj: forall id1 id2 b,
@@ -94,7 +91,7 @@ Record t: Type := mkgenv {
 
 (** [find_symbol ge id] returns the base, bound, and tag associated with the given name, if any *)
 
-Definition find_symbol (ge: t) (id: ident) : option (block*Z*Z*tag) :=
+Definition find_symbol (ge: t) (id: ident) :=
   PTree.get id ge.(genv_symb).
 
 (** [symbol_address ge id ofs] returns a pointer into the block associated
@@ -103,7 +100,8 @@ Definition find_symbol (ge: t) (id: ident) : option (block*Z*Z*tag) :=
 
 Definition symbol_address (ge: t) (id: ident) (ofs: ptrofs) : atom :=
   match find_symbol ge id with
-  | Some (block,base,_,t) => (Vptr block (Ptrofs.add (Ptrofs.repr base) ofs), t)
+  | Some (inl (b,t)) => (Vfptr b, t)
+  | Some (inr (base,block,t)) => (Vint (Int.repr base), t)
   | None => (Vundef, def_tag)
   end.
 
@@ -117,43 +115,53 @@ Definition public_symbol (ge: t) (id: ident) : bool :=
 
 (** [find_def ge b] returns the global definition associated with the given address. *)
 
-Definition find_def (ge: t) (b: block) (ofs: ptrofs) : option (globdef F V) :=
-  if (b =? dummy)%positive
-  then ZTree.get (Ptrofs.signed ofs) ge.(genv_glob_defs)
-  else PTree.get b ge.(genv_fun_defs).
+Definition find_def (ge: t) (ofs: ptrofs) : option (globdef F V) :=
+  ZTree.get (Ptrofs.signed ofs) ge.(genv_glob_defs).
 
 (** [find_funct_ptr ge b] returns the function description associated with
     the given address. *)
 
-Definition find_funct_ptr (ge: t) (b: block) (ofs: ptrofs) : option F :=
-  match find_def ge b ofs with Some (Gfun f) => Some f | _ => None end.
+Definition find_funct_ptr (ge: t) (b: block) : option F :=
+  match PTree.get b ge.(genv_fun_defs) with Some (Gfun f) => Some f | _ => None end.
 
 (** [find_funct] is similar to [find_funct_ptr], but the function address
-    is given as a value, which must be a pointer with offset 0. *)
+    is given as a value. *)
 
 Definition find_funct (ge: t) (v: val) : option F :=
   match v with
-  | Vptr b ofs =>
-      if Ptrofs.eq_dec ofs Ptrofs.zero
-      then find_funct_ptr ge b ofs
-      else None
+  | Vfptr b =>
+      find_funct_ptr ge b
   | _ => None
   end.
 
 (** [invert_symbol ge addr] returns the name associated with the given address, if any *)
 
-Definition invert_symbol (ge: t) (b: block) (ofs: ptrofs) : option ident :=
-  let z := Ptrofs.signed ofs in
-  PTree.fold
-    (fun res id '(b',base,bound,pt) =>
-       if (b =? b')%positive && (base <=? z) && (z <? bound) then Some id else res)
-    ge.(genv_symb) None.
+Definition invert_symbol (ge: t) (bofs: block + ptrofs) : option ident :=
+  match bofs with
+  | inl b =>
+      PTree.fold
+        (fun res id stuff =>
+           match stuff with
+           | inr (base,bound,pt) => res
+           | inl (b',t) => if (b =? b')%positive then Some id else res
+           end) ge.(genv_symb) None
+  | inr ofs =>
+      let z := Ptrofs.signed ofs in
+      PTree.fold
+        (fun res id stuff =>
+           match stuff with
+           | inr (base,bound,pt) =>
+               if (base <=? z) && (z <? bound) then Some id else res
+           | inl (b,t) => res
+           end)
+        ge.(genv_symb) None
+  end.
 
 (** [find_var_info ge addr] returns the information attached to the variable
    at address [ofs]. *)
 
 Definition find_var_info (ge: t) (ofs: ptrofs) : option (globvar V) :=
-  match find_def ge dummy ofs with Some (Gvar v) => Some v | _ => None end.
+  match find_def ge ofs with Some (Gvar v) => Some v | _ => None end.
 
 (** [block_is_volatile ge b] returns [true] if [b] points to a global variable
   of volatile type, [false] otherwise. *)
@@ -184,7 +192,7 @@ Program Definition add_global (ge: t) (idg: ident * globdef F V) : t :=
       let base := ge.(genv_next_addr) in
       let size := Zpos gv.(gvar_size) in
       let bound := base + size in
-      let genv_symb' := PTree.set idg#1 (dummy, base, bound, def_tag) ge.(genv_symb) in
+      let genv_symb' := PTree.set idg#1 (inr (base, bound, def_tag)) ge.(genv_symb) in
       let genv_glob_defs' := ZTree.set base idg#2 ge.(genv_glob_defs) in
       @mkgenv
         ge.(genv_public)
@@ -193,58 +201,42 @@ Program Definition add_global (ge: t) (idg: ident * globdef F V) : t :=
         ge.(genv_fun_defs)
         ge.(genv_next_block)
         bound
-        _ _ _ _ (*_*)
+        _ _ _
   | _ =>
       @mkgenv
         ge.(genv_public)
-        (PTree.set idg#1 (ge.(genv_next_block),0,1,def_tag) ge.(genv_symb))
+        (PTree.set idg#1 (inl (ge.(genv_next_block), def_tag)) ge.(genv_symb))
         ge.(genv_glob_defs)
         (PTree.set ge.(genv_next_block) idg#2 ge.(genv_fun_defs))
         (Pos.succ ge.(genv_next_block))
         ge.(genv_next_addr)
-        _ _ _ _
+        _ _ _
   end.
 Next Obligation.
-  destruct ge; simpl in *. auto.
+  rewrite PTree.gsspec in H. destruct ge; simpl in *.
+  destruct (peq id i).
+  - inv H. lia.
+  - rewrite <- Z.add_0_r at 1. apply Z.add_lt_mono; try lia.
+    eapply genv_symb_range_glob0. eauto.
 Qed.
 Next Obligation.
   destruct ge; simpl in *.
   rewrite PTree.gsspec in H. destruct (peq id i).
-  - inv H. simpl.
-    apply Z.lt_add_pos_r. apply Pos2Z.is_pos.
-  - eapply Z.lt_trans. eapply genv_symb_range_glob0; eauto.
-    apply Z.lt_add_pos_r. apply Pos2Z.is_pos.
-Qed.
-Next Obligation.
-  destruct ge; simpl in *.
-  rewrite PTree.gsspec in H. destruct (peq id i).
-  - inv H. destruct H0. auto.
+  - inv H.
   - eapply genv_symb_range_fun0; eauto.
 Qed.
-(*Next Obligation.
-  destruct ge; simpl in *.
-  rewrite PTree.gsspec in H. destruct (peq b genv_next0).
-  inv H. apply Plt_succ.
-  apply Plt_trans_succ; eauto.
-Qed.*)
 Next Obligation.
   destruct ge; simpl in *.
-  rewrite PTree.gsspec in H. rewrite PTree.gsspec in H0.
-  destruct (peq id1 i); destruct (peq id2 i).
-  - congruence.
-  - exfalso. inv H. eapply genv_symb_range_glob0 in H0.
-    eapply Z.lt_irrefl; eauto.
-  - exfalso. inv H0. eapply genv_symb_range_glob0 in H.
-    eapply Z.lt_irrefl; eauto.
-  - eauto.
-Qed.
-Next Obligation.
-  unfold dummy. intro. destruct (genv_next_block ge) in H0; discriminate.
+  rewrite PTree.gsspec in *. destruct (peq id1 i); destruct (peq id2 i).
+  - inv H. inv H0. auto.
+  - exfalso. inv H. apply genv_symb_range_glob0 in H0. apply Z.lt_irrefl in H0. auto.
+  - exfalso. inv H0. apply genv_symb_range_glob0 in H. apply Z.lt_irrefl in H. auto.
+  - eapply genv_vars_inj0; eauto.
 Qed.
 Next Obligation.
   destruct ge; simpl in *.
   rewrite PTree.gsspec in H0. destruct (peq id i).
-  - exfalso. inversion H0. contradiction.
+  - exfalso. inversion H0.
   - eapply genv_symb_range_glob0; eauto.
 Qed.
 Next Obligation.
@@ -253,12 +245,6 @@ Next Obligation.
   - inv H0. apply Plt_succ.
   - apply Plt_trans_succ. eapply genv_symb_range_fun0; eauto.
 Qed.
-(*Next Obligation.
-  destruct ge; simpl in *.
-  rewrite PTree.gsspec in H. destruct (peq b genv_next0).
-  inv H. apply Plt_succ.
-  apply Plt_trans_succ; eauto.
-Qed.*)
 Next Obligation.
   destruct ge; simpl in *.
   rewrite PTree.gsspec in H0. rewrite PTree.gsspec in H1.
@@ -282,7 +268,7 @@ Proof.
 Qed.
 
 Program Definition empty_genv (pub: list ident): t :=
-  @mkgenv pub (PTree.empty _) (PTree.empty _) (PTree.empty _) 2%positive 0 _ _ _ _.
+  @mkgenv pub (PTree.empty _) (PTree.empty _) (PTree.empty _) 2%positive 0 _ _ _.
 
 Definition globalenv (p: program F V) :=
   add_globals (empty_genv p.(prog_public)) p.(prog_defs).
@@ -399,62 +385,25 @@ Qed.*)
 
 Theorem find_funct_inv:
   forall ge v f,
-  find_funct ge v = Some f -> exists b, v = Vptr b Ptrofs.zero.
+  find_funct ge v = Some f -> exists b, v = Vfptr b.
 Proof.
   intros until f; unfold find_funct.
   destruct v; try congruence.
-  destruct (Ptrofs.eq_dec i Ptrofs.zero); try congruence.
   intros. exists b; congruence.
 Qed.
 
 Theorem find_funct_find_funct_ptr:
   forall ge b,
-  find_funct ge (Vptr b Ptrofs.zero) = find_funct_ptr ge b Ptrofs.zero.
+  find_funct ge (Vfptr b) = find_funct_ptr ge b.
 Proof.
-  intros; simpl. apply dec_eq_true.
-Qed.
-
-Theorem find_funct_ptr_iff:
-  forall ge b ofs f, find_funct_ptr ge b ofs = Some f <-> find_def ge b ofs = Some (Gfun f).
-Proof.
-  intros. unfold find_funct_ptr. destruct (find_def ge b) as [[f1|v1]|]; intuition congruence.
+  intros; auto.
 Qed.
 
 Theorem find_var_info_iff:
-  forall ge ofs v, find_var_info ge ofs = Some v <-> find_def ge dummy ofs = Some (Gvar v).
+  forall ge ofs v, find_var_info ge ofs = Some v <-> find_def ge ofs = Some (Gvar v).
 Proof.
-  intros. unfold find_var_info. destruct (find_def ge dummy) as [[f1|v1]|]; intuition congruence.
+  intros. unfold find_var_info. destruct (find_def ge) as [[f1|v1]|]; intuition congruence.
 Qed.
-
-Theorem find_def_symbol:
-  forall p id g,
-  (prog_defmap p)!id = Some g <-> exists b base bound t, find_symbol (globalenv p) id = Some (b,base,bound,t) /\ find_def (globalenv p) b (Ptrofs.repr base) = Some g.
-Admitted.
-(*Proof.
-  intros.
-  set (P := fun m ge => m!id = Some g <-> exists b t, find_symbol ge id = Some (b,t) /\ find_def ge b = Some g).
-  assert (REC: forall l m ge,
-            P m ge ->
-            P (fold_left (fun m idg => PTree.set idg#1 idg#2 m) l m)
-              (add_globals ge l)).
-  { induction l as [ | [id1 g1] l]; intros; simpl.
-  - auto.
-  - apply IHl. unfold P, add_global, find_symbol, find_def; simpl.
-    rewrite ! PTree.gsspec. destruct (peq id id1).
-    + subst id1. split; intros.
-      inv H0. exists (genv_next ge); split; auto. apply PTree.gss.
-      destruct H0 as (b & A & B). inv A. rewrite PTree.gss in B. auto.
-    + red in H; rewrite H. split.
-      intros (b & A & B). exists b; split; auto. rewrite PTree.gso; auto.
-      apply Plt_ne. eapply genv_symb_range; eauto.
-      intros (b & A & B). rewrite PTree.gso in B. exists b; auto.
-      apply Plt_ne. eapply genv_symb_range; eauto.
-  }
-  apply REC. unfold P, find_symbol, find_def; simpl.
-  rewrite ! PTree.gempty. split.
-  congruence.
-  intros (b & A & B); congruence.
-Qed.*)
 
 Theorem find_symbol_exists:
   forall p id g,
@@ -486,8 +435,8 @@ Admitted.
 Qed.*)
 
 Theorem find_def_inversion:
-  forall p b ofs g,
-  find_def (globalenv p) b ofs = Some g ->
+  forall p ofs g,
+  find_def (globalenv p) ofs = Some g ->
   exists id, In (id, g) (prog_defs p).
 Admitted.
 (*Proof.
@@ -502,12 +451,13 @@ Admitted.
 Qed.*)
 
 Corollary find_funct_ptr_inversion:
-  forall p b ofs f,
-  find_funct_ptr (globalenv p) b ofs = Some f ->
-  exists id, In (id, Gfun f) (prog_defs p).
-Proof.
-  intros. apply find_def_inversion with b ofs. apply find_funct_ptr_iff; auto.
-Qed.
+  forall p b f,
+    find_funct_ptr (globalenv p) b = Some f ->
+    exists id, In (id, Gfun f) (prog_defs p).
+Admitted.
+(*Proof.
+  intros. apply find_def_inversion with b. apply find_funct_ptr_iff; auto.
+Qed.*)
 
 Corollary find_funct_inversion:
   forall p v f,
@@ -520,9 +470,9 @@ Proof.
 Qed.
 
 Theorem find_funct_ptr_prop:
-  forall (P: F -> Prop) p b ofs f,
-  (forall id f, In (id, Gfun f) (prog_defs p) -> P f) ->
-  find_funct_ptr (globalenv p) b ofs = Some f ->
+  forall (P: F -> Prop) p b f,
+    (forall id f, In (id, Gfun f) (prog_defs p) -> P f) ->
+    find_funct_ptr (globalenv p) b = Some f ->
   P f.
 Proof.
   intros. exploit find_funct_ptr_inversion; eauto. intros [id IN]. eauto.
@@ -547,9 +497,16 @@ Proof.
   intros. red; intros; subst. elim H. destruct ge. eauto.
 Qed.*)
 
-Theorem invert_find_symbol:
-  forall ge id b ofs,
-  invert_symbol ge b ofs = Some id -> exists base bound t, find_symbol ge id = Some (b,base,bound,t).
+Theorem invert_find_symbol_block:
+  forall ge id b,
+    invert_symbol ge (inl b) = Some id ->
+    exists t, find_symbol ge id = Some (inl (b,t)).
+Admitted.
+
+Theorem invert_find_symbol_ofs:
+  forall ge id ofs,
+    invert_symbol ge (inr ofs) = Some id ->
+    exists bound t, find_symbol ge id = Some (inr (Ptrofs.signed ofs,bound,t)).
 Admitted.
 (*Proof.
   intros until b; unfold find_symbol, invert_symbol.
@@ -562,13 +519,13 @@ Admitted.
   auto.
 Qed.*)
 
-Theorem find_invert_symbol:
+(*Theorem find_invert_symbol:
   forall ge id b base bound t ofs,
     find_symbol ge id = Some (b,base,bound,t) ->
     base <= (Ptrofs.signed ofs) ->
     (Ptrofs.signed ofs) < bound ->
     invert_symbol ge b ofs = Some id.
-Admitted.
+Admitted.*)
 (*Proof.
   intros until t0.
   assert (find_symbol ge id = Some (b,t0) -> exists id', invert_symbol ge b = Some id').
@@ -629,10 +586,10 @@ Variable ge: t.
 
 (** Auxiliary function for initialization of global variables. *)
 
-Function store_zeros (m: mem) (b: block) (p: Z) (n: Z) {wf (Zwf 0) n}: option mem :=
+Function store_zeros (m: mem) (p: Z) (n: Z) {wf (Zwf 0) n}: option mem :=
   if zle n 0 then Some m else
-    match Mem.store Mint8unsigned m b p (Vzero, def_tag) [def_tag] with
-    | Some m' => store_zeros m' b (p + 1) (n - 1)
+    match Mem.store Mint8unsigned m p (Vzero, def_tag) [def_tag] with
+    | Some m' => store_zeros m' (p + 1) (n - 1)
     | None => None
     end.
 Proof.
@@ -640,37 +597,38 @@ Proof.
   apply Zwf_well_founded.
 Qed.
 
-Definition store_init_data (m: mem) (b: block) (p: Z) (id: init_data) (vt: tag) (lts: list tag) : option mem :=
+Definition store_init_data (m: mem) (p: Z) (id: init_data) (vt: tag) (lts: list tag) : option mem :=
   match id with
-  | Init_int8 n => Mem.store Mint8unsigned m b p (Vint n, vt) lts
-  | Init_int16 n => Mem.store Mint16unsigned m b p (Vint n, vt) lts
-  | Init_int32 n => Mem.store Mint32 m b p (Vint n, vt) lts
-  | Init_int64 n => Mem.store Mint64 m b p (Vlong n, vt) lts
-  | Init_float32 n => Mem.store Mfloat32 m b p (Vsingle n, vt) lts
-  | Init_float64 n => Mem.store Mfloat64 m b p (Vfloat n, vt) lts
+  | Init_int8 n => Mem.store Mint8unsigned m p (Vint n, vt) lts
+  | Init_int16 n => Mem.store Mint16unsigned m p (Vint n, vt) lts
+  | Init_int32 n => Mem.store Mint32 m p (Vint n, vt) lts
+  | Init_int64 n => Mem.store Mint64 m p (Vlong n, vt) lts
+  | Init_float32 n => Mem.store Mfloat32 m p (Vsingle n, vt) lts
+  | Init_float64 n => Mem.store Mfloat64 m p (Vfloat n, vt) lts
   | Init_addrof symb ofs =>
       match find_symbol ge symb with
       | None => None
-      | Some (b',base,bound,pt) => Mem.store Mptr m b p (Vptr b' ofs, vt) lts
+      | Some (inr (base,bound,pt)) => Mem.store Mptr m p (Vint (Int.repr base), vt) lts
+      | Some (inl (b,pt)) => Some m
       end
   | Init_space n => Some m
   end.
 
-Fixpoint store_init_data_list (m: mem) (b: block) (p: Z) (idl: list (init_data*tag*list tag))
+Fixpoint store_init_data_list (m: mem) (p: Z) (idl: list (init_data*tag*list tag))
                               {struct idl}: option mem :=
   match idl with
   | nil => Some m
   | (id,vt,lts) :: idl' =>
-      match store_init_data m b p id vt lts with
+      match store_init_data m p id vt lts with
       | None => None
-      | Some m' => store_init_data_list m' b (p + init_data_size id) idl'
+      | Some m' => store_init_data_list m' (p + init_data_size id) idl'
       end
   end.
 
 Definition perm_globvar (gv: globvar V) : permission := Live.
 
-Definition global_block (m: mem) (id: ident) (sz: Z) : mem :=
-  let mem_access' := (PMap.set id (fun ofs : Z => if zle 0 ofs && zlt ofs sz then Live else Dead) (Mem.mem_access m)) in
+Definition global_block (m: mem) (id: ident) (base bound: Z) : mem :=
+  let mem_access' := (fun ofs : Z => if zle base ofs && zlt ofs bound then Live else m.(Mem.mem_access) ofs) in
   Mem.mkmem m.(Mem.mem_contents) mem_access' m.(Mem.al_state) m.(Mem.live).
 
 Definition alloc_global (m: mem) (idg: ident * globdef F V): option mem :=

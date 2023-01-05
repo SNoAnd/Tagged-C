@@ -1754,16 +1754,9 @@ Proof.
   { destruct c; auto. }
   intros; unfold cmplu_bool. rewrite ! E. destruct Archi.ptr64 eqn:SF, x, y; auto.
 - rewrite Int64.swap_cmpu. auto.
-- destruct (eq_block b b0); subst.
-  rewrite dec_eq_true.
-  destruct (valid_ptr b0 (Ptrofs.unsigned i) || valid_ptr b0 (Ptrofs.unsigned i - 1));
-  destruct (valid_ptr b0 (Ptrofs.unsigned i0) || valid_ptr b0 (Ptrofs.unsigned i0 - 1));
-  simpl; auto.
-  rewrite Ptrofs.swap_cmpu. auto.
-  rewrite dec_eq_false by auto.
-  destruct (valid_ptr b (Ptrofs.unsigned i));
-    destruct (valid_ptr b0 (Ptrofs.unsigned i0)); simpl; auto.
+- destruct (eq_block b b0); destruct (eq_block b0 b); subst; auto; contradiction.
 - rewrite Int64.swap_cmpu. auto.
+- destruct (eq_block b b0); destruct (eq_block b0 b); subst; auto; contradiction.
 Qed.
 
 Theorem negate_cmpf_eq:
@@ -1821,29 +1814,29 @@ Proof.
 Qed.
 
 Theorem cmpu_ne_0_optbool:
-  forall valid_ptr ob,
-  cmpu valid_ptr Cne (of_optbool ob) (Vint Int.zero) = of_optbool ob.
+  forall ob,
+  cmpu Cne (of_optbool ob) (Vint Int.zero) = of_optbool ob.
 Proof.
   intros. destruct ob; simpl; auto. destruct b; auto.
 Qed.
 
 Theorem cmpu_eq_1_optbool:
-  forall valid_ptr ob,
-  cmpu valid_ptr Ceq (of_optbool ob) (Vint Int.one) = of_optbool ob.
+  forall ob,
+  cmpu Ceq (of_optbool ob) (Vint Int.one) = of_optbool ob.
 Proof.
   intros. destruct ob; simpl; auto. destruct b; auto.
 Qed.
 
 Theorem cmpu_eq_0_optbool:
-  forall valid_ptr ob,
-  cmpu valid_ptr Ceq (of_optbool ob) (Vint Int.zero) = of_optbool (option_map negb ob).
+  forall ob,
+  cmpu Ceq (of_optbool ob) (Vint Int.zero) = of_optbool (option_map negb ob).
 Proof.
   intros. destruct ob; simpl; auto. destruct b; auto.
 Qed.
 
 Theorem cmpu_ne_1_optbool:
-  forall valid_ptr ob,
-  cmpu valid_ptr Cne (of_optbool ob) (Vint Int.one) = of_optbool (option_map negb ob).
+  forall ob,
+  cmpu Cne (of_optbool ob) (Vint Int.one) = of_optbool (option_map negb ob).
 Proof.
   intros. destruct ob; simpl; auto. destruct b; auto.
 Qed.
@@ -1968,67 +1961,29 @@ Proof.
 Qed.
 
 Lemma cmpu_bool_lessdef:
-  forall valid_ptr valid_ptr' c v1 v1' v2 v2' b,
-  (forall b ofs, valid_ptr b ofs = true -> valid_ptr' b ofs = true) ->
+  forall c v1 v1' v2 v2' b,
   lessdef v1 v1' -> lessdef v2 v2' ->
-  cmpu_bool valid_ptr c v1 v2 = Some b ->
-  cmpu_bool valid_ptr' c v1' v2' = Some b.
+  cmpu_bool c v1 v2 = Some b ->
+  cmpu_bool c v1' v2' = Some b.
 Proof.
   intros.
-  assert (X: forall b ofs,
-             valid_ptr b ofs || valid_ptr b (ofs - 1) = true ->
-             valid_ptr' b ofs || valid_ptr' b (ofs - 1) = true).
-  { intros. apply orb_true_intro. destruct (orb_prop _ _ H3).
-    rewrite (H b0 ofs); auto.
-    rewrite (H b0 (ofs - 1)); auto. }
-  inv H0; [ | discriminate].
-  inv H1; [ | destruct v1'; discriminate ].
+  inv H; [ | discriminate].
+  inv H0; [ | destruct v1'; discriminate ].
   unfold cmpu_bool in *. remember Archi.ptr64 as ptr64.
   destruct v1'; auto; destruct v2'; auto; destruct ptr64; auto.
-- destruct (Int.eq i Int.zero); auto.
-  destruct (valid_ptr b0 (Ptrofs.unsigned i0) || valid_ptr b0 (Ptrofs.unsigned i0 - 1)) eqn:A; inv H2.
-  rewrite X; auto.
-- destruct (Int.eq i0 Int.zero); auto.
-  destruct (valid_ptr b0 (Ptrofs.unsigned i) || valid_ptr b0 (Ptrofs.unsigned i - 1)) eqn:A; inv H2.
-  rewrite X; auto.
-- destruct (eq_block b0 b1).
-+ destruct (valid_ptr b0 (Ptrofs.unsigned i) || valid_ptr b0 (Ptrofs.unsigned i - 1)) eqn:A; inv H2.
-  destruct (valid_ptr b1 (Ptrofs.unsigned i0) || valid_ptr b1 (Ptrofs.unsigned i0 - 1)) eqn:B; inv H1.
-  rewrite ! X; auto.
-+ destruct (valid_ptr b0 (Ptrofs.unsigned i) && valid_ptr b1 (Ptrofs.unsigned i0)) eqn:A; inv H2.
-  InvBooleans. rewrite ! H; auto.
 Qed.
 
 Lemma cmplu_bool_lessdef:
-  forall valid_ptr valid_ptr' c v1 v1' v2 v2' b,
-  (forall b ofs, valid_ptr b ofs = true -> valid_ptr' b ofs = true) ->
+  forall c v1 v1' v2 v2' b,
   lessdef v1 v1' -> lessdef v2 v2' ->
-  cmplu_bool valid_ptr c v1 v2 = Some b ->
-  cmplu_bool valid_ptr' c v1' v2' = Some b.
+  cmplu_bool c v1 v2 = Some b ->
+  cmplu_bool c v1' v2' = Some b.
 Proof.
   intros.
-  assert (X: forall b ofs,
-             valid_ptr b ofs || valid_ptr b (ofs - 1) = true ->
-             valid_ptr' b ofs || valid_ptr' b (ofs - 1) = true).
-  { intros. apply orb_true_intro. destruct (orb_prop _ _ H3).
-    rewrite (H b0 ofs); auto.
-    rewrite (H b0 (ofs - 1)); auto. }
-  inv H0; [ | discriminate].
-  inv H1; [ | destruct v1'; discriminate ].
+  inv H; [ | discriminate].
+  inv H0; [ | destruct v1'; discriminate ].
   unfold cmplu_bool in *. remember Archi.ptr64 as ptr64.
   destruct v1'; auto; destruct v2'; auto; destruct ptr64; auto.
-- destruct (Int64.eq i Int64.zero); auto.
-  destruct (valid_ptr b0 (Ptrofs.unsigned i0) || valid_ptr b0 (Ptrofs.unsigned i0 - 1)) eqn:A; inv H2.
-  rewrite X; auto.
-- destruct (Int64.eq i0 Int64.zero); auto.
-  destruct (valid_ptr b0 (Ptrofs.unsigned i) || valid_ptr b0 (Ptrofs.unsigned i - 1)) eqn:A; inv H2.
-  rewrite X; auto.
-- destruct (eq_block b0 b1).
-+ destruct (valid_ptr b0 (Ptrofs.unsigned i) || valid_ptr b0 (Ptrofs.unsigned i - 1)) eqn:A; inv H2.
-  destruct (valid_ptr b1 (Ptrofs.unsigned i0) || valid_ptr b1 (Ptrofs.unsigned i0 - 1)) eqn:B; inv H1.
-  rewrite ! X; auto.
-+ destruct (valid_ptr b0 (Ptrofs.unsigned i) && valid_ptr b1 (Ptrofs.unsigned i0)) eqn:A; inv H2.
-  InvBooleans. rewrite ! H; auto.
 Qed.
 
 Lemma of_optbool_lessdef:
@@ -2061,14 +2016,18 @@ Qed.
 Lemma offset_ptr_zero:
   forall v, lessdef (offset_ptr v Ptrofs.zero) v.
 Proof.
-  intros. destruct v; simpl; auto. rewrite Ptrofs.add_zero; auto.
+  intros. destruct v; simpl; auto.
+  destruct Archi.ptr64 eqn:E; auto.
+  rewrite Ptrofs.add_zero_l; auto.
+  rewrite Ptrofs.to_int_of_int; auto.
 Qed.
 
 Lemma offset_ptr_assoc:
   forall v d1 d2, offset_ptr (offset_ptr v d1) d2 = offset_ptr v (Ptrofs.add d1 d2).
-Proof.
+(*Proof.
   intros. destruct v; simpl; auto. f_equal. apply Ptrofs.add_assoc.
-Qed.
+Qed.*)
+Admitted.
 
 Lemma lessdef_normalize:
   forall v ty, lessdef (normalize v ty) v.
@@ -2100,412 +2059,4 @@ Proof.
   apply normalize_lessdef. destruct b; auto.
 Qed.
 
-(** * Values and memory injections *)
-
-(** A memory injection [f] is a function from addresses to either [None]
-  or [Some] of an address and an offset.  It defines a correspondence
-  between the blocks of two memory states [m1] and [m2]:
-- if [f b = None], the block [b] of [m1] has no equivalent in [m2];
-- if [f b = Some(b', ofs)], the block [b] of [m2] corresponds to
-  a sub-block at offset [ofs] of the block [b'] in [m2].
-*)
-
-Definition meminj : Type := block -> option (block * Z).
-
-(** A memory injection defines a relation between values that is the
-  identity relation, except for pointer values which are shifted
-  as prescribed by the memory injection.  Moreover, [Vundef] values
-  inject into any other value. *)
-
-Inductive inject (mi: meminj): val -> val -> Prop :=
-  | inject_int:
-      forall i, inject mi (Vint i) (Vint i)
-  | inject_long:
-      forall i, inject mi (Vlong i) (Vlong i)
-  | inject_float:
-      forall f, inject mi (Vfloat f) (Vfloat f)
-  | inject_single:
-      forall f, inject mi (Vsingle f) (Vsingle f)
-  | inject_ptr:
-      forall b1 ofs1 b2 ofs2 delta,
-      mi b1 = Some (b2, delta) ->
-      ofs2 = Ptrofs.add ofs1 (Ptrofs.repr delta) ->
-      inject mi (Vptr b1 ofs1) (Vptr b2 ofs2)
-  | val_inject_undef: forall v,
-      inject mi Vundef v.
-
-Global Hint Constructors inject : core.
-
-Inductive inject_list (mi: meminj): list val -> list val-> Prop:=
-  | inject_list_nil :
-      inject_list mi nil nil
-  | inject_list_cons : forall v v' vl vl' ,
-      inject mi v v' -> inject_list mi vl vl'->
-      inject_list mi (v :: vl) (v' :: vl').
-
-Global Hint Resolve inject_list_nil inject_list_cons : core.
-
-Lemma inject_ptrofs:
-  forall mi i, inject mi (Vptrofs i) (Vptrofs i).
-Proof.
-  unfold Vptrofs; intros. destruct Archi.ptr64; auto.
-Qed.
-
-Global Hint Resolve inject_ptrofs : core.
-
-Section VAL_INJ_OPS.
-
-Variable f: meminj.
-
-Lemma load_result_inject:
-  forall chunk v1 v2,
-  inject f v1 v2 ->
-  inject f (Val.load_result chunk v1) (Val.load_result chunk v2).
-Proof.
-  intros. inv H; destruct chunk; simpl; try constructor; destruct Archi.ptr64; econstructor; eauto.
-Qed.
-
-Remark add_inject:
-  forall v1 v1' v2 v2',
-  inject f v1 v1' ->
-  inject f v2 v2' ->
-  inject f (Val.add v1 v2) (Val.add v1' v2').
-Proof.
-  intros. unfold Val.add. destruct Archi.ptr64 eqn:SF.
-- inv H; inv H0; constructor.
-- inv H; inv H0; simpl; auto.
-+ econstructor; eauto.
-  rewrite ! Ptrofs.add_assoc. decEq. apply Ptrofs.add_commut.
-+ econstructor; eauto.
-  rewrite ! Ptrofs.add_assoc. decEq. apply Ptrofs.add_commut.
-Qed.
-
-Remark sub_inject:
-  forall v1 v1' v2 v2',
-  inject f v1 v1' ->
-  inject f v2 v2' ->
-  inject f (Val.sub v1 v2) (Val.sub v1' v2').
-Proof.
-  intros. unfold Val.sub. destruct Archi.ptr64 eqn:SF.
-- inv H; inv H0; constructor.
-- inv H; inv H0; simpl; auto.
-+ econstructor; eauto.
-  rewrite Ptrofs.sub_add_l. auto.
-+ destruct (eq_block b1 b0); auto.
-  subst. rewrite H1 in H. inv H. rewrite dec_eq_true.
-  rewrite Ptrofs.sub_shifted. auto.
-Qed.
-
-Remark addl_inject:
-  forall v1 v1' v2 v2',
-  inject f v1 v1' ->
-  inject f v2 v2' ->
-  inject f (Val.addl v1 v2) (Val.addl v1' v2').
-Proof.
-  intros. unfold Val.addl. destruct Archi.ptr64 eqn:SF.
-- inv H; inv H0; simpl; auto.
-+ econstructor; eauto.
-  rewrite ! Ptrofs.add_assoc. decEq. apply Ptrofs.add_commut.
-+ econstructor; eauto.
-  rewrite ! Ptrofs.add_assoc. decEq. apply Ptrofs.add_commut.
-- inv H; inv H0; constructor.
-Qed.
-
-Remark subl_inject:
-  forall v1 v1' v2 v2',
-  inject f v1 v1' ->
-  inject f v2 v2' ->
-  inject f (Val.subl v1 v2) (Val.subl v1' v2').
-Proof.
-  intros. unfold Val.subl. destruct Archi.ptr64 eqn:SF.
-- inv H; inv H0; simpl; auto.
-+ econstructor; eauto.
-  rewrite Ptrofs.sub_add_l. auto.
-+ destruct (eq_block b1 b0); auto.
-  subst. rewrite H1 in H. inv H. rewrite dec_eq_true.
-  rewrite Ptrofs.sub_shifted. auto.
-- inv H; inv H0; constructor.
-Qed.
-
-Lemma offset_ptr_inject:
-  forall v v' ofs, inject f v v' -> inject f (offset_ptr v ofs) (offset_ptr v' ofs).
-Proof.
-  intros. inv H; simpl; econstructor; eauto.
-  rewrite ! Ptrofs.add_assoc. f_equal. apply Ptrofs.add_commut.
-Qed.
-
-Lemma cmp_bool_inject:
-  forall c v1 v2 v1' v2' b,
-  inject f v1 v1' ->
-  inject f v2 v2' ->
-  Val.cmp_bool c v1 v2 = Some b ->
-  Val.cmp_bool c v1' v2' = Some b.
-Proof.
-  intros. inv H; simpl in H1; try discriminate; inv H0; simpl in H1; try discriminate; simpl; auto.
-Qed.
-
-Variable (valid_ptr1 valid_ptr2 : block -> Z -> bool).
-
-Let weak_valid_ptr1 b ofs := valid_ptr1 b ofs || valid_ptr1 b (ofs - 1).
-Let weak_valid_ptr2 b ofs := valid_ptr2 b ofs || valid_ptr2 b (ofs - 1).
-
-Hypothesis valid_ptr_inj:
-  forall b1 ofs b2 delta,
-  f b1 = Some(b2, delta) ->
-  valid_ptr1 b1 (Ptrofs.unsigned ofs) = true ->
-  valid_ptr2 b2 (Ptrofs.unsigned (Ptrofs.add ofs (Ptrofs.repr delta))) = true.
-
-Hypothesis weak_valid_ptr_inj:
-  forall b1 ofs b2 delta,
-  f b1 = Some(b2, delta) ->
-  weak_valid_ptr1 b1 (Ptrofs.unsigned ofs) = true ->
-  weak_valid_ptr2 b2 (Ptrofs.unsigned (Ptrofs.add ofs (Ptrofs.repr delta))) = true.
-
-Hypothesis weak_valid_ptr_no_overflow:
-  forall b1 ofs b2 delta,
-  f b1 = Some(b2, delta) ->
-  weak_valid_ptr1 b1 (Ptrofs.unsigned ofs) = true ->
-  0 <= Ptrofs.unsigned ofs + Ptrofs.unsigned (Ptrofs.repr delta) <= Ptrofs.max_unsigned.
-
-Hypothesis valid_different_ptrs_inj:
-  forall b1 ofs1 b2 ofs2 b1' delta1 b2' delta2,
-  b1 <> b2 ->
-  valid_ptr1 b1 (Ptrofs.unsigned ofs1) = true ->
-  valid_ptr1 b2 (Ptrofs.unsigned ofs2) = true ->
-  f b1 = Some (b1', delta1) ->
-  f b2 = Some (b2', delta2) ->
-  b1' <> b2' \/
-  Ptrofs.unsigned (Ptrofs.add ofs1 (Ptrofs.repr delta1)) <> Ptrofs.unsigned (Ptrofs.add ofs2 (Ptrofs.repr delta2)).
-
-Lemma cmpu_bool_inject:
-  forall c v1 v2 v1' v2' b,
-  inject f v1 v1' ->
-  inject f v2 v2' ->
-  Val.cmpu_bool valid_ptr1 c v1 v2 = Some b ->
-  Val.cmpu_bool valid_ptr2 c v1' v2' = Some b.
-Proof.
-  Local Opaque Int.add Ptrofs.add.
-  intros.
-  unfold cmpu_bool in *; destruct Archi.ptr64;
-  inv H; simpl in H1; try discriminate; inv H0; simpl in H1; try discriminate; simpl; auto.
-- fold (weak_valid_ptr1 b1 (Ptrofs.unsigned ofs1)) in H1.
-  fold (weak_valid_ptr2 b2 (Ptrofs.unsigned (Ptrofs.add ofs1 (Ptrofs.repr delta)))).
-  destruct (Int.eq i Int.zero); auto.
-  destruct (weak_valid_ptr1 b1 (Ptrofs.unsigned ofs1)) eqn:E; try discriminate.
-  erewrite weak_valid_ptr_inj by eauto. auto.
-- fold (weak_valid_ptr1 b1 (Ptrofs.unsigned ofs1)) in H1.
-  fold (weak_valid_ptr2 b2 (Ptrofs.unsigned (Ptrofs.add ofs1 (Ptrofs.repr delta)))).
-  destruct (Int.eq i Int.zero); auto.
-  destruct (weak_valid_ptr1 b1 (Ptrofs.unsigned ofs1)) eqn:E; try discriminate.
-  erewrite weak_valid_ptr_inj by eauto. auto.
-- fold (weak_valid_ptr1 b1 (Ptrofs.unsigned ofs1)) in H1.
-  fold (weak_valid_ptr1 b0 (Ptrofs.unsigned ofs0)) in H1.
-  fold (weak_valid_ptr2 b2 (Ptrofs.unsigned (Ptrofs.add ofs1 (Ptrofs.repr delta)))).
-  fold (weak_valid_ptr2 b3 (Ptrofs.unsigned (Ptrofs.add ofs0 (Ptrofs.repr delta0)))).
-  destruct (eq_block b1 b0); subst.
-  rewrite H in H2. inv H2. rewrite dec_eq_true.
-  destruct (weak_valid_ptr1 b0 (Ptrofs.unsigned ofs1)) eqn:?; try discriminate.
-  destruct (weak_valid_ptr1 b0 (Ptrofs.unsigned ofs0)) eqn:?; try discriminate.
-  erewrite !weak_valid_ptr_inj by eauto. simpl.
-  rewrite <-H1. simpl. decEq. apply Ptrofs.translate_cmpu; eauto.
-  destruct (valid_ptr1 b1 (Ptrofs.unsigned ofs1)) eqn:?; try discriminate.
-  destruct (valid_ptr1 b0 (Ptrofs.unsigned ofs0)) eqn:?; try discriminate.
-  destruct (eq_block b2 b3); subst.
-  assert (valid_ptr_implies: forall b ofs, valid_ptr1 b ofs = true -> weak_valid_ptr1 b ofs = true).
-    intros. unfold weak_valid_ptr1. rewrite H0; auto.
-  erewrite !weak_valid_ptr_inj by eauto using valid_ptr_implies. simpl.
-  exploit valid_different_ptrs_inj; eauto. intros [?|?]; [congruence |].
-  destruct c; simpl in H1; inv H1.
-  simpl; decEq. rewrite Ptrofs.eq_false; auto. congruence.
-  simpl; decEq. rewrite Ptrofs.eq_false; auto. congruence.
-  now erewrite !valid_ptr_inj by eauto.
-Qed.
-
-Lemma cmplu_bool_inject:
-  forall c v1 v2 v1' v2' b,
-  inject f v1 v1' ->
-  inject f v2 v2' ->
-  Val.cmplu_bool valid_ptr1 c v1 v2 = Some b ->
-  Val.cmplu_bool valid_ptr2 c v1' v2' = Some b.
-Proof.
-  Local Opaque Int64.add Ptrofs.add.
-  intros.
-  unfold cmplu_bool in *; destruct Archi.ptr64;
-  inv H; simpl in H1; try discriminate; inv H0; simpl in H1; try discriminate; simpl; auto.
-- fold (weak_valid_ptr1 b1 (Ptrofs.unsigned ofs1)) in H1.
-  fold (weak_valid_ptr2 b2 (Ptrofs.unsigned (Ptrofs.add ofs1 (Ptrofs.repr delta)))).
-  destruct (Int64.eq i Int64.zero); auto.
-  destruct (weak_valid_ptr1 b1 (Ptrofs.unsigned ofs1)) eqn:E; try discriminate.
-  erewrite weak_valid_ptr_inj by eauto. auto.
-- fold (weak_valid_ptr1 b1 (Ptrofs.unsigned ofs1)) in H1.
-  fold (weak_valid_ptr2 b2 (Ptrofs.unsigned (Ptrofs.add ofs1 (Ptrofs.repr delta)))).
-  destruct (Int64.eq i Int64.zero); auto.
-  destruct (weak_valid_ptr1 b1 (Ptrofs.unsigned ofs1)) eqn:E; try discriminate.
-  erewrite weak_valid_ptr_inj by eauto. auto.
-- fold (weak_valid_ptr1 b1 (Ptrofs.unsigned ofs1)) in H1.
-  fold (weak_valid_ptr1 b0 (Ptrofs.unsigned ofs0)) in H1.
-  fold (weak_valid_ptr2 b2 (Ptrofs.unsigned (Ptrofs.add ofs1 (Ptrofs.repr delta)))).
-  fold (weak_valid_ptr2 b3 (Ptrofs.unsigned (Ptrofs.add ofs0 (Ptrofs.repr delta0)))).
-  destruct (eq_block b1 b0); subst.
-  rewrite H in H2. inv H2. rewrite dec_eq_true.
-  destruct (weak_valid_ptr1 b0 (Ptrofs.unsigned ofs1)) eqn:?; try discriminate.
-  destruct (weak_valid_ptr1 b0 (Ptrofs.unsigned ofs0)) eqn:?; try discriminate.
-  erewrite !weak_valid_ptr_inj by eauto. simpl.
-  rewrite <-H1. simpl. decEq. apply Ptrofs.translate_cmpu; eauto.
-  destruct (valid_ptr1 b1 (Ptrofs.unsigned ofs1)) eqn:?; try discriminate.
-  destruct (valid_ptr1 b0 (Ptrofs.unsigned ofs0)) eqn:?; try discriminate.
-  destruct (eq_block b2 b3); subst.
-  assert (valid_ptr_implies: forall b ofs, valid_ptr1 b ofs = true -> weak_valid_ptr1 b ofs = true).
-    intros. unfold weak_valid_ptr1. rewrite H0; auto.
-  erewrite !weak_valid_ptr_inj by eauto using valid_ptr_implies. simpl.
-  exploit valid_different_ptrs_inj; eauto. intros [?|?]; [congruence |].
-  destruct c; simpl in H1; inv H1.
-  simpl; decEq. rewrite Ptrofs.eq_false; auto. congruence.
-  simpl; decEq. rewrite Ptrofs.eq_false; auto. congruence.
-  now erewrite !valid_ptr_inj by eauto.
-Qed.
-
-Lemma longofwords_inject:
-  forall v1 v2 v1' v2',
-  inject f v1 v1' -> inject f v2 v2' -> inject f (Val.longofwords v1 v2) (Val.longofwords v1' v2').
-Proof.
-  intros. unfold Val.longofwords. inv H; auto. inv H0; auto.
-Qed.
-
-Lemma loword_inject:
-  forall v v', inject f v v' -> inject f (Val.loword v) (Val.loword v').
-Proof.
-  intros. unfold Val.loword; inv H; auto.
-Qed.
-
-Lemma hiword_inject:
-  forall v v', inject f v v' -> inject f (Val.hiword v) (Val.hiword v').
-Proof.
-  intros. unfold Val.hiword; inv H; auto.
-Qed.
-
-Lemma normalize_inject:
-  forall v v' ty, inject f v v' -> inject f (normalize v ty) (normalize v' ty).
-Proof.
-  intros. inv H.
-- destruct ty; constructor.
-- destruct ty; constructor.
-- destruct ty; constructor.
-- destruct ty; constructor.
-- simpl. destruct ty.
-+ destruct Archi.ptr64; econstructor; eauto.
-+ auto.
-+ destruct Archi.ptr64; econstructor; eauto.
-+ auto.
-+ destruct Archi.ptr64; econstructor; eauto.
-+ econstructor; eauto.
-- constructor.
-Qed.
-
-Lemma select_inject:
-  forall ob ob' v1 v1' v2 v2' ty,
-  ob = None \/ ob = ob' ->
-  inject f v1 v1' -> inject f v2 v2' ->
-  inject f (select ob v1 v2 ty) (select ob' v1' v2' ty).
-Proof.
-  intros; unfold select. destruct H.
-- subst ob; auto.
-- subst ob'; destruct ob as [b|]; auto.
-  apply normalize_inject. destruct b; auto.
-Qed.
-
-End VAL_INJ_OPS.
-
 End Val.
-      
-Notation meminj := Val.meminj.
-
-(** Monotone evolution of a memory injection. *)
-
-Definition inject_incr (f1 f2: meminj) : Prop :=
-  forall b b' delta, f1 b = Some(b', delta) -> f2 b = Some(b', delta).
-
-Lemma inject_incr_refl :
-   forall f , inject_incr f f .
-Proof. unfold inject_incr. auto. Qed.
-
-Lemma inject_incr_trans :
-  forall f1 f2 f3,
-  inject_incr f1 f2 -> inject_incr f2 f3 -> inject_incr f1 f3 .
-Proof.
-  unfold inject_incr; intros. eauto.
-Qed.
-
-Lemma val_inject_incr:
-  forall f1 f2 v v',
-  inject_incr f1 f2 ->
-  Val.inject f1 v v' ->
-  Val.inject f2 v v'.
-Proof.
-  intros. inv H0; eauto.
-Qed.
-
-Lemma val_inject_list_incr:
-  forall f1 f2 vl vl' ,
-  inject_incr f1 f2 -> Val.inject_list f1 vl vl' ->
-  Val.inject_list f2 vl vl'.
-Proof.
-  induction vl; intros; inv H0. auto.
-  constructor. eapply val_inject_incr; eauto. auto.
-Qed.
-
-Global Hint Resolve inject_incr_refl val_inject_incr val_inject_list_incr : core.
-
-Lemma val_inject_lessdef:
-  forall v1 v2, Val.lessdef v1 v2 <-> Val.inject (fun b => Some(b, 0)) v1 v2.
-Proof.
-  intros; split; intros.
-  inv H; auto. destruct v2; econstructor; eauto. rewrite Ptrofs.add_zero; auto.
-  inv H; auto. inv H0. rewrite Ptrofs.add_zero; auto.
-Qed.
-
-Lemma val_inject_list_lessdef:
-  forall vl1 vl2, Val.lessdef_list vl1 vl2 <-> Val.inject_list (fun b => Some(b, 0)) vl1 vl2.
-Proof.
-  intros; split.
-  induction 1; constructor; auto. apply val_inject_lessdef; auto.
-  induction 1; constructor; auto. apply val_inject_lessdef; auto.
-Qed.
-
-(** The identity injection gives rise to the "less defined than" relation. *)
-
-Definition inject_id : meminj := fun b => Some(b, 0).
-
-Lemma val_inject_id:
-  forall v1 v2,
-  Val.inject inject_id v1 v2 <-> Val.lessdef v1 v2.
-Proof.
-  intros; split; intros.
-  inv H; auto.
-  unfold inject_id in H0. inv H0. rewrite Ptrofs.add_zero. constructor.
-  inv H. destruct v2; econstructor. unfold inject_id; reflexivity. rewrite Ptrofs.add_zero; auto.
-  constructor.
-Qed.
-
-(** Composing two memory injections *)
-
-Definition compose_meminj (f f': meminj) : meminj :=
-  fun b =>
-    match f b with
-    | None => None
-    | Some(b', delta) =>
-        match f' b' with
-        | None => None
-        | Some(b'', delta') => Some(b'', delta + delta')
-        end
-    end.
-
-Lemma val_inject_compose:
-  forall f f' v1 v2 v3,
-  Val.inject f v1 v2 -> Val.inject f' v2 v3 ->
-  Val.inject (compose_meminj f f') v1 v3.
-Proof.
-  intros. inv H; auto; inv H0; auto. econstructor.
-  unfold compose_meminj; rewrite H1; rewrite H3; eauto.
-  rewrite Ptrofs.add_assoc. decEq. unfold Ptrofs.add. apply Ptrofs.eqm_samerepr. auto with ints.
-Qed.
