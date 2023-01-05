@@ -227,7 +227,6 @@ Variable e: env.
   use reduction contexts to define reduction within an expression. *)
 
 (** Head reduction for l-values. *)
-
 Inductive lred: expr -> mem -> expr -> mem -> Prop :=
 | red_var_local: forall PCT x pt pt' ty m lo hi,
     e!x = Some(lo, hi, pt, ty) ->
@@ -254,102 +253,92 @@ Inductive lred: expr -> mem -> expr -> mem -> Prop :=
          (Eloc b (Ptrofs.add ofs (Ptrofs.repr delta)) vt bf ty) m.
 
 (** Head reductions for r-values *)
-
-Inductive rred (PCT:tag) : expr -> mem -> trace -> tag -> expr -> mem -> Prop :=
-| red_rvalof: forall b ofs pt lts bf ty m t v vt PCT' vt',
-    deref_loc ty m b ofs pt bf t (v,vt) lts ->
-    LoadT PCT pt vt lts = Some vt' ->
-    rred PCT (Evalof (Eloc b ofs pt bf ty) ty) m t
-         PCT' (Eval (v,vt') ty) m
+Inductive rred (PCT:tag) : expr -> mem -> trace -> tag -> option expr -> mem -> Prop :=
+| red_rvalof: forall b ofs pt lts bf ty m tr v vt opt_vt',
+    deref_loc ty m b ofs pt bf tr (v,vt) lts ->
+    opt_vt' = LoadT PCT pt vt lts ->
+    rred PCT (Evalof (Eloc b ofs pt bf ty) ty) m tr
+         PCT (option_map (fun vt' => Eval (v,vt') ty) opt_vt') m
 | red_addrof: forall b ofs pt ty1 ty pt' m,
     rred PCT (Eaddrof (Eloc b ofs pt Full ty1) ty) m E0
-         PCT (Eval (Vptr b ofs, pt') ty) m
-| red_unop: forall op v1 vt1 ty1 ty m PCT' v vt,
+         PCT (Some (Eval (Vptr b ofs, pt') ty)) m
+| red_unop: forall op v1 vt1 ty1 ty m v opt_vt',
     sem_unary_operation op v1 ty1 m = Some v ->
-    UnopT PCT vt1 = Some (PCT', vt) ->
+    opt_vt' = UnopT PCT vt1 ->
     rred PCT (Eunop op (Eval (v1,vt1) ty1) ty) m E0
-         PCT' (Eval (v,vt) ty) m
-| red_binop: forall op v1 vt1 ty1 v2 vt2 ty2 ty m PCT' v vt,
+         PCT (option_map (fun '(PCT,vt) => Eval (v,vt) ty) opt_vt') m
+| red_binop: forall op v1 vt1 ty1 v2 vt2 ty2 ty m v opt_vt',
     sem_binary_operation (snd ge) op v1 ty1 v2 ty2 m = Some v ->
-    BinopT PCT vt1 vt2 = Some (PCT', vt) ->
+    opt_vt' = BinopT PCT vt1 vt2 ->
     rred PCT (Ebinop op (Eval (v1,vt1) ty1) (Eval (v2,vt2) ty2) ty) m E0
-         PCT' (Eval (v,vt) ty) m
-| red_cast: forall ty v1 vt1 ty1 m PCT' v vt,
+         PCT (option_map (fun '(PCT,vt) => Eval (v,vt) ty) opt_vt') m
+| red_cast: forall ty v1 vt1 ty1 m v vt,
     sem_cast v1 ty1 ty m = Some v ->
-    DummyT [PCT;vt1] = Some [PCT'; vt] ->
     rred PCT (Ecast (Eval (v1,vt1) ty1) ty) m E0
-         PCT' (Eval (v,vt) ty) m
-| red_seqand_true: forall v1 vt1 ty1 r2 ty m PCT',
+         PCT (Some (Eval (v,vt) ty)) m
+| red_seqand_true: forall v1 vt1 ty1 r2 ty m,
     bool_val v1 ty1 m = Some true ->
-    DummyT [PCT;vt1] = Some [PCT'] ->
     rred PCT (Eseqand (Eval (v1,vt1) ty1) r2 ty) m E0
-         PCT' (Eparen r2 type_bool ty) m
-| red_seqand_false: forall v1 vt1 ty1 r2 ty m PCT' vt,
+         PCT (Some (Eparen r2 type_bool ty)) m
+| red_seqand_false: forall v1 vt1 ty1 r2 ty m vt,
     bool_val v1 ty1 m = Some false ->
-    DummyT [PCT;vt1] = Some [PCT'; vt] ->
     rred PCT (Eseqand (Eval (v1,vt1) ty1) r2 ty) m E0
-         PCT' (Eval (Vint Int.zero, vt) ty) m
-| red_seqor_true: forall v1 vt1 ty1 r2 ty m PCT' vt,
+         PCT (Some (Eval (Vint Int.zero, vt) ty)) m
+| red_seqor_true: forall v1 vt1 ty1 r2 ty m vt,
     bool_val v1 ty1 m = Some true ->
-    DummyT [PCT;vt1] = Some [PCT'; vt] ->
     rred PCT (Eseqor (Eval (v1,vt1) ty1) r2 ty) m E0
-         PCT' (Eval (Vint Int.one, vt) ty) m
-| red_seqor_false: forall v1 vt1 ty1 r2 ty m PCT',
+         PCT (Some (Eval (Vint Int.one, vt) ty)) m
+| red_seqor_false: forall v1 vt1 ty1 r2 ty m,
     bool_val v1 ty1 m = Some false ->
-    DummyT [PCT;vt1] = Some [PCT'] ->
     rred PCT (Eseqor (Eval (v1,vt1) ty1) r2 ty) m E0
-         PCT' (Eparen r2 type_bool ty) m
-| red_condition: forall v1 vt1 ty1 r1 r2 ty b m PCT',
+         PCT (Some (Eparen r2 type_bool ty)) m
+| red_condition: forall v1 vt1 ty1 r1 r2 ty b m,
     bool_val v1 ty1 m = Some b ->
-    DummyT [PCT;vt1] = Some [PCT'] ->
     rred PCT (Econdition (Eval (v1,vt1) ty1) r1 r2 ty) m E0
-         PCT' (Eparen (if b then r1 else r2) ty ty) m
-| red_sizeof: forall ty1 ty m PCT' vt,
-    DummyT [PCT] = Some [PCT';vt] ->
+         PCT (Some (Eparen (if b then r1 else r2) ty ty)) m
+| red_sizeof: forall ty1 ty m vt,
     rred PCT (Esizeof ty1 ty) m E0
-         PCT' (Eval (Vptrofs (Ptrofs.repr (sizeof (snd ge) ty1)), vt) ty) m
-| red_alignof: forall ty1 ty m PCT' vt,
-    DummyT [PCT] = Some [PCT';vt] ->
+         PCT (Some (Eval (Vptrofs (Ptrofs.repr (sizeof (snd ge) ty1)), vt) ty)) m
+| red_alignof: forall ty1 ty m vt,
     rred PCT (Ealignof ty1 ty) m E0
-         PCT' (Eval (Vptrofs (Ptrofs.repr (alignof (snd ge) ty1)), vt) ty) m
-| red_assign: forall b ofs ty1 pt bf v1 ovt v2 vt2 ty2 m v vt t1 t2 PCT' m' v' vt' lts lts',
+         PCT (Some (Eval (Vptrofs (Ptrofs.repr (alignof (snd ge) ty1)), vt) ty)) m
+| red_assign: forall b ofs ty1 pt bf v1 ovt v2 vt2 ty2 m v vt t1 t2 m' v' vt' lts lts',
     sem_cast v2 ty2 ty1 m = Some v ->
     deref_loc ty1 m b ofs pt bf t1 (v1,ovt) lts ->
-    StoreT PCT pt ovt vt lts = Some (PCT', vt', lts') ->
+    StoreT PCT pt ovt vt lts = Some (PCT, vt', lts') ->
     assign_loc ty1 m b ofs pt bf (v,vt) t2 m' (v',vt) lts' ->
     rred PCT (Eassign (Eloc b ofs pt bf ty1) (Eval (v2, vt2) ty2) ty1) m t2
-         PCT' (Eval (v',vt') ty1) m'
-| red_assignop: forall op b ofs pt ty1 bf v2 ty2 tyres m t v1 vt1 vt1' lts PCT',
+         PCT (Some (Eval (v',vt') ty1)) m'
+| red_assignop: forall op b ofs pt ty1 bf v2 ty2 tyres m t v1 vt1 vt1' lts,
     deref_loc ty1 m b ofs pt bf t (v1,vt1) lts ->
     LoadT PCT pt vt1 lts = Some vt1' -> (* Do we want to do this in this order? *)
     rred PCT (Eassignop op (Eloc b ofs pt bf ty1) (Eval v2 ty2) tyres ty1) m t
-         PCT' (Eassign (Eloc b ofs pt bf ty1)
-                    (Ebinop op (Eval (v1,vt1') ty1) (Eval v2 ty2) tyres) ty1) m
-| red_postincr: forall id b ofs pt ty bf m t v1 vt1 vt1' vt2 lts op PCT',
+         PCT (Some (Eassign (Eloc b ofs pt bf ty1)
+                            (Ebinop op (Eval (v1,vt1') ty1) (Eval v2 ty2) tyres) ty1)) m
+| red_postincr: forall id b ofs pt ty bf m t v1 vt1 vt1' vt2 lts op,
     deref_loc ty m b ofs pt bf t (v1,vt1) lts ->
     LoadT PCT pt vt1 lts = Some vt1' ->
     op = match id with Incr => Oadd | Decr => Osub end ->
     rred PCT (Epostincr id (Eloc Mem.dummy ofs pt bf ty) ty) m t
-         PCT' (Ecomma (Eassign (Eloc Mem.dummy ofs pt bf ty)
-                          (Ebinop op (Eval (v1,vt1') ty)
-                                  (Eval (Vint Int.one, vt2) type_int32s)
-                                  (incrdecr_type ty))
-                          ty)
-                 (Eval (v1,vt1) ty) ty) m
-| red_comma: forall v ty1 r2 ty m PCT',
+         PCT (Some (Ecomma (Eassign (Eloc Mem.dummy ofs pt bf ty)
+                                    (Ebinop op (Eval (v1,vt1') ty)
+                                            (Eval (Vint Int.one, vt2) type_int32s)
+                                            (incrdecr_type ty))
+                                    ty)
+                           (Eval (v1,vt1) ty) ty)) m
+| red_comma: forall v ty1 r2 ty m,
     typeof r2 = ty ->
     rred PCT (Ecomma (Eval v ty1) r2 ty) m E0
-         PCT' r2 m
-| red_paren: forall v1 vt1 ty1 ty2 ty m v vt PCT',
+         PCT (Some r2) m
+| red_paren: forall v1 vt1 ty1 ty2 ty m v vt,
     sem_cast v1 ty1 ty2 m = Some v ->
-    DummyT [PCT;vt1] = Some [PCT';vt1] ->
     rred PCT (Eparen (Eval (v1,vt1) ty1) ty2 ty) m E0
-         PCT' (Eval (v,vt) ty) m
-| red_builtin: forall ef tyargs el ty m vargs t vres m' PCT',
+         PCT (Some (Eval (v,vt) ty)) m
+| red_builtin: forall ef tyargs el ty m vargs t vres m',
     cast_arguments m el tyargs vargs ->
     external_call ef (fst ge) vargs m t vres m' ->
     rred PCT (Ebuiltin ef tyargs el ty) m t
-         PCT' (Eval vres ty) m'.
+         PCT (Some (Eval vres ty)) m'.
 
 (** Head reduction for function calls.
     (More exactly, identification of function calls that can reduce.) *)
@@ -678,32 +667,38 @@ This makes it easy to express different reduction strategies for expressions:
 the second group of rules can be reused as is. *)
 
 Inductive estep: state -> trace -> state -> Prop :=
-
-  | step_lred: forall C f PCT PCT' a k e m a' m',
-      lred e a m a' m' ->
-      context LV RV C ->
-      estep (ExprState f PCT (C a) k e m)
-         E0 (ExprState f PCT' (C a') k e m')
-
-  | step_rred: forall C f PCT PCT' a k e m t a' m',
-      rred PCT a m t PCT' a' m' ->
-      context RV RV C ->
-      estep (ExprState f PCT (C a) k e m)
+| step_lred: forall C f PCT PCT' a k e m a' m',
+    lred e a m a' m' ->
+    context LV RV C ->
+    estep (ExprState f PCT (C a) k e m)
+          E0 (ExprState f PCT' (C a') k e m')
+| step_rred: forall C f PCT PCT' a k e m t a' m',
+    rred PCT a m t PCT' (Some a') m' ->
+    context RV RV C ->
+    estep (ExprState f PCT (C a) k e m)
           t (ExprState f PCT' (C a') k e m')
+| step_call: forall C f PCT PCT' a k e m fd vargs ty,
+    callred PCT a m PCT' fd vargs ty ->
+    context RV RV C ->
+    estep (ExprState f PCT (C a) k e m)
+          E0 (Callstate fd PCT' vargs (Kcall f e C ty k) m)
+| step_stuck: forall C f PCT a k e m K,
+    context K RV C -> ~(imm_safe e K a m) ->
+    estep (ExprState f PCT (C a) k e m)
+          E0 Stuckstate
+| step_failstop: forall C f PCT PCT' a k e m t m',
+    rred PCT a m t PCT' None m' ->
+    context RV RV C ->
+    estep (ExprState f PCT (C a) k e m)
+          E0 Failstop.
 
-  | step_call: forall C f PCT PCT' a k e m fd vargs ty,
-      callred PCT a m PCT' fd vargs ty ->
-      context RV RV C ->
-      estep (ExprState f PCT (C a) k e m)
-         E0 (Callstate fd PCT' vargs (Kcall f e C ty k) m)
-
-  | step_stuck: forall C f PCT a k e m K,
-      context K RV C -> ~(imm_safe e K a m) ->
-      estep (ExprState f PCT (C a) k e m)
-         E0 Stuckstate.
+Definition bindT (ot:option tag) (f: state -> trace -> state -> Prop) (s:state) (tr:trace) (s':tag -> state) :=
+  match ot with
+  | Some t => f s tr (s' t)
+  | None => f s tr Failstop
+  end.
 
 Inductive sstep: state -> trace -> state -> Prop :=
-
 | step_do_1: forall f PCT x k e m,
     sstep (State f PCT (Sdo x) k e m)
           E0 (ExprState f PCT x (Kdo k) e m)
