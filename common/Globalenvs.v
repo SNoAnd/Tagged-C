@@ -627,19 +627,21 @@ Fixpoint store_init_data_list (m: mem) (p: Z) (idl: list (init_data*tag*list tag
 
 Definition perm_globvar (gv: globvar V) : permission := Live.
 
-Definition global_block (m: mem) (id: ident) (base bound: Z) : mem :=
+Definition global_block (m: mem) (id: ident) (sz: Z) : mem :=
+  let '(glob_base, base) := m.(globals) in
+  let bound := base + sz in
   let mem_access' := (fun ofs : Z => if zle base ofs && zlt ofs bound then Live else m.(Mem.mem_access) ofs) in
-  Mem.mkmem m.(Mem.mem_contents) mem_access' m.(Mem.al_state) m.(Mem.live).
+  Mem.mkmem m.(Mem.mem_contents) mem_access' m.(Mem.al_state) m.(Mem.live) (glob_base, bound).
 
 Definition alloc_global (m: mem) (idg: ident * globdef F V): option mem :=
   match idg with
   | (id, Gfun f) =>
-      Some (global_block m id 1)
+      Some m
   | (id, Gvar v) =>
       let init := v.(gvar_init) in
       let sz := init_data_list_size init in
       let m1 := global_block m id sz in
-      (*match*) store_zeros m1 id 0 sz(* with
+      (*match*) store_zeros m1 0 sz(* with
       | None => None
       | Some m2 =>
           store_init_data_list m2 id 0 init
@@ -669,9 +671,9 @@ Qed.
 (** Permissions *)
 
 Remark store_zeros_perm:
-  forall prm b' q m b p n m',
-  store_zeros m b p n = Some m' ->
-  (Mem.perm m b' q prm <-> Mem.perm m' b' q prm).
+  forall prm q m p n m',
+  store_zeros m p n = Some m' ->
+  (Mem.perm m q prm <-> Mem.perm m' q prm).
 Admitted.
 (*Proof.
   intros until n. functional induction (store_zeros m b p n); intros.
@@ -696,9 +698,9 @@ Proof.
 Qed.*)
 
 Remark store_init_data_list_perm:
-  forall prm b' q idl b m p m',
-  store_init_data_list m b p idl = Some m' ->
-  (Mem.perm m b' q prm <-> Mem.perm m' b' q prm).
+  forall prm q idl m p m',
+  store_init_data_list m p idl = Some m' ->
+  (Mem.perm m q prm <-> Mem.perm m' q prm).
 Admitted.
 (*Proof.
   induction idl as [ | i1 idl]; simpl; intros.
@@ -800,15 +802,15 @@ Qed.*)
 
 (** Properties related to [loadbytes] *)
 
-Definition readbytes_as_zero (m: mem) (b: block) (ofs len: Z) (t:tag) : Prop :=
+Definition readbytes_as_zero (m: mem) (ofs len: Z) (t:tag) : Prop :=
   forall p n,
   ofs <= p -> p + Z.of_nat n <= ofs + len ->
-  Mem.loadbytes m b p (Z.of_nat n) = Some (List.repeat (Byte Byte.zero t) n).
+  Mem.loadbytes m p (Z.of_nat n) = Some (List.repeat (Byte Byte.zero t) n).
 
 Lemma store_zeros_loadbytes:
-  forall m b p n m' t,
-  store_zeros m b p n = Some m' ->
-  readbytes_as_zero m' b p n t.
+  forall m p n m' t,
+  store_zeros m p n = Some m' ->
+  readbytes_as_zero m' p n t.
 Admitted.
 (*Proof.
   intros until n; functional induction (store_zeros m b p n); red; intros.
@@ -832,7 +834,7 @@ Admitted.
   + eapply IHo; eauto. lia. lia.
 - discriminate.
 Qed.*)
-
+About find_symbol.
 Definition bytes_of_init_data (i: init_data) (t:tag): list memval :=
   match i with
   | Init_int8 n => inj_bytes (encode_int 1%nat (Int.unsigned n)) t
@@ -844,7 +846,8 @@ Definition bytes_of_init_data (i: init_data) (t:tag): list memval :=
   | Init_space n => List.repeat (Byte Byte.zero t) (Z.to_nat n)
   | Init_addrof id ofs =>
       match find_symbol ge id with
-      | Some (b,base,bound,pt) => inj_value (if Archi.ptr64 then Q64 else Q32) (Vptr b ofs, t)
+      | Some (inl (b,pt)) => inj_value (if Archi.ptr64 then Q64 else Q32) (Vfptr b, pt)
+      | Some (inr (base,bound,pt)) => inj_value (if Archi.ptr64 then Q64 else Q32) (Vint (Int.repr base), t)
       | None   => List.repeat Undef (if Archi.ptr64 then 8%nat else 4%nat)
       end
   end.
@@ -856,10 +859,10 @@ Proof.
 Qed.
 
 Lemma store_init_data_loadbytes:
-  forall m b p i vt lts m',
-  store_init_data m b p i vt lts = Some m' ->
-  readbytes_as_zero m b p (init_data_size i) vt ->
-  Mem.loadbytes m' b p (init_data_size i) = Some (bytes_of_init_data i vt).
+  forall m p i vt lts m',
+    store_init_data m p i vt lts = Some m' ->
+    readbytes_as_zero m p (init_data_size i) vt ->
+    Mem.loadbytes m' p (init_data_size i) = Some (bytes_of_init_data i vt).
 Admitted.
 (*Proof.
   intros; destruct i; simpl in H; try apply (Mem.loadbytes_store_same _ _ _ _ _ _ H).
@@ -908,12 +911,12 @@ Qed.*)
 
 (** Properties related to [load] *)
 
-Definition read_as_zero (m: mem) (b: block) (ofs len: Z) : Prop :=
+Definition read_as_zero (m: mem) (ofs len: Z) : Prop :=
   forall chunk p,
   ofs <= p -> p + size_chunk chunk <= ofs + len ->
   (align_chunk chunk | p) ->
   exists t,
-  Mem.load chunk m b p =
+  Mem.load chunk m p =
   Some (match chunk with
         | Mint8unsigned | Mint8signed | Mint16unsigned | Mint16signed | Mint32 => Vint Int.zero
         | Mint64 => Vlong Int64.zero
@@ -934,9 +937,9 @@ Proof.
 Qed.*)
 
 Lemma store_zeros_read_as_zero:
-  forall m b p n m',
-  store_zeros m b p n = Some m' ->
-  read_as_zero m' b p n.
+  forall m p n m',
+    store_zeros m p n = Some m' ->
+    read_as_zero m' p n.
 Admitted.
 (*Proof.
   intros; red; intros.
@@ -946,34 +949,34 @@ Admitted.
   f_equal. destruct chunk; unfold decode_val; unfold decode_int; unfold rev_if_be; destruct Archi.big_endian; reflexivity.
 Qed.*)
 
-Fixpoint load_store_init_data (m: mem) (b: block) (p: Z) (il: list init_data) (t:tag) {struct il} : Prop :=
+(*Fixpoint load_store_init_data (m: mem) (p: Z) (il: list init_data) (t:tag) {struct il} : Prop :=
   match il with
   | nil => True
   | Init_int8 n :: il' =>
-      Mem.load Mint8unsigned m b p = Some(Vint(Int.zero_ext 8 n),t)
-      /\ load_store_init_data m b (p + 1) il' t
+      Mem.load Mint8unsigned m p = Some(Vint(Int.zero_ext 8 n),t)
+      /\ load_store_init_data m (p + 1) il' t
   | Init_int16 n :: il' =>
-      Mem.load Mint16unsigned m b p = Some(Vint(Int.zero_ext 16 n),t)
-      /\ load_store_init_data m b (p + 2) il' t
+      Mem.load Mint16unsigned m p = Some(Vint(Int.zero_ext 16 n),t)
+      /\ load_store_init_data m (p + 2) il' t
   | Init_int32 n :: il' =>
-      Mem.load Mint32 m b p = Some(Vint n,t)
-      /\ load_store_init_data m b (p + 4) il' t
+      Mem.load Mint32 m p = Some(Vint n,t)
+      /\ load_store_init_data m (p + 4) il' t
   | Init_int64 n :: il' =>
-      Mem.load Mint64 m b p = Some(Vlong n,t)
-      /\ load_store_init_data m b (p + 8) il' t
+      Mem.load Mint64 m p = Some(Vlong n,t)
+      /\ load_store_init_data m (p + 8) il' t
   | Init_float32 n :: il' =>
-      Mem.load Mfloat32 m b p = Some(Vsingle n,t)
-      /\ load_store_init_data m b (p + 4) il' t
+      Mem.load Mfloat32 m p = Some(Vsingle n,t)
+      /\ load_store_init_data m (p + 4) il' t
   | Init_float64 n :: il' =>
-      Mem.load Mfloat64 m b p = Some(Vfloat n,t)
-      /\ load_store_init_data m b (p + 8) il' t
+      Mem.load Mfloat64 m p = Some(Vfloat n,t)
+      /\ load_store_init_data m (p + 8) il' t
   | Init_addrof symb ofs :: il' =>
-      (exists b' base bound pt, find_symbol ge symb = Some (b',base,bound,pt) /\ Mem.load Mptr m b p = Some(Vptr b' ofs,t))
+      (exists b' base bound pt, find_symbol ge symb = Some (b',base,bound,pt) /\ Mem.load Mptr m p = Some (Vptr b' ofs,t))
       /\ load_store_init_data m b (p + size_chunk Mptr) il' t
   | Init_space n :: il' =>
       read_as_zero m b p n
       /\ load_store_init_data m b (p + Z.max n 0) il' t
-  end.
+  end.*)
 
 (*Lemma store_init_data_list_charact:
   forall b il m p m',
@@ -1072,16 +1075,16 @@ Proof.
   apply IHgl; auto.
 Qed.*)
 
-Remark load_store_init_data_invariant:
+(*Remark load_store_init_data_invariant:
   forall m m' b t,
-  (forall chunk ofs, Mem.load chunk m' b ofs = Mem.load chunk m b ofs) ->
-  forall il p,
-  load_store_init_data m b p il t -> load_store_init_data m' b p il t.
+    (forall chunk ofs, Mem.load chunk m' b ofs = Mem.load chunk m b ofs) ->
+    forall il p,
+      load_store_init_data m b p il t -> load_store_init_data m' b p il t.
 Proof.
   induction il; intro p; simpl.
   auto.
   rewrite ! H. destruct a; intuition. red; intros; rewrite H; auto.
-Qed.
+Qed.*)
 
 (*Definition globals_initialized (g: t) (m: mem) :=
   forall b gd,
@@ -1396,11 +1399,11 @@ Section INITMEM_INVERSION.
 
 Variable ge: t.
 
-Lemma store_init_data_aligned:
+(*Lemma store_init_data_aligned:
   forall m b p i vt lts m',
-  store_init_data ge m b p i vt lts = Some m' ->
-  (init_data_alignment i | p).
-Admitted.
+    store_init_data ge m b p i vt lts = Some m' ->
+    (init_data_alignment i | p).
+Admitted.*)
 (*Proof.
   intros.
   assert (DFL: forall chunk v vt lts,
@@ -1469,9 +1472,9 @@ Section INITMEM_EXISTS.
 Variable ge: t.
 
 Lemma store_zeros_exists:
-  forall m b p n,
-  Mem.range_perm_neg m b p (p + n) Dead ->
-  exists m', store_zeros m b p n = Some m'.
+  forall m p n,
+  Mem.range_perm_neg m p (p + n) Dead ->
+  exists m', store_zeros m p n = Some m'.
 Admitted.
 (*Proof.
   intros until n. functional induction (store_zeros m b p n); intros PERM.
@@ -1484,11 +1487,11 @@ Admitted.
 Qed.*)
 
 Lemma store_init_data_exists:
-  forall m b p i vt lts,
-  Mem.range_perm_neg m b p (p + init_data_size i) Dead ->
+  forall m p i vt lts,
+  Mem.range_perm_neg m p (p + init_data_size i) Dead ->
   (init_data_alignment i | p) ->
   (forall id ofs, i = Init_addrof id ofs -> exists b, find_symbol ge id = Some b) ->
-  exists m', store_init_data ge m b p i vt lts = Some m'.
+  exists m', store_init_data ge m p i vt lts = Some m'.
 Admitted.
 (*Proof.
   intros.

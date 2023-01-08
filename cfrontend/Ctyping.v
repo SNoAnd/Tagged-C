@@ -297,34 +297,34 @@ Inductive wt_val : val -> type -> Prop :=
   | wt_val_int: forall n sz sg a,
       wt_int n sz sg ->
       wt_val (Vint n) (Tint sz sg a)
-  | wt_val_ptr_int: forall b ofs sg a,
+  | wt_val_ptr_int: forall b sg a,
       Archi.ptr64 = false ->
-      wt_val (Vptr b ofs) (Tint I32 sg a)
+      wt_val (Vfptr b) (Tint I32 sg a)
   | wt_val_long: forall n sg a,
       wt_val (Vlong n) (Tlong sg a)
-  | wt_val_ptr_long: forall b ofs sg a,
+  | wt_val_ptr_long: forall b sg a,
       Archi.ptr64 = true ->
-      wt_val (Vptr b ofs) (Tlong sg a)
+      wt_val (Vfptr b) (Tlong sg a)
   | wt_val_float: forall f a,
       wt_val (Vfloat f) (Tfloat F64 a)
   | wt_val_single: forall f a,
       wt_val (Vsingle f) (Tfloat F32 a)
-  | wt_val_pointer: forall b ofs ty a,
-      wt_val (Vptr b ofs) (Tpointer ty a)
+  | wt_val_pointer: forall b ty a,
+      wt_val (Vfptr b) (Tpointer ty a)
   | wt_val_int_pointer: forall n ty a,
       Archi.ptr64 = false ->
       wt_val (Vint n) (Tpointer ty a)
   | wt_val_long_pointer: forall n ty a,
       Archi.ptr64 = true ->
       wt_val (Vlong n) (Tpointer ty a)
-  | wt_val_array: forall b ofs ty sz a,
-      wt_val (Vptr b ofs) (Tarray ty sz a)
-  | wt_val_function: forall b ofs tyargs tyres cc,
-      wt_val (Vptr b ofs) (Tfunction tyargs tyres cc)
-  | wt_val_struct: forall b ofs id a,
-      wt_val (Vptr b ofs) (Tstruct id a)
-  | wt_val_union: forall b ofs id a,
-      wt_val (Vptr b ofs) (Tunion id a)
+  | wt_val_array: forall n ty sz a,
+      wt_val (Vint n) (Tarray ty sz a)
+  | wt_val_function: forall b tyargs tyres cc,
+      wt_val (Vfptr b) (Tfunction tyargs tyres cc)
+  | wt_val_struct: forall n id a,
+      wt_val (Vint n) (Tstruct id a)
+  | wt_val_union: forall n id a,
+      wt_val (Vint n) (Tunion id a)
   | wt_val_undef: forall ty,
       wt_val Vundef ty
   | wt_val_void: forall v,
@@ -429,8 +429,8 @@ Inductive wt_rvalue : expr -> Prop :=
       wt_rvalue (Eparen r tycast ty)
 
 with wt_lvalue : expr -> Prop :=
-  | wt_Eloc: forall b ofs pt bf ty,
-      wt_lvalue (Eloc b ofs pt bf ty)
+  | wt_Eloc: forall ofs pt bf ty,
+      wt_lvalue (Eloc ofs pt bf ty)
   | wt_Evar: forall x ty,
       e!x = Some ty ->
       wt_lvalue (Evar x ty)
@@ -459,7 +459,7 @@ Definition wt_expr_kind (k: kind) (a: expr) :=
 
 Definition expr_kind (a: expr) : kind :=
   match a with
-  | Eloc _ _ _ _ _ => LV
+  | Eloc _ _ _ _ => LV
   | Evar _ _ => LV
   | Ederef _ _ => LV
   | Efield _ _ _ => LV
@@ -615,7 +615,7 @@ Fixpoint check_arguments (el: exprlist) (tyl: typelist) : res unit :=
 
 Definition check_rval (e: expr) : res unit :=
   match e with
-  | Eloc _ _ _ _ _ | Evar _ _ | Ederef _ _ | Efield _ _ _ =>
+  | Eloc _ _ _ _ | Evar _ _ | Ederef _ _ | Efield _ _ _ =>
       Error (msg "not a r-value")
   | _ =>
       OK tt
@@ -623,7 +623,7 @@ Definition check_rval (e: expr) : res unit :=
 
 Definition check_lval (e: expr) : res unit :=
   match e with
-  | Eloc _ _ _ _ _ | Evar _ _ | Ederef _ _ | Efield _ _ _ =>
+  | Eloc _ _ _ _ | Evar _ _ | Ederef _ _ | Efield _ _ _ =>
       OK tt
   | _ =>
       Error (msg "not a l-value")
@@ -865,7 +865,7 @@ Fixpoint retype_expr (ce: composite_env) (e: typenv) (a: expr) : res expr :=
       do r1' <- retype_expr ce e r1; do rl' <- retype_exprlist ce e rl; ecall r1' rl'
   | Ebuiltin ef tyargs rl tyres =>
       do rl' <- retype_exprlist ce e rl; ebuiltin ef tyargs rl' tyres
-  | Eloc _ _ _ _ _ =>
+  | Eloc _ _ _ _ =>
       Error (msg "Eloc in source")
   | Eparen _ _ _ =>
       Error (msg "Eparen in source")

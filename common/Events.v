@@ -65,11 +65,12 @@ Module Events (P:Policy).
 *)
 
 Inductive eventval: Type :=
-  | EVint: int -> tag -> eventval
-  | EVlong: int64 -> tag -> eventval
-  | EVfloat: float -> tag -> eventval
-  | EVsingle: float32 -> tag -> eventval
-  | EVptr_global: ident -> ptrofs -> tag -> eventval.
+| EVint: int -> tag -> eventval
+| EVlong: int64 -> tag -> eventval
+| EVfloat: float -> tag -> eventval
+| EVsingle: float32 -> tag -> eventval
+| EVptr_global: ident -> ptrofs -> tag -> eventval
+| EVptr_fun: ident -> tag -> eventval.
 
 Inductive event: Type :=
   | Event_syscall: string -> list eventval -> eventval -> event
@@ -277,8 +278,18 @@ Section EVENTVAL.
 
 (** Translation between values and event values. *)
 
-Inductive eventval_match: eventval -> typ -> atom -> Prop :=
+  Inductive eventval_match: eventval -> typ -> atom -> Prop :=
+  | ev_match_global: forall id i base bound pt t,
+      public_symbol ge id = true ->
+      find_symbol ge id = Some (inr (base,bound,t)) ->
+      base <= i ->
+      i < bound ->
+      eventval_match (EVptr_global id (Ptrofs.repr (i - base)) pt) Tptr (Vint (Int.repr i), pt)
   | ev_match_int: forall i t,
+      (forall id pt base bound,
+          public_symbol ge id = true ->
+          find_symbol ge id = Some (inr (base,bound,pt)) ->
+          (Int.signed i < base \/ bound <= Int.signed i)) ->
       eventval_match (EVint i t) Tint (Vint i, t)
   | ev_match_long: forall i t,
       eventval_match (EVlong i t) Tlong (Vlong i, t)
@@ -286,10 +297,10 @@ Inductive eventval_match: eventval -> typ -> atom -> Prop :=
       eventval_match (EVfloat f t) Tfloat (Vfloat f, t)
   | ev_match_single: forall f t,
       eventval_match (EVsingle f t) Tsingle (Vsingle f, t)
-  | ev_match_ptr: forall id b base bound ofs t,
+  | ev_match_ptr: forall id b pt,
       public_symbol ge id = true ->
-      find_symbol ge id = Some (b,base,bound,t) ->
-      eventval_match (EVptr_global id ofs t) Tptr (Vptr b ofs, t).
+      find_symbol ge id = Some (inl (b,pt)) ->
+      eventval_match (EVptr_fun id pt) Tptr (Vfptr b, pt).
 
 Inductive eventval_list_match: list eventval -> list typ -> list atom -> Prop :=
   | evl_match_nil:
@@ -305,9 +316,10 @@ Inductive eventval_list_match: list eventval -> list typ -> list atom -> Prop :=
 Lemma eventval_match_type:
   forall ev ty v,
   eventval_match ev ty v -> Val.has_type (fst v) ty.
-Proof.
+Admitted.
+(*Proof.
   intros. inv H; simpl; auto. unfold Tptr; destruct Archi.ptr64; auto.
-Qed.
+Qed.*)
 
 Lemma eventval_list_match_length:
   forall evl tyl vl, eventval_list_match evl tyl vl -> List.length vl = List.length tyl.
@@ -336,9 +348,10 @@ Qed.*)
 
 Lemma eventval_match_determ_1:
   forall ev ty v1 v2, eventval_match ev ty v1 -> eventval_match ev ty v2 -> v1 = v2.
-Proof.
+Admitted.
+(*Proof.
   intros. inv H; inv H0; auto. congruence.
-Qed.
+Qed.*)
 
 Lemma eventval_match_determ_2:
   forall ev1 ev2 ty v, eventval_match ev1 ty v -> eventval_match ev2 ty v -> ev1 = ev2.
@@ -365,6 +378,7 @@ Definition eventval_valid (ev: eventval) : Prop :=
   | EVfloat _ _ => True
   | EVsingle _ _ => True
   | EVptr_global id ofs _ => public_symbol ge id = true
+  | EVptr_fun id _ => public_symbol ge id = true
   end.
 
 Definition eventval_type (ev: eventval) : typ :=
@@ -374,6 +388,7 @@ Definition eventval_type (ev: eventval) : typ :=
   | EVfloat _ _ => Tfloat
   | EVsingle _ _ => Tsingle
   | EVptr_global id ofs _ => Tptr
+  | EVptr_fun _ _ => Tptr
   end.
 
 Lemma eventval_match_receptive:
@@ -432,9 +447,10 @@ Hypothesis public_preserved:
 
 Lemma eventval_valid_preserved:
   forall ev, eventval_valid ge1 ev -> eventval_valid ge2 ev.
-Proof.
+Admitted.
+(*Proof.
   intros. destruct ev; simpl in *; auto. rewrite <- H; auto.
-Qed.
+Qed.*)
 
 Hypothesis symbols_preserved:
   forall id, find_symbol ge2 id = find_symbol ge1 id.
@@ -583,41 +599,33 @@ Fixpoint output_trace (t: trace) : Prop :=
 (** * Semantics of volatile memory accesses *)
 
 Inductive volatile_load (ge: Genv.t F V):
-                   memory_chunk -> mem -> block -> ptrofs -> trace -> atom -> list tag -> Prop :=
+                   memory_chunk -> mem -> ptrofs -> trace -> atom -> list tag -> Prop :=
   | volatile_load_vol: forall chunk m base block pt ofs id ev v vt,
       addr_is_volatile ge ofs = true ->
-      find_symbol ge id = Some (dummy,base,block,pt) ->
+      find_symbol ge id = Some (inr (base,block,pt)) ->
       eventval_match ge ev (type_of_chunk chunk) (v,vt) ->
-      volatile_load ge chunk m dummy ofs
+      volatile_load ge chunk m ofs
                     (Event_vload chunk id ofs ev :: nil)
                     (Val.load_result chunk v,vt)
-                    (load_ltags chunk m dummy (Ptrofs.unsigned ofs))
+                    (load_ltags chunk m (Ptrofs.unsigned ofs))
   | volatile_load_nonvol: forall chunk m ofs v,
       addr_is_volatile ge ofs = false ->
-      Mem.load chunk m dummy (Ptrofs.unsigned ofs) = Some v ->
-      volatile_load ge chunk m dummy ofs E0 v (load_ltags chunk m dummy (Ptrofs.unsigned ofs))
-  | volatile_load_block: forall chunk m b ofs v,
-      b <> dummy ->
-      Mem.load chunk m b (Ptrofs.unsigned ofs) = Some v ->
-      volatile_load ge chunk m b ofs E0 v (load_ltags chunk m b (Ptrofs.unsigned ofs)).
+      Mem.load chunk m (Ptrofs.unsigned ofs) = Some v ->
+      volatile_load ge chunk m ofs E0 v (load_ltags chunk m (Ptrofs.unsigned ofs)).
 
 Inductive volatile_store (ge: Genv.t F V):
-                  memory_chunk -> mem -> block -> ptrofs -> atom -> list tag -> trace -> mem -> Prop :=
+                  memory_chunk -> mem -> ptrofs -> atom -> list tag -> trace -> mem -> Prop :=
   | volatile_store_vol: forall chunk m base block pt ofs id ev v vt lts,
       Genv.addr_is_volatile ge ofs = true ->
-      Genv.find_symbol ge id = Some (dummy,base,block,pt) ->
+      Genv.find_symbol ge id = Some (inr (base,block,pt)) ->
       eventval_match ge ev (type_of_chunk chunk) (Val.load_result chunk v, vt) ->
-      volatile_store ge chunk m dummy ofs (v,vt) lts
+      volatile_store ge chunk m ofs (v,vt) lts
                      (Event_vstore chunk id ofs ev :: nil)
                      m
-  | volatile_store_nonvol: forall chunk m dummy ofs v lts m',
+  | volatile_store_nonvol: forall chunk m ofs v lts m',
       Genv.addr_is_volatile ge ofs = false ->
-      Mem.store chunk m dummy (Ptrofs.unsigned ofs) v lts = Some m' ->
-      volatile_store ge chunk m dummy ofs v lts E0 m'
-  | volatile_store_block: forall chunk m b ofs v lts m',
-      b <> dummy ->
-      Mem.store chunk m b (Ptrofs.unsigned ofs) v lts = Some m' ->
-      volatile_store ge chunk m b ofs v lts E0 m'.
+      Mem.store chunk m (Ptrofs.unsigned ofs) v lts = Some m' ->
+      volatile_store ge chunk m ofs v lts E0 m'.
   
 (** * Semantics of external functions *)
 
@@ -728,10 +736,10 @@ Definition inject_separated (f f': meminj) (m1 m2: mem): Prop :=
 
 Inductive volatile_load_sem (chunk: memory_chunk) (ge: Genv.t F V):
               list atom -> mem -> trace -> atom  -> mem -> Prop :=
-  | volatile_load_sem_intro: forall b ofs pt m t v vt lts,
-      volatile_load ge chunk m b ofs t (v,vt) lts ->
+  | volatile_load_sem_intro: forall ofs pt m t v vt lts,
+      volatile_load ge chunk m ofs t (v,vt) lts ->
       (*TODO: check tags *)
-      volatile_load_sem chunk ge ((Vptr b ofs, pt) :: nil) m t (v,vt) m.
+      volatile_load_sem chunk ge ((Vint (Ptrofs.to_int ofs), pt) :: nil) m t (v,vt) m.
 
 (*Lemma volatile_load_preserved:
   forall ge1 ge2 chunk m b ofs t v vt lts,
@@ -782,9 +790,9 @@ Proof.
 Qed.*)
 
 Lemma volatile_load_receptive:
-  forall ge chunk m b ofs t1 t2 v1  vt lts,
-  volatile_load ge chunk m b ofs t1 (v1, vt) lts -> match_traces ge t1 t2 ->
-  exists v2, volatile_load ge chunk m b ofs t2 (v2, vt) lts.
+  forall ge chunk m ofs t1 t2 v1  vt lts,
+  volatile_load ge chunk m ofs t1 (v1, vt) lts -> match_traces ge t1 t2 ->
+  exists v2, volatile_load ge chunk m ofs t2 (v2, vt) lts.
 Admitted.
 (*Proof.
   intros. inv H; inv H0.
@@ -837,10 +845,10 @@ Qed.*)
 
 Inductive volatile_store_sem (chunk: memory_chunk) (ge: Genv.t F V):
               list atom -> mem -> trace -> atom -> mem -> Prop :=
-  | volatile_store_sem_intro: forall b ofs pt m1 v vt lts t m2,
-      volatile_store ge chunk m1 b ofs (v,vt) lts t m2 ->
+  | volatile_store_sem_intro: forall ofs pt m1 v vt lts t m2,
+      volatile_store ge chunk m1 ofs (v,vt) lts t m2 ->
       (* TODO: check tags *)
-      volatile_store_sem chunk ge ((Vptr b ofs,pt) :: (v,vt) :: nil) m1 t (Vundef,def_tag) m2.
+      volatile_store_sem chunk ge ((Vint (Ptrofs.to_int ofs),pt) :: (v,vt) :: nil) m1 t (Vundef,def_tag) m2.
 
 (*Lemma volatile_store_preserved:
   forall ge1 ge2 chunk m1 b ofs v lts t m2,
@@ -948,8 +956,8 @@ Proof.
 Qed.*)
 
 Lemma volatile_store_receptive:
-  forall ge chunk m b ofs v lts t1 m1 t2,
-  volatile_store ge chunk m b ofs v lts t1 m1 -> match_traces ge t1 t2 -> t1 = t2.
+  forall ge chunk m ofs v lts t1 m1 t2,
+    volatile_store ge chunk m ofs v lts t1 m1 -> match_traces ge t1 t2 -> t1 = t2.
 Proof.
   intros. inv H; inv H0; auto.
 Qed.
@@ -994,8 +1002,8 @@ Inductive extcall_malloc_sem (ge: Genv.t F V):
 | extcall_malloc_sem_intro: forall sz st m m' lo hi vt lts pt m'',
     (* TODO: check tags *)
     Mem.alloc m (- size_chunk Mptr) (Ptrofs.unsigned sz) = Some (m', lo, hi) ->
-    Mem.store Mptr m' Mem.dummy (- size_chunk Mptr) (Vptrofs sz, vt) lts = Some m'' ->
-    extcall_malloc_sem ge ((Vptrofs sz,st) :: nil) m E0 (Vptr Mem.dummy (Ptrofs.repr lo), pt) m''.
+    Mem.store Mptr m' (- size_chunk Mptr) (Vptrofs sz, vt) lts = Some m'' ->
+    extcall_malloc_sem ge ((Vptrofs sz,st) :: nil) m E0 (Vint (Int.repr lo), pt) m''.
 
 (*Lemma extcall_malloc_ok:
   extcall_properties extcall_malloc_sem
@@ -1079,10 +1087,10 @@ Inductive extcall_free_sem (ge: Genv.t F V):
               list atom -> mem -> trace -> atom -> mem -> Prop :=
 | extcall_free_sem_ptr: forall lo pt sz vt m m',
     (* TODO: check tags *)
-    Mem.load Mptr m Mem.dummy (Ptrofs.unsigned lo - size_chunk Mptr) = Some (Vptrofs sz, vt) ->
+    Mem.load Mptr m (lo - size_chunk Mptr) = Some (Vptrofs sz, vt) ->
     Ptrofs.unsigned sz > 0 ->
-    Mem.free m Mem.dummy (Ptrofs.unsigned lo - size_chunk Mptr) (Ptrofs.unsigned lo + Ptrofs.unsigned sz) = Some m' ->
-    extcall_free_sem ge ((Vptr Mem.dummy lo,pt) :: nil) m E0 (Vundef,def_tag) m'
+    Mem.free m (lo - size_chunk Mptr) (lo + Ptrofs.unsigned sz) = Some m' ->
+    extcall_free_sem ge ((Vint (Int.repr lo),pt) :: nil) m E0 (Vundef,def_tag) m'
 | extcall_free_sem_null: forall m pt,
     extcall_free_sem ge ((Vnullptr,pt) :: nil) m E0 (Vundef,def_tag) m.
 
@@ -1176,14 +1184,14 @@ Inductive extcall_memcpy_sem (sz al: Z) (ge: Genv.t F V):
                         list atom -> mem -> trace -> atom -> mem -> Prop :=
   | extcall_memcpy_sem_intro: forall odst osrc pt1 pt2 m bytes lts m',
       al = 1 \/ al = 2 \/ al = 4 \/ al = 8 -> sz >= 0 -> (al | sz) ->
-      (sz > 0 -> (al | Ptrofs.unsigned osrc)) ->
-      (sz > 0 -> (al | Ptrofs.unsigned odst)) ->
-      Mem.dummy <> Mem.dummy \/ Ptrofs.unsigned osrc = Ptrofs.unsigned odst
-                             \/ Ptrofs.unsigned osrc + sz <= Ptrofs.unsigned odst
-                             \/ Ptrofs.unsigned odst + sz <= Ptrofs.unsigned osrc ->
-      Mem.loadbytes m Mem.dummy (Ptrofs.unsigned osrc) sz = Some bytes ->
-      Mem.storebytes m Mem.dummy (Ptrofs.unsigned odst) bytes lts = Some m' ->
-      extcall_memcpy_sem sz al ge ((Vptr Mem.dummy odst,pt1) :: (Vptr Mem.dummy osrc,pt2) :: nil) m E0 (Vundef,def_tag) m'.
+      (sz > 0 -> (al | osrc)) ->
+      (sz > 0 -> (al | odst)) ->
+      osrc = odst
+      \/ osrc + sz <= odst
+      \/ odst + sz <= osrc ->
+      Mem.loadbytes m (osrc) sz = Some bytes ->
+      Mem.storebytes m (odst) bytes lts = Some m' ->
+      extcall_memcpy_sem sz al ge ((Vint (Int.repr odst),pt1) :: (Vint (Int.repr osrc),pt2) :: nil) m E0 (Vundef,def_tag) m'.
 
 (*Lemma extcall_memcpy_ok:
   forall sz al,

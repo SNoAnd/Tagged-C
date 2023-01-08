@@ -78,6 +78,8 @@ Record mem' : Type := mkmem {
   al_state: al.(t);
 
   live: list (Z*Z);
+
+  globals: (Z*Z);
 }.
 
 Definition mem := mem'.
@@ -348,7 +350,8 @@ Program Definition empty: mem :=
   mkmem (ZMap.init (Undef, def_tag))
         (fun ofs => if init_dead ofs then Dead else MostlyDead)
         al.(init)
-        [].
+        []
+        (0,0).
 
 (** Allocation of a fresh block with the given bounds.  Return an updated
   memory state and the address of the fresh block, which initially contains
@@ -363,7 +366,8 @@ Program Definition alloc (m: mem) (lo hi: Z) : option (mem*Z*Z) :=
                               then Live
                               else m.(mem_access) ofs)
                   al_state'
-                  ((lo',hi')::m.(live)),
+                  ((lo',hi')::m.(live))
+                  m.(globals),
              lo', hi')
   | None => None
   end.
@@ -387,6 +391,7 @@ Program Definition unchecked_free (m: mem) (lo hi: Z): mem :=
                         else m.(mem_access) ofs)
             (al.(stkfree) m.(al_state) lo hi)
             (remove region_eq_dec (lo,hi) m.(live))
+            m.(globals)
         .
 
 Definition free (m: mem) (lo hi: Z): option mem :=
@@ -394,10 +399,10 @@ Definition free (m: mem) (lo hi: Z): option mem :=
   then Some(unchecked_free m lo hi)
   else None.
 
-Fixpoint free_list (m: mem) (l: list (block * Z * Z)) {struct l}: option mem :=
+Fixpoint free_list (m: mem) (l: list (Z * Z)) {struct l}: option mem :=
   match l with
   | nil => Some m
-  | (b, lo, hi) :: l' =>
+  | (lo, hi) :: l' =>
       match free m lo hi with
       | None => None
       | Some m' => free_list m' l'
@@ -569,7 +574,8 @@ Program Definition store (chunk: memory_chunk) (m: mem) (ofs: Z) (a:atom) (lts:l
     Some (mkmem (setN (merge_vals_tags (encode_val chunk a) lts) ofs (m.(mem_contents)))
                 m.(mem_access)
                 m.(al_state)
-                m.(live))
+                m.(live)
+                m.(globals))
   else
     None.
 
@@ -592,7 +598,8 @@ Program Definition storebytes (m: mem) (ofs: Z) (bytes: list memval) (lts:list t
              (setN (merge_vals_tags bytes lts) ofs (m.(mem_contents)))
              m.(mem_access)
              m.(al_state)
-             m.(live))
+             m.(live)
+             m.(globals))
   else
     None.
 

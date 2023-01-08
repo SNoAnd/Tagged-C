@@ -30,13 +30,6 @@ Require Import AST Integers Floats Values Memdata.
 Definition val_opt_has_rettype (ov: option val) (t: rettype) : Prop :=
   match ov with Some v => Val.has_rettype v t | None => True end.
 
-Definition val_opt_inject (j: meminj) (ov ov': option val) : Prop :=
-  match ov, ov' with
-  | None, _ => True
-  | Some v, Some v' => Val.inject j v v'
-  | _, None => False
-  end.
-
 (** The semantics of a built-in function is a partial function
   from list of values to values.  
   It must agree with the return type stated in the signature,
@@ -47,8 +40,6 @@ Record builtin_sem (tret: rettype) : Type := mkbuiltin {
   bs_sem :> list val -> option val;
   bs_well_typed: forall vl, 
     val_opt_has_rettype (bs_sem vl) tret;
-  bs_inject: forall j vl vl',
-    Val.inject_list j vl vl' -> val_opt_inject j (bs_sem vl) (bs_sem vl')
 }.
 
 (** Builtin functions can be created from functions over values, such as those
@@ -58,73 +49,44 @@ Record builtin_sem (tret: rettype) : Type := mkbuiltin {
 - [mkbuiltin_vNp] for a [p]artial function of [N] arguments that are [v]alues.
 *)
 
-Local Unset Program Cases.
-
 Program Definition mkbuiltin_v1t 
      (tret: rettype) (f: val -> val)
-     (WT: forall v1, Val.has_rettype (f v1) tret)
-     (INJ: forall j v1 v1', Val.inject j v1 v1' -> Val.inject j (f v1) (f v1')) :=
-  mkbuiltin tret (fun vl => match vl with v1 :: nil => Some (f v1) | _ => None end) _ _.
+     (WT: forall v1, Val.has_rettype (f v1) tret) :=
+  mkbuiltin tret (fun vl => match vl with v1 :: nil => Some (f v1) | _ => None end) _.
 Next Obligation.
   red; destruct vl; auto. destruct vl; auto.
-Qed.
-Next Obligation.
-  red; inv H; auto. inv H1; auto. 
 Qed.
 
 Program Definition mkbuiltin_v2t 
      (tret: rettype) (f: val -> val -> val)
-     (WT: forall v1 v2, Val.has_rettype (f v1 v2) tret)
-     (INJ: forall j v1 v1' v2 v2',
-           Val.inject j v1 v1' -> Val.inject j v2 v2' ->
-           Val.inject j (f v1 v2) (f v1' v2')) :=
-  mkbuiltin tret (fun vl => match vl with v1 :: v2 :: nil => Some (f v1 v2) | _ => None end) _ _.
+     (WT: forall v1 v2, Val.has_rettype (f v1 v2) tret) :=
+  mkbuiltin tret (fun vl => match vl with v1 :: v2 :: nil => Some (f v1 v2) | _ => None end) _.
 Next Obligation.
   red; destruct vl; auto. destruct vl; auto. destruct vl; auto.
-Qed.
-Next Obligation.
-  red; inv H; auto. inv H1; auto. inv H2; auto.
 Qed.
 
 Program Definition mkbuiltin_v3t 
      (tret: rettype) (f: val -> val -> val -> val)
-     (WT: forall v1 v2 v3, Val.has_rettype (f v1 v2 v3) tret)
-     (INJ: forall j v1 v1' v2 v2' v3 v3',
-           Val.inject j v1 v1' -> Val.inject j v2 v2' -> Val.inject j v3 v3' ->
-           Val.inject j (f v1 v2 v3) (f v1' v2' v3')) :=
-  mkbuiltin tret (fun vl => match vl with v1 :: v2 :: v3 :: nil => Some (f v1 v2 v3) | _ => None end) _ _.
+     (WT: forall v1 v2 v3, Val.has_rettype (f v1 v2 v3) tret) :=
+  mkbuiltin tret (fun vl => match vl with v1 :: v2 :: v3 :: nil => Some (f v1 v2 v3) | _ => None end) _.
 Next Obligation.
   red; destruct vl; auto. destruct vl; auto. destruct vl; auto. destruct vl; auto.
-Qed.
-Next Obligation.
-  red; inv H; auto. inv H1; auto. inv H2; auto. inv H3; auto.
 Qed.
 
 Program Definition mkbuiltin_v1p
      (tret: rettype) (f: val -> option val)
-     (WT: forall v1, val_opt_has_rettype (f v1) tret)
-     (INJ: forall j v1 v1',
-        Val.inject j v1 v1' -> val_opt_inject j (f v1) (f v1')) :=
-  mkbuiltin tret (fun vl => match vl with v1 :: nil => f v1 | _ => None end) _ _.
+     (WT: forall v1, val_opt_has_rettype (f v1) tret) :=
+  mkbuiltin tret (fun vl => match vl with v1 :: nil => f v1 | _ => None end) _.
 Next Obligation.
   red; destruct vl; auto. destruct vl; auto. apply WT.
-Qed.
-Next Obligation.
-  red; inv H; auto. inv H1; auto. apply INJ; auto. 
 Qed.
 
 Program Definition mkbuiltin_v2p
      (tret: rettype) (f: val -> val -> option val)
-     (WT: forall v1 v2, val_opt_has_rettype (f v1 v2) tret)
-     (INJ: forall j v1 v1' v2 v2',
-        Val.inject j v1 v1' -> Val.inject j v2 v2' ->
-        val_opt_inject j (f v1 v2) (f v1' v2')) :=
-  mkbuiltin tret (fun vl => match vl with v1 :: v2 :: nil => f v1 v2 | _ => None end)  _ _.
+     (WT: forall v1 v2, val_opt_has_rettype (f v1 v2) tret) :=
+  mkbuiltin tret (fun vl => match vl with v1 :: v2 :: nil => f v1 v2 | _ => None end)  _.
 Next Obligation.
   red; destruct vl; auto. destruct vl; auto. destruct vl; auto. apply WT.
-Qed.
-Next Obligation.
-  red; inv H; auto. inv H1; auto. inv H2; auto. apply INJ; auto. 
 Qed.
 
 (** For numerical functions, involving only integers and floating-point numbers
@@ -185,20 +147,9 @@ Proof.
   destruct t; exact I.
 Qed.
 
-Lemma inj_num_inject: forall j t x, Val.inject j (inj_num t x) (inj_num t x).
-Proof.
-  destruct t; intros; try constructor. destruct t; constructor.
-Qed.
-
 Lemma inj_num_opt_wt: forall t x, val_opt_has_rettype (option_map (inj_num t) x) t.
 Proof.
   intros. destruct x; simpl. apply inj_num_wt. auto. 
-Qed.
-
-Lemma inj_num_opt_inject: forall j t x,
-  val_opt_inject j (option_map (inj_num t) x) (option_map (inj_num t) x).
-Proof.
-  destruct x; simpl. apply inj_num_inject. auto.
 Qed.
 
 Lemma proj_num_wt:
@@ -210,15 +161,6 @@ Proof.
   assert (U: Val.has_rettype Vundef tres).
   { destruct tres; exact I. }
   intros. destruct t; simpl; destruct v; auto.
-Qed.
-
-Lemma proj_num_inject:
-  forall j t k1 v k1' v',
-  (forall x, Val.inject j (k1 x) (k1' x)) ->
-  Val.inject j v v' -> 
-  Val.inject j (proj_num t Vundef v k1) (proj_num t Vundef v' k1').
-Proof.
-  intros. destruct t; simpl; inv H0; auto.
 Qed.
 
 Lemma proj_num_opt_wt:
@@ -233,16 +175,6 @@ Proof.
   destruct t; simpl; destruct v; auto.
 Qed.
 
-Lemma proj_num_opt_inject:
-  forall j k0 t k1 v k1' v',
-  (forall ov, val_opt_inject j k0 ov) ->
-  (forall x, val_opt_inject j (k1 x) (k1' x)) ->
-  Val.inject j v v' -> 
-  val_opt_inject j (proj_num t k0 v k1) (proj_num t k0 v' k1').
-Proof.
-  intros. destruct t; simpl; inv H1; auto.
-Qed.
-
 (** Wrapping numerical functions as built-ins.  The constructor functions
   have names
 - [mkbuiltin_nNt] for a [t]otal function of [N] numbers, or
@@ -254,12 +186,9 @@ Program Definition mkbuiltin_n1t
     (f: valty targ1 -> valretty tres) :=
   mkbuiltin_v1t tres
     (fun v1 => proj_num targ1 Vundef v1 (fun x => inj_num tres (f x)))
-    _ _.
+    _.
 Next Obligation.
   auto using proj_num_wt, inj_num_wt.
-Qed.
-Next Obligation.
-  auto using proj_num_inject, inj_num_inject.
 Qed.
 
 Program Definition mkbuiltin_n2t 
@@ -269,12 +198,9 @@ Program Definition mkbuiltin_n2t
     (fun v1 v2 =>
        proj_num targ1 Vundef v1 (fun x1 =>
        proj_num targ2 Vundef v2 (fun x2 => inj_num tres (f x1 x2))))
-    _ _.
+    _.
 Next Obligation.
   auto using proj_num_wt, inj_num_wt.
-Qed.
-Next Obligation.
-  auto using proj_num_inject, inj_num_inject.
 Qed.
 
 Program Definition mkbuiltin_n3t 
@@ -285,12 +211,9 @@ Program Definition mkbuiltin_n3t
        proj_num targ1 Vundef v1 (fun x1 =>
        proj_num targ2 Vundef v2 (fun x2 =>
        proj_num targ3 Vundef v3 (fun x3 => inj_num tres (f x1 x2 x3)))))
-    _ _.
+    _.
 Next Obligation.
   auto using proj_num_wt, inj_num_wt.
-Qed.
-Next Obligation.
-  auto using proj_num_inject, inj_num_inject.
 Qed.
 
 Program Definition mkbuiltin_n1p
@@ -298,12 +221,9 @@ Program Definition mkbuiltin_n1p
     (f: valty targ1 -> option (valretty tres)) :=
   mkbuiltin_v1p tres
     (fun v1 => proj_num targ1 None v1 (fun x => option_map (inj_num tres) (f x)))
-    _ _.
+    _.
 Next Obligation.
   auto using proj_num_opt_wt, inj_num_opt_wt.
-Qed.
-Next Obligation.
-  apply proj_num_opt_inject; auto. intros; red; auto. intros; apply inj_num_opt_inject.
 Qed.
 
 Program Definition mkbuiltin_n2p
@@ -313,14 +233,9 @@ Program Definition mkbuiltin_n2p
     (fun v1 v2 =>
       proj_num targ1 None v1 (fun x1 =>
       proj_num targ2 None v2 (fun x2 => option_map (inj_num tres) (f x1 x2))))
-    _ _.
+    _.
 Next Obligation.
   auto using proj_num_opt_wt, inj_num_opt_wt.
-Qed.
-Next Obligation.
-  apply proj_num_opt_inject; auto. intros; red; auto. intros.
-  apply proj_num_opt_inject; auto. intros; red; auto. intros.
-  apply inj_num_opt_inject.
 Qed.
 
 (** Looking up builtins by name and signature *)
@@ -458,14 +373,14 @@ Program Definition standard_builtin_sem (b: standard_builtin) : builtin_sem (sig
        (fun vargs => match vargs with
           | Vint n :: v1 :: v2 :: nil => Some (Val.normalize (if Int.eq n Int.zero then v2 else v1) t)
           | _ => None
-        end) _ _
+        end) _
   | BI_fabs => mkbuiltin_n1t Tfloat Tfloat Float.abs
   | BI_fabsf => mkbuiltin_n1t Tsingle Tsingle Float32.abs
   | BI_fsqrt => mkbuiltin_n1t Tfloat Tfloat Float.sqrt
   | BI_negl => mkbuiltin_n1t Tlong Tlong Int64.neg
-  | BI_addl => mkbuiltin_v2t Tlong Val.addl _ _ 
-  | BI_subl => mkbuiltin_v2t Tlong Val.subl _ _
-  | BI_mull => mkbuiltin_v2t Tlong Val.mull' _ _
+  | BI_addl => mkbuiltin_v2t Tlong Val.addl _ 
+  | BI_subl => mkbuiltin_v2t Tlong Val.subl _
+  | BI_mull => mkbuiltin_v2t Tlong Val.mull' _
   | BI_i16_bswap =>
     mkbuiltin_n1t Tint Tint
                   (fun n => Int.repr (decode_int (List.rev (encode_int 2%nat (Int.unsigned n)))))
@@ -475,16 +390,16 @@ Program Definition standard_builtin_sem (b: standard_builtin) : builtin_sem (sig
   | BI_i64_bswap =>
     mkbuiltin_n1t Tlong Tlong
                   (fun n => Int64.repr (decode_int (List.rev (encode_int 8%nat (Int64.unsigned n)))))
-  | BI_unreachable => mkbuiltin Tvoid (fun vargs => None) _ _
+  | BI_unreachable => mkbuiltin Tvoid (fun vargs => None) _
   | BI_i64_umulh => mkbuiltin_n2t Tlong Tlong Tlong Int64.mulhu
   | BI_i64_smulh => mkbuiltin_n2t Tlong Tlong Tlong Int64.mulhs
-  | BI_i64_sdiv => mkbuiltin_v2p Tlong Val.divls _ _
-  | BI_i64_udiv => mkbuiltin_v2p Tlong Val.divlu _ _
-  | BI_i64_smod => mkbuiltin_v2p Tlong Val.modls _ _
-  | BI_i64_umod => mkbuiltin_v2p Tlong Val.modlu _ _
-  | BI_i64_shl => mkbuiltin_v2t Tlong Val.shll _ _
-  | BI_i64_shr => mkbuiltin_v2t Tlong Val.shrlu _ _
-  | BI_i64_sar => mkbuiltin_v2t Tlong Val.shrl _ _
+  | BI_i64_sdiv => mkbuiltin_v2p Tlong Val.divls _
+  | BI_i64_udiv => mkbuiltin_v2p Tlong Val.divlu _
+  | BI_i64_smod => mkbuiltin_v2p Tlong Val.modls _
+  | BI_i64_umod => mkbuiltin_v2p Tlong Val.modlu _
+  | BI_i64_shl => mkbuiltin_v2t Tlong Val.shll _
+  | BI_i64_shr => mkbuiltin_v2t Tlong Val.shrlu _
+  | BI_i64_sar => mkbuiltin_v2t Tlong Val.shrl _
   | BI_i64_dtos => mkbuiltin_n1p Tfloat Tlong Float.to_long
   | BI_i64_dtou => mkbuiltin_n1p Tfloat Tlong Float.to_longu
   | BI_i64_stod => mkbuiltin_n1t Tlong Tfloat Float.of_long
@@ -498,68 +413,34 @@ Next Obligation.
   apply Val.normalize_type.
 Qed.
 Next Obligation.
-  red. inv H; auto. inv H0; auto. inv H1; auto. inv H0; auto. inv H2; auto.
-  apply Val.normalize_inject. destruct (Int.eq i Int.zero); auto.
-Qed.
-Next Obligation.
   unfold Val.addl, Val.has_type; destruct v1; auto; destruct v2; auto; destruct Archi.ptr64; auto.
 Qed.
-Next Obligation.
-  apply Val.addl_inject; auto.
-Qed.   
 Next Obligation.
   unfold Val.subl, Val.has_type, negb; destruct v1; auto; destruct v2; auto;
   destruct Archi.ptr64; auto; destruct (eq_block b0 b1); auto.
 Qed.
 Next Obligation.
-  apply Val.subl_inject; auto.
-Qed.
-Next Obligation.
   unfold Val.mull', Val.has_type; destruct v1; simpl; auto; destruct v2; auto.
 Qed.
 Next Obligation.
-  inv H; simpl; auto. inv H0; auto.
-Qed.
-Next Obligation.
   red. destruct v1; simpl; auto. destruct v2; auto. destruct orb; exact I.
-Qed.
-Next Obligation.
-  red. inv H; simpl; auto. inv H0; auto. destruct orb; auto.
 Qed.
 Next Obligation.
   red. destruct v1; simpl; auto. destruct v2; auto. destruct Int64.eq; exact I.
 Qed.
 Next Obligation.
-  red. inv H; simpl; auto. inv H0; auto. destruct Int64.eq; auto.
-Qed.
-Next Obligation.
   red. destruct v1; simpl; auto. destruct v2; auto. destruct orb; exact I.
-Qed.
-Next Obligation.
-  red. inv H; simpl; auto. inv H0; auto. destruct orb; auto.
 Qed.
 Next Obligation.
   red. destruct v1; simpl; auto. destruct v2; auto. destruct Int64.eq; exact I.
 Qed.
 Next Obligation.
-  red. inv H; simpl; auto. inv H0; auto. destruct Int64.eq; auto.
+  red. destruct v1; simpl; auto. destruct v2; auto. destruct Int.ltu; auto.
 Qed.
 Next Obligation.
   red. destruct v1; simpl; auto. destruct v2; auto. destruct Int.ltu; auto.
 Qed.
 Next Obligation.
-  inv H; simpl; auto. inv H0; auto. destruct Int.ltu; auto.
-Qed.
-Next Obligation.
   red. destruct v1; simpl; auto. destruct v2; auto. destruct Int.ltu; auto.
-Qed.
-Next Obligation.
-  inv H; simpl; auto. inv H0; auto. destruct Int.ltu; auto.
-Qed.
-Next Obligation.
-  red. destruct v1; simpl; auto. destruct v2; auto. destruct Int.ltu; auto.
-Qed.
-Next Obligation.
-  inv H; simpl; auto. inv H0; auto. destruct Int.ltu; auto.
 Qed.
 

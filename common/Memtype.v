@@ -142,10 +142,10 @@ Parameter storebytes:
          (ltag: list tag), option mem.
 
 (** [free_list] frees all the given (block, lo, hi) triples. *)
-Fixpoint free_list (m: mem) (l: list (block * Z * Z)) {struct l}: option mem :=
+Fixpoint free_list (m: mem) (l: list (Z * Z)) {struct l}: option mem :=
   match l with
   | nil => Some m
-  | (b, lo, hi) :: l' =>
+  | (lo, hi) :: l' =>
       match free m lo hi with
       | None => None
       | Some m' => free_list m' l'
