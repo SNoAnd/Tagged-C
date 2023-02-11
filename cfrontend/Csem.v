@@ -91,7 +91,7 @@ Definition empty_env: env := (PTree.empty (Z * Z * tag * type)).
       access_mode ty = By_copy ->
       deref_loc ty m ofs pt Full E0 (Vint (Ptrofs.to_int ofs), pt) []
   | deref_loc_bitfield: forall sz sg pos width v vt lts,
-      load_bitfield ty sz sg pos width m (Vint (Ptrofs.to_int ofs)) (v,vt) lts ->
+      load_bitfield ty sz sg pos width m (Ptrofs.unsigned ofs) (v,vt) lts ->
       deref_loc ty m ofs pt (Bits sz sg pos width) E0 (v,vt) lts.
 
   (** Symmetrically, [assign_loc ty m ofs bf v t m' v'] returns the
@@ -110,7 +110,7 @@ Definition empty_env: env := (PTree.empty (Z * Z * tag * type)).
   | assign_loc_value: forall v vt lts chunk m',
       access_mode ty = By_value chunk ->
       type_is_volatile ty = false ->
-      Mem.storev chunk m (Vint (Ptrofs.to_int ofs)) (v,vt) lts = Some m' ->
+      Mem.store chunk m (Ptrofs.unsigned ofs) (v,vt) lts = Some m' ->
       assign_loc ty m ofs pt Full (v,vt) E0 m' (v,vt) lts
   | assign_loc_volatile: forall v lts chunk t m',
       access_mode ty = By_value chunk -> type_is_volatile ty = true ->
@@ -118,17 +118,17 @@ Definition empty_env: env := (PTree.empty (Z * Z * tag * type)).
       assign_loc ty m ofs pt Full v t m' v lts
   | assign_loc_copy: forall ofs' bytes lts m' pt',
       access_mode ty = By_copy ->
-      (alignof_blockcopy (snd ge) ty | Ptrofs.unsigned ofs') ->
+      (alignof_blockcopy (snd ge) ty | ofs') ->
       (alignof_blockcopy (snd ge) ty | Ptrofs.unsigned ofs) ->
-      Ptrofs.unsigned ofs' = Ptrofs.unsigned ofs
-      \/ Ptrofs.unsigned ofs' + sizeof (snd ge) ty <= Ptrofs.unsigned ofs
-      \/ Ptrofs.unsigned ofs + sizeof (snd ge) ty <= Ptrofs.unsigned ofs' ->
-      Mem.loadbytes m (Ptrofs.unsigned ofs') (sizeof (snd ge) ty) = Some bytes ->
+      ofs' = Ptrofs.unsigned ofs
+      \/ ofs' + sizeof (snd ge) ty <= Ptrofs.unsigned ofs
+      \/ Ptrofs.unsigned ofs + sizeof (snd ge) ty <= ofs' ->
+      Mem.loadbytes m ofs' (sizeof (snd ge) ty) = Some bytes ->
       (* check on this: Mem.loadtags m b' (Ptrofs.unsigned ofs') (sizeof (snd ge) ty) = Some lts ->*)
       Mem.storebytes m (Ptrofs.unsigned ofs) bytes lts = Some m' ->
-      assign_loc ty m ofs pt Full (Vint (Ptrofs.to_int ofs'), pt') E0 m' (Vint (Ptrofs.to_int ofs'), pt') lts
+      assign_loc ty m ofs pt Full (Vofptrsize ofs', pt') E0 m' (Vofptrsize ofs', pt') lts
   | assign_loc_bitfield: forall sz sg pos width v m' v' lts,
-      store_bitfield ty sz sg pos width m (Vint (Ptrofs.to_int ofs), pt) v lts m' v' ->
+      store_bitfield ty sz sg pos width m (Ptrofs.unsigned ofs) pt v lts m' v' ->
       assign_loc ty m ofs pt (Bits sz sg pos width) v E0 m' v' lts.
 
 (** Allocation of function-local variables.
@@ -238,107 +238,120 @@ Inductive lred: expr -> mem -> expr -> mem -> Prop :=
     Genv.find_symbol (fst ge) x = Some (inr (lo, hi, pt)) ->
     lred (Evar x ty) m
          (Eloc Ptrofs.zero pt Full ty) m
-| red_deref: forall ofs vt ty1 ty m,
+| red_deref_short: forall ofs vt ty1 ty m,
     lred (Ederef (Eval (Vint ofs,vt) ty1) ty) m
          (Eloc (Ptrofs.of_int ofs) vt Full ty) m
-| red_field_struct: forall ofs vt id co a f ty m delta bf,
+| red_deref_long: forall ofs vt ty1 ty m,
+    lred (Ederef (Eval (Vlong ofs,vt) ty1) ty) m
+         (Eloc (Ptrofs.of_int64 ofs) vt Full ty) m
+| red_field_struct_short: forall ofs vt id co a f ty m delta bf,
     (snd ge)!id = Some co ->
     field_offset (snd ge) f (co_members co) = OK (delta, bf) ->
     lred (Efield (Eval (Vint ofs, vt) (Tstruct id a)) f ty) m
          (Eloc (Ptrofs.add (Ptrofs.of_int ofs) (Ptrofs.repr delta)) vt bf ty) m
-| red_field_union: forall ofs vt id co a f ty m delta bf,
+| red_field_struct_long: forall ofs vt id co a f ty m delta bf,
+    (snd ge)!id = Some co ->
+    field_offset (snd ge) f (co_members co) = OK (delta, bf) ->
+    lred (Efield (Eval (Vlong ofs, vt) (Tstruct id a)) f ty) m
+         (Eloc (Ptrofs.add (Ptrofs.of_int64 ofs) (Ptrofs.repr delta)) vt bf ty) m
+| red_field_union_short: forall ofs vt id co a f ty m delta bf,
     (snd ge)!id = Some co ->
     union_field_offset (snd ge) f (co_members co) = OK (delta, bf) ->
     lred (Efield (Eval (Vint ofs, vt) (Tunion id a)) f ty) m
-         (Eloc (Ptrofs.add (Ptrofs.of_int ofs) (Ptrofs.repr delta)) vt bf ty) m.
+         (Eloc (Ptrofs.add (Ptrofs.of_int ofs) (Ptrofs.repr delta)) vt bf ty) m
+| red_field_union_long: forall ofs vt id co a f ty m delta bf,
+    (snd ge)!id = Some co ->
+    union_field_offset (snd ge) f (co_members co) = OK (delta, bf) ->
+    lred (Efield (Eval (Vlong ofs, vt) (Tunion id a)) f ty) m
+         (Eloc (Ptrofs.add (Ptrofs.of_int64 ofs) (Ptrofs.repr delta)) vt bf ty) m.
 
 (** Head reductions for r-values *)
-Inductive rred (PCT:tag) : expr -> mem -> trace -> tag -> option expr -> mem -> Prop :=
-| red_rvalof: forall ofs pt lts bf ty m tr v vt opt_vt',
+Inductive rred (PCT:tag) : expr -> mem -> trace -> tag -> expr -> mem -> Prop :=
+| red_rvalof: forall ofs pt lts bf ty m tr v vt vt',
     deref_loc ty m ofs pt bf tr (v,vt) lts ->
-    opt_vt' = LoadT PCT pt vt lts ->
+    Some vt' = LoadT PCT pt vt lts ->
     rred PCT (Evalof (Eloc ofs pt bf ty) ty) m tr
-         PCT (option_map (fun vt' => Eval (v,vt') ty) opt_vt') m
+         PCT (Eval (v,vt') ty) m
 | red_addrof: forall ofs pt ty1 ty pt' m,
     rred PCT (Eaddrof (Eloc ofs pt Full ty1) ty) m E0
-         PCT (Some (Eval (Vint (Ptrofs.to_int ofs), pt') ty)) m
-| red_unop: forall op v1 vt1 ty1 ty m v opt_vt',
+         PCT (Eval (Vofptrsize (Ptrofs.signed ofs), pt') ty) m
+| red_unop: forall op v1 vt1 ty1 ty m v PCT' vt,
     sem_unary_operation op v1 ty1 m = Some v ->
-    opt_vt' = UnopT PCT vt1 ->
+    Some (PCT', vt) = UnopT PCT vt1 ->
     rred PCT (Eunop op (Eval (v1,vt1) ty1) ty) m E0
-         PCT (option_map (fun '(PCT,vt) => Eval (v,vt) ty) opt_vt') m
-| red_binop: forall op v1 vt1 ty1 v2 vt2 ty2 ty m v opt_vt',
+         PCT' (Eval (v,vt) ty) m
+| red_binop: forall op v1 vt1 ty1 v2 vt2 ty2 ty m v vt' PCT',
     sem_binary_operation (snd ge) op v1 ty1 v2 ty2 m = Some v ->
-    opt_vt' = BinopT PCT vt1 vt2 ->
+    Some (PCT', vt') = BinopT PCT vt1 vt2 ->
     rred PCT (Ebinop op (Eval (v1,vt1) ty1) (Eval (v2,vt2) ty2) ty) m E0
-         PCT (option_map (fun '(PCT,vt) => Eval (v,vt) ty) opt_vt') m
+         PCT' (Eval (v,vt') ty) m
 | red_cast: forall ty v1 vt1 ty1 m v vt,
     sem_cast v1 ty1 ty m = Some v ->
     rred PCT (Ecast (Eval (v1,vt1) ty1) ty) m E0
-         PCT (Some (Eval (v,vt) ty)) m
+         PCT (Eval (v,vt) ty) m
 | red_seqand_true: forall v1 vt1 ty1 r2 ty m,
     bool_val v1 ty1 m = Some true ->
     rred PCT (Eseqand (Eval (v1,vt1) ty1) r2 ty) m E0
-         PCT (Some (Eparen r2 type_bool ty)) m
+         PCT (Eparen r2 type_bool ty) m
 | red_seqand_false: forall v1 vt1 ty1 r2 ty m vt,
     bool_val v1 ty1 m = Some false ->
     rred PCT (Eseqand (Eval (v1,vt1) ty1) r2 ty) m E0
-         PCT (Some (Eval (Vint Int.zero, vt) ty)) m
+         PCT (Eval (Vint Int.zero, vt) ty) m
 | red_seqor_true: forall v1 vt1 ty1 r2 ty m vt,
     bool_val v1 ty1 m = Some true ->
     rred PCT (Eseqor (Eval (v1,vt1) ty1) r2 ty) m E0
-         PCT (Some (Eval (Vint Int.one, vt) ty)) m
+         PCT (Eval (Vint Int.one, vt) ty) m
 | red_seqor_false: forall v1 vt1 ty1 r2 ty m,
     bool_val v1 ty1 m = Some false ->
     rred PCT (Eseqor (Eval (v1,vt1) ty1) r2 ty) m E0
-         PCT (Some (Eparen r2 type_bool ty)) m
+         PCT (Eparen r2 type_bool ty) m
 | red_condition: forall v1 vt1 ty1 r1 r2 ty b m,
     bool_val v1 ty1 m = Some b ->
     rred PCT (Econdition (Eval (v1,vt1) ty1) r1 r2 ty) m E0
-         PCT (Some (Eparen (if b then r1 else r2) ty ty)) m
+         PCT (Eparen (if b then r1 else r2) ty ty) m
 | red_sizeof: forall ty1 ty m vt,
     rred PCT (Esizeof ty1 ty) m E0
-         PCT (Some (Eval (Vptrofs (Ptrofs.repr (sizeof (snd ge) ty1)), vt) ty)) m
+         PCT (Eval (Vofptrsize (sizeof (snd ge) ty1), vt) ty) m
 | red_alignof: forall ty1 ty m vt,
     rred PCT (Ealignof ty1 ty) m E0
-         PCT (Some (Eval (Vptrofs (Ptrofs.repr (alignof (snd ge) ty1)), vt) ty)) m
+         PCT (Eval (Vofptrsize (alignof (snd ge) ty1), vt) ty) m
 | red_assign: forall ofs ty1 pt bf v1 ovt v2 vt2 ty2 m v vt t1 t2 m' v' vt' lts lts',
     sem_cast v2 ty2 ty1 m = Some v ->
     deref_loc ty1 m ofs pt bf t1 (v1,ovt) lts ->
     StoreT PCT pt ovt vt lts = Some (PCT, vt', lts') ->
     assign_loc ty1 m ofs pt bf (v,vt) t2 m' (v',vt) lts' ->
     rred PCT (Eassign (Eloc ofs pt bf ty1) (Eval (v2, vt2) ty2) ty1) m t2
-         PCT (Some (Eval (v',vt') ty1)) m'
+         PCT (Eval (v',vt') ty1) m'
 | red_assignop: forall op ofs pt ty1 bf v2 ty2 tyres m t v1 vt1 vt1' lts,
     deref_loc ty1 m ofs pt bf t (v1,vt1) lts ->
     LoadT PCT pt vt1 lts = Some vt1' -> (* Do we want to do this in this order? *)
     rred PCT (Eassignop op (Eloc ofs pt bf ty1) (Eval v2 ty2) tyres ty1) m t
-         PCT (Some (Eassign (Eloc ofs pt bf ty1)
-                            (Ebinop op (Eval (v1,vt1') ty1) (Eval v2 ty2) tyres) ty1)) m
+         PCT (Eassign (Eloc ofs pt bf ty1)
+                            (Ebinop op (Eval (v1,vt1') ty1) (Eval v2 ty2) tyres) ty1) m
 | red_postincr: forall id ofs pt ty bf m t v1 vt1 vt1' vt2 lts op,
     deref_loc ty m ofs pt bf t (v1,vt1) lts ->
     LoadT PCT pt vt1 lts = Some vt1' ->
     op = match id with Incr => Oadd | Decr => Osub end ->
     rred PCT (Epostincr id (Eloc ofs pt bf ty) ty) m t
-         PCT (Some (Ecomma (Eassign (Eloc ofs pt bf ty)
+         PCT (Ecomma (Eassign (Eloc ofs pt bf ty)
                                     (Ebinop op (Eval (v1,vt1') ty)
                                             (Eval (Vint Int.one, vt2) type_int32s)
                                             (incrdecr_type ty))
                                     ty)
-                           (Eval (v1,vt1) ty) ty)) m
+                           (Eval (v1,vt1) ty) ty) m
 | red_comma: forall v ty1 r2 ty m,
     typeof r2 = ty ->
     rred PCT (Ecomma (Eval v ty1) r2 ty) m E0
-         PCT (Some r2) m
+         PCT r2 m
 | red_paren: forall v1 vt1 ty1 ty2 ty m v vt,
     sem_cast v1 ty1 ty2 m = Some v ->
     rred PCT (Eparen (Eval (v1,vt1) ty1) ty2 ty) m E0
-         PCT (Some (Eval (v,vt) ty)) m
+         PCT (Eval (v,vt) ty) m
 | red_builtin: forall ef tyargs el ty m vargs t vres m',
     cast_arguments m el tyargs vargs ->
     external_call ef (fst ge) vargs m t vres m' ->
     rred PCT (Ebuiltin ef tyargs el ty) m t
-         PCT (Some (Eval vres ty)) m'.
+         PCT (Eval vres ty) m'.
 
 (** Head reduction for function calls.
     (More exactly, identification of function calls that can reduce.) *)
@@ -673,7 +686,7 @@ Inductive estep: state -> trace -> state -> Prop :=
     estep (ExprState f PCT (C a) k e m)
           E0 (ExprState f PCT' (C a') k e m')
 | step_rred: forall C f PCT PCT' a k e m t a' m',
-    rred PCT a m t PCT' (Some a') m' ->
+    rred PCT a m t PCT' a' m' ->
     context RV RV C ->
     estep (ExprState f PCT (C a) k e m)
           t (ExprState f PCT' (C a') k e m')
@@ -686,17 +699,11 @@ Inductive estep: state -> trace -> state -> Prop :=
     context K RV C -> ~(imm_safe e K a m) ->
     estep (ExprState f PCT (C a) k e m)
           E0 Stuckstate
-| step_failstop: forall C f PCT PCT' a k e m t m',
-    rred PCT a m t PCT' None m' ->
+| step_failstop: forall C f PCT PCT' a k e m t m' ty,
+    rred PCT a m t PCT' (Efailstop ty) m' ->
     context RV RV C ->
     estep (ExprState f PCT (C a) k e m)
           E0 Failstop.
-
-Definition bindT (ot:option tag) (f: state -> trace -> state -> Prop) (s:state) (tr:trace) (s':tag -> state) :=
-  match ot with
-  | Some t => f s tr (s' t)
-  | None => f s tr Failstop
-  end.
 
 Inductive sstep: state -> trace -> state -> Prop :=
 | step_do_1: forall f PCT x k e m,
@@ -715,7 +722,7 @@ Inductive sstep: state -> trace -> state -> Prop :=
 | step_continue_seq: forall f PCT s k e m,
     sstep (State f PCT Scontinue (Kseq s k) e m)
           E0 (State f PCT Scontinue k e m)
-| step_break_seq: forall f PCT s k e m,
+| step_break_seq: forall f PCT s k e m,  
     sstep (State f PCT Sbreak (Kseq s k) e m)
           E0 (State f PCT Sbreak k e m)
 
@@ -855,14 +862,30 @@ Inductive sstep: state -> trace -> state -> Prop :=
     sstep (Returnstate PCT v (Kcall f e C ty k) m)
           E0 (ExprState f PCT (C (Eval v ty)) k e m)
 
-| step_tag_continuation: forall f PCT PCT' rule k e m,
+| step_skip_tag_continuation: forall f PCT PCT' rule k e m,
     rule PCT = Some PCT' ->
     sstep (State f PCT Sskip (Ktag rule k) e m)
           E0 (State f PCT' Sskip k e m)
-| step_tag_continuation_fail: forall f PCT rule k e m,
+| step_skip_tag_continuation_fail: forall f PCT rule k e m,
     rule PCT = None ->
     sstep (State f PCT Sskip (Ktag rule k) e m)
           E0 Failstop
+| step_continue_tag_continuation: forall f PCT PCT' rule k e m,
+    rule PCT = Some PCT' ->
+    sstep (State f PCT Scontinue (Ktag rule k) e m)
+          E0 (State f PCT' Scontinue k e m)
+| step_continue_tag_continuation_fail: forall f PCT rule k e m,
+    rule PCT = None ->
+    sstep (State f PCT Scontinue (Ktag rule k) e m)
+          E0 Failstop
+| step_break_tag_continuation: forall f PCT PCT' rule k e m,
+    rule PCT = Some PCT' ->
+    sstep (State f PCT Sbreak (Ktag rule k) e m)
+          E0 (State f PCT' Scontinue k e m)
+| step_break_tag_continuation_fail: forall f PCT rule k e m,
+    rule PCT = None ->
+    sstep (State f PCT Sbreak (Ktag rule k) e m)
+          E0 Failstop          
 .
 
 Definition step (S: state) (t: trace) (S': state) : Prop :=

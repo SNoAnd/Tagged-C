@@ -239,8 +239,8 @@ Definition sem_cast (v: val) (t1 t2: type) (m: mem): option val :=
   | cast_case_pointer =>
       match v with
       | Vfptr _ => Some v
-      | Vint _ => if Archi.ptr64 then None else Some v
-      | Vlong _ => if Archi.ptr64 then Some v else None
+      | Vint _ => Some v
+      | Vlong _ => Some v
       | _ => None
       end
   | cast_case_i2i sz2 si2 =>
@@ -413,13 +413,13 @@ Definition bool_val (v: val) (t: type) (m: mem) : option bool :=
   | bool_case_i =>
       match v with
       | Vint n => Some (negb (Int.eq n Int.zero))
-      | Vfptr b => if Archi.ptr64 then None else Some true
+      | Vfptr b => Some true
       | _ => None
       end
   | bool_case_l =>
       match v with
       | Vlong n => Some (negb (Int64.eq n Int64.zero))
-      | Vfptr b => if negb Archi.ptr64 then None else Some true
+      | Vfptr b => Some true
       | _ => None
       end
   | bool_case_f =>
@@ -651,12 +651,11 @@ Definition ptrofs_of_int (si: signedness) (n: int) : ptrofs :=
 
 Definition sem_add_ptr_int (cenv: composite_env) (ty: type) (si: signedness) (v1 v2: val): option val :=
   match v1, v2 with
-  | Vfptr b1, Vint n2 => None
   | Vint n1, Vint n2 =>
-      if Archi.ptr64 then None else Some (Vint (Int.add n1 (Int.mul (Int.repr (sizeof cenv ty)) n2)))
+      Some (Vint (Int.add n1 (Int.mul (Int.repr (sizeof cenv ty)) n2)))
   | Vlong n1, Vint n2 =>
       let n2 := cast_int_long si n2 in
-      if Archi.ptr64 then Some (Vlong (Int64.add n1 (Int64.mul (Int64.repr (sizeof cenv ty)) n2))) else None
+      Some (Vlong (Int64.add n1 (Int64.mul (Int64.repr (sizeof cenv ty)) n2)))
   | _,  _ => None
   end.
 
@@ -665,9 +664,9 @@ Definition sem_add_ptr_long (cenv: composite_env) (ty: type) (v1 v2: val): optio
   | Vfptr b1, Vlong n2 => None
   | Vint n1, Vlong n2 =>
       let n2 := Int.repr (Int64.unsigned n2) in
-      if Archi.ptr64 then None else Some (Vint (Int.add n1 (Int.mul (Int.repr (sizeof cenv ty)) n2)))
+      Some (Vint (Int.add n1 (Int.mul (Int.repr (sizeof cenv ty)) n2)))
   | Vlong n1, Vlong n2 =>
-      if Archi.ptr64 then Some (Vlong (Int64.add n1 (Int64.mul (Int64.repr (sizeof cenv ty)) n2))) else None
+      Some (Vlong (Int64.add n1 (Int64.mul (Int64.repr (sizeof cenv ty)) n2)))
   | _,  _ => None
   end.
 
@@ -712,10 +711,10 @@ Definition sem_sub (cenv: composite_env) (v1:val) (t1:type) (v2: val) (t2:type) 
       match v1, v2 with
       | Vfptr b1, Vint n2 => None
       | Vint n1, Vint n2 =>
-          if Archi.ptr64 then None else Some (Vint (Int.sub n1 (Int.mul (Int.repr (sizeof cenv ty)) n2)))
+          Some (Vint (Int.sub n1 (Int.mul (Int.repr (sizeof cenv ty)) n2)))
       | Vlong n1, Vint n2 =>
           let n2 := cast_int_long si n2 in
-          if Archi.ptr64 then Some (Vlong (Int64.sub n1 (Int64.mul (Int64.repr (sizeof cenv ty)) n2))) else None
+          Some (Vlong (Int64.sub n1 (Int64.mul (Int64.repr (sizeof cenv ty)) n2)))
       | _,  _ => None
       end
   | sub_case_pl ty =>            (**r pointer minus long *)
@@ -723,9 +722,9 @@ Definition sem_sub (cenv: composite_env) (v1:val) (t1:type) (v2: val) (t2:type) 
       | Vfptr b1, Vlong n2 => None
       | Vint n1, Vlong n2 =>
           let n2 := Int.repr (Int64.unsigned n2) in
-          if Archi.ptr64 then None else Some (Vint (Int.sub n1 (Int.mul (Int.repr (sizeof cenv ty)) n2)))
+          Some (Vint (Int.sub n1 (Int.mul (Int.repr (sizeof cenv ty)) n2)))
       | Vlong n1, Vlong n2 =>
-          if Archi.ptr64 then Some (Vlong (Int64.sub n1 (Int64.mul (Int64.repr (sizeof cenv ty)) n2))) else None
+          Some (Vlong (Int64.sub n1 (Int64.mul (Int64.repr (sizeof cenv ty)) n2)))
       | _,  _ => None
       end
   | sub_case_pp ty =>          (**r pointer minus pointer *)
@@ -922,57 +921,23 @@ Definition classify_cmp (ty1: type) (ty2: type) :=
   end.
 
 Definition cmp_ptr (m: mem) (c: comparison) (v1 v2: val): option val :=
-  option_map Val.of_bool
-   (if Archi.ptr64
-    then Val.cmplu_bool c v1 v2
-    else Val.cmpu_bool c v1 v2).
+  match v1, v2 with
+  | Vint _, Vint _ => option_map Val.of_bool (Val.cmpu_bool c v1 v2)
+  | Vlong _, Vlong _ => option_map Val.of_bool (Val.cmplu_bool c v1 v2)
+  | Vfptr _, Vfptr _ => option_map Val.of_bool (Val.cmplu_bool c v1 v2)
+  | _, _ => None
+  end.
 
 Definition sem_cmp (c:comparison)
                   (v1: val) (t1: type) (v2: val) (t2: type)
                   (m: mem): option val :=
   match classify_cmp t1 t2 with
-  | cmp_case_pp =>
-      cmp_ptr m c v1 v2
-  | cmp_case_pi si =>
-      match v2 with
-      | Vint n2 =>
-          let v2' := Vptrofs (ptrofs_of_int si n2) in
-          cmp_ptr m c v1 v2'
-      | Vfptr b =>
-          if Archi.ptr64 then None else cmp_ptr m c v1 v2
-      | _ =>
-          None
-      end
-  | cmp_case_ip si =>
-      match v1 with
-      | Vint n1 =>
-          let v1' := Vptrofs (ptrofs_of_int si n1) in
-          cmp_ptr m c v1' v2
-      | Vfptr b =>
-          if Archi.ptr64 then None else cmp_ptr m c v1 v2
-      | _ =>
-          None
-      end
-  | cmp_case_pl =>
-      match v2 with
-      | Vlong n2 =>
-          let v2' := Vptrofs (Ptrofs.of_int64 n2) in
-          cmp_ptr m c v1 v2'
-      | Vfptr b =>
-          if Archi.ptr64 then cmp_ptr m c v1 v2 else None
-      | _ =>
-          None
-      end
+  | cmp_case_pp 
+  | cmp_case_pi _ 
+  | cmp_case_ip _
+  | cmp_case_pl 
   | cmp_case_lp =>
-      match v1 with
-      | Vlong n1 =>
-          let v1' := Vptrofs (Ptrofs.of_int64 n1) in
-          cmp_ptr m c v1' v2
-      | Vfptr b =>
-          if Archi.ptr64 then cmp_ptr m c v1 v2 else None
-      | _ =>
-          None
-      end
+      cmp_ptr m c v1 v2
   | cmp_default =>
       sem_binarith
         (fun sg n1 n2 =>
@@ -1109,23 +1074,23 @@ Definition bitfield_normalize (sz: intsize) (sg: signedness) (width: Z) (n: int)
   then Int.zero_ext width n
   else Int.sign_ext width n.
 
-Inductive load_bitfield: type -> intsize -> signedness -> Z -> Z -> mem -> val -> atom -> list tag -> Prop :=
+Inductive load_bitfield: type -> intsize -> signedness -> Z -> Z -> mem -> Z -> atom -> list tag -> Prop :=
   | load_bitfield_intro: forall sz sg1 attr sg pos width m addr c vt lts,
       0 <= pos -> 0 < width <= bitsize_intsize sz -> pos + width <= bitsize_carrier sz ->
       sg1 = (if zlt width (bitsize_intsize sz) then Signed else sg) ->
-      Mem.loadv (chunk_for_carrier sz) m addr = Some (Vint c, vt) ->
-      Mem.loadv_ltags (chunk_for_carrier sz) m addr = lts ->
+      Mem.load (chunk_for_carrier sz) m addr = Some (Vint c, vt) ->
+      Mem.load_ltags (chunk_for_carrier sz) m addr = lts ->
       load_bitfield (Tint sz sg1 attr) sz sg pos width m addr
                     (Vint (bitfield_extract sz sg pos width c), vt) lts.
 
-Inductive store_bitfield: type -> intsize -> signedness -> Z -> Z -> mem -> atom -> atom -> list tag -> mem -> atom -> Prop :=
+Inductive store_bitfield: type -> intsize -> signedness -> Z -> Z -> mem -> Z -> tag -> atom -> list tag -> mem -> atom -> Prop :=
   | store_bitfield_intro: forall sz sg1 attr sg pos width m addr pt c n vt ovt lts m',
       0 <= pos -> 0 < width <= bitsize_intsize sz -> pos + width <= bitsize_carrier sz ->
       sg1 = (if zlt width (bitsize_intsize sz) then Signed else sg) ->
-      Mem.loadv (chunk_for_carrier sz) m addr = Some (Vint c, ovt) ->
-      Mem.storev (chunk_for_carrier sz) m addr
+      Mem.load (chunk_for_carrier sz) m addr = Some (Vint c, ovt) ->
+      Mem.store (chunk_for_carrier sz) m addr
                  (Vint (Int.bitfield_insert (first_bit sz pos width) width c n), vt) lts = Some m' ->
-      store_bitfield (Tint sz sg1 attr) sz sg pos width m (addr,pt) (Vint n,vt) lts
+      store_bitfield (Tint sz sg1 attr) sz sg pos width m addr pt (Vint n,vt) lts
                      m' (Vint (bitfield_normalize sz sg width n),vt).
 
 (*Lemma sem_cast_inject:
@@ -1267,9 +1232,9 @@ Inductive val_casted: val -> type -> Prop :=
   | val_casted_ptr_ptr: forall b ty attr,
       val_casted (Vfptr b) (Tpointer ty attr)
   | val_casted_int_ptr: forall n ty attr,
-      Archi.ptr64 = false -> val_casted (Vint n) (Tpointer ty attr)
+      val_casted (Vint n) (Tpointer ty attr)
   | val_casted_long_ptr: forall n ty attr,
-      Archi.ptr64 = true -> val_casted (Vlong n) (Tpointer ty attr)
+      val_casted (Vlong n) (Tpointer ty attr)
   | val_casted_struct: forall id attr i,
       val_casted (Vint i) (Tstruct id attr)
   | val_casted_union: forall id attr i,
@@ -1317,20 +1282,13 @@ End VAL_CASTED.
 Lemma cast_val_casted:
   forall v ty m, val_casted v ty -> sem_cast v ty ty m = Some v.
 Proof.
-  intros. unfold sem_cast; inversion H; clear H; subst v ty; simpl.
+  intros. unfold sem_cast; inversion H; clear H; subst v ty; simpl; auto.
 - destruct Archi.ptr64; [ | destruct (intsize_eq sz I32)].
 + destruct sz; f_equal; f_equal; assumption.
 + subst sz; auto.
 + destruct sz; f_equal; f_equal; assumption.
-- auto.
-- auto.
-- destruct Archi.ptr64; auto.
-- auto.
-- rewrite H0; auto.
-- rewrite H0; auto.
 - rewrite dec_eq_true; auto.
 - rewrite dec_eq_true; auto.
-- auto. 
 Qed.
 
 Lemma cast_idempotent:
@@ -1539,7 +1497,3 @@ Qed.
 End ArithConv.
 
 End Cop.
-
-
-
-

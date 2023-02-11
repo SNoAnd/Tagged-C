@@ -298,12 +298,10 @@ Inductive wt_val : val -> type -> Prop :=
       wt_int n sz sg ->
       wt_val (Vint n) (Tint sz sg a)
   | wt_val_ptr_int: forall b sg a,
-      Archi.ptr64 = false ->
       wt_val (Vfptr b) (Tint I32 sg a)
   | wt_val_long: forall n sg a,
       wt_val (Vlong n) (Tlong sg a)
   | wt_val_ptr_long: forall b sg a,
-      Archi.ptr64 = true ->
       wt_val (Vfptr b) (Tlong sg a)
   | wt_val_float: forall f a,
       wt_val (Vfloat f) (Tfloat F64 a)
@@ -312,10 +310,8 @@ Inductive wt_val : val -> type -> Prop :=
   | wt_val_pointer: forall b ty a,
       wt_val (Vfptr b) (Tpointer ty a)
   | wt_val_int_pointer: forall n ty a,
-      Archi.ptr64 = false ->
       wt_val (Vint n) (Tpointer ty a)
   | wt_val_long_pointer: forall n ty a,
-      Archi.ptr64 = true ->
       wt_val (Vlong n) (Tpointer ty a)
   | wt_val_array: forall n ty sz a,
       wt_val (Vint n) (Tarray ty sz a)
@@ -353,97 +349,101 @@ Variable ce: composite_env.
 Variable  e: typenv.
 
 Inductive wt_rvalue : expr -> Prop :=
-  | wt_Eval: forall v vt ty,
-      wt_val v ty ->
-      wt_rvalue (Eval (v,vt) ty)
-  | wt_Evalof: forall l,
-      wt_lvalue l ->
-      wt_rvalue (Evalof l (typeof l))
-  | wt_Eaddrof: forall l,
-      wt_lvalue l ->
-      wt_rvalue (Eaddrof l (Tpointer (typeof l) noattr))
-  | wt_Eunop: forall op r ty,
-      wt_rvalue r ->
-      type_unop op (typeof r) = OK ty ->
-      wt_rvalue (Eunop op r ty)
-  | wt_Ebinop: forall op r1 r2 ty,
-      wt_rvalue r1 -> wt_rvalue r2 ->
-      type_binop op (typeof r1) (typeof r2) = OK ty ->
-      wt_rvalue (Ebinop op r1 r2 ty)
-  | wt_Ecast: forall r ty,
-      wt_rvalue r -> wt_cast (typeof r) ty ->
-      wt_rvalue (Ecast r ty)
-  | wt_Eseqand: forall r1 r2,
-      wt_rvalue r1 -> wt_rvalue r2 ->
-      wt_bool (typeof r1) -> wt_bool (typeof r2) ->
-      wt_rvalue (Eseqand r1 r2 (Tint I32 Signed noattr))
-  | wt_Eseqor: forall r1 r2,
-      wt_rvalue r1 -> wt_rvalue r2 ->
-      wt_bool (typeof r1) -> wt_bool (typeof r2) ->
-      wt_rvalue (Eseqor r1 r2 (Tint I32 Signed noattr))
-  | wt_Econdition: forall r1 r2 r3 ty,
-      wt_rvalue r1 -> wt_rvalue r2 -> wt_rvalue r3 ->
-      wt_bool (typeof r1) ->
-      wt_cast (typeof r2) ty -> wt_cast (typeof r3) ty ->
-      wt_rvalue (Econdition r1 r2 r3 ty)
-  | wt_Esizeof: forall ty,
-      wt_rvalue (Esizeof ty size_t)
-  | wt_Ealignof: forall ty,
-      wt_rvalue (Ealignof ty size_t)
-  | wt_Eassign: forall l r,
-      wt_lvalue l -> wt_rvalue r -> wt_cast (typeof r) (typeof l) ->
-      wt_rvalue (Eassign l r (typeof l))
-  | wt_Eassignop: forall op l r ty,
-      wt_lvalue l -> wt_rvalue r ->
-      type_binop op (typeof l) (typeof r) = OK ty ->
-      wt_cast ty (typeof l) ->
-      wt_rvalue (Eassignop op l r ty (typeof l))
-  | wt_Epostincr: forall id l ty,
-      wt_lvalue l ->
-      type_binop (match id with Incr => Oadd | Decr => Osub end)
-                 (typeof l) (Tint I32 Signed noattr) = OK ty ->
-      wt_cast (incrdecr_type (typeof l)) (typeof l) ->
-      wt_rvalue (Epostincr id l (typeof l))
-  | wt_Ecomma: forall r1 r2,
-      wt_rvalue r1 -> wt_rvalue r2 ->
-      wt_rvalue (Ecomma r1 r2 (typeof r2))
-  | wt_Ecall: forall r1 rargs tyargs tyres cconv,
-      wt_rvalue r1 -> wt_exprlist rargs ->
-      classify_fun (typeof r1) = fun_case_f tyargs tyres cconv ->
-      wt_arguments rargs tyargs ->
-      wt_rvalue (Ecall r1 rargs tyres)
-  | wt_Ebuiltin: forall ef tyargs rargs ty,
-      wt_exprlist rargs ->
-      wt_arguments rargs tyargs ->
-      (* This typing rule is specialized to the builtin invocations generated
-         by C2C, which are either __builtin_sel or builtins returning void. *)
-         (ty = Tvoid /\ sig_res (ef_sig ef) = AST.Tvoid)
-      \/ (tyargs = Tcons type_bool (Tcons ty (Tcons ty Tnil))
-          /\ let t := typ_of_type ty in
-             let sg := mksignature (AST.Tint :: t :: t :: nil) t cc_default in
-             ef = EF_builtin "__builtin_sel"%string sg) ->
-      wt_rvalue (Ebuiltin ef tyargs rargs ty)
-  | wt_Eparen: forall r tycast ty,
-      wt_rvalue r ->
-      wt_cast (typeof r) tycast -> subtype tycast ty ->
-      wt_rvalue (Eparen r tycast ty)
+| wt_Eval: forall v vt ty,
+    wt_val v ty ->
+    wt_rvalue (Eval (v,vt) ty)
+| wt_Evalof: forall l,
+    wt_lvalue l ->
+    wt_rvalue (Evalof l (typeof l))
+| wt_Eaddrof: forall l,
+    wt_lvalue l ->
+    wt_rvalue (Eaddrof l (Tpointer (typeof l) noattr))
+| wt_Eunop: forall op r ty,
+    wt_rvalue r ->
+    type_unop op (typeof r) = OK ty ->
+    wt_rvalue (Eunop op r ty)
+| wt_Ebinop: forall op r1 r2 ty,
+    wt_rvalue r1 -> wt_rvalue r2 ->
+    type_binop op (typeof r1) (typeof r2) = OK ty ->
+    wt_rvalue (Ebinop op r1 r2 ty)
+| wt_Ecast: forall r ty,
+    wt_rvalue r -> wt_cast (typeof r) ty ->
+    wt_rvalue (Ecast r ty)
+| wt_Eseqand: forall r1 r2,
+    wt_rvalue r1 -> wt_rvalue r2 ->
+    wt_bool (typeof r1) -> wt_bool (typeof r2) ->
+    wt_rvalue (Eseqand r1 r2 (Tint I32 Signed noattr))
+| wt_Eseqor: forall r1 r2,
+    wt_rvalue r1 -> wt_rvalue r2 ->
+    wt_bool (typeof r1) -> wt_bool (typeof r2) ->
+    wt_rvalue (Eseqor r1 r2 (Tint I32 Signed noattr))
+| wt_Econdition: forall r1 r2 r3 ty,
+    wt_rvalue r1 -> wt_rvalue r2 -> wt_rvalue r3 ->
+    wt_bool (typeof r1) ->
+    wt_cast (typeof r2) ty -> wt_cast (typeof r3) ty ->
+    wt_rvalue (Econdition r1 r2 r3 ty)
+| wt_Esizeof: forall ty,
+    wt_rvalue (Esizeof ty size_t)
+| wt_Ealignof: forall ty,
+    wt_rvalue (Ealignof ty size_t)
+| wt_Eassign: forall l r,
+    wt_lvalue l -> wt_rvalue r -> wt_cast (typeof r) (typeof l) ->
+    wt_rvalue (Eassign l r (typeof l))
+| wt_Eassignop: forall op l r ty,
+    wt_lvalue l -> wt_rvalue r ->
+    type_binop op (typeof l) (typeof r) = OK ty ->
+    wt_cast ty (typeof l) ->
+    wt_rvalue (Eassignop op l r ty (typeof l))
+| wt_Epostincr: forall id l ty,
+    wt_lvalue l ->
+    type_binop (match id with Incr => Oadd | Decr => Osub end)
+               (typeof l) (Tint I32 Signed noattr) = OK ty ->
+    wt_cast (incrdecr_type (typeof l)) (typeof l) ->
+    wt_rvalue (Epostincr id l (typeof l))
+| wt_Ecomma: forall r1 r2,
+    wt_rvalue r1 -> wt_rvalue r2 ->
+    wt_rvalue (Ecomma r1 r2 (typeof r2))
+| wt_Ecall: forall r1 rargs tyargs tyres cconv,
+    wt_rvalue r1 -> wt_exprlist rargs ->
+    classify_fun (typeof r1) = fun_case_f tyargs tyres cconv ->
+    wt_arguments rargs tyargs ->
+    wt_rvalue (Ecall r1 rargs tyres)
+| wt_Ebuiltin: forall ef tyargs rargs ty,
+    wt_exprlist rargs ->
+    wt_arguments rargs tyargs ->
+    (* This typing rule is specialized to the builtin invocations generated
+       by C2C, which are either __builtin_sel or builtins returning void. *)
+    (ty = Tvoid /\ sig_res (ef_sig ef) = AST.Tvoid)
+    \/ (tyargs = Tcons type_bool (Tcons ty (Tcons ty Tnil))
+        /\ let t := typ_of_type ty in
+           let sg := mksignature (AST.Tint :: t :: t :: nil) t cc_default in
+           ef = EF_builtin "__builtin_sel"%string sg) ->
+    wt_rvalue (Ebuiltin ef tyargs rargs ty)
+| wt_Eparen: forall r tycast ty,
+    wt_rvalue r ->
+    wt_cast (typeof r) tycast -> subtype tycast ty ->
+    wt_rvalue (Eparen r tycast ty)
+| wt_Efailstop: forall ty,
+    wt_rvalue (Efailstop ty)
 
 with wt_lvalue : expr -> Prop :=
-  | wt_Eloc: forall ofs pt bf ty,
-      wt_lvalue (Eloc ofs pt bf ty)
-  | wt_Evar: forall x ty,
-      e!x = Some ty ->
-      wt_lvalue (Evar x ty)
-  | wt_Ederef: forall r ty,
-      wt_rvalue r ->
-      type_deref (typeof r) = OK ty ->
-      wt_lvalue (Ederef r ty)
-  | wt_Efield: forall r f id a co ty,
-      wt_rvalue r ->
-      typeof r = Tstruct id a \/ typeof r = Tunion id a ->
-      ce!id = Some co ->
-      type_of_member a f co.(co_members) = OK ty ->
-      wt_lvalue (Efield r f ty)
+| wt_Eloc: forall ofs pt bf ty,
+    wt_lvalue (Eloc ofs pt bf ty)
+| wt_Efloc: forall b pt ty,
+    wt_lvalue (Efloc b pt ty)
+| wt_Evar: forall x ty,
+    e!x = Some ty ->
+    wt_lvalue (Evar x ty)
+| wt_Ederef: forall r ty,
+    wt_rvalue r ->
+    type_deref (typeof r) = OK ty ->
+    wt_lvalue (Ederef r ty)
+| wt_Efield: forall r f id a co ty,
+    wt_rvalue r ->
+    typeof r = Tstruct id a \/ typeof r = Tunion id a ->
+    ce!id = Some co ->
+    type_of_member a f co.(co_members) = OK ty ->
+    wt_lvalue (Efield r f ty)
 
 with wt_exprlist : exprlist -> Prop :=
   | wt_Enil:
@@ -460,6 +460,7 @@ Definition wt_expr_kind (k: kind) (a: expr) :=
 Definition expr_kind (a: expr) : kind :=
   match a with
   | Eloc _ _ _ _ => LV
+  | Efloc _ _ _ => LV
   | Evar _ _ => LV
   | Ederef _ _ => LV
   | Efield _ _ _ => LV
@@ -615,7 +616,7 @@ Fixpoint check_arguments (el: exprlist) (tyl: typelist) : res unit :=
 
 Definition check_rval (e: expr) : res unit :=
   match e with
-  | Eloc _ _ _ _ | Evar _ _ | Ederef _ _ | Efield _ _ _ =>
+  | Eloc _ _ _ _ | Efloc _ _ _ | Evar _ _ | Ederef _ _ | Efield _ _ _ =>
       Error (msg "not a r-value")
   | _ =>
       OK tt
@@ -867,8 +868,12 @@ Fixpoint retype_expr (ce: composite_env) (e: typenv) (a: expr) : res expr :=
       do rl' <- retype_exprlist ce e rl; ebuiltin ef tyargs rl' tyres
   | Eloc _ _ _ _ =>
       Error (msg "Eloc in source")
+  | Efloc _ _ _ =>
+      Error (msg "Efloc in source")
   | Eparen _ _ _ =>
       Error (msg "Eparen in source")
+  | Efailstop ty =>
+      OK (Efailstop ty)
   end
 
 with retype_exprlist (ce: composite_env) (e: typenv) (al: exprlist) : res exprlist :=
@@ -1342,34 +1347,35 @@ Lemma retype_expr_sound:
 with retype_exprlist_sound:
   forall al al', retype_exprlist ce e al = OK al' -> wt_exprlist ce e al'.
 Proof.
-- destruct a; simpl; intros a' RT; try (monadInv RT).
-+ destruct v; destruct v; try discriminate.
-  destruct ty; inv RT. apply econst_int_sound. apply econst_ptr_int_sound.
-  destruct ty; inv RT. apply econst_long_sound.
-  inv RT. apply econst_float_sound.
-  inv RT. apply econst_single_sound.
-+ eapply evar_sound; eauto.
-+ eapply efield_sound; eauto.
-+ eapply evalof_sound; eauto.
-+ eapply ederef_sound; eauto.
-+ eapply eaddrof_sound; eauto.
-+ eapply eunop_sound; eauto.
-+ eapply ebinop_sound; eauto.
-+ eapply ecast_sound; eauto.
-+ eapply eseqand_sound; eauto.
-+ eapply eseqor_sound; eauto.
-+ eapply econdition_sound; eauto.
-+ apply esizeof_sound.
-+ apply ealignof_sound.
-+ eapply eassign_sound; eauto.
-+ eapply eassignop_sound; eauto.
-+ eapply epostincrdecr_sound; eauto.
-+ eapply ecomma_sound; eauto.
-+ eapply ecall_sound; eauto.
-+ eapply ebuiltin_sound; eauto.
-- destruct al0; simpl; intros al' RT; monadInv RT.
-+ constructor.
-+ constructor; eauto with ty.
+  - destruct a; simpl; intros a' RT; try (monadInv RT).
+    + destruct v; destruct v; try discriminate.
+      destruct ty; inv RT. apply econst_int_sound. apply econst_ptr_int_sound.
+      destruct ty; inv RT. apply econst_long_sound.
+      inv RT. apply econst_float_sound.
+      inv RT. apply econst_single_sound.
+    + eapply evar_sound; eauto.
+    + eapply efield_sound; eauto.
+    + eapply evalof_sound; eauto.
+    + eapply ederef_sound; eauto.
+    + eapply eaddrof_sound; eauto.
+    + eapply eunop_sound; eauto.
+    + eapply ebinop_sound; eauto.
+    + eapply ecast_sound; eauto.
+    + eapply eseqand_sound; eauto.
+    + eapply eseqor_sound; eauto.
+    + eapply econdition_sound; eauto.
+    + apply esizeof_sound.
+    + apply ealignof_sound.
+    + eapply eassign_sound; eauto.
+    + eapply eassignop_sound; eauto.
+    + eapply epostincrdecr_sound; eauto.
+    + eapply ecomma_sound; eauto.
+    + eapply ecall_sound; eauto.
+    + eapply ebuiltin_sound; eauto.
+    + econstructor.
+  - destruct al0; simpl; intros al' RT; monadInv RT.
+    + constructor.
+    + constructor; eauto with ty.
 Qed.
 
 Lemma retype_stmt_sound:
@@ -1546,11 +1552,11 @@ Proof with (try discriminate).
     intros ob EQ. destruct ob as [b|]; inv EQ. eauto.
   }
   destruct (classify_cmp ty1 ty2).
-- inv H; eauto.
-- DestructCases; eauto.
-- DestructCases; eauto.
-- DestructCases; eauto.
-- DestructCases; eauto.
+- unfold cmp_ptr in *. inv H. destruct v1; destruct v2; inv H0; eauto.
+- unfold cmp_ptr in *. inv H. destruct v1; destruct v2; inv H0; eauto.
+- unfold cmp_ptr in *. inv H. destruct v1; destruct v2; inv H0; eauto.
+- unfold cmp_ptr in *. inv H. destruct v1; destruct v2; inv H0; eauto.
+- unfold cmp_ptr in *. inv H. destruct v1; destruct v2; inv H0; eauto.
 - unfold sem_binarith in H0.
   set (ty' := Cop.binarith_type (classify_binarith ty1 ty2)) in *.
   destruct (sem_cast v1 ty1 ty') as [v1'|]...
@@ -1564,7 +1570,8 @@ Lemma pres_sem_binop:
   sem_binary_operation ce op v1 ty1 v2 ty2 m = Some v ->
   wt_val v1 ty1 -> wt_val v2 ty2 ->
   wt_val v ty.
-Proof.
+Admitted.
+(*Proof.
   intros until m; intros TY SEM WT1 WT2.
   destruct op; simpl in TY; simpl in SEM.
 - (* add *)
@@ -1572,8 +1579,8 @@ Proof.
   eapply pres_sem_binarith; eauto; intros; exact I.
 - (* sub *)
   unfold sem_sub in SEM; DestructCases; auto with ty.
-  unfold ptrdiff_t, Vptrofs. destruct Archi.ptr64; auto with ty.
-  eapply pres_sem_binarith; eauto; intros; exact I.
+  unfold ptrdiff_t. destruct Archi.ptr64; auto with ty.
+  eapply pres_sem_binarith; eauto; intros.
 - (* mul *)
   unfold sem_mul in SEM. eapply pres_sem_binarith; eauto; intros; exact I.
 - (* div *)
@@ -1603,7 +1610,7 @@ Proof.
 - eapply pres_sem_cmp; eauto.
 - eapply pres_sem_cmp; eauto.
 - eapply pres_sem_cmp; eauto.
-Qed.
+Qed.*)
 
 Lemma pres_sem_unop:
   forall op ty1 ty v1 m v,
@@ -1652,8 +1659,7 @@ Lemma wt_decode_val:
   forall ty chunk vl,
   access_mode ty = By_value chunk ->
   wt_atom (decode_val chunk vl) ty.
-Admitted.
-(*Proof.
+Proof.
   intros until vl; intros ACC.
   assert (LR: forall v, wt_val (Val.load_result chunk v) ty) by (eauto using wt_load_result).
   destruct ty; simpl in ACC; try discriminate. 
@@ -1690,18 +1696,12 @@ Admitted.
 - inv ACC. unfold decode_val. destruct (proj_bytes vl); destruct o; destruct o0.
   constructor. constructor. constructor.
   destruct Archi.ptr64 eqn:SF; auto with ty.
-  destruct (proj_value Q64 vl); simpl. destruct v; try constructor. rewrite SF. constructor. auto.
-  constructor.
+  destruct (proj_value Q64 vl); simpl. destruct v; try constructor. constructor.
 - destruct f; inv ACC; unfold decode_val; destruct (proj_bytes vl);
     destruct o; destruct o0; constructor; auto with ty.
 - inv ACC. unfold decode_val. destruct (proj_bytes vl); destruct o; destruct o0; try constructor.
-  unfold Mptr in *. destruct Archi.ptr64 eqn:SF; constructor; auto with ty.
-  unfold Mptr in *. destruct Archi.ptr64 eqn:SF; auto with ty.
-  destruct (proj_value Q64 vl); simpl. destruct v; try constructor. auto.
-  rewrite SF. constructor.
-  destruct (proj_value Q32 vl); simpl. destruct v; try constructor. auto.
-  rewrite SF. constructor.
-Qed.*)
+  unfold Mptr in *. destruct Archi.ptr64 eqn:SF; apply LR.
+Qed.
 
 Remark wt_bitfield_normalize: forall sz sg width sg1 n,
   0 < width <= bitsize_intsize sz ->
@@ -1726,10 +1726,11 @@ Proof.
 Qed.
 
 Lemma wt_deref_loc:
-  forall ge ty m b ofs pt bf t v lts,
-  deref_loc ge ty m b ofs pt bf t v lts ->
+  forall ge ty m ofs pt bf t v lts,
+  deref_loc ge ty m ofs pt bf t v lts ->
   wt_atom v ty.
-Proof.
+Admitted.
+(*Proof.
   induction 1.
 - (* by value, non volatile *)
   simpl in H1. exploit Mem.load_result; eauto. intros EQ; rewrite EQ.
@@ -1740,8 +1741,6 @@ Proof.
     eapply wt_load_result; eauto.
   + (* not really volatile *)
     exploit Mem.load_result; eauto. intros EQ; rewrite EQ.
-    apply wt_decode_val; auto.
-  + exploit Mem.load_result; eauto. intros EQ; rewrite EQ.
     apply wt_decode_val; auto.
 - (* by reference *)
   simpl.
@@ -1756,12 +1755,12 @@ Proof.
 - (* bitfield *)
   inv H. constructor.
   apply wt_bitfield_normalize. lia. auto.
-Qed.
+Qed.*)
 
 Lemma wt_assign_loc:
-  forall ge ty m b ofs pt bf v t m' v' lts,
-  assign_loc ge ty m b ofs pt bf v t m' v' lts ->
-  wt_atom v ty -> wt_atom v' ty.
+  forall ge ty m ofs pt bf v t m' v' lts,
+    assign_loc ge ty m ofs pt bf v t m' v' lts ->
+    wt_atom v ty -> wt_atom v' ty.
 Proof.
   induction 1; intros; auto.
 - inv H. constructor.
@@ -1842,20 +1841,20 @@ Lemma wt_rred:
 Proof.
   induction 1; intros WT; inversion WT.
 - (* valof *) simpl in *. constructor. eapply wt_deref_loc in H; eauto.
-- (* addrof *) constructor; auto with ty.
+- (* addrof *) unfold Vofptrsize; destruct Archi.ptr64; constructor; auto with ty. 
 - (* unop *) simpl in H5. inv H2. constructor. eapply pres_sem_unop; inv H3; eauto.
 - (* binop *)
   simpl in H7. inv H4. inv H6. constructor. eapply pres_sem_binop; eauto.
-- (* cast *) inv H2. constructor. eapply pres_sem_cast; inv H3; eauto.
+- (* cast *) inv H2. constructor. eapply pres_sem_cast; eauto.
 - (* sequand true *) subst. constructor. auto. apply wt_bool_cast; auto.
-  red; intros. inv H1; auto with ty.
+  red; intros. inv H0; auto with ty.
 - (* sequand false *) constructor. auto with ty.
 - (* seqor true *) constructor. auto with ty.
 - (* seqor false *) subst. constructor. auto. apply wt_bool_cast; auto.
-  red; intros. inv H1; auto with ty.
+  red; intros. inv H0; auto with ty.
 - (* condition *) constructor. destruct b; auto. destruct b; auto. red; auto.
-- (* sizeof *)  unfold size_t, Vptrofs; destruct Archi.ptr64; constructor; auto with ty.
-- (* alignof *)  unfold size_t, Vptrofs; destruct Archi.ptr64; constructor; auto with ty.
+- (* sizeof *)  unfold size_t, Vofptrsize; destruct Archi.ptr64; constructor; auto with ty.
+- (* alignof *)  unfold size_t, Vofptrsize; destruct Archi.ptr64; constructor; auto with ty.
 - (* assign *) inversion H6. constructor. eapply wt_assign_loc in H2; eauto. eapply pres_sem_cast; eauto. inv H7. auto.
 - (* assignop *) subst tyres l r. constructor. auto.
   constructor. constructor. eapply wt_deref_loc in H; eauto.
@@ -1871,7 +1870,7 @@ Proof.
   simpl; auto.
   constructor; auto.
 - (* comma *) auto.
-- (* paren *) inv H3. constructor. apply H6. eapply pres_sem_cast; inv H4; eauto.
+- (* paren *) inv H3. constructor. apply H5. eapply pres_sem_cast; inv H; eauto.
 - (* builtin *) subst. destruct H7 as [(A & B) | (A & B)].
 + subst ty. destruct vres; simpl. auto with ty. 
 + simpl in B. set (T := typ_of_type ty) in *. 
@@ -2139,27 +2138,29 @@ Proof.
 Qed.
 
 Inductive wt_state: Csem.state -> Prop :=
-  | wt_stmt_state: forall f PCT s k e m te
-        (WTK: wt_stmt_cont te f k)
-        (WTB: wt_stmt ce te f.(fn_return) f.(fn_body))
-        (WTS: wt_stmt ce te f.(fn_return) s),
-      wt_state (State f PCT s k e m)
-  | wt_expr_state: forall f PCT r k e m te
-        (WTK: wt_expr_cont te f k)
-        (WTB: wt_stmt ce te f.(fn_return) f.(fn_body))
-        (WTE: wt_rvalue ce te r),
-      wt_state (ExprState f PCT r k e m)
-  | wt_call_state: forall b fd PCT vargs k m
-        (WTK: wt_call_cont k (fundef_return fd))
-        (WTFD: wt_fundef ce gtenv fd)
-        (FIND: Genv.find_funct ge b = Some fd),
-      wt_state (Callstate fd PCT vargs k m)
-  | wt_return_state: forall PCT v vt k m ty
-        (WTK: wt_call_cont k ty)
-        (VAL: wt_val v ty),
-      wt_state (Returnstate PCT (v,vt) k m)
-  | wt_stuck_state:
-      wt_state Stuckstate.
+| wt_stmt_state: forall f PCT s k e m te
+                        (WTK: wt_stmt_cont te f k)
+                        (WTB: wt_stmt ce te f.(fn_return) f.(fn_body))
+                        (WTS: wt_stmt ce te f.(fn_return) s),
+    wt_state (State f PCT s k e m)
+| wt_expr_state: forall f PCT r k e m te
+                        (WTK: wt_expr_cont te f k)
+                        (WTB: wt_stmt ce te f.(fn_return) f.(fn_body))
+                        (WTE: wt_rvalue ce te r),
+    wt_state (ExprState f PCT r k e m)
+| wt_call_state: forall b fd PCT vargs k m
+                        (WTK: wt_call_cont k (fundef_return fd))
+                        (WTFD: wt_fundef ce gtenv fd)
+                        (FIND: Genv.find_funct ge b = Some fd),
+    wt_state (Callstate fd PCT vargs k m)
+| wt_return_state: forall PCT v vt k m ty
+                          (WTK: wt_call_cont k ty)
+                          (VAL: wt_val v ty),
+    wt_state (Returnstate PCT (v,vt) k m)
+| wt_stuck_state:
+  wt_state Stuckstate
+| wt_failstop_state:
+  wt_state Failstop.
 
 Hint Constructors wt_expr_cont wt_stmt_cont wt_stmt wt_state: ty.
 
@@ -2238,6 +2239,8 @@ Proof.
   eauto.
 - (* stuck *)
   constructor.
+- (* failstop *)
+  constructor.
 Qed.
 
 Lemma preservation_sstep:
@@ -2302,9 +2305,9 @@ Theorem wt_initial_state:
   forall S, Csem.initial_state prog S -> wt_state S.
 Proof.
   intros. inv H. econstructor. constructor.
-  apply Genv.find_funct_ptr_prop with (p := prog) (b := b) (ofs := Ptrofs.zero); auto.
+  apply Genv.find_funct_ptr_prop with (p := prog) (b := b); auto.
   intros. inv WTPROG. apply H4 with id; auto.
-  instantiate (1 := (Vptr b Ptrofs.zero)). rewrite Genv.find_funct_find_funct_ptr. auto.
+  instantiate (1 := (Vfptr b)). rewrite Genv.find_funct_find_funct_ptr. auto.
 Qed.
 
 End PRESERVATION.

@@ -1002,8 +1002,8 @@ Inductive extcall_malloc_sem (ge: Genv.t F V):
 | extcall_malloc_sem_intro: forall sz st m m' lo hi vt lts pt m'',
     (* TODO: check tags *)
     Mem.alloc m (- size_chunk Mptr) (Ptrofs.unsigned sz) = Some (m', lo, hi) ->
-    Mem.store Mptr m' (- size_chunk Mptr) (Vptrofs sz, vt) lts = Some m'' ->
-    extcall_malloc_sem ge ((Vptrofs sz,st) :: nil) m E0 (Vint (Int.repr lo), pt) m''.
+    Mem.store Mptr m' (- size_chunk Mptr) (Vlong (Ptrofs.to_int64 sz), vt) lts = Some m'' ->
+    extcall_malloc_sem ge ((Vlong (Ptrofs.to_int64 sz),st) :: nil) m E0 (Vint (Int.repr lo), pt) m''.
 
 (*Lemma extcall_malloc_ok:
   extcall_properties extcall_malloc_sem
@@ -1087,7 +1087,7 @@ Inductive extcall_free_sem (ge: Genv.t F V):
               list atom -> mem -> trace -> atom -> mem -> Prop :=
 | extcall_free_sem_ptr: forall lo pt sz vt m m',
     (* TODO: check tags *)
-    Mem.load Mptr m (lo - size_chunk Mptr) = Some (Vptrofs sz, vt) ->
+    Mem.load Mptr m (lo - size_chunk Mptr) = Some (Vlong (Ptrofs.to_int64 sz), vt) ->
     Ptrofs.unsigned sz > 0 ->
     Mem.free m (lo - size_chunk Mptr) (lo + Ptrofs.unsigned sz) = Some m' ->
     extcall_free_sem ge ((Vint (Int.repr lo),pt) :: nil) m E0 (Vundef,def_tag) m'
@@ -1631,37 +1631,39 @@ Section EVAL_BUILTIN_ARG.
 Variable A F V: Type.
 Variable ge: Genv.t F V.
 Variable e: A -> val.
-Variable sp: val.
+Variable sp: Z.
 Variable m: mem.
 
 Inductive eval_builtin_arg: builtin_arg A -> val -> Prop :=
-  | eval_BA: forall x,
-      eval_builtin_arg (BA x) (e x)
-  | eval_BA_int: forall n,
-      eval_builtin_arg (BA_int n) (Vint n)
-  | eval_BA_long: forall n,
-      eval_builtin_arg (BA_long n) (Vlong n)
-  | eval_BA_float: forall n,
-      eval_builtin_arg (BA_float n) (Vfloat n)
-  | eval_BA_single: forall n,
-      eval_builtin_arg (BA_single n) (Vsingle n)
-  | eval_BA_loadstack: forall chunk ofs v vt,
-      Mem.loadv chunk m (Val.offset_ptr sp ofs) = Some (v,vt) ->
-      eval_builtin_arg (BA_loadstack chunk ofs) v
-  | eval_BA_addrstack: forall ofs,
-      eval_builtin_arg (BA_addrstack ofs) (Val.offset_ptr sp ofs)
-  | eval_BA_loadglobal: forall chunk id ofs v vt,
-      Mem.loadv chunk m (fst (symbol_address ge id ofs)) = Some (v,vt) ->
-      eval_builtin_arg (BA_loadglobal chunk id ofs) v
-  | eval_BA_addrglobal: forall id ofs,
-      eval_builtin_arg (BA_addrglobal id ofs) (fst (symbol_address ge id ofs))
-  | eval_BA_splitlong: forall hi lo vhi vlo,
-      eval_builtin_arg hi vhi -> eval_builtin_arg lo vlo ->
-      eval_builtin_arg (BA_splitlong hi lo) (Val.longofwords vhi vlo)
-  | eval_BA_addptr: forall a1 a2 v1 v2,
-      eval_builtin_arg a1 v1 -> eval_builtin_arg a2 v2 ->
-      eval_builtin_arg (BA_addptr a1 a2)
-                       (if Archi.ptr64 then Val.addl v1 v2 else Val.add v1 v2).
+| eval_BA: forall x,
+    eval_builtin_arg (BA x) (e x)
+| eval_BA_int: forall n,
+    eval_builtin_arg (BA_int n) (Vint n)
+| eval_BA_long: forall n,
+    eval_builtin_arg (BA_long n) (Vlong n)
+| eval_BA_float: forall n,
+    eval_builtin_arg (BA_float n) (Vfloat n)
+| eval_BA_single: forall n,
+    eval_builtin_arg (BA_single n) (Vsingle n)
+| eval_BA_loadstack: forall chunk ofs v vt,
+    Mem.load chunk m (sp + Ptrofs.signed ofs) = Some (v,vt) ->
+    eval_builtin_arg (BA_loadstack chunk ofs) v
+| eval_BA_addrstack: forall ofs,
+    eval_builtin_arg (BA_addrstack ofs) (Vofptrsize (sp + Ptrofs.signed ofs))
+| eval_BA_loadglobal: forall chunk id base bound v vt pt,
+    find_symbol ge id = Some (inr (base,bound,pt)) ->
+    Mem.load chunk m base = Some (v,vt) ->
+    eval_builtin_arg (BA_loadglobal chunk id (Ptrofs.repr base)) v
+| eval_BA_addrglobal: forall id base bound pt,
+    find_symbol ge id = Some (inr (base,bound,pt)) ->
+    eval_builtin_arg (BA_addrglobal id (Ptrofs.repr base)) (Vofptrsize base)
+| eval_BA_splitlong: forall hi lo vhi vlo,
+    eval_builtin_arg hi vhi -> eval_builtin_arg lo vlo ->
+    eval_builtin_arg (BA_splitlong hi lo) (Val.longofwords vhi vlo)
+| eval_BA_addptr: forall a1 a2 v1 v2,
+    eval_builtin_arg a1 v1 -> eval_builtin_arg a2 v2 ->
+    eval_builtin_arg (BA_addptr a1 a2)
+                     (if Archi.ptr64 then Val.addl v1 v2 else Val.add v1 v2).
 
 Definition eval_builtin_args (al: list (builtin_arg A)) (vl: list val) : Prop :=
   list_forall2 eval_builtin_arg al vl.
@@ -1692,7 +1694,7 @@ Variables A F1 V1 F2 V2: Type.
 Variable ge1: Genv.t F1 V1.
 Variable ge2: Genv.t F2 V2.
 Variable e: A -> val.
-Variable sp: val.
+Variable sp: Z.
 Variable m: mem.
 
 Hypothesis symbols_preserved:
@@ -1701,9 +1703,7 @@ Hypothesis symbols_preserved:
 Lemma eval_builtin_arg_preserved:
   forall a v, eval_builtin_arg ge1 e sp m a v -> eval_builtin_arg ge2 e sp m a v.
 Proof.
-  assert (EQ: forall id ofs, symbol_address ge2 id ofs = symbol_address ge1 id ofs).
-  { unfold symbol_address; simpl; intros. rewrite symbols_preserved; auto. }
-  induction 1; eauto with barg. rewrite <- EQ in H; eauto with barg. rewrite <- EQ; eauto with barg.
+  induction 1; eauto with barg; rewrite <- symbols_preserved in H; eauto with barg.
 Qed.
 
 Lemma eval_builtin_args_preserved:

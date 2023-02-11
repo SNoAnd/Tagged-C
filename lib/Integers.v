@@ -4664,7 +4664,6 @@ End Wordsize_Ptrofs.
 Strategy opaque [Wordsize_Ptrofs.wordsize].
 
 Module Ptrofs.
-
 Include Make(Wordsize_Ptrofs).
 
 Definition to_int (x: int): Int.int := Int.repr (unsigned x).

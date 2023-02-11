@@ -35,12 +35,12 @@ Definition eq_block := peq.
 *)
 
 Inductive val: Type :=
-  | Vundef: val
-  | Vint: int -> val
-  | Vlong: int64 -> val
-  | Vfloat: float -> val
-  | Vsingle: float32 -> val
-  | Vfptr: block -> val.
+| Vundef: val
+| Vint: int -> val
+| Vlong: int64 -> val
+| Vfloat: float -> val
+| Vsingle: float32 -> val
+| Vfptr: block -> val.
 
 Definition Vzero: val := Vint Int.zero.
 Definition Vone: val := Vint Int.one.
@@ -49,18 +49,8 @@ Definition Vmone: val := Vint Int.mone.
 Definition Vtrue: val := Vint Int.one.
 Definition Vfalse: val := Vint Int.zero.
 
-Definition Vnullptr :=
-  if Archi.ptr64 then Vlong Int64.zero else Vint Int.zero.
-
-Definition Vptrofs (n: ptrofs) :=
-  if Archi.ptr64 then Vlong (Ptrofs.to_int64 n) else Vint (Ptrofs.to_int n).
-
-Definition ptrofs_map (f: ptrofs -> ptrofs) (v: val) : val :=
-  match v, Archi.ptr64 with
-  | Vlong p, true => Vlong (Ptrofs.to_int64 (f (Ptrofs.of_int64 p)))
-  | Vint p, false => Vint (Ptrofs.to_int (f (Ptrofs.of_int p)))
-  | _, _ => Vundef
-  end.         
+Definition Vnullptr := if Archi.ptr64 then Vlong Int64.zero else Vint Int.zero.
+Definition Vofptrsize (z:Z) := if Archi.ptr64 then Vlong (Int64.repr z) else Vint (Int.repr z).
 
 (** * Operations over values *)
 
@@ -88,10 +78,10 @@ Definition has_type (v: val) (t: typ) : Prop :=
   | Vlong _, Tlong => True
   | Vfloat _, Tfloat => True
   | Vsingle _, Tsingle => True
-  | Vfptr _, Tint => Archi.ptr64 = false
-  | Vfptr _, Tlong => Archi.ptr64 = true
+  | Vfptr _, Tint => True
+  | Vfptr _, Tlong => True
   | (Vint _ | Vsingle _), Tany32 => True
-  | Vfptr _, Tany32 => Archi.ptr64 = false
+  | Vfptr _, Tany32 => True
   | _, Tany64 => True
   | _, _ => False
   end.
@@ -108,18 +98,6 @@ Definition has_opttype (v: val) (ot: option typ) : Prop :=
   | None => v = Vundef
   | Some t => has_type v t
   end.
-
-Lemma Vptr_has_type:
-  forall b, has_type (Vfptr b) Tptr.
-Proof.
-  intros. unfold Tptr, has_type; destruct Archi.ptr64; reflexivity.
-Qed.
-
-Lemma Vnullptr_has_type:
-  has_type Vnullptr Tptr.
-Proof.
-  unfold has_type, Vnullptr, Tptr; destruct Archi.ptr64; reflexivity.
-Qed.
 
 Lemma has_subtype:
   forall ty1 ty2 v,
@@ -147,13 +125,13 @@ Proof.
 - destruct t; auto.
 - destruct t; auto.
 - destruct t; auto.
-- destruct t. 
-  apply bool_dec.
-  auto.
-  apply bool_dec.
-  auto.
-  apply bool_dec.
-  auto.
+- destruct t.
+  left; auto.
+  right; auto.
+  left; auto.
+  right; auto.
+  left; auto.
+  left; auto.
 Defined.
 
 Definition has_rettype (v: val) (r: rettype) : Prop :=
@@ -891,7 +869,11 @@ End COMPARISONS.
 (** Add the given offset to the given pointer. *)
 
 Definition offset_ptr (v: val) (delta: ptrofs) : val :=
-  ptrofs_map (Ptrofs.add delta) v.
+  match v with
+  | Vint i => Vint (Int.add i (Ptrofs.to_int delta))
+  | Vlong i => Vlong (Int64.add i (Ptrofs.to_int64 delta))
+  | _ => Vundef
+  end.
 
 (** Normalize a value to the given type, turning it into Vundef if it does not
     match the type. *)
@@ -902,8 +884,7 @@ Definition normalize (v: val) (ty: typ) : val :=
   | Vlong _, Tlong => v
   | Vfloat _, Tfloat => v
   | Vsingle _, Tsingle => v
-  | Vfptr _, (Tint | Tany32) => if Archi.ptr64 then Vundef else v
-  | Vfptr _, Tlong => if Archi.ptr64 then v else Vundef
+  | Vfptr _, (Tint | Tany32 | Tlong) => v
   | (Vint _ | Vsingle _), Tany32 => v
   | _, Tany64 => v
   | _, _ => Vundef
@@ -957,13 +938,13 @@ Definition load_result (chunk: memory_chunk) (v: val) :=
   | Mint16signed, Vint n => Vint (Int.sign_ext 16 n)
   | Mint16unsigned, Vint n => Vint (Int.zero_ext 16 n)
   | Mint32, Vint n => Vint n
-  | Mint32, Vfptr b => if Archi.ptr64 then Vundef else Vfptr b
+  | Mint32, Vfptr b => Vfptr b
   | Mint64, Vlong n => Vlong n
-  | Mint64, Vfptr b => if Archi.ptr64 then Vfptr b else Vundef
+  | Mint64, Vfptr b => Vfptr b
   | Mfloat32, Vsingle f => Vsingle f
   | Mfloat64, Vfloat f => Vfloat f
   | Many32, (Vint _ | Vsingle _) => v
-  | Many32, Vfptr _ => if Archi.ptr64 then Vundef else v
+  | Many32, Vfptr _ => v
   | Many64, _ => v
   | _, _ => Vundef
   end.
@@ -976,9 +957,6 @@ Proof.
 - rewrite Int.zero_ext_idem by lia; auto.
 - rewrite Int.sign_ext_idem by lia; auto.
 - rewrite Int.zero_ext_idem by lia; auto.
-- destruct Archi.ptr64 eqn:SF; simpl; auto.
-- destruct Archi.ptr64 eqn:SF; simpl; auto.
-- destruct Archi.ptr64 eqn:SF; simpl; auto.
 Qed.
 
 Lemma load_result_type:
@@ -2016,10 +1994,17 @@ Qed.
 Lemma offset_ptr_zero:
   forall v, lessdef (offset_ptr v Ptrofs.zero) v.
 Proof.
-  intros. destruct v; simpl; auto.
-  destruct Archi.ptr64 eqn:E; auto.
-  rewrite Ptrofs.add_zero_l; auto.
-  rewrite Ptrofs.to_int_of_int; auto.
+  intros. unfold offset_ptr; destruct v; simpl; auto.
+  - unfold Ptrofs.to_int. unfold Ptrofs.zero. rewrite Ptrofs.unsigned_repr.
+    replace (Int.repr 0) with Int.zero by auto.
+    rewrite Int.add_zero; auto. split.
+    + lia.
+    + unfold Ptrofs.max_unsigned. unfold Ptrofs.modulus. unfold two_power_nat. lia.
+  - unfold Ptrofs.to_int64. unfold Ptrofs.zero. rewrite Ptrofs.unsigned_repr.
+    replace (Int64.repr 0) with Int64.zero by auto.
+    rewrite Int64.add_zero; auto. split.
+    + lia.
+    + unfold Ptrofs.max_unsigned. unfold Ptrofs.modulus. unfold two_power_nat. lia.
 Qed.
 
 Lemma offset_ptr_assoc:

@@ -149,6 +149,7 @@ type associativity = LtoR | RtoL | NA
 
 let rec precedence = function
   | Csyntax.Eloc _ -> (16, NA)
+  | Csyntax.Efloc _ -> (16, NA)
   | Csyntax.Evar _ -> (16, NA)
   | Csyntax.Ederef _ -> (15, RtoL)
   | Csyntax.Efield _ -> (16, LtoR)
@@ -176,6 +177,7 @@ let rec precedence = function
   | Csyntax.Eassignop _ -> (2, RtoL)
   | Csyntax.Ecomma _ -> (1, LtoR)
   | Csyntax.Eparen _ -> (14, RtoL)
+  | Csyntax.Efailstop _ -> (16, NA)
 
 (* Expressions *)
 
@@ -198,8 +200,8 @@ let print_typed_value p v ty =
       fprintf p "%LuLLU" (camlint64_of_coqint n)
   | (Vlong n,_), _ ->
       fprintf p "%LdLL" (camlint64_of_coqint n)
-  | (Vptr(b, ofs),_), _ ->
-      fprintf p "<ptr%a>" !print_pointer_hook (b, ofs)
+  | (Vfptr b,_), _ ->
+      fprintf p "<ptr%a>" !print_pointer_hook (b,coqint_of_camlint 0l)
   | (Vundef,_), _ ->
       fprintf p "<undef>"
 
@@ -215,8 +217,10 @@ let rec expr p (prec, e) =
   then fprintf p "@[<hov 2>("
   else fprintf p "@[<hov 2>";
   begin match e with
-  | Csyntax.Eloc(b, ofs, _, _, _) ->
-      fprintf p "<loc%a>" !print_pointer_hook (b, ofs)
+  | Csyntax.Eloc(ofs, _, _, _) ->
+      fprintf p "<loc%a>" !print_pointer_hook (P.one, ofs)
+  | Csyntax.Efloc(b, _, _) ->
+      fprintf p "<loc%a>" !print_pointer_hook (b, coqint_of_camlint 0l)
   | Csyntax.Evar(id, _) ->
       fprintf p "%s" (extern_atom id)
   | Csyntax.Ederef(a1, _) ->
@@ -285,6 +289,8 @@ let rec expr p (prec, e) =
       fprintf p "<unknown builtin>@[<hov 1>(%a)@]" exprlist (true, args)
   | Csyntax.Eparen(a1, tycast, ty) ->
       fprintf p "(%s) %a" (name_type tycast) expr (prec', a1)
+  | Csyntax.Efailstop ty ->
+      fprintf p "FAIL"
   end;
   if prec' < prec then fprintf p ")@]" else fprintf p "@]"
 
