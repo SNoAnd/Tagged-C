@@ -39,7 +39,6 @@ Require Import Floats.
 Require Import Values.
 Require Import Tags.
 Require Export Memdata.
-Require Export Memtype.
 
 Require Import List. Import ListNotations.
 
@@ -49,13 +48,20 @@ Local Unset Case Analysis Schemes.
 
 Local Notation "a # b" := (PMap.get b a) (at level 1).
 
-Module Mem (P:Policy) <: MEM P.
+Module Mem (P:Policy).
   Module TLib := TagLib P.
   Import TLib.
   Module MD := Memdata P.
   Export MD.
-  
-Record allocator : Type := mkallocator {
+
+  Inductive permission : Type := Live | Dead | MostlyDead.
+
+  Lemma permission_dec : forall (p1 p2 : permission), {p1 = p2} + {p1 <> p2}.
+  Proof.
+    intros. destruct p1; destruct p2; try (right; intro; discriminate); left; auto.
+  Qed.
+
+  Record allocator : Type := mkallocator {
     t: Type;
     init: t;
 
@@ -141,7 +147,7 @@ Local Hint Resolve perm_valid_block: mem.*)
 Theorem perm_dec:
   forall m ofs p, {perm m ofs p} + {~ perm m ofs p}.
 Proof.
-  unfold perm; intros. repeat decide equality.
+  unfold perm; intros. eapply permission_dec.
 Defined.
 
 Definition range_perm (m: mem) (lo hi: Z)  (p: permission) : Prop :=
@@ -452,22 +458,6 @@ Admitted.
     + destruct H.
 Qed.*)
 
-
-(** [loadv chunk m addr] is similar, but the address and offset are given
-  as a single value [addr], which must be a pointer value. *)
-(* TODO: support both pointer sizes *)
-Definition loadv (chunk: memory_chunk) (m: mem) (addr: val) : option atom :=
-  match addr with
-  | Vint ofs => load chunk m (Int.unsigned ofs)
-  | _ => None
-  end.
-
-Definition loadv_ltags (chunk: memory_chunk) (m: mem) (addr: val) : list tag :=
-  match addr with
-  | Vint ofs => load_ltags chunk m (Int.unsigned ofs)
-  | _ => nil
-  end.
-
 (** [loadbytes m ofs n] reads [n] consecutive bytes starting at
   location [(b, ofs)].  Returns [None] if the accessed locations are
   not readable. *)
@@ -578,15 +568,6 @@ Program Definition store (chunk: memory_chunk) (m: mem) (ofs: Z) (a:atom) (lts:l
                 m.(globals))
   else
     None.
-
-(** [storev chunk m addr v] is similar, but the address and offset are given
-  as a single value [addr], which must be a pointer value. *)
-
-Definition storev (chunk: memory_chunk) (m: mem) (addr: val) (a:atom) (lts:list tag): option mem :=
-  match addr with
-  | Vint ofs => store chunk m (Int.unsigned ofs) a lts
-  | _ => None
-  end.
 
 (** [storebytes m ofs bytes] stores the given list of bytes [bytes]
   starting at location [(b, ofs)].  Returns updated memory state
@@ -1750,23 +1731,6 @@ Admitted.
   simpl. apply Z.divide_trans with 8; auto. exists 2; auto.
   apply storebytes_store. exact SB2.
   simpl. apply Z.divide_add_r. apply Z.divide_trans with 8; auto. exists 2; auto. exists 1; auto.
-Qed.*)
-
-Theorem storev_int64_split:
-  forall m a v lts m',
-  storev Mint64 m a v lts = Some m' -> Archi.ptr64 = false ->
-  exists m1,
-     storev Mint32 m a (if Archi.big_endian then atom_map Val.hiword v else atom_map Val.loword v)  lts = Some m1
-  /\ storev Mint32 m1 (Val.add a (Vint (Int.repr 4))) (if Archi.big_endian then atom_map Val.loword v else atom_map Val.hiword v)  lts = Some m'.
-Admitted.
-(*Proof.
-  intros. destruct a; simpl in H; inv H. rewrite H2.
-  exploit store_int64_split; eauto. intros [m1 [A B]].
-  exists m1; split.
-  exact A.
-  unfold storev, Val.add. rewrite H0.
-  rewrite addressing_int64_split; auto.
-  exploit store_allowed_access_3. eexact H2. intros [P Q]. exact Q.
 Qed.*)
 
 (** ** Properties related to [alloc]. *)

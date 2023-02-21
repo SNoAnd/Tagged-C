@@ -495,10 +495,10 @@ Definition decode_encode_val (v1: val) (chunk1 chunk2: memory_chunk) (v2: val) :
   | Vint n, Many64, Many64 => v2 = Vint n
   | Vint n, (Mint64 | Mfloat32 | Mfloat64 | Many64), _ => v2 = Vundef
   | Vint n, _, _ => True (**r nothing meaningful to say about v2 *)
-  | Vfptr b, (Mint32 | Many32), (Mint32 | Many32) => v2 = if Archi.ptr64 then Vundef else Vfptr b
-  | Vfptr b, Mint64, (Mint64 | Many64) => v2 = if Archi.ptr64 then Vfptr b else Vundef
+  | Vfptr b, (Mint32 | Many32), (Mint32 | Many32) => v2 = Vfptr b
+  | Vfptr b, Mint64, (Mint64 | Many64) => v2 = Vfptr b
   | Vfptr b, Many64, Many64 => v2 = Vfptr b 
-  | Vfptr b, Many64, Mint64 => v2 = if Archi.ptr64 then Vfptr b else Vundef
+  | Vfptr b, Many64, Mint64 => v2 = Vfptr b
   | Vfptr b, _, _ => v2 = Vundef
   | Vlong n, Mint64, Mint64 => v2 = Vlong n
   | Vlong n, Mint64, Mfloat64 => v2 = Vfloat(Float.of_bits n)
@@ -562,14 +562,14 @@ Qed.*)
 
 Lemma decode_encode_val_similar:
   forall v1 chunk1 chunk2 v2,
-  type_of_chunk chunk1 = type_of_chunk chunk2 ->
-  size_chunk chunk1 = size_chunk chunk2 ->
-  decode_encode_val v1 chunk1 chunk2 v2 ->
-  v2 = Val.load_result chunk2 v1.
+    type_of_chunk chunk1 = type_of_chunk chunk2 ->
+    size_chunk chunk1 = size_chunk chunk2 ->
+    decode_encode_val v1 chunk1 chunk2 v2 ->
+    v2 = Val.load_result chunk2 v1.
 Proof.
   intros until v2; intros TY SZ DE.
   destruct chunk1; destruct chunk2; simpl in TY; try discriminate; simpl in SZ; try extlia;
-  destruct v1; auto.
+    destruct v1; auto.
 Qed.
 
 Lemma decode_val_rettype:

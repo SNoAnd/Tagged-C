@@ -73,7 +73,7 @@ Fixpoint constval (ce: composite_env) (a: expr) : res val :=
   | Eval (v,vt) ty =>
       match v with
       | Vint _ | Vfloat _ | Vsingle _ | Vlong _ => OK v
-      | Vptr _ _ | Vundef => Error(msg "illegal constant")
+      | Vfptr _ | Vundef => Error(msg "illegal constant")
       end
   | Evalof l ty =>
       match access_mode ty with
@@ -98,9 +98,9 @@ Fixpoint constval (ce: composite_env) (a: expr) : res val :=
   | Ecast r ty =>
       do v1 <- constval ce r; do_cast v1 (typeof r) ty
   | Esizeof ty1 ty =>
-      OK (Vptrofs (Ptrofs.repr (sizeof ce ty1)))
+      OK (Vofptrsize (sizeof ce ty1))
   | Ealignof ty1 ty =>
-      OK (Vptrofs (Ptrofs.repr (alignof ce ty1)))
+      OK (Vofptrsize (alignof ce ty1))
   | Eseqand r1 r2 ty =>
       do v1 <- constval ce r1;
       do v2 <- constval ce r2;
@@ -128,8 +128,8 @@ Fixpoint constval (ce: composite_env) (a: expr) : res val :=
       end
   | Ecomma r1 r2 ty =>
       do v1 <- constval ce r1; constval ce r2
-  | Evar x ty =>
-      OK(Vptr x Ptrofs.zero)
+  (*| Evar x ty =>
+      OK(Vptr x Ptrofs.zero)*)
   | Ederef r ty =>
       constval ce r
   | Efield l f ty =>
@@ -369,9 +369,9 @@ Definition transl_init_single (ce: composite_env) (ty: type) (a: expr) : res ini
   | Vlong n, Tpointer _ _ => assertion (Archi.ptr64); OK(Init_int64 n)
   | Vsingle f, Tfloat F32 _ => OK(Init_float32 f)
   | Vfloat f, Tfloat F64 _ => OK(Init_float64 f)
-  | Vptr id ofs, Tint I32 sg _ => assertion (negb Archi.ptr64); OK(Init_addrof id ofs)
+(*  | Vptr id ofs, Tint I32 sg _ => assertion (negb Archi.ptr64); OK(Init_addrof id ofs)
   | Vptr id ofs, Tlong _ _ => assertion (Archi.ptr64); OK(Init_addrof id ofs)
-  | Vptr id ofs, Tpointer _ _ => OK(Init_addrof id ofs)
+  | Vptr id ofs, Tpointer _ _ => OK(Init_addrof id ofs)*)
   | Vundef, _ => Error(msg "undefined operation in initializer")
   | _, _ => Error (msg "type mismatch in initializer")
   end.

@@ -43,6 +43,10 @@ Notation "'do' X , Y , Z , W <- A ; B" := (match A with Some (X, Y, Z, W) => B |
   (at level 200, X ident, Y ident, Z ident, W ident, A at level 100, B at level 200)
   : option_monad_scope.
 
+Notation "'dol' X , Y <- A ; B" := (match A with Some (inl (X, Y)) => B | _ => None end)
+  (at level 200, X ident, Y ident, A at level 100, B at level 200)
+  : option_monad_scope.
+
 Notation " 'check' A ; B" := (if A then B else None)
   (at level 200, A at level 100, B at level 200)
   : option_monad_scope.
@@ -84,14 +88,14 @@ Proof.
   intros until ty. destruct a; simpl; congruence.
 Qed.
 
-Definition is_loc (a: expr) : option (block * ptrofs * tag * bitfield * type) :=
+Definition is_loc (a: expr) : option (ptrofs * tag * bitfield * type) :=
   match a with
-  | Eloc b ofs pt bf ty => Some(b, ofs, pt, bf, ty)
+  | Eloc ofs pt bf ty => Some(ofs, pt, bf, ty)
   | _ => None
   end.
 
 Lemma is_loc_inv:
-  forall a b ofs pt bf ty, is_loc a = Some(b, ofs, pt, bf, ty) -> a = Eloc b ofs pt bf ty.
+  forall a ofs pt bf ty, is_loc a = Some(ofs, pt, bf, ty) -> a = Eloc ofs pt bf ty.
 Proof.
   intros until ty. destruct a; simpl; congruence.
 Qed.
@@ -118,15 +122,20 @@ Variable ge: gcenv.
 Definition eventval_of_val (a: atom) (t: typ) : option eventval :=
   let '(v,vt) := a in
   match v with
-  | Vint i => check (typ_eq t AST.Tint); Some (EVint i vt)
+  | Vint i =>
+      match invert_symbol (fst ge) (inr (Ptrofs.of_int i)) with
+      | Some id =>
+          check (typ_eq t AST.Tptr); Some (EVptr_global id (Ptrofs.of_int i) vt)
+      | None => check (typ_eq t AST.Tint); Some (EVint i vt)
+      end
   | Vfloat f => check (typ_eq t AST.Tfloat); Some (EVfloat f vt)
   | Vsingle f => check (typ_eq t AST.Tsingle); Some (EVsingle f vt)
   | Vlong n => check (typ_eq t AST.Tlong); Some (EVlong n vt)
-  | Vptr b ofs =>
-      do id <- Genv.invert_symbol (fst ge) b ofs;
-      check (Genv.public_symbol (fst ge) id);
+  | Vfptr b =>
+      check (Genv.public_symbol (fst ge) b);
       check (typ_eq t AST.Tptr);
-      Some (EVptr_global id ofs vt)
+      do id <- invert_symbol (fst ge) (inl b);
+      Some (EVptr_fun id vt)
   | _ => None
   end.
 
@@ -146,13 +155,23 @@ Definition val_of_eventval (ev: eventval) (t: typ) : option atom :=
   | EVfloat f vt => check (typ_eq t AST.Tfloat); Some (Vfloat f, vt)
   | EVsingle f vt => check (typ_eq t AST.Tsingle); Some (Vsingle f, vt)
   | EVlong n vt => check (typ_eq t AST.Tlong); Some (Vlong n, vt)
-  | EVptr_global id ofs vt =>
+  | EVptr_global id ofs pt =>
       check (Genv.public_symbol (fst ge) id);
       check (typ_eq t AST.Tptr);
-      do bt <- Genv.find_symbol (fst ge) id;
-      let '(b,base,bound,pt) := bt in
-      Some (Vptr b ofs, pt)
-  end.
+      match Genv.find_symbol (fst ge) id with
+      | Some (inr (base,bound,_)) =>
+          Some (Vofptrsize (base + (Ptrofs.signed ofs)), pt)
+      | _ => None
+      end
+| EVptr_fun id pt =>
+    check (Genv.public_symbol (fst ge) id);
+    check (typ_eq t AST.Tptr);
+      match Genv.find_symbol (fst ge) id with
+      | Some (inl (b,_)) =>
+          Some (Vfptr b, pt)
+      | _ => None
+      end    
+end.
 
 Ltac mydestr :=
   match goal with
@@ -175,7 +194,7 @@ Qed.*)
 
 Lemma eventval_of_val_complete:
   forall ev t v, eventval_match (fst ge) ev t v -> eventval_of_val v t = Some ev.
-Proof.
+(*Proof.
   induction 1; simpl.
 - auto.
 - auto.
@@ -183,7 +202,7 @@ Proof.
 - auto.
 - rewrite (Genv.find_invert_symbol _ _ _ H0). simpl in H; rewrite H.
   rewrite dec_eq_true. auto.
-  admit.
+  admit.*)
 Admitted.
 
 Lemma list_eventval_of_val_sound:
@@ -212,47 +231,48 @@ Qed.*)
 
 Lemma val_of_eventval_complete:
   forall ev t v, eventval_match (fst ge) ev t v -> val_of_eventval ev t = Some v.
-Proof.
+Admitted.
+(*Proof.
   induction 1; simpl.
 - auto.
 - auto.
 - auto.
 - auto.
 - simpl in *. rewrite H, H0. rewrite dec_eq_true. auto.  
-Qed.
+Qed.*)
 
 (** Volatile memory accesses. *)
-Definition do_volatile_load (w: world) (chunk: memory_chunk) (m: mem) (b: block) (ofs: ptrofs)
+Definition do_volatile_load (w: world) (chunk: memory_chunk) (m: mem) (ofs: ptrofs)
                              : option (world * trace * atom * (list tag)) :=
-  if (b =? dummy)%positive && Genv.addr_is_volatile (fst ge) ofs then
-    do id <- Genv.invert_symbol (fst ge) b ofs;
+  if Genv.addr_is_volatile (fst ge) ofs then
+    do id <- Genv.invert_symbol (fst ge) (inr ofs);
     match nextworld_vload w chunk id ofs with
     | None => None
     | Some(res, w') =>
         do vres <- val_of_eventval res (type_of_chunk chunk);
         Some(w', Event_vload chunk id ofs res :: nil,
-              atom_map (Val.load_result chunk) vres, load_ltags chunk m b (Ptrofs.unsigned ofs))
+              atom_map (Val.load_result chunk) vres, load_ltags chunk m (Ptrofs.unsigned ofs))
     end
   else
-    do v <- Mem.load chunk m b (Ptrofs.unsigned ofs);
-    let lts := load_ltags chunk m b (Ptrofs.unsigned ofs) in
+    do v <- Mem.load chunk m (Ptrofs.unsigned ofs);
+    let lts := load_ltags chunk m (Ptrofs.unsigned ofs) in
     Some(w, E0, v, lts).
 
-Definition do_volatile_store (w: world) (chunk: memory_chunk) (m: mem) (b: block) (ofs: ptrofs) (v: atom) (lts: list tag)
+Definition do_volatile_store (w: world) (chunk: memory_chunk) (m: mem) (ofs: ptrofs) (v: atom) (lts: list tag)
                              : option (world * trace * mem * atom) :=
-  if (b =? dummy)%positive && Genv.addr_is_volatile (fst ge) ofs then
-    do id <- Genv.invert_symbol (fst ge) b ofs;
+  if Genv.addr_is_volatile (fst ge) ofs then
+    do id <- Genv.invert_symbol (fst ge) (inr ofs);
     do ev <- eventval_of_val (atom_map (Val.load_result chunk) v) (type_of_chunk chunk);
     do w' <- nextworld_vstore w chunk id ofs ev;
     Some(w', Event_vstore chunk id ofs ev :: nil, m, v)
   else
-    do m' <- Mem.store chunk m b (Ptrofs.unsigned ofs) v lts;
+    do m' <- Mem.store chunk m (Ptrofs.unsigned ofs) v lts;
     Some(w, E0, m', v).
 
 Lemma do_volatile_load_sound:
-  forall w chunk m b ofs w' t v lts,
-  do_volatile_load w chunk m b ofs = Some(w', t, v, lts) ->
-  volatile_load (fst ge) chunk m b ofs t v lts /\ possible_trace w t w'.
+  forall w chunk m ofs w' t v lts,
+  do_volatile_load w chunk m ofs = Some(w', t, v, lts) ->
+  volatile_load (fst ge) chunk m ofs t v lts /\ possible_trace w t w'.
 Admitted.
 (*Proof.
   intros until lts. unfold do_volatile_load. mydestr.
@@ -271,9 +291,9 @@ Admitted.
 Qed.*)
 
 Lemma do_volatile_load_complete:
-  forall w chunk m b ofs w' t v lts,
-  volatile_load (fst ge) chunk m b ofs t v lts -> possible_trace w t w' ->
-  do_volatile_load w chunk m b ofs = Some(w', t, v, lts).
+  forall w chunk m ofs w' t v lts,
+  volatile_load (fst ge) chunk m ofs t v lts -> possible_trace w t w' ->
+  do_volatile_load w chunk m ofs = Some(w', t, v, lts).
 Admitted.
 (*Proof.
   unfold do_volatile_load; intros.
@@ -288,9 +308,9 @@ Admitted.
 Qed.*)
 
 Lemma do_volatile_store_sound:
-  forall w chunk m b ofs v w' t m' v' lts,
-  do_volatile_store w chunk m b ofs v lts = Some(w', t, m', v') ->
-  volatile_store (fst ge) chunk m b ofs v lts t m' /\ possible_trace w t w' /\ v' = v.
+  forall w chunk m ofs v w' t m' v' lts,
+  do_volatile_store w chunk m ofs v lts = Some(w', t, m', v') ->
+  volatile_store (fst ge) chunk m ofs v lts t m' /\ possible_trace w t w' /\ v' = v.
 Admitted.
 (*Proof.
   intros until v'. unfold do_volatile_store. mydestr.
@@ -301,9 +321,9 @@ Admitted.
 Qed.*)
 
 Lemma do_volatile_store_complete:
-  forall w chunk m b ofs v w' t m' lts,
-  volatile_store (fst ge) chunk m b ofs v lts t m' -> possible_trace w t w' ->
-  do_volatile_store w chunk m b ofs v lts = Some(w', t, m', v).
+  forall w chunk m ofs v w' t m' lts,
+  volatile_store (fst ge) chunk m ofs v lts t m' -> possible_trace w t w' ->
+  do_volatile_store w chunk m ofs v lts = Some(w', t, m', v).
 Admitted.
 (*Proof.
   unfold do_volatile_store; intros. inv H; simpl in *.
@@ -315,17 +335,17 @@ Qed.*)
 
 (** Accessing locations *)
 
-Definition do_deref_loc (w: world) (ty: type) (m: mem) (b: block) (ofs: ptrofs) (pt:tag) (bf: bitfield) : option (world * trace * atom * list tag) :=
+Definition do_deref_loc (w: world) (ty: type) (m: mem) (ofs: ptrofs) (pt:tag) (bf: bitfield) : option (world * trace * atom * list tag) :=
   match bf with
   | Full =>
     match access_mode ty with
     | By_value chunk =>
       match type_is_volatile ty with
-      | false => do v <- Mem.loadv chunk m (Vptr b ofs); Some(w, E0, v, loadv_ltags chunk m (Vptr b ofs))
-      | true => (do_volatile_load w chunk m b ofs)
+      | false => do v <- Mem.load chunk m (Ptrofs.unsigned ofs); Some(w, E0, v, load_ltags chunk m (Ptrofs.unsigned ofs))
+      | true => (do_volatile_load w chunk m ofs)
       end
-    | By_reference => Some(w, E0, (Vptr b ofs,pt), [])
-    | By_copy => Some(w, E0, (Vptr b ofs,pt),[])
+    | By_reference => Some(w, E0, (Vofptrsize (Ptrofs.unsigned ofs),pt), [])
+    | By_copy => Some(w, E0, (Vofptrsize (Ptrofs.unsigned ofs),pt),[])
     | _ => None
     end
   | Bits sz sg pos width =>
@@ -334,59 +354,64 @@ Definition do_deref_loc (w: world) (ty: type) (m: mem) (b: block) (ofs: ptrofs) 
       check (intsize_eq sz1 sz &&
              signedness_eq sg1 (if zlt width (bitsize_intsize sz) then Signed else sg) &&
              zle 0 pos && zlt 0 width && zle width (bitsize_intsize sz) && zle (pos + width) (bitsize_carrier sz));
-      match Mem.loadv (chunk_for_carrier sz) m (Vptr b ofs) with
+      match Mem.load (chunk_for_carrier sz) m (Ptrofs.unsigned ofs) with
       | Some (Vint c,vt) => Some (w, E0, (Vint (bitfield_extract sz sg pos width c),vt),
-                                   loadv_ltags (chunk_for_carrier sz) m (Vptr b ofs))
+                                   load_ltags (chunk_for_carrier sz) m (Ptrofs.unsigned ofs))
       | _ => None
       end
     | _ => None
     end
   end.
 
-Definition assign_copy_ok (ty: type) (b: block) (ofs: ptrofs) (b': block) (ofs': ptrofs) : Prop :=
+Definition assign_copy_ok (ty: type) (ofs: ptrofs) (ofs': ptrofs) : Prop :=
   (alignof_blockcopy (snd ge) ty | Ptrofs.unsigned ofs') /\ (alignof_blockcopy (snd ge) ty | Ptrofs.unsigned ofs) /\
-  (b' <> b \/ Ptrofs.unsigned ofs' = Ptrofs.unsigned ofs
-           \/ Ptrofs.unsigned ofs' + sizeof (snd ge) ty <= Ptrofs.unsigned ofs
-           \/ Ptrofs.unsigned ofs + sizeof (snd ge) ty <= Ptrofs.unsigned ofs').
+  (Ptrofs.unsigned ofs' = Ptrofs.unsigned ofs
+   \/ Ptrofs.unsigned ofs' + sizeof (snd ge) ty <= Ptrofs.unsigned ofs
+   \/ Ptrofs.unsigned ofs + sizeof (snd ge) ty <= Ptrofs.unsigned ofs').
 
 Remark check_assign_copy:
-  forall (ty: type) (b: block) (ofs: ptrofs) (b': block) (ofs': ptrofs),
-  { assign_copy_ok ty b ofs b' ofs' } + {~ assign_copy_ok ty b ofs b' ofs' }.
+  forall (ty: type) (ofs ofs': ptrofs),
+  { assign_copy_ok ty ofs ofs' } + {~ assign_copy_ok ty ofs ofs' }.
 Proof with try (right; intuition lia).
   intros. unfold assign_copy_ok.
   destruct (Zdivide_dec (alignof_blockcopy (snd ge) ty) (Ptrofs.unsigned ofs')); auto...
   destruct (Zdivide_dec (alignof_blockcopy (snd ge) ty) (Ptrofs.unsigned ofs)); auto...
-  assert (Y: {b' <> b \/
-              Ptrofs.unsigned ofs' = Ptrofs.unsigned ofs \/
+  assert (Y:{ Ptrofs.unsigned ofs' = Ptrofs.unsigned ofs \/
               Ptrofs.unsigned ofs' + sizeof (snd ge) ty <= Ptrofs.unsigned ofs \/
               Ptrofs.unsigned ofs + sizeof (snd ge) ty <= Ptrofs.unsigned ofs'} +
-           {~(b' <> b \/
-              Ptrofs.unsigned ofs' = Ptrofs.unsigned ofs \/
-              Ptrofs.unsigned ofs' + sizeof (snd ge) ty <= Ptrofs.unsigned ofs \/
-              Ptrofs.unsigned ofs + sizeof (snd ge) ty <= Ptrofs.unsigned ofs')}).
-  destruct (eq_block b' b); auto.
-  destruct (zeq (Ptrofs.unsigned ofs') (Ptrofs.unsigned ofs)); auto.
-  destruct (zle (Ptrofs.unsigned ofs' + sizeof (snd ge) ty) (Ptrofs.unsigned ofs)); auto.
-  destruct (zle (Ptrofs.unsigned ofs + sizeof (snd ge) ty) (Ptrofs.unsigned ofs')); auto.
-  right; intuition lia.
+           {~ (Ptrofs.unsigned ofs' = Ptrofs.unsigned ofs \/
+                 Ptrofs.unsigned ofs' + sizeof (snd ge) ty <= Ptrofs.unsigned ofs \/
+                 Ptrofs.unsigned ofs + sizeof (snd ge) ty <= Ptrofs.unsigned ofs')}).
+  { destruct (zeq (Ptrofs.unsigned ofs') (Ptrofs.unsigned ofs)); auto.
+    destruct (zle (Ptrofs.unsigned ofs' + sizeof (snd ge) ty) (Ptrofs.unsigned ofs)); auto.
+    destruct (zle (Ptrofs.unsigned ofs + sizeof (snd ge) ty) (Ptrofs.unsigned ofs')); auto.
+    right. intro. destruct H. contradiction. destruct H. contradiction. contradiction. }
   destruct Y... left; intuition lia.
 Defined.
 
-Definition do_assign_loc (w: world) (ty: type) (m: mem) (b: block) (ofs: ptrofs) (pt:tag) (bf: bitfield) (v: atom) (lts: list tag) : option (world * trace * mem * atom) :=
+Definition do_assign_loc (w: world) (ty: type) (m: mem) (ofs: ptrofs) (pt:tag) (bf: bitfield) (v: atom) (lts: list tag) : option (world * trace * mem * atom) :=
   match bf with
   | Full =>
     match access_mode ty with
     | By_value chunk =>
         match type_is_volatile ty with
-        | false => do m' <- Mem.storev chunk m (Vptr b ofs) v lts; Some(w, E0, m', v)
-        | true => do_volatile_store w chunk m b ofs v lts
+        | false => do m' <- Mem.store chunk m (Ptrofs.unsigned ofs) v lts; Some(w, E0, m', v)
+        | true => do_volatile_store w chunk m ofs v lts
         end
     | By_copy =>
         match v with
-        | (Vptr b' ofs',vt) =>
-            if check_assign_copy ty b ofs b' ofs' then
-              do bytes <- Mem.loadbytes m b' (Ptrofs.unsigned ofs') (sizeof (snd ge) ty);
-              do m' <- Mem.storebytes m b (Ptrofs.unsigned ofs) bytes lts;
+        | (Vint ofs',vt) =>
+            let ofs'' := (Ptrofs.of_int ofs') in
+            if check_assign_copy ty ofs ofs'' then
+              do bytes <- Mem.loadbytes m (Ptrofs.unsigned ofs'') (sizeof (snd ge) ty);
+              do m' <- Mem.storebytes m (Ptrofs.unsigned ofs) bytes lts;
+              Some(w, E0, m', v)
+            else None
+        | (Vlong ofs',vt) =>
+            let ofs'' := (Ptrofs.of_int64 ofs') in
+            if check_assign_copy ty ofs ofs'' then
+              do bytes <- Mem.loadbytes m (Ptrofs.unsigned ofs'') (sizeof (snd ge) ty);
+              do m' <- Mem.storebytes m (Ptrofs.unsigned ofs) bytes lts;
               Some(w, E0, m', v)
             else None
         | _ => None
@@ -395,31 +420,36 @@ Definition do_assign_loc (w: world) (ty: type) (m: mem) (b: block) (ofs: ptrofs)
     end
   | Bits sz sg pos width =>
     check (zle 0 pos && zlt 0 width && zle width (bitsize_intsize sz) && zle (pos + width) (bitsize_carrier sz));
-    match ty, v, Mem.loadv (chunk_for_carrier sz) m (Vptr b ofs) with
+    match ty, v, Mem.load (chunk_for_carrier sz) m (Ptrofs.unsigned ofs) with
     | Tint sz1 sg1 _, (Vint n,vt), Some (Vint c,ovt) =>
         check (intsize_eq sz1 sz &&
                signedness_eq sg1 (if zlt width (bitsize_intsize sz) then Signed else sg));
-        do m' <- Mem.storev (chunk_for_carrier sz) m (Vptr b ofs)
-                            (Vint ((Int.bitfield_insert (first_bit sz pos width) width c n)),vt) lts;
+        do m' <- Mem.store (chunk_for_carrier sz) m (Ptrofs.unsigned ofs)
+                             (Vint ((Int.bitfield_insert (first_bit sz pos width) width c n)),vt) lts;
         Some (w, E0, m', (Vint (bitfield_normalize sz sg width n),vt))
     | _, _, _ => None
     end
   end.
 
 Lemma do_deref_loc_sound:
-  forall w ty m b ofs pt bf w' t v vt lts,
-  do_deref_loc w ty m b ofs pt bf = Some(w', t, (v,vt), lts) ->
-  deref_loc ge ty m b ofs pt bf t (v,vt) lts /\ possible_trace w t w'.
+  forall w ty m ofs pt bf w' t v vt lts,
+  do_deref_loc w ty m ofs pt bf = Some(w', t, (v,vt), lts) ->
+  deref_loc ge ty m ofs pt bf t (v,vt) lts /\ possible_trace w t w'.
 Proof.
   unfold do_deref_loc; intros until lts.
   destruct bf.
-- destruct (access_mode ty) eqn:?; mydestr.
-  intros. exploit do_volatile_load_sound; eauto.
-  destruct (do_volatile_load w m0 m b ofs) eqn:?; simpl in H; inv H. eauto.
-  intuition. eapply deref_loc_volatile; eauto.
-  split. eapply deref_loc_value; eauto. constructor.
-  split. eapply deref_loc_reference; eauto. constructor.
-  split. eapply deref_loc_copy; eauto. constructor.
+  - destruct (access_mode ty) eqn:?; mydestr.
+    + intros. exploit do_volatile_load_sound; eauto.
+      destruct (do_volatile_load w m0 m ofs) eqn:?; simpl in H; inv H. eauto.
+      intuition. eapply deref_loc_volatile; eauto.
+    + split.
+      * eapply deref_loc_value; eauto;
+        (destruct Archi.ptr64;
+             [rewrite Int64.unsigned_repr in *; auto
+             | rewrite Int.unsigned_repr in *; auto]).
+      * constructor.
+  + split. eapply deref_loc_reference; eauto. constructor.
+  + split. eapply deref_loc_copy; eauto. constructor.
 - mydestr. destruct ty; mydestr. InvBooleans. subst i. destruct v0; mydestr.
   split.
   + eapply deref_loc_bitfield; eauto. econstructor; eauto.
@@ -427,13 +457,13 @@ Proof.
 Qed.
 
 Lemma do_deref_loc_complete:
-  forall w ty m b ofs pt bf w' t v vt lts,
-    deref_loc ge ty m b ofs pt bf t (v,vt) lts -> possible_trace w t w' ->
-    do_deref_loc w ty m b ofs pt bf = Some(w', t, (v,vt), lts).
+  forall w ty m ofs pt bf w' t v vt lts,
+    deref_loc ge ty m ofs pt bf t (v,vt) lts -> possible_trace w t w' ->
+    do_deref_loc w ty m ofs pt bf = Some(w', t, (v,vt), lts).
 Proof.
   unfold do_deref_loc; intros. inv H.
-  - inv H0. rewrite H3; rewrite H4. unfold loadv. rewrite H7; auto.
-  - rewrite H3; rewrite H6. apply (do_volatile_load_complete w _ _ _ _ w') in H8.
+  - inv H0. rewrite H3; rewrite H4. rewrite H7; auto.
+  - rewrite H3; rewrite H6. apply (do_volatile_load_complete w _ _ _ w') in H8.
     rewrite H8. simpl. auto. apply H0.
   - inv H0. rewrite H6. auto.
   - inv H0. rewrite H6. auto.
@@ -443,38 +473,49 @@ Proof.
 Qed.
 
 Lemma do_assign_loc_sound:
-  forall w ty m b ofs pt bf v w' t m' v' lts,
-  do_assign_loc w ty m b ofs pt bf v lts = Some(w', t, m', v') ->
-  assign_loc ge ty m b ofs pt bf v t m' v' lts /\ possible_trace w t w'.
-Proof.
+  forall w ty m ofs pt bf v w' t m' v' lts,
+  do_assign_loc w ty m ofs pt bf v lts = Some(w', t, m', v') ->
+  assign_loc ge ty m ofs pt bf v t m' v' lts /\ possible_trace w t w'.
+Admitted. (* TODO: point int/long stuff *)
+(*Proof.
   unfold do_assign_loc; intros until lts.
   destruct bf.
 -  destruct (access_mode ty) eqn:?; mydestr.
   intros. exploit do_volatile_store_sound; eauto. intros (P & Q & R). subst v'. intuition. eapply assign_loc_volatile; eauto.
   split. destruct v'. eapply assign_loc_value; eauto. constructor.
   destruct v; mydestr. destruct a as [P [Q R]].
-  split. eapply assign_loc_copy; eauto. constructor.
+  split.
+  + replace (Vint i) with (Vint (Ptrofs.to_int (Ptrofs.of_int i))).
+    eapply assign_loc_copy; eauto.
+    rewrite Ptrofs.to_int_of_int; auto.
+  + constructor.
+  + replace (Vlong i) with (Vlong (Ptrofs.to_int64 (Ptrofs.of_int64 i))).
+    eapply assign_loc_copy; eauto.
+    rewrite Ptrofs.to_int_of_int; auto.
+    constructor.
 - mydestr. InvBooleans.
   destruct ty; mydestr. destruct v; mydestr. destruct v; mydestr. InvBooleans. subst s i.
   split. eapply assign_loc_bitfield; eauto. econstructor; eauto. constructor.
-Qed.
+Qed.*)
 
 Lemma do_assign_loc_complete:
-  forall w ty m b ofs pt bf v w' t m' v' lts,
-  assign_loc ge ty m b ofs pt bf v t m' v' lts -> possible_trace w t w' ->
-  do_assign_loc w ty m b ofs pt bf v lts = Some(w', t, m', v').
-Proof.
+  forall w ty m ofs pt bf v w' t m' v' lts,
+  assign_loc ge ty m ofs pt bf v t m' v' lts -> possible_trace w t w' ->
+  do_assign_loc w ty m ofs pt bf v lts = Some(w', t, m', v').
+(* TODO: same *)
+Admitted.
+(*Proof.
   unfold do_assign_loc; intros. inv H.
 - inv H0. rewrite H1; rewrite H2; rewrite H3; auto.
 - rewrite H1; rewrite H2. apply do_volatile_store_complete; auto.
-- rewrite H1. destruct (check_assign_copy ty b ofs b' ofs').
+- rewrite H1. destruct (check_assign_copy ty ofs ofs').
   inv H0. rewrite H5; rewrite H6; auto.
   elim n. red; tauto.
 - inv H0. inv H1. 
   unfold proj_sumbool; rewrite ! zle_true, ! zlt_true by lia. cbn.
   rewrite ! dec_eq_true.
   cbn in H12; rewrite H12. cbn in H17; rewrite H17. auto.
-Qed.
+Qed.*)
 
 (** External calls *)
 
@@ -509,7 +550,8 @@ Hypothesis do_inline_assembly_complete:
 Definition do_ef_volatile_load (chunk: memory_chunk)
        (w: world) (vargs: list val) (m: mem) : option (world * trace * atom * mem) :=
   match vargs with
-  | Vptr b ofs :: nil => do w',t,v,lts <- do_volatile_load w chunk m b ofs; Some(w',t,v,m)
+  | Vint ofs :: nil => do w',t,v,lts <- do_volatile_load w chunk m (Ptrofs.of_int ofs); Some(w',t,v,m)
+  | Vlong ofs :: nil => do w',t,v,lts <- do_volatile_load w chunk m (Ptrofs.of_int64 ofs); Some(w',t,v,m)
   | _ => None
   end.
 
@@ -814,6 +856,14 @@ Notation "'do' X , Y , Z , W <- A ; B" := (match A with Some (X, Y, Z, W) => B |
   (at level 200, X ident, Y ident, Z ident, W ident, A at level 100, B at level 200)
   : reducts_monad_scope.
 
+Notation "'dor' X , Y , Z <- A ; B" := (match A with Some (inr (X, Y, Z)) => B | _ => stuck end)
+  (at level 200, X ident, Y ident, Z ident, A at level 100, B at level 200)
+  : reducts_monad_scope.
+
+Notation "'dol' X , Y <- A ; B" := (match A with Some (inl (X, Y)) => B | _ => stuck end)
+  (at level 200, X ident, Y ident, A at level 100, B at level 200)
+  : reducts_monad_scope.
+
 Notation " 'check' A ; B" := (if A then B else stuck)
   (at level 200, A at level 100, B at level 200)
   : reducts_monad_scope.
@@ -840,24 +890,30 @@ Local Open Scope tag_monad_scope.
 
 Fixpoint step_expr (k: kind) (pct: tag) (a: expr) (m: mem): reducts expr :=
   match k, a with
-  | LV, Eloc b ofs pt bf ty =>
-      nil
+  | LV, Eloc ofs pt bf ty => []
+  | LV, Efloc b pt ty => []
   | LV, Evar x ty =>
       match e!x with
       | Some(base, bound, t, ty') =>
           check type_eq ty ty';
           trule t' <- VarT pct t;
-          topred (Lred "red_var_local" (Eloc dummy (Ptrofs.repr base) t' Full ty) m)
+          topred (Lred "red_var_local" (Eloc (Ptrofs.repr base) t' Full ty) m)
       | None =>
-          do bt <- Genv.find_symbol (fst ge) x;
-          let '(b, base, bound, t) := bt in
-          trule t' <- VarT pct t;
-          topred (Lred "red_var_global" (Eloc b (Ptrofs.repr base) t' Full ty) m)
+          match Genv.find_symbol (fst ge) x with
+          | Some (inr (base, bound, t)) =>
+              trule t' <- VarT pct t;
+              topred (Lred "red_var_global" (Eloc (Ptrofs.repr base) t' Full ty) m)
+          | Some (inl (b, t)) =>
+              topred (Lred "red_var_func" (Efloc b t ty) m)
+          | None => stuck
+          end
       end
   | LV, Ederef r ty =>
       match is_val r with
-      | Some (Vptr b ofs, t, ty') =>
-          topred (Lred "red_deref" (Eloc b ofs t Full ty) m)
+      | Some (Vint ofs, t, ty') =>
+          topred (Lred "red_deref" (Eloc (Ptrofs.of_int ofs) t Full ty) m)    
+      | Some (Vlong ofs, t, ty') =>
+          topred (Lred "red_deref" (Eloc (Ptrofs.of_int64 ofs) t Full ty) m)
       | Some _ =>
           stuck
       | None =>
@@ -865,19 +921,35 @@ Fixpoint step_expr (k: kind) (pct: tag) (a: expr) (m: mem): reducts expr :=
       end
   | LV, Efield r f ty =>
       match is_val r with
-      | Some (Vptr b ofs, t, ty') =>
+      | Some (Vint ofs, t, ty') =>
           match ty' with
           | Tstruct id _ =>
               do co <- (snd ge)!id;
               match field_offset (snd ge) f (co_members co) with
               | Error _ => stuck
-              | OK (delta, bf) => topred (Lred "red_field_struct" (Eloc b (Ptrofs.add ofs (Ptrofs.repr delta)) t bf ty) m)
+              | OK (delta, bf) => topred (Lred "red_field_struct" (Eloc (Ptrofs.add (Ptrofs.of_int ofs) (Ptrofs.repr delta)) t bf ty) m)
               end
           | Tunion id _ =>
               do co <- (snd ge)!id;
               match union_field_offset (snd ge) f (co_members co) with
               | Error _ => stuck
-              | OK (delta, bf) => topred (Lred "red_field_union" (Eloc b (Ptrofs.add ofs (Ptrofs.repr delta)) t bf ty) m)
+              | OK (delta, bf) => topred (Lred "red_field_union" (Eloc (Ptrofs.add (Ptrofs.of_int ofs) (Ptrofs.repr delta)) t bf ty) m)
+              end
+          | _ => stuck
+          end
+      | Some (Vlong ofs, t, ty') =>
+          match ty' with
+          | Tstruct id _ =>
+              do co <- (snd ge)!id;
+              match field_offset (snd ge) f (co_members co) with
+              | Error _ => stuck
+              | OK (delta, bf) => topred (Lred "red_field_struct" (Eloc (Ptrofs.add (Ptrofs.of_int64 ofs) (Ptrofs.repr delta)) t bf ty) m)
+              end
+          | Tunion id _ =>
+              do co <- (snd ge)!id;
+              match union_field_offset (snd ge) f (co_members co) with
+              | Error _ => stuck
+              | OK (delta, bf) => topred (Lred "red_field_union" (Eloc (Ptrofs.add (Ptrofs.of_int64 ofs) (Ptrofs.repr delta)) t bf ty) m)
               end
           | _ => stuck
           end
@@ -886,23 +958,27 @@ Fixpoint step_expr (k: kind) (pct: tag) (a: expr) (m: mem): reducts expr :=
       | None =>
           incontext (fun x => Efield x f ty) (step_expr RV pct r m)
       end
-  | RV, Eval v ty =>
-      nil
+  | RV, Eval v ty => []
   | RV, Evalof l ty =>
       match is_loc l with
-      | Some(b, ofs, pt, bf, ty') =>
+      | Some (ofs, pt, bf, ty') =>
           check type_eq ty ty';
-          do w',t,vvt,lts <- do_deref_loc w ty m b ofs pt bf;
+          do w',t,vvt,lts <- do_deref_loc w ty m ofs pt bf;
           let (v,vt) := vvt in
           trule vt' <- LoadT pct pt vt lts;
           topred (Rred "red_rvalof" pct (Eval (v,vt) ty) m t)
       | None =>
-          incontext (fun x => Evalof x ty) (step_expr LV pct l m)
+          match l with
+          | Efloc b pt ty =>
+              topred (Rred "red_rvalof" pct (Eval (Vfptr b, pt) ty) m E0)
+          | _ =>
+              incontext (fun x => Evalof x ty) (step_expr LV pct l m)
+          end
       end
   | RV, Eaddrof l ty =>
       match is_loc l with
-      | Some(b, ofs, t, bf, ty') =>
-          match bf with Full => topred (Rred "red_addrof" pct (Eval (Vptr b ofs, t) ty) m E0)
+      | Some (ofs, t, bf, ty') =>
+          match bf with Full => topred (Rred "red_addrof" pct (Eval (Vofptrsize (Ptrofs.unsigned ofs), t) ty) m E0)
                       | Bits _ _ _ _ => stuck
           end
       | None => incontext (fun x => Eaddrof x ty) (step_expr LV pct l m)
@@ -959,18 +1035,18 @@ Fixpoint step_expr (k: kind) (pct: tag) (a: expr) (m: mem): reducts expr :=
           incontext (fun x => Econdition x r2 r3 ty) (step_expr RV pct r1 m)
       end
   | RV, Esizeof ty' ty =>
-      topred (Rred "red_sizeof" pct (Eval (Vptrofs (Ptrofs.repr (sizeof (snd ge) ty')), def_tag) ty) m E0)
+      topred (Rred "red_sizeof" pct (Eval (Vofptrsize (sizeof (snd ge) ty'), def_tag) ty) m E0)
   | RV, Ealignof ty' ty =>
-      topred (Rred "red_alignof" pct (Eval (Vptrofs (Ptrofs.repr (alignof (snd ge) ty')), def_tag) ty) m E0)
+      topred (Rred "red_alignof" pct (Eval (Vofptrsize (alignof (snd ge) ty'), def_tag) ty) m E0)
   | RV, Eassign l1 r2 ty =>
       match is_loc l1, is_val r2 with
-      | Some(b, ofs, pt1, bf, ty1), Some(v2, vt2, ty2) =>
+      | Some(ofs, pt1, bf, ty1), Some(v2, vt2, ty2) =>
           check type_eq ty1 ty;
           do v <- sem_cast v2 ty2 ty1 m;
-          do w',t,vvt,lts <- do_deref_loc w ty1 m b ofs pt1 bf;
+          do w',t,vvt,lts <- do_deref_loc w ty1 m ofs pt1 bf;
           let (_,vt1) := vvt in
           trule pct',vt',lts' <- StoreT pct pt1 vt1 vt2 lts;
-          do w'',t,m',vvt' <- do_assign_loc w' ty1 m b ofs pt1 bf (v,vt') lts';
+          do w'',t,m',vvt' <- do_assign_loc w' ty1 m ofs pt1 bf (v,vt') lts';
           topred (Rred "red_assign" pct (Eval vvt' ty) m' t)
       | _, _ =>
          incontext2 (fun x => Eassign x r2 ty) (step_expr LV pct l1 m)
@@ -978,12 +1054,12 @@ Fixpoint step_expr (k: kind) (pct: tag) (a: expr) (m: mem): reducts expr :=
       end
   | RV, Eassignop op l1 r2 tyres ty =>
       match is_loc l1, is_val r2 with
-      | Some(b, ofs, pt1, bf, ty1), Some(v2, vt2, ty2) =>
+      | Some (ofs, pt1, bf, ty1), Some(v2, vt2, ty2) =>
           check type_eq ty1 ty;
-          do w',t,vvt,lts <- do_deref_loc w ty m b ofs pt1 bf; 
+          do w',t,vvt,lts <- do_deref_loc w ty m ofs pt1 bf; 
           let (v1,vt1) := vvt in
           trule vt' <- LoadT pct pt1 vt1 lts;
-          let r' := Eassign (Eloc b ofs pt1 bf ty1)
+          let r' := Eassign (Eloc ofs pt1 bf ty1)
                            (Ebinop op (Eval (v1,vt') ty1) (Eval (v2,vt2) ty2) tyres) ty1 in
           topred (Rred "red_assignop" pct r' m t)
       | _, _ =>
@@ -992,14 +1068,14 @@ Fixpoint step_expr (k: kind) (pct: tag) (a: expr) (m: mem): reducts expr :=
       end
   | RV, Epostincr id l ty =>
       match is_loc l with
-      | Some(b, ofs, pt1, bf, ty1) =>
+      | Some(ofs, pt1, bf, ty1) =>
           check type_eq ty1 ty;
-          do w',t, vvt, lts <- do_deref_loc w ty m b ofs pt1 bf;
+          do w',t, vvt, lts <- do_deref_loc w ty m ofs pt1 bf;
           let (v1,vt1) := vvt in
           trule vt' <- LoadT pct pt1 vt1 lts;
           let op := match id with Incr => Oadd | Decr => Osub end in
           let r' :=
-            Ecomma (Eassign (Eloc b ofs pt1 bf ty)
+            Ecomma (Eassign (Eloc ofs pt1 bf ty)
                            (Ebinop op (Eval (v1,vt') ty) (Eval (Vint Int.one,def_tag) type_int32s) (incrdecr_type ty))
                            ty)
                    (Eval (v1,vt') ty) ty in
@@ -1065,8 +1141,8 @@ with step_exprlist (pct: tag) (rl: exprlist) (m: mem): reducts exprlist :=
 Inductive imm_safe_t: kind -> expr -> mem -> Prop :=
   | imm_safe_t_val: forall v ty m,
       imm_safe_t RV (Eval v ty) m
-  | imm_safe_t_loc: forall b ofs pt ty bf m,
-      imm_safe_t LV (Eloc b ofs pt bf ty) m
+  | imm_safe_t_loc: forall ofs pt ty bf m,
+      imm_safe_t LV (Eloc ofs pt bf ty) m
   | imm_safe_t_lred: forall to C l m l' m',
       lred ge e l m l' m' ->
       context LV to C ->
@@ -1100,25 +1176,25 @@ Fixpoint exprlist_all_values (rl: exprlist) : Prop :=
 
 Definition invert_expr_prop (a: expr) (m: mem) : Prop :=
   match a with
-  | Eloc b ofs pt bf ty => False
+  | Eloc ofs pt bf ty => False
   | Evar x ty =>
       exists base bound pt,
-      e!x = Some(base, bound, pt, ty)
-      \/ (exists b, (e!x = None /\ Genv.find_symbol (fst ge) x = Some (b,base,bound,pt)))
+      e!x = Some (base, bound, pt, ty)
+      \/ (e!x = None /\ Genv.find_symbol (fst ge) x = Some (inr (base,bound,pt)))
   | Ederef (Eval v ty1) ty =>
-      exists b ofs pt, v = (Vptr b ofs,pt)
-  | Eaddrof (Eloc b ofs pt bf ty1) ty =>
+      (exists ofs pt, v = (Vint ofs,pt)) \/ (exists ofs pt, v = (Vint ofs,pt))
+  | Eaddrof (Eloc ofs pt bf ty1) ty =>
       bf = Full
   | Efield (Eval v ty1) f ty =>
-      exists b ofs t, v = (Vptr b ofs,t) /\
+      (exists ofs pt, v = (Vint ofs,pt)) \/ (exists ofs pt, v = (Vint ofs,pt)) /\
       match ty1 with
       | Tstruct id _ => exists co delta bf, (snd ge)!id = Some co /\ field_offset (snd ge) f (co_members co) = OK (delta, bf)
       | Tunion id _ => exists co delta bf, (snd ge)!id = Some co /\ union_field_offset (snd ge) f (co_members co) = OK (delta, bf)
       | _ => False
       end
   | Eval v ty => False
-  | Evalof (Eloc b ofs pg bf ty') ty =>
-      ty' = ty /\ exists t v w' pt lts, deref_loc ge ty m b ofs pt bf t v lts /\ possible_trace w t w'
+  | Evalof (Eloc ofs pg bf ty') ty =>
+      ty' = ty /\ exists t v w' pt lts, deref_loc ge ty m ofs pt bf t v lts /\ possible_trace w t w'
   | Eunop op (Eval (v1,vt1) ty1) ty =>
       exists v, sem_unary_operation op v1 ty1 m = Some v
   | Ebinop op (Eval (v1,vt1) ty1) (Eval (v2,vt2) ty2) ty =>
@@ -1131,15 +1207,15 @@ Definition invert_expr_prop (a: expr) (m: mem) : Prop :=
       exists b, bool_val v1 ty1 m = Some b
   | Econdition (Eval (v1,vt1) ty1) r1 r2 ty =>
       exists b, bool_val v1 ty1 m = Some b
-  | Eassign (Eloc b ofs pt bf ty1) (Eval (v2,vt2) ty2) ty =>
+  | Eassign (Eloc ofs pt bf ty1) (Eval (v2,vt2) ty2) ty =>
       exists v m' v' t w' lts,
-      ty = ty1 /\ sem_cast v2 ty2 ty1 m = Some v /\ assign_loc ge ty1 m b ofs pt bf (v,vt2) t m' v' lts /\ possible_trace w t w'
-  | Eassignop op (Eloc b ofs pt bf ty1) (Eval (v2,vt2) ty2) tyres ty =>
+      ty = ty1 /\ sem_cast v2 ty2 ty1 m = Some v /\ assign_loc ge ty1 m ofs pt bf (v,vt2) t m' v' lts /\ possible_trace w t w'
+  | Eassignop op (Eloc ofs pt bf ty1) (Eval (v2,vt2) ty2) tyres ty =>
       exists t v1 w' lts,
-      ty = ty1 /\ deref_loc ge ty1 m b ofs pt bf t v1 lts /\ possible_trace w t w'
-  | Epostincr id (Eloc b ofs pt bf ty1) ty =>
+      ty = ty1 /\ deref_loc ge ty1 m ofs pt bf t v1 lts /\ possible_trace w t w'
+  | Epostincr id (Eloc ofs pt bf ty1) ty =>
       exists t v1 w' lts,
-      ty = ty1 /\ deref_loc ge ty m b ofs pt bf t v1 lts /\ possible_trace w t w'
+      ty = ty1 /\ deref_loc ge ty m ofs pt bf t v1 lts /\ possible_trace w t w'
   | Ecomma (Eval v ty1) r2 ty =>
       typeof r2 = ty
   | Eparen (Eval (v1,vt1) ty1) tycast ty =>
@@ -1246,7 +1322,7 @@ Lemma imm_safe_t_inv:
   forall k a m,
   imm_safe_t k a m ->
   match a with
-  | Eloc _ _ _ _ _ => True
+  | Eloc _ _ _ _ => True
   | Eval _ _ => True
   | _ => invert_expr_prop a m
   end.
@@ -1374,7 +1450,7 @@ Qed.*)
 Lemma not_invert_ok:
   forall k pct a m,
   match a with
-  | Eloc _ _ _ _ _ => False
+  | Eloc _ _ _ _ => False
   | Eval _ _ => False
   | _ => invert_expr_prop a m -> False
   end ->
@@ -2082,7 +2158,7 @@ Function sem_bind_parameters (w: world) (e: env) (m: mem) (l: list (ident * type
       match e!id with
          | Some (base, bound, pt, ty') =>
              check (type_eq ty ty');
-             do w', t, m1, v' <- do_assign_loc w ty m dummy (Ptrofs.repr base) pt Full (v1,vt1) [];
+             do w', t, m1, v' <- do_assign_loc w ty m (Ptrofs.repr base) pt Full (v1,vt1) [];
              match t with nil => sem_bind_parameters w e m1 params lv | _ => None end
         | None => None
       end
@@ -2330,7 +2406,8 @@ Proof.
   destruct (H0 a0 _ _ _ H10) as [[A B] | A]. subst. inv H9; auto. auto.
   destruct (H0 a0 _ _ _ H10) as [[A B] | A]. subst. inv H9; auto. auto.
   destruct (H0 a0 _ _ _ H9) as [[A B] | A]. subst. destruct a0; auto. elim H10. constructor. auto.
-Qed.
+Admitted. (*TODO: failstop case *)
+(*Qed.*)
 
 Theorem do_step_complete:
   forall w S t S' w',
@@ -2411,8 +2488,8 @@ Local Open Scope option_monad_scope.
 Definition do_initial_state (p: program): option (Genv.t (Ctypes.fundef function) type * Csem.state) :=
   let ge := globalenv p in
   do m0 <- Genv.init_mem p;
-  do b,base,bound,pt <- Genv.find_symbol ge p.(prog_main);
-  do f <- Genv.find_funct_ptr ge b Ptrofs.zero;
+  dol b, pt <- Genv.find_symbol ge p.(prog_main);
+  do f <- Genv.find_funct_ptr ge b;
   check (type_eq (type_of_fundef f) (Tfunction Tnil type_int32s cc_default));
   Some (ge, Callstate f def_tag nil Kstop m0).
 

@@ -21,6 +21,7 @@ open! Ctypes
 open Maps
 open Tags
 open PrintCsyntax
+open Datatypes
 
 (* Configuration *)
 
@@ -58,6 +59,7 @@ let print_eventval p = function
   | Events.EVsingle (f,_) -> fprintf p "%.15F" (camlfloat_of_coqfloat32 f)
   | Events.EVlong (n,_) -> fprintf p "%LdLL" (camlint64_of_coqint n)
   | Events.EVptr_global(id, ofs,_) -> fprintf p "&%a" print_id_ofs (id, ofs)
+  | Events.EVptr_fun(id,_) -> fprintf p "&%s" (extern_atom id)
 
 let print_eventval_list p = function
   | [] -> ()
@@ -112,9 +114,9 @@ let invert_local_variable e b ofs =
     e None
 
 let print_pointer ge e p (b, ofs) =
-  if P.eq b Mem.dummy
+  if P.eq b P.one
   then fprintf p "M,%ld" (camlint_of_coqint ofs)
-  else fprintf p "M,%ld" (camlint_of_coqint ofs)
+  else fprintf p "%ld,%ld" (P.to_int32 b) (camlint_of_coqint ofs)
 (*  match invert_local_variable e b ofs with
   | Some id ->
     (match Maps.PTree.get id e with
@@ -144,11 +146,11 @@ let print_mem p m =
   let rec print_at i max =
     if i <= max then
      (fprintf p " %ld " (Int32.of_int i);
-      (match (PMap.get Mem.dummy (Mem.mem_access m)) (coqint_of_camlint (Int32.of_int i)) with
-      | Memtype.Live -> fprintf p "L"
-      | Memtype.Dead -> fprintf p "D"
-      | Memtype.MostlyDead -> fprintf p "/");
-      let (mv,t) = (ZMap.get (coqint_of_camlint (Int32.of_int i)) (PMap.get Mem.dummy (Mem.mem_contents m))) in
+      (match (Mem.mem_access m) (coqint_of_camlint (Int32.of_int i)) with
+      | Mem.Live -> fprintf p "L"
+      | Mem.Dead -> fprintf p "D"
+      | Mem.MostlyDead -> fprintf p "/");
+      let (mv,t) = (ZMap.get (coqint_of_camlint (Int32.of_int i)) (Mem.mem_contents m)) in
       match mv with
       | Mem.MD.Undef -> fprintf p " U |"; print_at (i+1) max
       | Mem.MD.Byte (b,t) -> fprintf p " %lu |" (camlint_of_coqint b); print_at (i+1) max
@@ -305,21 +307,21 @@ module StateMap =
 
 (* Extract a string from a global pointer *)
 
-let extract_string m blk ofs =
+let extract_string m ofs =
   let b = Buffer.create 80 in
-  let rec extract blk ofs =
-    match Mem.load Mint8unsigned m blk ofs with
+  let rec extract ofs =
+    match Mem.load Mint8unsigned m ofs with
     | Some(Vint n,_) ->
         let c = Char.chr (Z.to_int n) in
         if c = '\000' then begin
           Some(Buffer.contents b)
         end else begin
           Buffer.add_char b c;
-          extract blk (Z.succ ofs)
+          extract (Z.succ ofs)
         end
     | _ ->
         None in
-  extract blk ofs
+  extract ofs
 
 (* Emulation of printf *)
 
@@ -352,15 +354,15 @@ let format_value m flags length conv arg =
       format_float (flags ^ conv) (camlfloat_of_coqfloat f)
   | ('f'|'e'|'E'|'g'|'G'|'a'), "", _ ->
       "<float argument expected"
-  | 's', "", Vptr(blk, ofs) ->
-      begin match extract_string m blk ofs with
+  | 's', "", Vlong ofs ->
+      begin match extract_string m ofs with
       | Some s -> s
       | None -> "<bad string>"
       end
   | 's', "", _ ->
       "<pointer argument expected>"
-  | 'p', "", Vptr(blk, ofs) ->
-      Printf.sprintf "<%ld%+ld>" (P.to_int32 blk) (camlint_of_coqint ofs)
+  | 'p', "", Vlong ofs ->
+      Printf.sprintf "<%ld>" (camlint_of_coqint ofs)
   | 'p', "", Vint i ->
       format_int32 (flags ^ "x") (camlint_of_coqint i)
   | 'p', "", _ ->
@@ -415,8 +417,9 @@ let convert_external_arg ge v t =
   | Vfloat f -> Some (Events.EVfloat (f,t))
   | Vsingle f -> Some (Events.EVsingle (f,t))
   | Vlong n -> Some (Events.EVlong (n,t))
-  | Vptr(b, ofs) ->
-      Genv.invert_symbol ge b ofs >>= fun id -> Some (Events.EVptr_global(id, ofs,t))
+  (*| Vptr(b, ofs) ->
+      Genv.invert_symbol ge b ofs >>= fun id -> Some (Events.EVptr_global(id, ofs,t))*)
+  (* TODO *)
   | _ -> None
 
 let rec convert_external_args ge vl tl =
@@ -429,8 +432,8 @@ let rec convert_external_args ge vl tl =
 
 let do_external_function id sg ge w args m =
   match camlstring_of_coqstring id, args with
-  | "printf", (Vptr(b, ofs),pt) :: args' ->
-      extract_string m b ofs >>= fun fmt ->
+  | "printf", (Vlong ofs,pt) :: args' ->
+      extract_string m ofs >>= fun fmt ->
       let fmt' = do_printf m fmt (List.map fst args') in
       let len = coqint_of_camlint (Int32.of_int (String.length fmt')) in
       Format.print_string fmt';
@@ -451,16 +454,24 @@ and world_io ge m id args =
   None
 
 and world_vload ge m chunk id ofs =
-  Genv.find_symbol (fst ge) id >>= fun (((b,base),bound),t) ->
-  Mem.load chunk m b ofs >>= fun v ->
-  Cexec.eventval_of_val ge v (type_of_chunk chunk) >>= fun ev ->
-  Some(ev, world ge m)
+  Genv.find_symbol (fst ge) id >>=
+          fun res ->
+                match res with
+                | Coq_inr((base,bound),t) ->
+                        Mem.load chunk m ofs >>= fun v ->
+                        Cexec.eventval_of_val ge v (type_of_chunk chunk) >>= fun ev ->
+                        Some(ev, world ge m)
+                | _ -> None
 
 and world_vstore ge m chunk id ofs ev =
-  Genv.find_symbol (fst ge) id >>= fun (((b,base),bound),t) ->
-  Cexec.val_of_eventval ge ev (type_of_chunk chunk) >>= fun v ->
-  Mem.store chunk m b ofs v [] >>= fun m' ->
-  Some(world ge m')
+  Genv.find_symbol (fst ge) id >>=
+          fun res ->
+                match res with
+                | Coq_inr((base,bound),t) ->
+                        Cexec.val_of_eventval ge ev (type_of_chunk chunk) >>= fun v ->
+                        Mem.store chunk m ofs v [] >>= fun m' ->
+                        Some(world ge m')
+                | _ -> None
 
 let do_event p ge time w ev =
   if !trace >= 1 then
