@@ -865,17 +865,17 @@ sources from the PC Tag at that time.
 
 \begin{minipage}{.4\textwidth}
 \[\begin{aligned}
-\truledef{\splitt{\PCT}{\vt}{\optional{\PCT'}}}
+\truledef{\splitt{\PCT}{\vt}{\optional{\(\PCT'\)}}}
 \settag{\PCT''}{\PCT \sqcup \vt}
-\settag{\optional{\PCT'''}}{\PCT' \sqcup \vt}
+\settag{\optional{\(\PCT'''\)}}{\PCT' \sqcup \vt}
 \end{aligned}\]
 \end{minipage}
 \begin{minipage}{.4\textwidth}
 \[\begin{aligned}
-\truledef{\joint{\PCT}{\optional{\PCT'}}}
+\truledef{\joint{\PCT}{\optional{\(\PCT'\)}}}
 \letin{\PCT'' := \PCT - \{\sigma \mid \sigma'\}}
 \settag{\PCT''}{\PCT \sqcup \vt}
-\settag{\optional{\PCT'''}}{\PCT' \sqcup \vt}
+\settag{\optional{\(\PCT'''\)}}{\PCT' \sqcup \vt}
 \end{aligned}\]
 \end{minipage}
 
