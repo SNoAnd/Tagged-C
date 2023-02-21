@@ -3,6 +3,8 @@
 \newcommand{\vt}{\mathit{vt}}
 \newcommand{\pt}{\mathit{pt}}
 \newcommand{\lt}{\mathit{lt}}
+\newcommand{\lts}{\overline{\lt}}
+\newcommand{\nt}{\mathit{nt}}
 \newcommand{\PCT}{\mathcal{P}}
 
 \newcommand{\trule}[2]{#1 \leftarrow #2}
@@ -11,6 +13,7 @@
   & \multispan{3} \(#1\) \\}
 
 \newcommand{\assert}[1]{& & & \multispan{2} \(\mathbf{assert} ~ #1\) \\}
+\newcommand{\letin}[1]{& & & \multispan{2} \(\mathit{let} ~ #1 ~ \mathit{in}\) \\}
 
 \newcommand{\caseof}[1]{\textnormal{case } #1 \textnormal{ of}}
 \newcommand{\caseentry}[2]{& & & #1 \Rightarrow #2}
@@ -19,31 +22,53 @@
 \newcommand{\settag}[2]{\boldsymbol{#1} & \longleftarrow & & \mathit{#2}\\}
 \newcommand{\settagopt}[2]{\optional{\(\boldsymbol{#1}\)} & \longleftarrow & & \mathit{#2}\\}
 
+%%% Tag Rules %%%
 \newcommand{\loadt}[4]{\mathbf{LoadT}(#1,#2,#3,#4)}
 \newcommand{\storet}[5]{\mathbf{StoreT}(#1,#2,#3,#4,#5)}
+
 \newcommand{\constt}{\mathbf{ConstT}}
 \newcommand{\unopt}[2]{\mathbf{UnopT}(#1,#2)}
 \newcommand{\binopt}[3]{\mathbf{BinopT}(#1,#2,#3)}
+
 \newcommand{\globalt}[2]{\mathbf{GlobalT}(#1,#2)}
 \newcommand{\localt}[3]{\mathbf{LocalT}(#1,#2,#3)}
 \newcommand{\vart}[2]{\mathbf{VarT}(#1,#2)}
+
 \newcommand{\malloct}[2]{\mathbf{MallocT}(#1,#2)}
+
 \newcommand{\picastt}[4]{\mathbf{PICastT}(#1,#2,\optional{\(#3,#4\)})}
 \newcommand{\ipcastt}[4]{\mathbf{IPCastT}(#1,#2,\optional{\(#3,#4\)})}
 
-\newcommand{\estate}[6]{#1, #2, #3, #4, \mathit{ctx}\left[#5 : #6\right]}
+\newcommand{\splitt}[3]{\mathbf{SplitT}(#1,#2,#3)}
+\newcommand{\joint}[2]{\mathbf{JoinT}(#1,#2)}
+
+\newcommand{\argt}[4]{\mathbf{ArgT}_{#1}(#2,#3,#4)}
+\newcommand{\callerrett}[3]{\mathbf{CallerRetT}(#1,#2,#3)}
+
+%%%%%%%%%%%%%%%%%
+
+\newcommand{\sstate}[6]{\mathcal{S}\left(#2,#3,#4 \mid #5 ;\!; #6 @ #1\right)}
+\newcommand{\estate}[7]{\mathcal{E}\left(#2,#3,#4 \mid #7 \left[#5 : #6\right] @ #1\right)}
+\newcommand{\cstate}[7]{\mathcal{C}\left(#2,#3,#4 \mid #7 \left[#5(#6)\right] @ #1\right)}
+\newcommand{\rstate}[6]{\mathcal{R}\left(#2,#3,#4 \mid #6 \left[#5\right] @ #1\right)}
 \newcommand{\mem}{m}
 \newcommand{\genv}{\mathit{ge}}
 \newcommand{\lenv}{\mathit{le}}
+\newcommand{\cont}{k}
+\newcommand{\stmt}{s}
+\newcommand{\expr}{e}
+\newcommand{\type}{ty}
 \newcommand{\defestate}[2]
-           {\estate{\PCT}{\mem}{\genv}{\lenv}{#1}{#2}}
+           {\estate{\PCT}{\mem}{\genv}{\lenv}{#1}{#2}{\cont}}
+\newcommand{\defsstate}[1]
+           {\sstate{\PCT}{\mem}{\genv}{\lenv}{#1}{\cont}}
 
 \newcommand{\valof}[1]{* #1}
 \newcommand{\assignop}[3]{#2 ~~ [#1]\!\!= #3}
 \newcommand{\postinc}[2]{#2 #1\!\!#1}
 \newcommand{\assign}[2]{#1 := #2}
 \newcommand{\loc}[2]{\underline{#1}@#2}
-\newcommand{\val}[2]{(\mathit{#1} @ #2)}
+\newcommand{\val}[2]{\mathit{#1} @ #2}
 \newcommand{\binop}[3]{#2 #1 #3}
 \newcommand{\unop}[2]{#1 #2}
 \newcommand{\comma}[2]{#1, #2}

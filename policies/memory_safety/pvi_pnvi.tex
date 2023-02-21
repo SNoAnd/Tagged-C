@@ -1,36 +1,68 @@
 \documentclass{article}
 
-\usepackage{amsmath,amsfonts}
+\usepackage{amsmath,amsfonts,amssymb}
 \usepackage{geometry}
 \usepackage{graphicx}
 \usepackage{xcolor}
+\usepackage{stmaryrd}
+\usepackage{subcaption}
+\usepackage{cleveref}
+\usepackage{tikz}
 
-\title{PVI Memory Safety}
+\usetikzlibrary{automata,positioning}
+
+\title{Policies}
 
 \begin{document}
 
 \input{macros.tex}
 
-\section{Assumptions}
+\section{Notations}
 
 This write-up presents my PVI and PNVI memory safety policies. In the interest of being able
-to slot it into the eventual paper and thesis, I'm assuming that the semantics have already
-been presented at a high level, along with the standard explanations of what tags and control
-points are.
+to slot it into the eventual paper and thesis, I'm assuming that we have given the standard
+explanations of what tags and control points are. I do need to get into the semantics and notations
+a bit, however.
 
-One thing that needs to be called out is the way that tags work on memory. A memory is an
-array of bytes, and a load or store will access some number of bytes. I write
-\(\mem[l]_s = v@\vt @\overline{\lt}\) to denote loading \(s\) bytes,
+Values are ranged over by \(v\), variable identifiers by \(x\), and function identifiers by \(f\).
+Tags use a number of metavariables: \(\vt\), \(\pt\), \(\lt\), \(\nt\), and \(\PCT\).
+An {\it atom} is a pair of a value and a tag, \(\val{v}{\vt}\); the @ symbol should be read
+as a pair in general, and is used when the second object in the pair is a tag.
+Expressions are ranged over by \(\expr\), statements by \(\stmt\), and continuations by \(\cont\).
+Many continuations contain a context \(\mathit{ctx}\), which is a function from expressions
+to expressions.
+
+Global environments, ranged over by \(\genv\), map identifiers to either function
+or global variable definitions (including the variable's location in memory. Local environments,
+ranged over by \(\lenv\), map identifiers to atoms. And the {\em label environment}
+Memories \(\mem\) map integers to
+triples: a value, a ``value tag'' \(\vt\), and a list of ``location tags'' \(\lts\).
+
+A memory is an array of bytes, and a load or store will access some number of bytes. I write
+\(\mem[l]_s = v@\vt @\lts\) to denote loading \(s\) bytes,
 starting at location \(l\), and interpreting them as a value \(v\), a value tag \(\vt\), and a list of
-\(s\) location tags. Likewise, \(\mem[l \mapsto v@\vt @ \overline{lt}]_s\)
-denotes storing that many bytes. Note the distinction between \(\vt\) and \(\overline{lt}\).
-The former is tied to each full value, which may consist of multiple bytes, while the latter is tied
-to an individual byte. When writing multiple contiguous values, I will write a range of locations. So
+\(s\) location tags. Likewise, \(\mem[l \mapsto v@\vt @ \lts]_s\)
+denotes storing that many bytes. \(\vt\) is tied to a full value, which may consist of
+multiple bytes, while each tag in \(\lts\) is tied to an individual byte.
+When writing multiple contiguous values, I will write a range of locations. So
 in the case of an array of 10 integers, \(s\) would be 4, and
-\(\mem[l \dots l+10 \mapsto v@\vt @ \overline{lt}]_4\) would write \(v@\vt\) to ten words starting at \(l\),
-with the four bytes of each word tagged with \(\overline{lt}\)'s four tags.
+\(\mem[l \dots l+10 \mapsto v@\vt @ \lts]_4\) would write \(v@\vt\) to ten words starting at \(l\),
+with the four bytes of each word tagged with \(\lts\)'s four tags.
 This guarantees that even misaligned loads and stores always have a valid location tag to check
 (possibly multiple, mismatched location tags, in which case the policy can failstop if needed.)
+
+State can be of several kinds, denoted by their script prefix: a {\em general state} \(\mathcal{S}(\dots)\),
+an {\em expression state} \(\mathcal{E}(\dots)\), a {\em call state} \(\mathcal{C}(\dots)\), or a
+{\em return state} \(\mathcal{R}(\dots)\). Finally, the special state {\em failstop} (\(\mathcal{F}\))
+represents a tag failure.
+
+\[\begin{aligned}
+S ::= & \sstate{\PCT}{\mem}{\genv}{\lenv}{\stmt}{\cont} \\
+| & \estate{\PCT}{\mem}{\genv}{\lenv}{\expr}{\type}{\cont} \\
+| & \cstate{\PCT}{\mem}{\genv}{\lenv}{f}{\overline{\val{v}{\vt}}}{\cont} \\
+| & \rstate{\PCT}{\mem}{\genv}{\lenv}{\val{v}{vt}}{\cont} \\
+| & \mathcal{F} \\
+\end{aligned}\]
 
 \paragraph*{Control Points with Side-effects and Optional Arguments}
 
@@ -52,6 +84,18 @@ options are used. If compiling with a known policy that does not make use of the
 be sound to eliminate the extra instructions. If {\it all} of the control point's outputs are
 optional and unused, the control point need not be compiled at all. In this document, optional inputs
 and outputs will be marked with \(\optional{boxes}\).
+
+\paragraph*{Name Tags}
+
+When we want to define a per-program policy, we need to be able to attach tags to the program's
+functions, globals, and so on. We do this by automatically embedding their identifiers in tags,
+which are available to all policies. These are called {\em name tags} and are ranged over by
+\(\nt\). The complete list of such tags is as follows:
+\begin{itemize}
+\item Function identifiers
+\item Function arguments, written {\tt f.x}
+\item Global variables
+\end{itemize}
 
 \section{Memory safety basics}
 
@@ -124,7 +168,7 @@ and when this happens it can undermine assumptions about the behavior of linked 
 are not exported. Globals do not need dynamic colors, but can use their identifiers as tags, of the form
 \(\mathit{glob} ~ id\).
 
-\section{PVI and PNVI}
+\section{Memory Safety: PVI and PNVI}
 
 Our policies aim to enforce two memory models in particular: {\it PVI} (provenanace via integer) and
 {\it PNVI} (provenance not via integer) from Memarian et al. \cite{???}. They propose PVI and PNVI
@@ -154,7 +198,7 @@ undefined in the PVI semantics and failstops in Tagged C. Likewise for PNVI, exc
 some UB in PNVI is non-deterministic, and we only require that it failstop in an execution
 that would {\it reach} the UB.
 
-\section{PVI Definitions}
+\subsection{PVI Definitions}
 
 Here we give the relevant tag rules for the PVI policy, and describe the control points that
 they attach to. We will, for each rule, first give the control point(s) that use it, along
@@ -197,15 +241,13 @@ The parameter \(b\) marks the start of the global region.
 %selecting these tags can cover the entire initialization of the memory with arbitrary
 %granularity. We represent this as a list of tags of length \(|ty|\).
 
-\[
-\mathit{globals} ~ xs ~ b =
+\[\mathit{globals} ~ xs ~ b =
 \begin{cases}
   (\mem_0, \genv_0) & \textnormal{if } xs = \varepsilon \\
   (\mem[p \dots p+|ty| \mapsto \vundef@\vt@\overline{\lt}]_{|ty|}, & \textnormal{if } xs = (id,ty)::xs' \\
   ~ \genv[id \mapsto (\mathit{p, p+|ty|,ty,\pt})]) & \textnormal{and } \trule{\pt,\vt,\overline{\lt}}{\globalt{id}{|ty|}} \\
   & \textnormal{where } (\mem,\genv) = \mathit{globals} ~ xs' ~ (b + |ty|) \\
-\end{cases}
-\]
+\end{cases}\]
 
 \[\begin{aligned}
 \truledef{\globalt{id}{s}}
@@ -224,17 +266,7 @@ Since allocations occur at runtime, the value and location tags that initialize 
 are optional. They would be realized by initializing the entire allocated object at allocation-time,
 which adds linear overhead if the object was not otherwise being initialized.
 
-\judgment{}
-         {\(\mathit{locals} ~ \varepsilon ~ \mem ~ \lenv = \mem,\lenv\)}
-
-\judgmenttwobr{\((\mem',p) \leftarrow \mathit{stack\_alloc} ~ |ty| ~ \mem\)}
-              {\(\trule{\pt,\vt,\overline{\lt}}{\localt{\PCT}{id}{s}}\)}
-              {\(\mem'' = \mem'[p \mapsto \vundef@\overline{\vt}@\overline{\lt}]_{|ty|}\)}
-              {\(\lenv' = \lenv[x \mapsto \mathit{p,p+|ty|},ty,\pt]\)}
-              {\(\mathit{locals} ~ ((x,ty)::xs) ~ \mem ~ \lenv = \mathit{locals} ~ xs ~ \mem'' ~ \lenv'\)}
-
-\[
-\mathit{locals} ~ xs ~ \mem ~ \lenv =
+\[\mathit{locals} ~ xs ~ \mem ~ \lenv =
 \begin{cases}
   (\mem, \lenv) & \textnormal{if } xs = \varepsilon \\
   \mathit{locals} ~ xs' ~ \mem'' ~ \lenv' & \textnormal{if } xs = (id,ty)::xs' \\
@@ -242,8 +274,7 @@ which adds linear overhead if the object was not otherwise being initialized.
   & \mem'' = \mem'[p \dots p+|ty| \mapsto \vundef@\vt@\overline{\lt}]_{|ty|}, \\
   & \trule{\pt,\vt,\overline{\lt}}{\globalt{id}{|ty|}}, \\
   & \textnormal{and } \lenv' = \lenv[id \mapsto (\mathit{p, p+|ty|,ty,\pt})]) \\
-\end{cases}
-\]
+\end{cases}\]
               
 In the tag rule, the PC Tag carries the ``next'' color to be assigned. We mark both the pointer tag
 (which is stored in the local environment) with that color, along with the location tags on the
@@ -268,7 +299,7 @@ function (a parameter of the memory model) that takes a size and a memory and re
               {\(\defestate{\builtin{\mathit{malloc}}{\mathit{size}@st}}{ty}
                 \longrightarrow
                 \estate{\PCT'}{\mem''}{\genv}{\lenv}
-                       {\val{p}{\pt}}{ty}\)}
+                       {\val{p}{\pt}}{ty}{\cont}\)}
 
 And the tag rule is identical to \(\mathbf{LocalT}\), except that it always treats the allocated
 object as an array of bytes (making the location tags are always identical.)
@@ -288,18 +319,18 @@ of the assignment matches the location tag on all of the bytes being loaded or s
 For instance, in a normal {\it valof} expression, which accesses a left-hand value:
 
 \judgmenttwo{\(\mem[l]_{|ty|} = v@\vt@\overline{\lt}\)}
-            {\(\trule{\vt'}{\loadt{\PCT}{\pt}{\vt}{\lt}}\)}
+            {\(\trule{\vt'}{\loadt{\PCT}{\pt}{\vt}{\overline{\lt}}}\)}
             {\(\estate{\PCT}{\mem}{\genv}{\lenv}
-              {\valof{\loc{l}{\pt}}}{ty}
+              {\valof{\loc{l}{\pt}}}{ty}{\cont}
               \longrightarrow
               \estate{\PCT}{\mem}{\genv}{\lenv}
-                     {\val{v}{\vt'}}{ty}\)}
+                     {\val{v}{\vt'}}{ty}{\cont}\)}
 
 We want to both check that the pointer tag matches all of the location tags, and propagate the
 value tag on the value in memory alongside that value.
 
 \[\begin{aligned}
-\truledef{\loadt{\PCT}{\pt}{\vt}{\lt}}
+\truledef{\loadt{\PCT}{\pt}{\vt}{\overline{\lt}}}
 \assert{\forall \lt \in \overline{\lt} . \pt = \lt}
 \settag{\vt'}{\vt}
 \end{aligned}\]
@@ -346,7 +377,7 @@ On the flip side, we store values to memory using the {\it assign} expression:
                     {\assign{\loc{l}{\pt}}{v_2@\vt_2}}{ty}{\val{v_2}{\vt_2}}
                     \longrightarrow
                     \estate{\PCT'}{\mem'}{\genv}{\lenv}
-                           {\val{v_2}{\vt_2}}{ty}\)}
+                           {\val{v_2}{\vt_2}}{ty}{\cont}\)}
 
 As before, we check that the pointer tag matches the locations tags, and then propagate the
 value tag (ignoring and overwriting the original value tag.) In addition, we propagate the PC Tag.
@@ -415,7 +446,7 @@ be used as an integer, but if cast back to a pointer it will be invalid.
   \end{aligned}\]
 \end{minipage}
 
-\section{PNVI Definitions}
+\subsection{PNVI Definitions}
 
 In PNVI, the basic provenance model remains the same as PVI, so we can reuse most of the
 same rules. The primary difference is what happens when we cast a pointer to an integer.
@@ -477,5 +508,483 @@ The {\tt L} instruction tag simply denotes taking the left-operand's tag on the 
 binary operation. In this case both operations are identical, but we still need to pick one.
 Finally, the {\tt IPCAST} tag declares that this instruction should mimic the Tagged-C-level
 rule.
+
+\section{Information Flow Control}
+
+Next we will discuss {\em information flow control} (IFC), specifically {\em partial IFC} (pIFC)
+or {\em taint-tracking}. In pIFC, we define a limited set of rules for how information is allowed
+to flow from {\em sources} to {\em sinks}. A source \(\sigma\) can be an argument of a function or
+its return value. A sink \(\psi\) can be a global variable, a function, or the set of heap objects
+allocated by a given function. If we identify a source as carrying high-privilege secrets,
+and a sink as lacking the privilege to recieve those secrets, then we would define a {\em no-flow}
+rule between them, written \(\sigma \not \rightsquigarrow \psi\).
+Likewise if the source is untrusted, and the sink highly sensitive.
+Additionally, an IFC policy may contain ``declassification'' rules, \(\sigma / \sigma'\), which
+means that if a value comes from the source \(\sigma'\), we may safely ignore its original source
+\(\sigma\). We will often write \(* / \sigma\) to say that \(\sigma\) declassifies anything.
+We model multiple sources and sinks simultaneously, and absent a no-flow rule, they
+can interact freely.
+
+For example, suppose that in the following code, we have a no-flow rule between
+the argument {\tt x} of {\tt f} and the global variable {\tt z}
+(\(\mathtt{f.x} \not \rightsquigarrow \mathtt{z}\)), and a declassification rule
+\(* / \mathtt{g.a}\).
+
+\begin{verbatim}
+  int z;
+
+  int g(int a);
+
+  void f(int x, int y) {
+    z = x;                    // violation
+    z = x + y;                // violation
+    if(x) z = 1; else z = 0;  // violation
+    z = g(x);                 // legal
+  }
+\end{verbatim}
+
+The first three lines of {\tt f} violate the no-flow relation by storing values derived from
+{\tt x} into {\tt z}. The third line is especially interesting: although {\tt x} is not stored
+directly, the value that is stored is conditioned upon it, and can be used to deduce information
+about the original value. This is termed an {\em implicit flow}. Finally, in the last line,
+while the value of {\tt g(x)} may depend on {\tt x}, it is subject to the declassification rule,
+and so it is permissible.
+
+\paragraph{Tagging Taint}
+
+We track the influence of a particular source, or ``taint,'' through the system in the form
+of tags on values. We identify sinks through static tags on functions and through memory location tags,
+that encode the ``forbidden'' sources. So, our tag set is as follows, with \(X\) being the
+default tag that indicates no (interesting) source has tainted the value. Note that our
+tags may carry multiple sources.
+%
+\begin{align*}
+  T ::= & \mathit{taint} ~ \overline{\sigma} \\
+  & \mathit{forbid} ~ \overline{\sigma} \\
+  & X \\
+\end{align*}
+%
+We define three important operations on tags: {\em merge} (\(\sqcup\)), {\em minus} (\(-\)),
+and {\em check} (\(\sqsubseteq\)), all partial functions.
+%
+\[t_1 \sqcup t_2 \triangleq
+\begin{cases}
+  \mathit{taint} ~ (\overline{\sigma}_1 \cup \overline{\sigma}_2) &
+  \textnormal{if } t_1 = \mathit{taint} ~ \overline{\sigma}_1 \textnormal{ and }
+  t_2 = \mathit{taint} ~ \overline{\sigma}_2\\
+  \bot & \textnormal{otherwise} \\
+\end{cases}\]
+%
+\[t - \sigma \triangleq
+\begin{cases}
+  \mathit{taint} ~ (\overline{\sigma}' - \sigma) &
+  \textnormal{if } t = \mathit{taint} ~ \overline{\sigma}' \\
+  \bot & \textnormal{otherwise} \\
+\end{cases}\]
+%
+\[t_1 \sqsubseteq t_2 \triangleq
+\begin{cases}
+  \mathbf{t} & \textnormal{if } t_1 = \mathit{taint} ~ \overline{\sigma}_1,
+  t_2 = \mathit{forbid} ~ \overline{\sigma}_2, \textnormal{ and }
+  \overline{\sigma}_1 \cap \overline{\sigma}_2 = \emptyset \\
+  \mathbf{f} & \textnormal{else if } t_1 = \mathit{taint} ~ \overline{\sigma}_1 \textnormal{ and }
+  t_2 = \mathit{forbid} ~ \overline{\sigma}_2 \\
+  \bot & \textnormal{otherwise} \\
+\end{cases}\]
+
+\paragraph{Introducing Taint}
+
+Each no-flow rule specifies a source that is either a function argument or return
+value. These attach to the {\em call-state} and {\em return-state} rules, respectively.
+The call-state rule executes at the beginning of a call, moving all of its arguments into
+the local environment, using the \(\mathbf{ArgT}\) tag rule.
+
+\judgmentbr{\(\mathit{def}(f) = (xs, \stmt)\)}
+           {\(\lenv' = \lenv \llbracket x \mapsto v@\vt' \mid
+             (x,v@\vt) \leftarrow \mathit{zip}(xs,args), \vt' \leftarrow \argt{I}{\PCT}{\vt}{x} \rrbracket\)}
+           {\(\cstate{\PCT}{\mem}{\genv}{\lenv}{f}{args}{\cont} \longrightarrow
+             \sstate{\PCT}{\mem}{\genv}{\lenv'}{\stmt}{\cont}\)}
+
+And the return-state rule executes after the call returns, inserting the result into the
+context saved in the continuation. The program counter on return and the result's tag are
+set by the \(\mathbf{CallerRetT}\) tag rule.
+           
+\judgmenttwo{\(\cont = \mathit{Kcall} ~ \lenv' ~ \mathit{ctx} ~ \cont'\)}
+            {\(\PCT'',\vt' \leftarrow \callerrett{\PCT}{\PCT'}{\vt}\)}
+            {\(\rstate{\PCT}{\mem}{\genv}{\lenv}{\val{v}{\vt}}{\cont} \longrightarrow
+              \sstate{\PCT'}{\mem}{\genv}{\lenv'}{\mathit{ctx}[\val{v}{\vt'}]}{\cont'}\)}
+
+In the case of an IFC policy, both control points are parameterized by a set of IFC rules, \(I\).
+
+\begin{minipage}[t]{.49\textwidth}            
+  \[\begin{aligned}
+  \truledef{\argt{I}{\PCT}{\vt}{\nt}}
+  \letin{\vt' := \vt - \{\sigma \mid \sigma / \nt \in I \}}
+  \letin{\vt'' := \vt' \sqcup \mathit{tainted} ~ \{\nt \mid \nt \not \rightsquigarrow \_ \in I\}}
+  \settag{\vt'}{\vt''}
+  \end{aligned}\]
+\end{minipage}
+
+\paragraph{Propagating Taint Through Expressions}
+
+It is simple enough to determine when a value is tainted: at a function
+call, all function arguments are tagged with their source identity, and the result
+of any expression is tagged with the union of the sources of its operands. If the
+expression involves a store or function call itself, we must check the taints on
+the value being stored or passed against the forbidden list of the target.
+
+Unary and binary operations:
+
+\begin{minipage}[t]{.49\textwidth}            
+  \[\begin{aligned}
+  \truledef{\unopt{\PCT}{\vt}}
+  \settag{\PCT'}{\PCT}
+  \settag{\vt'}{\vt}
+  \end{aligned}\]
+\end{minipage}
+\begin{minipage}[t]{.49\textwidth}           
+  \[\begin{aligned}
+  \truledef{\binopt{\PCT}{\vt_1}{\vt_2}}
+  \settag{\PCT'}{\PCT}
+  \settag{\vt'}{
+    \vt_1 \sqcup \vt_2
+  }
+  \end{aligned}\]
+\end{minipage}
+
+Loads and stores:
+
+\begin{minipage}[t]{.4\textwidth}     
+\[\begin{aligned}
+\truledef{\loadt{\PCT}{\pt}{\vt}{\overline{\lt}}}
+\settag{\vt'}{\PCT \sqcup \pt \sqcup \vt}
+\end{aligned}\]
+\end{minipage}
+\begin{minipage}[t]{.59\textwidth}
+\[\begin{aligned}
+\truledef{\storet{\PCT}{\pt}{\vt_1}{\vt_2}{\overline{\lt}}}
+\assert{\forall \lt \in \overline{\lt} . \PCT \sqcup \pt \sqcup \vt_2 \sqsubseteq \lt}
+\settag{\PCT'}{\PCT}
+\settag{\vt'}{\PCT \sqcup \pt \sqcup \vt_2}
+\settag{\overline{\lt'}}{\overline{\lt}}
+\end{aligned}\]            
+\end{minipage}
+
+\paragraph{Implicit Flows}
+
+Things become trickier when control-flow itself can be tainted. This can occur in
+any of our semantics' steps that can produce different statements and continuations
+depending on the tained value. At that point, any change to the machine state constitutes
+an information flow.
+
+To be more specific, consider a statement that contains an expression, \(\stmt(\expr)\),
+such that when filled in with a tainted value:
+%
+\[\sstate{\PCT}{\mem}{\genv}{\lenv}{\stmt\val{v_1}{\mathit{taint} ~ \sigma}}{\cont} \longrightarrow
+\sstate{\PCT_1}{\mem_1}{\genv_1}{\lenv_1}{\stmt_1}{\cont_1}\]
+%
+while
+%
+\[\sstate{\PCT}{\mem}{\genv}{\lenv}{\stmt\val{v_1}{\mathit{taint} ~ \sigma}}{\cont} \longrightarrow
+\sstate{\PCT_2}{\mem_2}{\genv_2}{\lenv_2}{\stmt_2}{\cont_2}\]
+%
+and where \(\stmt_1 \not = \stmt_2\) or \(\cont_1 \not = \cont_2\). Taking either step
+should taint the program state itself! We represent this as a taint on the PC Tag.
+When the PC Tag is tainted, all stores to memory and all updates to environments must
+also be tainted.
+
+This presents a problem if the program counter must remain tainted indefinitely.
+Fortunately, it is safe to remove the taint if all branches eventually rejoin.
+We term this a {\it join point}. In terms of the program's control-flow graph, the
+join point of a branch is its immediate post-dominator.
+
+In many simple programs, the join point of a conditional or loop is obvious:
+the point at which the chosen branch is complete, or the loop has ended.
+Such a simple example can be seen in \cref{fig:ifthenelse}; {\tt public1} must be
+tagged with the taint tag of {\tt secret}, while it is safe to tag {\tt public2}
+\(X\), because that is after the join point, {\tt J}. The same goes for \cref{fig:while}.
+
+But in the presence of unrestricted go-to statements, a join point may not be
+local---and sometimes may not exist. Consider \cref{fig:forbreak}, which
+uses go-to statements to create an approximation of an if-statement whose join-point
+is far removed from the for-loop. The label {\tt J} now has nothing to do with the
+semantics of any particular statement.
+
+Luckily this can still be determined statically
+from a function's full control-flow graph. So, we annotate our programs with this
+information via additional labels. Every statement that branches can carry an
+optional label indicating its corresponding join point. If it doesn't have such
+a label, that indicates that there is no join point---once the PC Tag is tainted,
+it must remain so until a return.
+
+\begin{figure}
+  \begin{subfigure}{0.5\textwidth}
+\begin{verbatim}
+int f(bool secret) {
+    int public1, public2;
+
+S:  if (secret) {
+b1:     public1 = 1;
+    } else {
+b2:     public1 = 0;
+    }
+
+J:  public2 = 42;
+
+    return public2;
+}
+\end{verbatim}
+  \end{subfigure}
+  \begin{subfigure}{0.5\textwidth}
+    \begin{tikzpicture}
+      [ initial text={}, initial distance=4em,
+        accepting/.style=accepting by arrow,
+        accepting distance=4em
+      ]
+      \node[state,initial]    (S)                        {$S$};
+      \node[state]            (b_1) [above right=of S]   {$b_1$};
+      \node[state]            (b_2) [below right=of S]   {$b_2$};
+      \node[state,accepting]  (J)   [below right=of b_1] {$J$};
+
+      \path[->] (S)   edge              node  {}  (b_1)
+                      edge              node  {}  (b_2)
+                (b_1) edge              node  {}  (J)
+                (b_2) edge              node  {}  (J);
+    \end{tikzpicture}
+  \end{subfigure}
+  
+  \caption{Leaking via if statements}
+  \label{fig:ifthenelse}
+\end{figure}
+
+\begin{figure}
+  \begin{subfigure}{0.5\textwidth}
+\begin{verbatim}
+int f(bool secret) {
+    int public1=1;
+    int public2;
+
+S:  while (secret) {
+b1:     public1 = 1;
+        secret = false;
+    }
+
+J:  public2 = 42;
+
+    return public2;
+}
+\end{verbatim}
+  \end{subfigure}
+  \begin{subfigure}{0.5\textwidth}
+    \begin{tikzpicture}
+      [ initial text={}, initial distance=4em,
+        accepting/.style=accepting by arrow,
+        accepting distance=4em
+      ]
+      \node[state,initial]    (S)                        {$S$};
+      \node[state]            (b_1) [above right=of S]   {$b_1$};
+      \node[state,accepting]  (J)   [below right=of b_1] {$J$};
+
+      \path[->] (S)   edge               node  {}  (b_1)
+                      edge               node  {}  (J)
+                (b_1) edge [bend right] node  {}  (S);
+    \end{tikzpicture}
+  \end{subfigure}
+  
+  \caption{Leaking via while statements}
+  \label{fig:while}
+\end{figure}
+
+\begin{figure}
+  \begin{subfigure}{0.3\textwidth}
+\begin{verbatim}
+int f(bool secret) {
+    int public1, public2;
+
+    while (secret) {
+        goto b1;
+    }
+
+b2: public1 = 1;
+    goto J;
+
+b1: public1 = 1;
+
+J:  public2 = 42;
+    return public2;
+}
+\end{verbatim}
+  \end{subfigure}
+  \begin{subfigure}{0.5\textwidth}
+    \begin{tikzpicture}
+      [ initial text={}, initial distance=4em,
+        accepting/.style=accepting by arrow,
+        accepting distance=4em
+      ]
+      \node[state,initial]    (S)                              {$S$};
+      \node[state]            (inside) [above right=of S]      {};
+      \node[state]            (b_2)    [below right=of inside] {$b_2$};
+      \node[state]            (b_1)    [right=of b_2]          {$b_1$};
+      \node[state,accepting]  (J)      [right=of b_1]          {$J$};
+
+      \path[->] (S)   edge              node  {}  (inside)
+                      edge              node  {}  (b_2)
+                (inside) edge [bend left] node {} (b_1)
+                (b_1) edge              node  {}  (J)
+                (b_2) edge [bend right] node  {}  (J);
+    \end{tikzpicture}
+  \end{subfigure}
+  
+  \caption{Cheating with go-tos}
+  \label{fig:forbreak}
+\end{figure}
+
+When we step into a conditional or loop, we need to record its join point for later.
+The join point will always be represented by a label, which is an identifier,
+so we can simply store it in the local environment.
+
+\judgmenttwo
+    {\(\stmt' =
+      \begin{cases}
+        \stmt_1 & \textnormal{if } \mathit{boolof}(v) = \mathbf{t} \\
+        \stmt_2 & \textnormal{if } \mathit{boolof}(v) = \mathbf{f} \\
+      \end{cases}\)}
+    {\begin{tabular}{l r}
+      \multicolumn{2}{c}{\(\PCT'',\PCT''' \leftarrow \splitt{\PCT}{\vt}{\PCT'} \)} \\
+      \(\lenv[L] = \val{\_}{\PCT'}\) & \(\lenv' = \lenv[L \mapsto \val{\vundef}{\PCT''}]\) \\
+      \end{tabular}}
+            {\(\sstate{\PCT}{\mem}{\genv}{\lenv}
+              {\mathit{if}(\val{v}{\vt}) ~ \mathit{then} ~ \stmt_1 ~ \mathit{else} ~ \stmt_2 ~ \mathit{join} ~ L}{\cont} \longrightarrow
+              \sstate{\PCT'}{\mem}{\genv}{\lenv'}{\stmt'}{\cont}\)}
+
+The label carries a record of all sources that might currently taint the program's
+control flow, but will be safe once that label is reached. So, just as \(\PCT\) is merged with
+\(\vt\) to produce \(\PCT''\), \(\PCT'\) will be merged with \(\vt\) to produce \(\PCT'''\), a new tag
+for \(L\). Then, when we reach the label \(L\), we will retrieve the stored tag and subtract its
+sources from the PC Tag at that time.
+
+\begin{minipage}{.4\textwidth}
+\[\begin{aligned}
+\truledef{\splitt{\PCT}{\vt}{\optional{\PCT'}}}
+\settag{\PCT''}{\PCT \sqcup \vt}
+\settag{\optional{\PCT'''}}{\PCT' \sqcup \vt}
+\end{aligned}\]
+\end{minipage}
+\begin{minipage}{.4\textwidth}
+\[\begin{aligned}
+\truledef{\joint{\PCT}{\optional{\PCT'}}}
+\letin{\PCT'' := \PCT - \{\sigma \mid \sigma'\}}
+\settag{\PCT''}{\PCT \sqcup \vt}
+\settag{\optional{\PCT'''}}{\PCT' \sqcup \vt}
+\end{aligned}\]
+\end{minipage}
+
+The \(\mathbf{JoinT}\) control point applies whenever we reach a labeled statement, like so:
+
+\judgmentthree
+    {\(\lenv[L] = \val{\_}{\PCT'}\)}
+    {\(\PCT'',\PCT''' \leftarrow \joint{\PCT}{\PCT'} \)}
+    {\(\lenv' = \lenv[L \mapsto \val{\vundef}{\PCT'''}]\)}
+    {\(\sstate{\PCT}{\mem}{\genv}{\lenv}
+      {L: \stmt}{\cont} \longrightarrow
+      \sstate{\PCT''}{\mem}{\genv}{\lenv'}{\stmt}{\cont}\)}
+
+The remaining branching constructs are rather complicated, involving multiple steps
+and manipulations of the continuation that are not that relevant to their control
+points. Rather than give their semantics in full, it suffices to identify which
+transitions contain \(\mathbf{SplitT}\) control points. In \cref{fig:rest}, these
+are the transitions from the state marked \(S\).
+
+\begin{figure}
+  \begin{subfigure}{0.5\textwidth}
+    \begin{tikzpicture}
+      [ initial text={}, initial distance=4em,
+        accepting/.style=accepting by arrow,
+        accepting distance=4em
+      ]
+      \node[state,initial]    (do)                             {do};
+      \node[state,accepting]  (S) [right=of do]                {\(S\):test};
+
+      \path[->] (do)   edge              node  {}  (S)
+                (S)    edge [bend left]  node  {}  (do);
+    \end{tikzpicture}
+    \subcaption{Do-while}
+  \end{subfigure}
+  \begin{subfigure}{0.5\textwidth}
+    \begin{tikzpicture}
+      [ initial text={}, initial distance=4em,
+        accepting/.style=accepting by arrow,
+        accepting distance=4em
+      ]
+      \node[state,initial]    (init)                             {init};
+      \node[state,accepting]  (S)    [right=of init]             {\(S\):test};
+      \node[state]            (do)   [above=of S]                {do};
+      \node[state]            (post) [left=of do]                {post};
+      
+      \path[->] (init)   edge              node  {}  (S)
+                (S)      edge              node  {}  (do)
+                (do)     edge              node  {}  (post)
+                (post)   edge              node  {}  (S);
+    \end{tikzpicture}
+    \subcaption{For}
+  \end{subfigure}
+  \begin{subfigure}{\textwidth}
+    \center
+    \begin{tikzpicture}
+      [ initial text={}, initial distance=4em, initial above,
+        accepting/.style=accepting by arrow,
+        accepting distance=4em
+      ]
+      \node[state,initial]    (switch)                           {\(S\):switch};
+      \node[state]            (case1)    [below left=of switch]  {};
+      \node[state]            (case2)    [right=of case1]        {};
+      \node[state]            (case3)    [right=of case2]        {};
+      \node[state]            (default)  [right=of case3]        {def};
+      \node                   (after)    [right=of default]      {};
+
+      \path[->] (switch)  edge              node  {}  (case1)
+                          edge              node  {}  (case2)
+                          edge              node  {}  (case3)
+                          edge              node  {}  (default)
+                (default) edge              node  {}  (after)
+                (case1)   edge [bend right] node  {}  (after)
+                (case2)   edge [bend right] node  {}  (after)
+                (case3)   edge [bend right] node  {}  (after);
+
+      \path[dotted,->] (case1) edge              node  {}  (case2)
+                (case2) edge              node  {}  (case3)
+                (case3) edge              node  {}  (default);
+                         
+    \end{tikzpicture}
+    \subcaption{Switch}
+  \end{subfigure}
+
+  
+  
+  \caption{Remaining Branch Statements}
+  \label{fig:rest}
+\end{figure}
+
+\paragraph*{Realizing IFC}
+
+In order to implement an IFC policy, we need to specify the rules that it needs to enforce.
+The positive here is that the rules are not dependent on one another (with the exception of
+declassification rules), and default to permissiveness when no rule is given. We assume that
+the user would supply a separate file consisting of a list of triples: the source, the sink,
+and the type of rule. This is then translated into the policy.
+
+The other implementation detail to consider are the label tags. These resemble
+instruction tags, and that is exactly how they would be implemented: as a special instruction
+tag on the appropriate instruction, which might be an existing instruction or a specially
+added no-op. But importantly, in this case, these tags are mutable; in a policy that can be
+expected to take advantage of their mutability, we will need an extra store to set the tag
+fot leter.
+
+It remains to generate those labels. For purposes of an IFC policy, we first generate the program's
+control flow graph. Then, for each if, while, do-while, for, and switch statement, we identify the
+immediate post-dominator in the graph, and wrap it in a label statement with a fresh identifier.
+That identifier is also added as a field in the original conditional statement. The tags
+associated with the labels are initialized at program state---in the case of IFC, these defaults
+declare that there are no secrets to lowre when it is reached.
 
 \end{document}
