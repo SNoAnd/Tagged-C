@@ -834,7 +834,7 @@ Admitted.
   + eapply IHo; eauto. lia. lia.
 - discriminate.
 Qed.*)
-About find_symbol.
+
 Definition bytes_of_init_data (i: init_data) (t:tag): list memval :=
   match i with
   | Init_int8 n => inj_bytes (encode_int 1%nat (Int.unsigned n)) t

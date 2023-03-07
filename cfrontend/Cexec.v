@@ -2205,7 +2205,6 @@ Definition ret (rule: string) (S: Csem.state) : list transition :=
 
 Definition do_step (w: world) (s: Csem.state) : list transition :=
   match s with
-
   | ExprState f pct a k e m =>
       match is_val a with
       | Some((v,vt), ty) =>
@@ -2213,7 +2212,7 @@ Definition do_step (w: world) (s: Csem.state) : list transition :=
         | Kdo k => ret "step_do_2" (State f pct Sskip k e m )
         | Kifthenelse s1 s2 k =>
             do b <- bool_val v ty m;
-            ret "step_ifthenelse_2" (State f pct (if b then s1 else s2) k e m)
+            ret "step_ifthenelse_2" (State f pct (if b then s1 else s2) (Ktag (IfJoinT pct) k) e m)
         | Kwhile1 x s k =>
             do b <- bool_val v ty m;
             if b
@@ -2253,6 +2252,16 @@ Definition do_step (w: world) (s: Csem.state) : list transition :=
       ret "step_continue_seq" (State f pct Scontinue k e m)
   | State f pct Sbreak (Kseq s k) e m =>
       ret "step_break_seq" (State f pct Sbreak k e m)
+
+  | State f pct Scontinue (Ktag rule k) e m =>
+      ret "step_continue_tag" (State f pct Sbreak k e m)
+  | State f pct Sbreak (Ktag rule k) e m =>
+      ret "step_break_tag" (State f pct Sbreak k e m)
+  | State f pct Sskip (Ktag rule k) e m =>
+      match rule pct with
+      | Some pct' => ret "step_tag_ok" (State f pct' Sskip k e m)
+      | None => ret "step_tag_fail" (Failstop)
+      end
 
   | State f pct (Sifthenelse a s1 s2) k e m =>
       ret "step_ifthenelse_1" (ExprState f pct a (Kifthenelse s1 s2 k) e m)

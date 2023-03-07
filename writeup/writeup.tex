@@ -1,4 +1,18 @@
-\documentclass{article}
+\documentclass[acmsmall,review,anonymous]{acmart}\settopmatter{printfolios=true,printccs=false,printacmref=false}
+
+\acmJournal{PACMPL}
+\acmVolume{1}
+\acmNumber{CONF} % CONF = POPL or ICFP or OOPSLA
+\acmArticle{1}
+\acmYear{2018}
+\acmMonth{1}
+\acmDOI{} % \acmDOI{10.1145/nnnnnnn.nnnnnnn}
+\startPage{1}
+
+\setcopyright{none}
+
+\bibliographystyle{ACM-Reference-Format}
+\citestyle{acmauthoryear}
 
 \usepackage{amsmath,amsfonts,amssymb}
 \usepackage{geometry}
@@ -12,29 +26,177 @@
 \usetikzlibrary{automata,positioning}
 
 \title{Policies}
+\author{Sean Anderson}
+\affiliation{
+  \department{Computer Science}
+  \institution{Portland State University}
+}
 
 \begin{document}
 
+\maketitle
+
 \input{macros.tex}
+\input{semantics.tex}
 
-\section{Notations}
+\section{Formal Semantics}
 
-This write-up presents my PVI and PNVI memory safety policies. In the interest of being able
-to slot it into the eventual paper and thesis, I'm assuming that we have given the standard
-explanations of what tags and control points are. I do need to get into the semantics and notations
-a bit, however.
+\begin{figure}
+  \begin{subfigure}[t]{0.3\textwidth}
+    \[\begin{aligned}
+    \odot ::= & ~ ! \\
+    | & \sim \\
+    | & ~ \text{-} \\
+    | & ~ \mathit{abs} \\ \\
+    \oplus ::= & + \\
+    | & - \\
+    | & \times \\ \\
+    \stmt ::= & \sskip \\
+    | & \sdo{\expr} \\
+    | & \sseq{\stmt_1}{\stmt_2} \\
+    | & \sifthenelse{\expr}{\stmt_1}{\stmt_2}{L} \\
+    | & \swhile{\expr}{\stmt}{L} \\
+    | & \sdowhile{\expr}{\stmt}{L} \\
+    | & \sfor{\stmt_1}{\expr}{\stmt_2}{\stmt_3} \\
+    | & \sbreak \\
+    | & \scontinue \\
+    | & \sreturn \\
+    | & \sswitch{\expr}{\overline{(L,\stmt)}} \\
+    | & \slabel{L}{\stmt} \\
+    | & \sgoto{L} \\    
+    \end{aligned}\]
+  \end{subfigure}
+  \begin{subfigure}[t]{0.69\textwidth}
+    \[\begin{aligned}
+    \expr ::= & \val{v}{\vt} & \textnormal{Value} \\
+    | & x & \textnormal{Variable} \\
+    | & \expr [id] & \textnormal{Index} \\
+    | & \valof{\expr} & \textnormal{R-value of Address} \\
+    | & \deref{\expr} & \textnormal{Dereference} \\
+    | & \addrof{\expr} & \textnormal{Address Of} \\
+    | & \unop{\odot}{\expr} & \textnormal{Unary Operator} \\
+    | & \binop{\oplus}{\expr_1}{\expr_2} & \textnormal{Binary Operator} \\
+    | & \cast{\expr}{ty} & \textnormal{Cast} \\
+    | & \binop{\land}{\expr_1}{\expr_2} & \textnormal{Sequential And} \\
+    | & \binop{\lor}{\expr_1}{\expr_2} & \textnormal{Sequential Or} \\
+    | & \condition{\expr_1}{\expr_2}{\expr_3} & \textnormal{Conditional} \\
+    | & \sizeof{ty} & \textnormal{Size of Type} \\
+    | & \alignof{ty} & \textnormal{Alignment of Type} \\
+    | & \assign{\expr_1}{\expr_2} & \textnormal{Assignment} \\
+    | & \assignop{\oplus}{\expr_1}{\expr_2} & \textnormal{Operator Assignment} \\
+    | & \postincr{\oplus}{\expr} & \textnormal{Post-Increment/Decrement} \\
+    | & \comma{\expr_1}{\expr_2} & \textnormal{Expression Sequence} \\
+    | & \call{\expr_f}{\overline{\expr}_{args}} & \textnormal{Function Call} \\
+    | & \loc{l}{\lt} & \textnormal{Memory Location} \\
+    | & \paren{\expr}{ty} & \textnormal{Parenthetical Cast} \\
+    \end{aligned}\]
+  \end{subfigure}
+  \caption{Syntax}
+  \label{fig:syntax}
+\end{figure}
+
+\begin{figure}
+  %% Bookkeeping rules %%
+  \lredestep
+  \rredestep
+  \callredestep
+  \stuckestep
+  \caption{Bookkeeping rules}
+\end{figure}
+
+\begin{figure}
+  %% Sequencing rules %%
+  \dostepa
+  \dostepb
+  \seqstep
+  \seqskipstep
+  \seqcontinuestep
+  \seqbreakstep
+  \caption{Sequencing rules}
+\end{figure}
+
+\begin{figure}
+  %% If-then-else %%
+  \ifstepa
+  \ifstepb
+
+  \caption{Conditionals}
+\end{figure}
+
+\begin{figure}
+  %% While %%
+  \whilestep
+  \whiletruestep
+  \whilefalsestep
+  \whileskipcontinuestep
+  \whilebreakstep
+
+  %% Do-while %%
+  \dowhilestep
+  \dowhileskiporcontinuestep
+  \dowhilefalsestep
+  \dowhiletruestep
+  \dowhilebreakstep
+
+  %% For %%
+  \forinitstep
+  \forstep
+  \forfalsestep
+  \fortruestep
+  \forskiporcontinuestep
+  \forbreakstep
+  \forskippoststep
+  
+  \caption{Loops}
+\end{figure}
+
+\begin{figure}
+  %% Expression rules %%
+  \allocstep
+  \valofstep
+  \assignopstep
+  \postincstep
+  \assignstep
+  \varstep
+  \unopstep
+  \binopstep
+  
+  \caption{Expression rules}
+\end{figure}
+
+Tagged C uses a small-step reduction semantics, given in full in \cref{fig:semantics}.
 
 Values are ranged over by \(v\), variable identifiers by \(x\), and function identifiers by \(f\).
-Tags use a number of metavariables: \(\vt\), \(\pt\), \(\lt\), \(\nt\), and \(\PCT\).
+Tags use a number of metavariables: \(t\) ranges over all tags, while we will use
+\(\vt\) to refer to the tags associated with values, \(\pt\) for tags on pointer values
+and memory-location expressions, \(\lt\) for tags associated with memory locations themselves,
+\(\nt\) for ``name tags'' automatically derived from identifiers, and \(\PCT\) for the
+global ``program counter tag'' or PC Tag.
 An {\it atom} is a pair of a value and a tag, \(\val{v}{\vt}\); the @ symbol should be read
 as a pair in general, and is used when the second object in the pair is a tag.
-Expressions are ranged over by \(\expr\), statements by \(\stmt\), and continuations by \(\cont\).
+Expressions are ranged over by \(\expr\) (Figure \ref{fig:syntax}),
+statements by \(\stmt\), and continuations by \(\cont\).
+The continuations are defined inductively:
+
+\[\begin{split}
+\cont ::= & \kemp \\
+| & \kdo{\cont} \\
+| & \kseq{\stmt}{\cont} \\
+| & \kif{\stmt_1}{\stmt_2}{L}{\cont} \\
+| & \kwhiletest{\expr}{\stmt}{L}{\cont} \\
+| & \kwhileloop{\expr}{\stmt}{L}{\cont} \\
+| & \kdowhiletest{\expr}{\stmt}{L}{\cont} \\
+| & \kdowhileloop{\expr}{\stmt}{L}{\cont} \\
+| & \kfor{\stmt}{\cont} \\
+| & \kforpost{\stmt}{\cont} \\
+\end{split}\]
+
 Many continuations contain a context \(\mathit{ctx}\), which is a function from expressions
 to expressions.
 
 Global environments, ranged over by \(\genv\), map identifiers to either function
 or global variable definitions (including the variable's location in memory. Local environments,
-ranged over by \(\lenv\), map identifiers to atoms. And the {\em label environment}
+ranged over by \(\lenv\), map identifiers to atoms.
 Memories \(\mem\) map integers to
 triples: a value, a ``value tag'' \(\vt\), and a list of ``location tags'' \(\lts\).
 
@@ -53,15 +215,15 @@ This guarantees that even misaligned loads and stores always have a valid locati
 
 State can be of several kinds, denoted by their script prefix: a {\em general state} \(\mathcal{S}(\dots)\),
 an {\em expression state} \(\mathcal{E}(\dots)\), a {\em call state} \(\mathcal{C}(\dots)\), or a
-{\em return state} \(\mathcal{R}(\dots)\). Finally, the special state {\em failstop} (\(\mathcal{F}\))
-represents a tag failure.
+{\em return state} \(\mathcal{R}(\dots)\). Finally, the special state {\em failstop} (\(\mathcal{F}(\dots)\))
+represents a tag failure, and carries an arbitrary list of tags
 
 \[\begin{aligned}
 S ::= & \sstate{\PCT}{\mem}{\genv}{\lenv}{\stmt}{\cont} \\
 | & \estate{\PCT}{\mem}{\genv}{\lenv}{\expr}{\type}{\cont} \\
 | & \cstate{\PCT}{\mem}{\genv}{\lenv}{f}{\overline{\val{v}{\vt}}}{\cont} \\
-| & \rstate{\PCT}{\mem}{\genv}{\lenv}{\val{v}{vt}}{\cont} \\
-| & \mathcal{F} \\
+| & \rstate{\PCT}{\mem}{\genv}{\lenv}{\val{v}{\vt}}{\cont} \\
+| & \fstate{\overline{t}} \\
 \end{aligned}\]
 
 \paragraph*{Control Points with Side-effects and Optional Arguments}
@@ -74,10 +236,10 @@ target-level instructions, requiring a more complicated mapping. I will not call
 unless they are particularly noteworthy. From a performance standpoint, the most problematic
 situation is when a Tagged-C control point requires a tag from a location that is not read under
 a normal compilation scheme, which must update tags in locations that are not written, or in which
-the source construct does not have corresponding instructions in the targetl.
+the source construct does not have corresponding instructions in the target.
 
-These situations require the compiler to add instructions for the primary purpose of manipulating
-tags. If the tag rules that instantiate those control points do not make use of them, these instructions
+These situations require the compiler to add instructions to manipulate tags.
+If the tag rules that instantiate those control points do not make use of them, these instructions
 are needless overhead. In these cases, the control points will take optional parameters or return
 optional results, and I will explain how the rule should be implemented in the target if the
 options are used. If compiling with a known policy that does not make use of the options, it will
@@ -293,13 +455,7 @@ In Tagged C, malloc is modeled as an external call to a built-in, so this takes 
 of a special case of that expression. Where \(\mathit{heap\_alloc}\) is some allocation
 function (a parameter of the memory model) that takes a size and a memory and returns an address:
 
-\judgmenttwobrlong{\(\trule{\PCT',\pt,\optional{\(\vt\)},\optional{\(\lt\)}}{\malloct{\PCT}{st}}\)}
-              {\(\mem,p \leftarrow \mathit{heap\_alloc} ~ |ty| ~ \mem\)}
-              {\(\mem'' = \mem'\left[p + i \mapsto (\vundef,\vt,\lt) \mid 0 \leq i < s\right]\)}
-              {\(\defestate{\builtin{\mathit{malloc}}{\mathit{size}@st}}{ty}
-                \longrightarrow
-                \estate{\PCT'}{\mem''}{\genv}{\lenv}
-                       {\val{p}{\pt}}{ty}{\cont}\)}
+\allocstep
 
 And the tag rule is identical to \(\mathbf{LocalT}\), except that it always treats the allocated
 object as an array of bytes (making the location tags are always identical.)
@@ -318,13 +474,7 @@ When we perform a memory load or store, we check that the pointer tag on the lef
 of the assignment matches the location tag on all of the bytes being loaded or stored.
 For instance, in a normal {\it valof} expression, which accesses a left-hand value:
 
-\judgmenttwo{\(\mem[l]_{|ty|} = v@\vt@\overline{\lt}\)}
-            {\(\trule{\vt'}{\loadt{\PCT}{\pt}{\vt}{\overline{\lt}}}\)}
-            {\(\estate{\PCT}{\mem}{\genv}{\lenv}
-              {\valof{\loc{l}{\pt}}}{ty}{\cont}
-              \longrightarrow
-              \estate{\PCT}{\mem}{\genv}{\lenv}
-                     {\val{v}{\vt'}}{ty}{\cont}\)}
+\valofstep
 
 We want to both check that the pointer tag matches all of the location tags, and propagate the
 value tag on the value in memory alongside that value.
@@ -342,42 +492,13 @@ and right completely before performing the load. Intuitively, assignment-with-an
 classed along with the standard assignment in the spec, so it is appropriate that it be ordered
 in the same way.
 
-\judgmentthree{\(\mem[l]_{|ty|} = v_1@\vt_1@\overline{\lt}\)}
-              {\(\oplus \in \{+,-,*,/,\%,<<,>>,\&,^\wedge,|\}\)}
-              {\(\trule{\vt_1'}{\loadt{\PCT}{\pt}{\vt_1}{\lt}}\)}
-              {\(\defestate
-                {\assignop{\oplus}{\loc{l}{\pt}}
-                  {\val{v_2}{\vt_2}}}{ty}
-                \longrightarrow
-                \defestate
-                    {\assign{\loc{l}{\pt}}
-                      {\binop{\oplus}
-                        {\val{v_1}{\vt_1'}}
-                        {\val{v_2}{\vt_2}}}}{ty}\)}
+\assignopstep
 
-\judgmentthree{\(\mem[l] = v_1@\vt_2@\overline{\lt}\)}
-              {\(\oplus \in \{+,-\}\)}
-              {\(\trule{\vt_1'}{\loadt{\PCT}{\pt}{\vt_1}{\lt}}\)}
-              {\(\defestate
-                {\postinc{\oplus}
-                  {\loc{l}{\pt}}}{ty}
-                \longrightarrow
-                \defestate
-                    {\comma
-                      {\assign{\loc{l}{\pt}}
-                        {\binop{\oplus}{\val{v}{\vt''}}{1@\constt}}}
-                      {\val{v}{\vt''}}}{ty}\)}
+\postincstep
 
 On the flip side, we store values to memory using the {\it assign} expression:
 
-\judgmenttwobrlong{\(\mem[l]_{|ty|} = v_1@\vt_1@\overline{\lt}\)}
-                  {\(\mem' = \mem[l \mapsto v_2@\vt' @\overline{\lt}'\)}
-                  {\(\trule{\PCT',\vt',\overline{\lt}'}{\storet{\PCT}{\pt}{\vt_1}{\vt_2}{\overline{\lt}}}\)}
-                  {\(\defestate
-                    {\assign{\loc{l}{\pt}}{v_2@\vt_2}}{ty}{\val{v_2}{\vt_2}}
-                    \longrightarrow
-                    \estate{\PCT'}{\mem'}{\genv}{\lenv}
-                           {\val{v_2}{\vt_2}}{ty}{\cont}\)}
+\assignstep
 
 As before, we check that the pointer tag matches the locations tags, and then propagate the
 value tag (ignoring and overwriting the original value tag.) In addition, we propagate the PC Tag.
@@ -398,11 +519,7 @@ between the pointer and its tag. Of note here is the \(\mathbf{VarT}\) control p
 which transmits the pointer tag from the environment onto the location expression.
 In this policy, it propagates the color unchanged.
 
-\judgmenttwo{\(\lenv[id] = (l,\_,\pt,ty)\)}
-            {\(\trule{\pt}{\vart{\PCT}{\vt}}\)}
-            {\(\defestate{\var{id}}{ty}
-              \longrightarrow
-              \defestate{\loc{l}{\pt}}{ty}\)}
+\varstep
 
 %In PVI semantics, a pointer cast to an integer maintains its provenance, so the
 %cast rule should not change its tag. When cast in this way, integer operations
@@ -414,17 +531,9 @@ where exactly one argument has a color. Performing an operation with two values
 with color tags (i.e., two cast pointers) clears the tag on the result. It can still
 be used as an integer, but if cast back to a pointer it will be invalid.
 
-\judgmenttwo{\(\left\langle \odot \right\rangle v = v'\)}
-            {\(\vt' = \unopt{\PCT}{\vt}\)}
-            {\(\defestate{\unop{\odot}{\val{v}{\vt}}}{ty}
-              \longrightarrow
-              \defestate{\val{v'}{\vt'}}{ty}\)}
+\unopstep
 
-\judgmenttwo{\(v_1 \left\langle \oplus \right\rangle v_2 = v'\)}
-            {\(\vt' = \binopt{\PCT}{\vt_1}{\vt_2}\)}
-            {\(\defestate{\binop{\oplus}{\val{v_1}{vt_1}}{\val{v_2}{vt_2}}}{ty}
-              \longrightarrow
-              \defestate{\val{v'}{\vt'}}{ty}\)}
+\binopstep
 
 \vspace{\abovedisplayskip}
             

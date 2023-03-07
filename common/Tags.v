@@ -33,8 +33,14 @@ Module Type Policy.
   Parameter IfSplitT : tag -> tag -> option (tag * tag).
 
   Parameter IfJoinT : tag -> tag -> option tag.
-    
-  Parameter DummyT : list tag -> option (list tag).
+
+  Parameter IfEscapeT : tag -> tag -> option tag.
+
+  Parameter LoopEnterGuarded : tag -> tag -> option (tag * tag).
+
+  Parameter LoopExitGuarded : tag -> tag -> tag -> option tag.
+
+  Parameter LoopExitUnguarded : tag -> tag -> option tag.
 End Policy.
 
 Module TagLib (P:Policy).
@@ -95,9 +101,14 @@ Module NullPolicy <: Policy.
   Definition IfSplitT (pct vt : tag) : option (tag * tag) := Some (tt, tt).
 
   Definition IfJoinT (pct opct : tag) : option tag := Some tt.
-    
-  Definition DummyT (ts : list tag) : option (list tag) := Some ts.
 
+  Definition IfEscapeT (pct opct : tag) : option tag := Some tt.
+
+  Definition LoopEnterGuarded (pct vt : tag) : option (tag * tag) := Some (tt, tt).
+
+  Definition LoopExitGuarded (pct opct vt : tag) : option tag := Some tt.
+
+  Definition LoopExitUnguarded (pct opct : tag) : option tag := Some tt.
 End NullPolicy.  
 
 Module PVI <: Policy.
@@ -156,8 +167,14 @@ Module PVI <: Policy.
   Definition IfSplitT (pct vt : tag) : option (tag * tag) := Some (pct, pct).
 
   Definition IfJoinT (pct opct : tag) : option tag := Some pct.
-    
-  Definition DummyT (ts : list tag) : option (list tag) := Some ts.
+
+  Definition IfEscapeT (pct opct : tag) : option tag := Some pct.
+  
+  Definition LoopEnterGuarded (pct vt : tag) : option (tag * tag) := Some (pct, pct).
+
+  Definition LoopExitGuarded (pct opct vt : tag) : option tag := Some pct.
+
+  Definition LoopExitUnguarded (pct opct : tag) : option tag := Some pct.
 End PVI.
 
 Module PNVI <: Policy.
@@ -216,8 +233,14 @@ Module PNVI <: Policy.
   Definition IfSplitT (pct vt : tag) : option (tag * tag) := Some (pct, pct).
 
   Definition IfJoinT (pct opct : tag) : option tag := Some pct.
-    
-  Definition DummyT (ts : list tag) : option (list tag) := Some ts.
+
+  Definition IfEscapeT (pct opct : tag) : option tag := Some pct.
+
+  Definition LoopEnterGuarded (pct vt : tag) : option (tag * tag) := Some (pct, pct).
+
+  Definition LoopExitGuarded (pct opct vt : tag) : option tag := Some pct.
+
+  Definition LoopExitUnguarded (pct opct : tag) : option tag := Some pct.
 End PNVI.
 
 Definition Source : Type := (ident * ident).
@@ -299,9 +322,15 @@ Module IFC (S:IFC_Spec) <: Policy.
     let st := merge (merge pct pt) vt in
     if forallb (check st) lts then Some (pct, st, lts) else None.
 
-  Parameter IfSplitT : tag -> tag -> option (tag * tag).
+  Definition IfSplitT (pct vt : tag) : option (tag * tag) := Some (merge pct vt, pct).
+  
+  Definition IfJoinT (pct opct : tag) : option tag := Some opct.
 
-  Parameter IfJoinT : tag -> tag -> option tag.
-    
-  Parameter DummyT : list tag -> option (list tag).  
+  Definition IfEscapeT (pct opct : tag) : option tag := Some pct.
+
+  Definition LoopEnterGuarded (pct vt : tag) : option (tag * tag) := Some (merge pct vt, pct).
+
+  Definition LoopExitGuarded (pct opct vt : tag) : option tag := Some pct.
+
+  Definition LoopExitUnguarded (pct opct : tag) : option tag := Some pct.
 End IFC.
