@@ -137,61 +137,6 @@ a real C codebase: the Apache webserver.
 \end{figure}
 
 \begin{figure}
-  %% Bookkeeping rules %%
-  \lredestep
-  \rredestep
-  \callredestep
-  \stuckestep
-  \caption{Bookkeeping rules}
-\end{figure}
-
-\begin{figure}
-  %% Sequencing rules %%
-  \dostepa
-  \dostepb
-  \seqstep
-  \seqskipstep
-  \seqcontinuestep
-  \seqbreakstep
-  \caption{Sequencing rules}
-\end{figure}
-
-\begin{figure}
-  %% If-then-else %%
-  \ifstepa
-  \ifstepb
-
-  \caption{Conditionals}
-\end{figure}
-
-\begin{figure}
-  %% While %%
-  \whilestep
-  \whiletruestep
-  \whilefalsestep
-  \whileskipcontinuestep
-  \whilebreakstep
-
-  %% Do-while %%
-  \dowhilestep
-  \dowhileskipcontinuestep
-  \dowhilefalsestep
-  \dowhiletruestep
-  \dowhilebreakstep
-
-  %% For %%
-  \forinitstep
-  \forstep
-  \forfalsestep
-  \fortruestep
-  \forskiporcontinuestep
-  \forbreakstep
-  \forskippoststep
-  
-  \caption{Loops}
-\end{figure}
-
-\begin{figure}
   %% Expression rules %%
   \allocstep
   \valofstep
@@ -203,9 +148,10 @@ a real C codebase: the Apache webserver.
   \binopstep
   
   \caption{Expression rules}
+  \label{fig:exprstep}
 \end{figure}
 
-Tagged C uses a small-step reduction semantics, given in full in \cref{fig:semantics}.
+Tagged C uses a small-step reduction semantics, given in full in the appendix.
 
 Values are ranged over by \(v\), variable identifiers by \(x\), and function identifiers by \(f\).
 Tags use a number of metavariables: \(t\) ranges over all tags, while we will use
@@ -217,20 +163,7 @@ An {\it atom} is a pair of a value and a tag, \(\val{v}{\vt}\); the @ symbol sho
 as a pair in general, and is used when the second object in the pair is a tag.
 Expressions are ranged over by \(\expr\) (Figure \ref{fig:syntax}),
 statements by \(\stmt\), and continuations by \(\cont\).
-The continuations are defined inductively:
-
-\[\begin{split}
-\cont ::= & \kemp \\
-| & \kdo{\cont} \\
-| & \kseq{\stmt}{\cont} \\
-| & \kif{\stmt_1}{\stmt_2}{L}{\cont} \\
-| & \kwhiletest{\expr}{\stmt}{L}{\cont} \\
-| & \kwhileloop{\expr}{\stmt}{L}{\cont} \\
-| & \kdowhiletest{\expr}{\stmt}{L}{\cont} \\
-| & \kdowhileloop{\expr}{\stmt}{L}{\cont} \\
-| & \kfor{\stmt}{\cont} \\
-| & \kforpost{\stmt}{\cont} \\
-\end{split}\]
+The continuations are defined in \cref{app:continuations}, and step rules in \cref{app:rules}.
 
 Global environments, ranged over by \(\genv\), map identifiers to either function
 or global variable definitions (including the variable's location in memory. Local environments,
@@ -273,6 +206,7 @@ below. The control points and their types are listed in Figure \ref{fig:controlp
   \jointname      & : & \jointargs & \rightharpoonup \jointres \\
   \argtname       & : & \argtargs & \rightharpoonup \argtres \\
   \callerrettname & : & \callerrettargs & \rightharpoonup \callerrettres \\
+  \calleerettname & : & \calleerettargs & \rightharpoonup \calleerettres \\
   \end{aligned}\]
 
   \label{fig:controlpoints}
@@ -290,10 +224,13 @@ represents a tag failure, and carries the failed tag continuation.
 \[\begin{aligned}
 S ::= & \sstate{\PCT}{\mem}{\genv}{\lenv}{\stmt}{\cont} \\
 | & \estate{\PCT}{\mem}{\genv}{\lenv}{\expr}{\type}{\cont} \\
-| & \cstate{\PCT}{\mem}{\genv}{\lenv}{f}{\overline{\val{v}{\vt}}}{\cont} \\
+| & \cstate{f}{\PCT}{\mem}{\genv}{\lenv}{f}{\overline{\val{v}{\vt}}}{\cont} \\
 | & \rstate{\PCT}{\mem}{\genv}{\lenv}{\val{v}{\vt}}{\cont} \\
 | & \fstate{T} \\
 \end{aligned}\]
+
+Expressions (\cref{fig:exprstep}) use a contextual semantics; a call expression stores the
+context in the continuation all with the caller's continuation.
 
 \paragraph*{Control Points with Side-effects and Optional Arguments}
 
@@ -757,7 +694,7 @@ We write these as follows:
 \end{minipage}
 \begin{minipage}{0.5\textwidth}
   \[\begin{aligned}
-  \sigma ::= & x & \textnormal{Global} \\
+  \psi ::= & x & \textnormal{Global} \\
   & f(x) & \textnormal{Argument {\tt x} of {\tt f}} \\
   & f.ret & \textnormal{Return value of {\tt f}} \\
   & f.m & \textnormal{Memory owned by {\tt f}} \\
@@ -807,39 +744,57 @@ declassification rule.
 
 We can therefore define an IFPol as a set of rules of each kind:
 
-\[I \subseteq \{\}\]
+\[I \subseteq \{\sigma \not \rightsquigarrow \psi \mid \sigma \not \eq \psi\} \cup
+\{\sigma / \sigma' \mid \sigma \not \eq \sigma'\}\]
 
-[TODO: specification]
+We do not need to distinguish between rules that notionally represent ``integrity'' versus ``confidentiality''
+concerns. The SQL injection example is an instance of integrity, ensuring that an input cannot influence data
+in an undesired way, but the same concept can be used to prevent data from influencing the program's output
+inappropriately.
 
-\paragraph{Tagging Taint}
+[Specification]
+
+\paragraph{Tagging SIF}
 
 We track the influence of a particular source, or its ``taint,'' through the system in the form
-of tags on values. A value that is tagged \(\mathit{taint} ~ \overline{\sigma}\) has been influnced
+of tags on values. A value that is tagged \(\mathit{vtaint} ~ \overline{\sigma}\) has been influnced
 by all of the sources in \(\overline{\sigma}\). We also define a set of tags that indicate that a
 particular function argument or the memory location of an object represents a sink that is the
 target of one or more no-flow rules. If a sink \(\psi\) is tagged
 \(\mathit{forbid} ~ \overline{\sigma}\), then for all \(\sigma \in \overline{\sigma}\),
-\(\sigma \not \rightsquigarrow \psi\) is in our IFPol.
-
-We identify sinks through static tags on functions and through memory location tags,
-that encode the ``forbidden'' sources. So, our tag set is as follows, with \(X\) being the
-default tag that indicates no (interesting) source has tainted the value. Note that our
-tags may carry multiple sources.
+\(\sigma \not \rightsquigarrow \psi\) must be in our IFPol. Finally, the PC Tag must carry additional
+information: when the PC Tag is tainted, it must keep a record of the scope of the taint, in the form
+of a label. We will explain below how this scope is computed.
 %
 \begin{align*}
-  T ::= & \mathit{taint} ~ \overline{\sigma} \\
+  T ::= & \mathit{vtaint} ~ \overline{\sigma} \\
   & \mathit{forbid} ~ \overline{\sigma} \\
-  & X \\
+  & \mathit{pctaint} ~ \overline{(L,\sigma)} \\
 \end{align*}
 %
-We define three important operations on tags: {\em merge} (\(\sqcup\)), {\em minus} (\(-\)),
-and {\em check} (\(\sqsubseteq\)), all partial functions.
+We define four important operations on tags: {\em join} (\(t_1 \sqcup t_2\)), {\em bounded join}
+(\(t_1 [L \rightarrowtail t_2]\)), {\em minus} (\(t_1 - t_2\)), and {\em check} (\(t_1 \models t_2\)),
+all partial functions.
 %
 \[t_1 \sqcup t_2 \triangleq
 \begin{cases}
-  \mathit{taint} ~ (\overline{\sigma}_1 \cup \overline{\sigma}_2) &
-  \textnormal{if } t_1 = \mathit{taint} ~ \overline{\sigma}_1 \textnormal{ and }
-  t_2 = \mathit{taint} ~ \overline{\sigma}_2\\
+  \mathit{vtaint} ~ (\overline{\sigma}_1 \cup \overline{\sigma}_2) &
+  \textnormal{if } t_1 = \mathit{vtaint} ~ \overline{\sigma}_1 \textnormal{ and }
+  t_2 = \mathit{vtaint} ~ \overline{\sigma}_2\\
+  \mathit{vtaint} ~ (\overline{\sigma}_2 \cup \{\sigma \mid (L,\sigma) \in \overline{(L,\sigma)}_1\}) &
+  \textnormal{if } t_1 = \mathit{pctaint} ~ \overline{(L,\sigma)}_1 \textnormal{ and }
+  t_2 = \mathit{vtaint} ~ \overline{\sigma}_2\\
+  \mathit{vtaint} ~ (\overline{\sigma}_1 \cup \{\sigma \mid (L,\sigma) \in \overline{(L,\sigma)}_2\}) &
+  \textnormal{if } t_2 = \mathit{pctaint} ~ \overline{(L,\sigma)}_2 \textnormal{ and }
+  t_1 = \mathit{vtaint} ~ \overline{\sigma}_1\\
+  \bot & \textnormal{otherwise} \\
+\end{cases}\]
+%
+\[L \rightarrowtail t_1 \sqcup t_2 \triangleq
+\begin{cases}
+  \mathit{pctaint} ~ (\overline{\sigma}_1 \cup \overline{\sigma}_2) &
+  \textnormal{if } t_1 = \mathit{vtaint} ~ \overline{\sigma}_1 \textnormal{ and }
+  t_2 = \mathit{vtaint} ~ \overline{\sigma}_2\\
   \bot & \textnormal{otherwise} \\
 \end{cases}\]
 %
@@ -850,48 +805,81 @@ and {\em check} (\(\sqsubseteq\)), all partial functions.
   \bot & \textnormal{otherwise} \\
 \end{cases}\]
 %
-\[t_1 \sqsubseteq t_2 \triangleq
+\[t_2 \models t_1 \triangleq
 \begin{cases}
   \mathbf{t} & \textnormal{if } t_1 = \mathit{taint} ~ \overline{\sigma}_1,
   t_2 = \mathit{forbid} ~ \overline{\sigma}_2, \textnormal{ and }
   \overline{\sigma}_1 \cap \overline{\sigma}_2 = \emptyset \\
-  \mathbf{f} & \textnormal{else if } t_1 = \mathit{taint} ~ \overline{\sigma}_1 \textnormal{ and }
-  t_2 = \mathit{forbid} ~ \overline{\sigma}_2 \\
+  \mathbf{f} & \textnormal{if } t_1 = \mathit{taint} ~ \overline{\sigma}_1,
+  t_2 = \mathit{forbid} ~ \overline{\sigma}_2, \textnormal{ and }
+  \overline{\sigma}_1 \cap \overline{\sigma}_2 \not = \emptyset \\
   \bot & \textnormal{otherwise} \\
 \end{cases}\]
 
-\paragraph{Introducing Taint}
+\paragraph{Tainting and Checking Arguments and Returns}
 
-Each no-flow rule specifies a source that is either a function argument or return
-value. These attach to the {\em call-state} and {\em return-state} rules, respectively.
+Now we can begin to give our policy, given an arbitrary IFPol \(I\).
+
+A function argument or return value can be either a source or a sink.
+So, when they are processed by the {\em call-state} and {\em return-state} rules,
+we must both check that the value being passed or returned is not tainted by a forbidden
+source, and then add the current source to its taint.
 The call-state rule executes at the beginning of a call, moving all of its arguments into
 the local environment, using the \(\mathbf{ArgT}\) tag rule.
-
-\judgmentbr{\(\mathit{def}(f) = (xs, \stmt)\)}
-           {\(\lenv' = \lenv \llbracket x \mapsto v@\vt' \mid
-             (x,v@\vt) \leftarrow \mathit{zip}(xs,args), \vt' \leftarrow \argt \rrbracket\)}
-           {\(\cstate{\PCT}{\mem}{\genv}{\lenv}{f}{args}{\cont} \longrightarrow
-             \sstate{\PCT}{\mem}{\genv}{\lenv'}{\stmt}{\cont}\)}
-
-And the return-state rule executes after the call returns, inserting the result into the
+The return-state rule executes after the call returns, inserting the result into the
 context saved in the continuation. The program counter on return and the result's tag are
-set by the \(\mathbf{CallerRetT}\) tag rule.
-           
-\judgmenttwo{\(\cont = \mathit{Kcall} ~ \lenv' ~ \mathit{ctx} ~ \cont'\)}
-            {\(\PCT'',\vt' \leftarrow \callerrett\)}
-            {\(\rstate{\PCT}{\mem}{\genv}{\lenv}{\val{v}{\vt}}{\cont} \longrightarrow
-              \sstate{\PCT'}{\mem}{\genv}{\lenv'}{\mathit{ctx}[\val{v}{\vt'}]}{\cont'}\)}
+set by the \(\mathbf{CallerRetT}\) tag rule. Both are given in \cref{fig:callretsteps}.
 
-In the case of an IFC policy, both control points are parameterized by a set of IFC rules, \(I\).
-
+\begin{figure}
+  \callstep
+  \returnstep
+  \caption{Call and Return Steps}
+  \label{fig:callretsteps}
+\end{figure}
+  
 \begin{minipage}[t]{.49\textwidth}            
   \[\begin{aligned}
-  \truledef{\argt{I}{\PCT}{\vt}{\nt}}
-  \letin{\vt' := \vt - \{\sigma \mid \sigma / \nt \in I \}}
-  \letin{\vt'' := \vt' \sqcup \mathit{tainted} ~ \{\nt \mid \nt \not \rightsquigarrow \_ \in I\}}
-  \settag{\vt'}{\vt''}
+  \truledef{\argt}
+  \letin{t := \mathit{forbid} ~ \{\sigma \mid \sigma \not \rightsquigarrow f(x) \in I\}}
+  \assert{t \models \PCT \sqcup \vt}
+  \letin{\vt_1 := \vt - \{\sigma \mid \sigma / f(x) \in I \}}
+  \letin{\vt_2 := \vt_1 \sqcup \mathit{tainted} ~ \{f(x)\}}
+  \settag{\vt'}{\vt_2}
   \end{aligned}\]
 \end{minipage}
+\begin{minipage}[t]{.49\textwidth}            
+  \[\begin{aligned}
+  \truledef{\callerrett}
+  \letin{t := \mathit{forbid} ~ \{\sigma \mid \sigma \not \rightsquigarrow f.ret \in I\}}
+  \assert{t \models \PCT \sqcup \vt}
+  \letin{\vt_1 := \vt - \{\sigma \mid \sigma / f.ret \in I \}}
+  \letin{\vt_2 := \vt_1 \sqcup \mathit{tainted} ~ \{f.ret\}}
+  \settag{\vt'}{\vt_2}
+  \end{aligned}\]
+\end{minipage}
+
+Global variables are also possible sources or sinks. In this case, we initialize their
+tags to carry this information.
+\[\begin{aligned}
+\truledef{\globalt}
+\settag{\pt}{\mathit{tainted} ~ \emptyset}
+\settag{\vt}{\mathit{tainted} ~ \{x\}}
+\settag{\overline{\lt}}{\left[\mathit{forbidden} ~ \{\sigma \mid x \not \rightsquigarrow x \in I\}\right]}
+\end{aligned}\]
+
+\paragraph{Introducing Dynamic Sinks}
+
+One scenario that does not really match the others is when the sink is dynamically allocated
+memory. In this case, we need to tag the memory at allocation-time with the forbidden
+sources.
+
+\[\begin{aligned}
+\truledef{\malloct}
+\settag{\pt}{\PCT \sqcup \mathit{tainted} ~ \emptyset}
+\settagopt{\vt}{\mathit{tainted} ~ \emptyset}
+\settagopt{\overline{\lt}}{\left[\mathit{forbidden} ~ \{\sigma \mid \sigma \not \rightsquigarrow f.m\} \right]}
+\settag{\PCT'}{\PCT + 1}
+\end{aligned}\]
 
 \paragraph{Propagating Taint Through Expressions}
 
@@ -929,7 +917,7 @@ Loads and stores:
 \begin{minipage}[t]{.59\textwidth}
 \[\begin{aligned}
 \truledef{\storet}
-\assert{\forall \lt \in \overline{\lt} . \PCT \sqcup \pt \sqcup \vt_2 \sqsubseteq \lt}
+\assert{\forall \lt \in \overline{\lt} . \lt \models \PCT \sqcup \pt \sqcup \vt_2}
 \settag{\PCT'}{\PCT}
 \settag{\vt'}{\PCT \sqcup \pt \sqcup \vt_2}
 \settag{\overline{\lt'}}{\overline{\lt}}
@@ -938,7 +926,7 @@ Loads and stores:
 
 \paragraph{Implicit Flows}
 
-Things become trickier when control-flow itself can be tainted. This can occur in
+Things become trickier when the program's control-flow itself can be tainted. This can occur in
 any of our semantics' steps that can produce different statements and continuations
 depending on the tained value. At that point, any change to the machine state constitutes
 an information flow.
@@ -957,30 +945,33 @@ while
 and where \(\stmt_1 \not = \stmt_2\) or \(\cont_1 \not = \cont_2\). Taking either step
 should taint the program state itself! We represent this as a taint on the PC Tag.
 When the PC Tag is tainted, all stores to memory and all updates to environments must
-also be tainted.
-
-This presents a problem if the program counter must remain tainted indefinitely.
-Fortunately, it is safe to remove the taint if all branches eventually rejoin.
-We term this a {\it join point}. In terms of the program's control-flow graph, the
+also be tainted until all branches eventually rejoin.
+We term the point at which it is safe to remove taint a {\it join point}.
+In terms of the program's control-flow graph, the
 join point of a branch is its immediate post-dominator.
 
 In many simple programs, the join point of a conditional or loop is obvious:
 the point at which the chosen branch is complete, or the loop has ended.
 Such a simple example can be seen in \cref{fig:ifthenelse}; {\tt public1} must be
 tagged with the taint tag of {\tt secret}, while it is safe to tag {\tt public2}
-\(X\), because that is after the join point, {\tt J}. The same goes for \cref{fig:while}.
+\(X\), because that is after the join point, {\tt J}. The same goes for \cref{fig:while},
+because we are in a {\em termination-insensitive} setting \cite{}. This means that we
+consider only terminating runs. So, we can guarantee that the post-dominator \(J\)
+of the while loop is reached.
 
 But in the presence of unrestricted go-to statements, a join point may not be
-local---and sometimes may not exist. Consider \cref{fig:forbreak}, which
+local---and sometimes may not exist within the function, assuming that we have not
+consolidated return points. Consider \cref{fig:forbreak}, which
 uses go-to statements to create an approximation of an if-statement whose join-point
 is far removed from the for-loop. The label {\tt J} now has nothing to do with the
 semantics of any particular statement.
 
-Luckily this can still be determined statically
-from a function's full control-flow graph. So, we annotate our programs with this
-information via additional labels. Every statement that branches can carry an
-optional label indicating its corresponding join point. If it doesn't have such
-a label, that indicates that there is no join point---once the PC Tag is tainted,
+Luckily this can still be determined statically from a function's full
+control-flow graph. So, to implement the policy, we must first transform our program
+by adding labels at the join point of each conditional.
+Every statement that branches carries an optional label indicating its corresponding
+join point. If it doesn't have such
+a label, that indicates that there is no join point within the function---once the PC Tag is tainted,
 it must remain so until a return.
 
 \begin{figure}
@@ -1105,49 +1096,47 @@ J:  public2 = 42;
   \label{fig:forbreak}
 \end{figure}
 
-When we step into a conditional or loop, we need to record its join point for later.
-The join point will always be represented by a label, which is an identifier,
-so we can simply store it in the local environment.
+\begin{figure}
+  \ifstepb
+  
+  \whiletruestep
+  \whilefalsestep
+  \whileskipcontinuestep
+  \whilebreakstep
 
-\ifstepb
+  \labelstep
 
-The label carries a record of all sources that might currently taint the program's
-control flow, but will be safe once that label is reached. So, just as \(\PCT\) is merged with
-\(\vt\) to produce \(\PCT''\), \(\PCT'\) will be merged with \(\vt\) to produce \(\PCT'''\), a new tag
-for \(L\). Then, when we reach the label \(L\), we will retrieve the stored tag and subtract its
-sources from the PC Tag at that time.
+  \caption{Selected Conditional Steps}
+  \label{fig:conditionals}
+\end{figure}
 
-\begin{minipage}{.4\textwidth}
+
+When we step into a conditional or loop, we record its join point on the PC Tag, associated with the sources
+that are tainted. Then, when we reach the label, we will subtract its sources from the PC Tag at that time.
+This means that if multiple branches share a join point, their taints will be removed simultaneously.
+
+\begin{minipage}[t]{.25\textwidth}
 \[\begin{aligned}
 \truledef{\splitt}
-\settag{\PCT''}{\PCT \sqcup \vt}
-\settag{\optional{\(\PCT'''\)}}{\PCT' \sqcup \vt}
+\settag{\PCT'}{\PCT[L \rightarrowtail \vt]}
 \end{aligned}\]
 \end{minipage}
-\begin{minipage}{.4\textwidth}
+\begin{minipage}[t]{.74\textwidth}
 \[\begin{aligned}
 \truledef{\joint}
-\letin{\PCT'' := \PCT - \{\sigma \mid \sigma'\}}
-\settag{\PCT''}{\PCT \sqcup \vt}
-\settag{\optional{\(\PCT'''\)}}{\PCT' \sqcup \vt}
+\assert{\PCT = \mathit{pctaint} ~ \overline{(L,\sigma)}\}}
+\settag{\PCT'}{\mathit{pctaint} ~ \{(L',\sigma) \mid (L',\sigma) \in \overline{(L,\sigma)} \land L \not \eq L'\}}
 \end{aligned}\]
 \end{minipage}
 
-The \(\mathbf{JoinT}\) control point applies whenever we reach a labeled statement, like so:
-
-\judgmentthree
-    {\(\lenv[L] = \val{\_}{\PCT'}\)}
-    {\(\PCT'',\PCT''' \leftarrow \joint \)}
-    {\(\lenv' = \lenv[L \mapsto \val{\vundef}{\PCT'''}]\)}
-    {\(\sstate{\PCT}{\mem}{\genv}{\lenv}
-      {L: \stmt}{\cont} \longrightarrow
-      \sstate{\PCT''}{\mem}{\genv}{\lenv'}{\stmt}{\cont}\)}
-
+The \(\mathbf{JoinT}\) control point applies whenever we reach a labeled statement, seen
+in \cref{fig:conditionals}.
 The remaining branching constructs are rather complicated, involving multiple steps
 and manipulations of the continuation that are not that relevant to their control
 points. Rather than give their semantics in full, it suffices to identify which
 transitions contain \(\mathbf{SplitT}\) control points. In \cref{fig:rest}, these
-are the transitions from the state marked \(S\).
+are the transitions from the state marked \(S\). Their semantics are given in full
+in the appendix.
 
 \begin{figure}
   \begin{subfigure}{0.5\textwidth}
@@ -1251,5 +1240,86 @@ declare that there are no secrets to lowre when it is reached.
 \label{sec:relwork}
 
 \bibliography{taggedc.bib}
+
+\appendix
+
+\section{Continuations}
+\label{app:continuations}
+
+\[\begin{split}
+\cont ::= & \kemp \\
+| & \kdo{\cont} \\
+| & \kseq{\stmt}{\cont} \\
+| & \kif{\stmt_1}{\stmt_2}{L}{\cont} \\
+| & \kwhiletest{\expr}{\stmt}{L}{\cont} \\
+| & \kwhileloop{\expr}{\stmt}{L}{\cont} \\
+| & \kdowhiletest{\expr}{\stmt}{L}{\cont} \\
+| & \kdowhileloop{\expr}{\stmt}{L}{\cont} \\
+| & \kfor{\stmt}{\cont} \\
+| & \kforpost{\stmt}{\cont} \\
+\end{split}\]
+
+\section{Step rules}
+\label{app:rules}
+
+\subsection{Sequencing rules}
+
+\dostepa
+\dostepb
+\seqstep
+\seqskipstep
+\seqcontinuestep
+\seqbreakstep
+\retvalstep
+\labelstep
+
+\subsection{Conditional rules}
+
+\ifstepa
+\ifstepb
+
+TODO: switch
+
+\subsection{Loop rules}
+
+%% While %%
+\whilestep
+\whiletruestep
+\whilefalsestep
+\whileskipcontinuestep
+\whilebreakstep
+
+%% Do-while %%
+\dowhilestep
+\dowhileskipcontinuestep
+\dowhilefalsestep
+\dowhiletruestep
+\dowhilebreakstep
+
+%% For %%
+\forinitstep
+\forstep
+\forfalsestep
+\fortruestep
+\forskiporcontinuestep
+\forbreakstep
+\forskippoststep
+
+\subsection{Expression Rules}
+
+\allocstep
+\valofstep
+\assignopstep
+\postincstep
+\assignstep
+\varstep
+\unopstep
+\binopstep
+\callexprstep
+
+\subsection{Call and Return Rules}
+
+\callstep
+\returnstep
 
 \end{document}

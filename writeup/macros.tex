@@ -12,7 +12,7 @@
 \newcommand{\truledef}[1]{
   & \multispan{3} \(#1\) \\}
 
-\newcommand{\assert}[1]{& & & \multispan{2} \(\mathbf{assert} ~ #1\) \\}
+\newcommand{\assert}[1]{& & & \multispan{2} \(\mathbf{assert} ~ #1\) \hfill \\}
 \newcommand{\letin}[1]{& & & \multispan{2} \(\mathit{let} ~ #1 ~ \mathit{in}\) \\}
 
 \newcommand{\caseof}[1]{\textnormal{case } #1 \textnormal{ of}}
@@ -65,7 +65,7 @@
 \newcommand{\vart}{\vartname(\vartargs)}
 
 \newcommand{\malloctname}{\mathbf{MallocT}}
-\newcommand{\malloctargs}{\PCT, \vt}
+\newcommand{\malloctargs}{\PCT, \vt, f}
 \newcommand{\malloctres}{\PCT',\pt,\optional{\(\vt\)},\optional{\(\lt\)}}
 \newcommand{\malloct}{\malloctname(\malloctargs)}
 
@@ -80,18 +80,18 @@
 \newcommand{\ipcastt}{\ipcasttname(\ipcasttargs)}
 
 \newcommand{\splittname}{\mathbf{SplitT}}
-\newcommand{\splittargs}{\PCT, \vt, \optional{\(t\)}}
-\newcommand{\splittres}{\PCT', t'}
+\newcommand{\splittargs}{\PCT, \vt, \optional{\(L\)}}
+\newcommand{\splittres}{\PCT'}
 \newcommand{\splitt}{\splittname(\splittargs)}
            
 \newcommand{\jointname}{\mathbf{JointT}}
-\newcommand{\jointargs}{\PCT, \optional{\(t\)}}
-\newcommand{\jointres}{\PCT', t'}
+\newcommand{\jointargs}{\PCT, \optional{\(L\)}}
+\newcommand{\jointres}{\PCT'}
 \newcommand{\joint}{\jointname(\jointargs)}
 
 \newcommand{\argtname}{\mathbf{ArgT}}
-\newcommand{\argtargs}{\PCT, \vt, x}
-\newcommand{\argtargstyped}{\PCT, \vt, x \in ident}
+\newcommand{\argtargs}{\PCT, \vt, f, x}
+\newcommand{\argtargstyped}{\PCT, \vt, f, x \in ident}
 \newcommand{\argtres}{\vt'}
 \newcommand{\argt}{\argtname(\argtargs)}
 
@@ -99,6 +99,11 @@
 \newcommand{\callerrettargs}{\PCT, \PCT', \vt}
 \newcommand{\callerrettres}{\vt'}
 \newcommand{\callerrett}{\callerrettname(\callerrettargs)}
+
+\newcommand{\calleerettname}{\mathbf{CalleeRetT}}
+\newcommand{\calleerettargs}{\PCT, \PCT', \vt}
+\newcommand{\calleerettres}{\vt'}
+\newcommand{\calleerett}{\calleerettname(\calleerettargs)}
 
 %%%%%%%%%%%%%%%%%
 
@@ -114,17 +119,20 @@
 \newcommand{\kdowhileloop}[4]{\mathit{KdoWhileLoop}(#1) ~ \{ ~ #2 ~ \} ~ \mathit{join} ~ #3; ~ #4}
 \newcommand{\kfor}[2]{\mathit{Kfor} ~ #1; ~ #2}
 \newcommand{\kforpost}[2]{\mathit{KforPost} ~ #1; ~ #2}
+\newcommand{\kcall}[3]{\mathit{Kcall} ~ #1 ~ #2 ~ #3}
 
-\newcommand{\sstate}[6]{\mathcal{S}\left(#2,#3,#4 \mid #5 \gg #6 @ #1\right)}
-\newcommand{\estate}[6]{\mathcal{E}\left(#2,#3,#4 \mid #5; \gg #6 @ #1\right)}
-\newcommand{\cstate}[7]{\mathcal{C}\left(#2,#3,#4 \mid #7 \left[#5(#6)\right] @ #1\right)}
-\newcommand{\rstate}[6]{\mathcal{R}\left(#2,#3,#4 \mid #6 \left[#5\right] @ #1\right)}
+\newcommand{\ctx}[1]{ctx \left[#1\right]}
+
+\newcommand{\sstate}[6]{\mathcal{S}\left(f,#2,#3,#4 \mid #5 \gg #6 @ #1\right)}
+\newcommand{\estate}[6]{\mathcal{E}\left(f,#2,#3,#4 \mid #5; \gg #6 @ #1\right)}
+\newcommand{\cstate}[7]{\mathcal{C}\left(#1,#3,#4 \mid #5(#6) \gg #7 @ #2\right)}
+\newcommand{\rstate}[6]{\mathcal{R}\left(#1,#3,#4 \mid #5 \gg #6 @ #2\right)}
 \newcommand{\fstate}[1]{\mathcal{F}\left(#1\right)}
+
 \newcommand{\mem}{m}
 \newcommand{\genv}{\mathit{ge}}
 \newcommand{\lenv}{\mathit{le}}
 \newcommand{\cont}{k}
-\newcommand{\ctx}[1]{\mathit{ctk}(#1)}
 \newcommand{\stmt}{s}
 \newcommand{\expr}{e}
 \newcommand{\type}{ty}
