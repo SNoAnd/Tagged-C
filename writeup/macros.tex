@@ -23,27 +23,82 @@
 \newcommand{\settagopt}[2]{\optional{\(\boldsymbol{#1}\)} & \longleftarrow & & \mathit{#2}\\}
 
 %%% Tag Rules %%%
-\newcommand{\loadt}[4]{\mathbf{LoadT}(#1,#2,#3,#4)}
-\newcommand{\storet}[5]{\mathbf{StoreT}(#1,#2,#3,#4,#5)}
+\newcommand{\loadtname}{\mathbf{LoadT}}
+\newcommand{\loadtargs}{\PCT, \pt, \vt, \overline{\lt}}
+\newcommand{\loadtres}{\vt'}
+\newcommand{\loadt}{\loadtname(\loadtargs)}
 
-\newcommand{\constt}{\mathbf{ConstT}}
-\newcommand{\unopt}[2]{\mathbf{UnopT}(#1,#2)}
-\newcommand{\binopt}[3]{\mathbf{BinopT}(#1,#2,#3)}
+\newcommand{\storetname}{\mathbf{StoreT}}
+\newcommand{\storetargs}{\PCT, \pt, \vt_1, \vt_2, \overline{\lt}}
+\newcommand{\storetres}{\PCT',\vt',\overline{\lt}'}
+\newcommand{\storet}{\storetname(\storetargs)}
 
-\newcommand{\globalt}[2]{\mathbf{GlobalT}(#1,#2)}
-\newcommand{\localt}[3]{\mathbf{LocalT}(#1,#2,#3)}
-\newcommand{\vart}[2]{\mathbf{VarT}(#1,#2)}
+\newcommand{\consttname}{\mathbf{ConstT}}
+\newcommand{\consttres}{\vt}
+\newcommand{\constt}{\consttname}
 
-\newcommand{\malloct}[2]{\mathbf{MallocT}(#1,#2)}
+\newcommand{\unoptname}{\mathbf{UnopT}}
+\newcommand{\unoptargs}{\PCT, \vt}
+\newcommand{\unoptres}{\vt}
+\newcommand{\unopt}{\unoptname(\unoptargs)}
 
-\newcommand{\picastt}[4]{\mathbf{PICastT}(#1,#2,\optional{\(#3,#4\)})}
-\newcommand{\ipcastt}[4]{\mathbf{IPCastT}(#1,#2,\optional{\(#3,#4\)})}
+\newcommand{\binoptname}{\mathbf{BinopT}}
+\newcommand{\binoptargs}{\PCT, \vt_1, \vt_2}
+\newcommand{\binoptres}{\vt'}
+\newcommand{\binopt}{\binoptname(\binoptargs)}
 
-\newcommand{\splitt}[3]{\mathbf{SplitT}(#1,#2,#3)}
-\newcommand{\joint}[2]{\mathbf{JoinT}(#1,#2)}
+\newcommand{\globaltname}{\mathbf{GlobalT}}
+\newcommand{\globaltargs}{id, s}
+\newcommand{\globaltargstyped}{id \in ident, s \in \mathbb{N}}
+\newcommand{\globaltres}{\pt,\vt,\overline{\lt}}
+\newcommand{\globalt}{\globaltname(\globaltargs)}
 
-\newcommand{\argt}[4]{\mathbf{ArgT}_{#1}(#2,#3,#4)}
-\newcommand{\callerrett}[3]{\mathbf{CallerRetT}(#1,#2,#3)}
+\newcommand{\localtname}{\mathbf{LocalT}}
+\newcommand{\localtargs}{\PCT, id, s}
+\newcommand{\localtargstyped}{\PCT, id \in ident, s \in \mathbb{N}}
+\newcommand{\localtres}{\pt,\vt,\overline{\lt}}
+\newcommand{\localt}{\localtname(\localtargs)}
+
+\newcommand{\vartname}{\mathbf{VarT}}
+\newcommand{\vartargs}{\PCT, \vt}
+\newcommand{\vartres}{\pt}
+\newcommand{\vart}{\vartname(\vartargs)}
+
+\newcommand{\malloctname}{\mathbf{MallocT}}
+\newcommand{\malloctargs}{\PCT, \vt}
+\newcommand{\malloctres}{\PCT',\pt,\optional{\(\vt\)},\optional{\(\lt\)}}
+\newcommand{\malloct}{\malloctname(\malloctargs)}
+
+\newcommand{\picasttname}{\mathbf{PICastT}}
+\newcommand{\picasttargs}{\PCT, \pt, \optional{\(\vt, \overline{\lt}\)}}
+\newcommand{\picasttres}{\PCT',\vt}
+\newcommand{\picastt}{\picasttname(\picasttargs)}
+
+\newcommand{\ipcasttname}{\mathbf{IPCastT}}
+\newcommand{\ipcasttargs}{\PCT, \vt_1, \optional{\(\vt_2, \overline{\lt}\)}}
+\newcommand{\ipcasttres}{\PCT',\pt}
+\newcommand{\ipcastt}{\ipcasttname(\ipcasttargs)}
+
+\newcommand{\splittname}{\mathbf{SplitT}}
+\newcommand{\splittargs}{\PCT, \vt, \optional{\(t\)}}
+\newcommand{\splittres}{\PCT', t'}
+\newcommand{\splitt}{\splittname(\splittargs)}
+           
+\newcommand{\jointname}{\mathbf{JointT}}
+\newcommand{\jointargs}{\PCT, \optional{\(t\)}}
+\newcommand{\jointres}{\PCT', t'}
+\newcommand{\joint}{\jointname(\jointargs)}
+
+\newcommand{\argtname}{\mathbf{ArgT}}
+\newcommand{\argtargs}{\PCT, \vt, x}
+\newcommand{\argtargstyped}{\PCT, \vt, x \in ident}
+\newcommand{\argtres}{\vt'}
+\newcommand{\argt}{\argtname(\argtargs)}
+
+\newcommand{\callerrettname}{\mathbf{CallerRetT}}
+\newcommand{\callerrettargs}{\PCT, \PCT', \vt}
+\newcommand{\callerrettres}{\vt'}
+\newcommand{\callerrett}{\callerrettname(\callerrettargs)}
 
 %%%%%%%%%%%%%%%%%
 
@@ -64,6 +119,7 @@
 \newcommand{\estate}[6]{\mathcal{E}\left(#2,#3,#4 \mid #5; \gg #6 @ #1\right)}
 \newcommand{\cstate}[7]{\mathcal{C}\left(#2,#3,#4 \mid #7 \left[#5(#6)\right] @ #1\right)}
 \newcommand{\rstate}[6]{\mathcal{R}\left(#2,#3,#4 \mid #6 \left[#5\right] @ #1\right)}
+\newcommand{\fstate}[1]{\mathcal{F}\left(#1\right)}
 \newcommand{\mem}{m}
 \newcommand{\genv}{\mathit{ge}}
 \newcommand{\lenv}{\mathit{le}}
@@ -93,6 +149,9 @@
 \newcommand{\var}[1]{#1}
 \newcommand{\cast}[2]{(#2) #1}
 \newcommand{\call}[2]{#1(#2)}
+\newcommand{\condition}[3]{#1 ~ ? ~ #2 ~ : ~ #3}
+\newcommand{\sizeof}[1]{\mathtt{size}(#1)}
+\newcommand{\alignof}[1]{\mathtt{align}(#1)}
 
 \newcommand{\sskip}{\mathtt{skip}}
 \newcommand{\sdo}[1]{#1;}

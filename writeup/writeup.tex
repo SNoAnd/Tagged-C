@@ -14,7 +14,6 @@
 \bibliographystyle{ACM-Reference-Format}
 \citestyle{acmauthoryear}
 
-\usepackage{amsmath,amsfonts,amssymb}
 \usepackage{geometry}
 \usepackage{graphicx}
 \usepackage{xcolor}
@@ -39,7 +38,49 @@
 \input{macros.tex}
 \input{semantics.tex}
 
+\section{Introduction}
+
+[Motivation goes here]
+
+In this paper we introduce Tagged C, a variant of C with a built-in reference monitor that
+supports a wide range of user-defined security policies.
+
+Absent a security policy, Tagged C
+gives definition to C's memory-undefined-behaviors in the form of a concrete memory model
+with integer pointers. This permissive environment can be restricted using a {\it memory safety}
+policy to give a stricter definition in which some memory UBs are defined as failstops.
+
+We describe two additional classes of policy that can be implemented in Tagged C using input from
+an engineer familiar with the codebase: {\em secure information flow} (SIF), often called
+information flow control, and {\em compartmentalization}. Both are desirable forms of security.
+Compartmentalization divides the system into components with limited access to one another's
+memory, helping isolate errors. SIF allows fine-grained control of which function inputs and
+outputs are allowed to influence other functions and/or memory objects.
+
+\paragraph{Contributions}
+
+\begin{itemize}
+\item A full formal semantics for Tagged C, formalized in Coq
+\item A Tagged C interpreter, implemented in Coq and extracted to Ocaml
+\item Policies implementing (1) realistic, permissive memory models from the literature (PVI and PNVI),
+  (2) Secure Information Flow (SIF) based on minimal user annotations, and (3) compartmentalization
+  for fault isolation
+\end{itemize}
+
+\paragraph{Paper Map}
+
+In the next section, we give a full account of the formal semantics of Tagged C,
+including its control points. Then in \cref{sec:memsafe}, we describe how we attach
+a memory safety policy to it, in the process giving some justification of how we chose to
+attach the control points. In \cref{sec:SIF}, we give a similar description of
+a secure information flow policy. We round out our policies in \cref{sec:comp} with
+a compartmentalization policy.
+
+In \cref{sec:validation} we give a case study of applying Tagged C policies to
+a real C codebase: the Apache webserver.
+
 \section{Formal Semantics}
+\label{sec:semantics}
 
 \begin{figure}
   \begin{subfigure}[t]{0.3\textwidth}
@@ -84,7 +125,7 @@
     | & \alignof{ty} & \textnormal{Alignment of Type} \\
     | & \assign{\expr_1}{\expr_2} & \textnormal{Assignment} \\
     | & \assignop{\oplus}{\expr_1}{\expr_2} & \textnormal{Operator Assignment} \\
-    | & \postincr{\oplus}{\expr} & \textnormal{Post-Increment/Decrement} \\
+    | & \postinc{\oplus}{\expr} & \textnormal{Post-Increment/Decrement} \\
     | & \comma{\expr_1}{\expr_2} & \textnormal{Expression Sequence} \\
     | & \call{\expr_f}{\overline{\expr}_{args}} & \textnormal{Function Call} \\
     | & \loc{l}{\lt} & \textnormal{Memory Location} \\
@@ -133,7 +174,7 @@
 
   %% Do-while %%
   \dowhilestep
-  \dowhileskiporcontinuestep
+  \dowhileskipcontinuestep
   \dowhilefalsestep
   \dowhiletruestep
   \dowhilebreakstep
@@ -191,9 +232,6 @@ The continuations are defined inductively:
 | & \kforpost{\stmt}{\cont} \\
 \end{split}\]
 
-Many continuations contain a context \(\mathit{ctx}\), which is a function from expressions
-to expressions.
-
 Global environments, ranged over by \(\genv\), map identifiers to either function
 or global variable definitions (including the variable's location in memory. Local environments,
 ranged over by \(\lenv\), map identifiers to atoms.
@@ -213,17 +251,48 @@ with the four bytes of each word tagged with \(\lts\)'s four tags.
 This guarantees that even misaligned loads and stores always have a valid location tag to check
 (possibly multiple, mismatched location tags, in which case the policy can failstop if needed.)
 
-State can be of several kinds, denoted by their script prefix: a {\em general state} \(\mathcal{S}(\dots)\),
+Tags are processed by special functions called {\it tag rules}, which are called at
+{\it control points}. Formally, a control point consists of a return type and a list
+of input types, which are usually tags or lists of tags, but may be optional as described
+below. The control points and their types are listed in Figure \ref{fig:controlpoints}.
+
+\begin{figure}
+  \[\begin{aligned}
+  \loadtname      & : & \loadtargs & \rightharpoonup \loadtres \\
+  \storetname     & : & \storetargs & \rightharpoonup \storetres \\
+  \consttname     & : & & \rightharpoonup \consttres \\
+  \unoptname      & : & \unoptargs & \rightharpoonup \unoptres \\
+  \binoptname     & : & \binoptargs & \rightharpoonup \binoptres \\
+  \globaltname    & : & \globaltargstyped & \rightharpoonup \globaltres \\
+  \localtname     & : & \localtargstyped & \rightharpoonup \localtres \\
+  \vartname       & : & \vartargs & \rightharpoonup \vartres \\
+  \malloctname    & : & \malloctargs & \rightharpoonup \malloctres \\
+  \picasttname    & : & \picasttargs & \rightharpoonup \picasttres \\
+  \ipcasttname    & : & \ipcasttargs & \rightharpoonup \ipcasttres \\
+  \splittname     & : & \splittargs & \rightharpoonup \splittres \\
+  \jointname      & : & \jointargs & \rightharpoonup \jointres \\
+  \argtname       & : & \argtargs & \rightharpoonup \argtres \\
+  \callerrettname & : & \callerrettargs & \rightharpoonup \callerrettres \\
+  \end{aligned}\]
+
+  \label{fig:controlpoints}
+\end{figure}
+
+The tuple of a tag rule's name and its inputs is a {\it tag continuation} (in the sense of a curried function)
+ranged over by \(T\) or written as a function, such as \(\loadt\). We write that the exection of the
+tag rule succeeds, and bind its results to tag variables, with \(\leftarrow\), as \(\loadtres \leftarrow \loadt\).
+
+States can be of several kinds, denoted by their script prefix: a {\em general state} \(\mathcal{S}(\dots)\),
 an {\em expression state} \(\mathcal{E}(\dots)\), a {\em call state} \(\mathcal{C}(\dots)\), or a
 {\em return state} \(\mathcal{R}(\dots)\). Finally, the special state {\em failstop} (\(\mathcal{F}(\dots)\))
-represents a tag failure, and carries an arbitrary list of tags
+represents a tag failure, and carries the failed tag continuation.
 
 \[\begin{aligned}
 S ::= & \sstate{\PCT}{\mem}{\genv}{\lenv}{\stmt}{\cont} \\
 | & \estate{\PCT}{\mem}{\genv}{\lenv}{\expr}{\type}{\cont} \\
 | & \cstate{\PCT}{\mem}{\genv}{\lenv}{f}{\overline{\val{v}{\vt}}}{\cont} \\
 | & \rstate{\PCT}{\mem}{\genv}{\lenv}{\val{v}{\vt}}{\cont} \\
-| & \fstate{\overline{t}} \\
+| & \fstate{T} \\
 \end{aligned}\]
 
 \paragraph*{Control Points with Side-effects and Optional Arguments}
@@ -252,14 +321,21 @@ and outputs will be marked with \(\optional{boxes}\).
 When we want to define a per-program policy, we need to be able to attach tags to the program's
 functions, globals, and so on. We do this by automatically embedding their identifiers in tags,
 which are available to all policies. These are called {\em name tags} and are ranged over by
-\(\nt\). The complete list of such tags is as follows:
+\(\nt\). We give name tags to:
 \begin{itemize}
 \item Function identifiers
 \item Function arguments, written {\tt f.x}
-\item Global variables
+\item Local and global variables
+\item Labels
 \end{itemize}
 
-\section{Memory safety basics}
+\subsection{Writing Policies}
+
+We currently write policies by embedding them directly in Coq. That is not going to change in the near future,
+but we should tell a story about how we envision it being done in general, in a production version.
+
+\section{Enforcing Memory Safety}
+\label{sec:memsafe}
 
 Memory safety policies operate on under a ``lock and key'' model, in which objects in memory
 are tagged with a unique identifier (the ``lock'') and may only be accessed via a pointer tagged
@@ -330,7 +406,7 @@ and when this happens it can undermine assumptions about the behavior of linked 
 are not exported. Globals do not need dynamic colors, but can use their identifiers as tags, of the form
 \(\mathit{glob} ~ id\).
 
-\section{Memory Safety: PVI and PNVI}
+\paragraph{Memory Safety: PVI and PNVI}
 
 Our policies aim to enforce two memory models in particular: {\it PVI} (provenanace via integer) and
 {\it PNVI} (provenance not via integer) from Memarian et al. \cite{???}. They propose PVI and PNVI
@@ -407,12 +483,12 @@ The parameter \(b\) marks the start of the global region.
 \begin{cases}
   (\mem_0, \genv_0) & \textnormal{if } xs = \varepsilon \\
   (\mem[p \dots p+|ty| \mapsto \vundef@\vt@\overline{\lt}]_{|ty|}, & \textnormal{if } xs = (id,ty)::xs' \\
-  ~ \genv[id \mapsto (\mathit{p, p+|ty|,ty,\pt})]) & \textnormal{and } \trule{\pt,\vt,\overline{\lt}}{\globalt{id}{|ty|}} \\
+  ~ \genv[id \mapsto (\mathit{p, p+|ty|,ty,\pt})]) & \textnormal{and } \trule{\globaltres}{\globalt} \\
   & \textnormal{where } (\mem,\genv) = \mathit{globals} ~ xs' ~ (b + |ty|) \\
 \end{cases}\]
 
 \[\begin{aligned}
-\truledef{\globalt{id}{s}}
+\truledef{\globalt}
 \settag{\pt}{\mathit{glob ~ id}}
 \settag{\vt}{X}
 \settag{\overline{\lt}}{\left[\mathit{glob} ~ id \mid 0 \leq i < s\right]}
@@ -434,7 +510,7 @@ which adds linear overhead if the object was not otherwise being initialized.
   \mathit{locals} ~ xs' ~ \mem'' ~ \lenv' & \textnormal{if } xs = (id,ty)::xs' \\
   & \textnormal{where } (\mem',p) \leftarrow \mathit{stack\_alloc} ~ |ty| ~ \mem, \\
   & \mem'' = \mem'[p \dots p+|ty| \mapsto \vundef@\vt@\overline{\lt}]_{|ty|}, \\
-  & \trule{\pt,\vt,\overline{\lt}}{\globalt{id}{|ty|}}, \\
+  & \trule{\localtres}{\localt}, \\
   & \textnormal{and } \lenv' = \lenv[id \mapsto (\mathit{p, p+|ty|,ty,\pt})]) \\
 \end{cases}\]
               
@@ -443,7 +519,7 @@ In the tag rule, the PC Tag carries the ``next'' color to be assigned. We mark b
 allocated memory. Then we increment the PC Tag to give the next allocation a unique color.
 
 \[\begin{aligned}
-\truledef{\localt{\PCT}{id}{s}}
+\truledef{\localt}
 \settag{\pt}{dyn ~ \PCT}
 \settagopt{\vt}{X}
 \settagopt{\overline{\lt}}{\left[dyn ~ \PCT \mid 0 \leq i < s\right]}
@@ -461,7 +537,7 @@ And the tag rule is identical to \(\mathbf{LocalT}\), except that it always trea
 object as an array of bytes (making the location tags are always identical.)
 
 \[\begin{aligned}
-\truledef{\malloct{\PCT}{st}}
+\truledef{\malloct}
 \settag{\pt}{dyn ~ \PCT}
 \settagopt{\vt}{X}
 \settagopt{\overline{\lt}}{\left[dyn ~ \PCT\right]}
@@ -480,7 +556,7 @@ We want to both check that the pointer tag matches all of the location tags, and
 value tag on the value in memory alongside that value.
 
 \[\begin{aligned}
-\truledef{\loadt{\PCT}{\pt}{\vt}{\overline{\lt}}}
+\truledef{\loadt}
 \assert{\forall \lt \in \overline{\lt} . \pt = \lt}
 \settag{\vt'}{\vt}
 \end{aligned}\]
@@ -504,7 +580,7 @@ As before, we check that the pointer tag matches the locations tags, and then pr
 value tag (ignoring and overwriting the original value tag.) In addition, we propagate the PC Tag.
                   
 \[\begin{aligned}
-\truledef{\storet{\PCT}{\pt}{\vt_1}{\vt_2}{\overline{\lt}}}
+\truledef{\storet}
 \assert{\forall \lt \in \overline{\lt} . \pt = \lt}
 \settag{\PCT'}{\PCT}
 \settag{\vt'}{\vt_2}
@@ -539,14 +615,14 @@ be used as an integer, but if cast back to a pointer it will be invalid.
             
 \begin{minipage}[t]{.49\textwidth}            
   \[\begin{aligned}
-  \truledef{\unopt{\PCT}{\vt}}
+  \truledef{\unopt}
   \settag{\PCT'}{\PCT}
   \settag{\vt'}{\vt}
   \end{aligned}\]
 \end{minipage}
 \begin{minipage}[t]{.49\textwidth}           
   \[\begin{aligned}
-  \truledef{\binopt{\PCT}{\vt_1}{\vt_2}}
+  \truledef{\binopt}
   \settag{\PCT'}{\PCT}
   \settag{\vt'}{\caseof{(\vt_1,~ \vt_2)}}
   \caseentry{\mathit{dyn ~ n},X}{\mathit{dyn ~ n}} \\
@@ -565,19 +641,19 @@ To support PNVI, we need the {\it cast} expression to update the tags of a point
 being cast to an integer and vice versa. We add two special-case steps to reflect this.
 
 \judgmenttwo{\optional{\(\mem[p]_{|ty|} = \_@\vt_2 @ \overline{\lt}\)}}
-            {\(\trule{\PCT',\vt}{\picastt{\PCT}{\pt}{\vt}{\overline{\lt}}}\)}
+            {\(\trule{\picasttres}{\picastt}\)}
             {\(\defestate{\cast{int}{\val{p}{\pt}}}{\tptr{ty}} \longrightarrow
               \defestate{\val{p}{vt}}{int}\)}
 
 \judgmenttwo{\optional{\(\mem[p]_{|ty|} = \_@\vt_2 @ \overline{\lt}\)}}
-            {\(\trule{\PCT',\pt}{\ipcastt{\PCT}{\vt_1}{\vt_2}{\overline{\lt}}}\)}
+            {\(\trule{\ipcasttres}{\ipcastt}\)}
             {\(\defestate{\cast{int}{\val{p}{\pt}}}{\tptr{ty}} \longrightarrow
               \defestate{\val{p}{vt}}{int}\)}
 
 For casting an integer to a pointer, we don't need the optional ``peek'' at the memory that it points to.
 We simply clear the tag on the resulting integer.
 \[\begin{aligned}
-\truledef{\picastt{\PCT}{\pt}{-}{-}}
+\truledef{\picastt}
 \settag{\PCT'}{\PCT}
 \settag{\vt}{X}
 \end{aligned}\]
@@ -586,7 +662,7 @@ On the other hand, when casting back to a pointer, we need to check the color
 of the object that it points to.
 
 \[\begin{aligned}
-\truledef{\ipcastt{\PCT}{\vt_1}{\vt_2}{\overline{\lt}}}
+\truledef{\ipcastt}
 \assert{\exists t . \forall \lt \in \overline{\lt} . \lt = t \land t \not = X}
 \settag{\PCT'}{\PCT}
 \settag{\pt}{t}
@@ -618,23 +694,93 @@ binary operation. In this case both operations are identical, but we still need 
 Finally, the {\tt IPCAST} tag declares that this instruction should mimic the Tagged-C-level
 rule.
 
-\section{Information Flow Control}
+\section{Secure Information Flow}
+\label{sec:SIF}
 
-Next we will discuss {\em information flow control} (IFC), specifically {\em partial IFC} (pIFC)
-or {\em taint-tracking}. In pIFC, we define a limited set of rules for how information is allowed
-to flow from {\em sources} to {\em sinks}. A source \(\sigma\) can be an argument of a function or
-its return value. A sink \(\psi\) can be a global variable, a function, or the set of heap objects
-allocated by a given function. If we identify a source as carrying high-privilege secrets,
-and a sink as lacking the privilege to recieve those secrets, then we would define a {\em no-flow}
-rule between them, written \(\sigma \not \rightsquigarrow \psi\).
-Likewise if the source is untrusted, and the sink highly sensitive.
-Additionally, an IFC policy may contain ``declassification'' rules, \(\sigma / \sigma'\), which
-means that if a value comes from the source \(\sigma'\), we may safely ignore its original source
-\(\sigma\). We will often write \(* / \sigma\) to say that \(\sigma\) declassifies anything.
-We model multiple sources and sinks simultaneously, and absent a no-flow rule, they
-can interact freely.
+To motivate our next policy, let's consider an erroneous piece of code:
 
-For example, suppose that in the following code, we have a no-flow rule between
+\begin{verbatim}
+void sanitize(src, dst);
+char* sql_query(char* query);
+
+void get_data(char* name, char* buf, int field) {
+  // field: 1=address, 2=phone, default=astrological sign
+  char[10] name_san;
+  char[100] query;
+  sanitize(name, name_san);
+
+  switch(field) {
+    case 1:
+      sprintf(query, "select address where name =");
+      strncat(query, name_san, strlen(name_san));
+      break;
+    case 2:
+      sprintf(query, "select phone where name =");
+      strncat(query, name_san, strlen(name_san));
+      break;
+    default:
+      sprintf(query, "select sign where name =");
+      strncat(query, name, strlen(name)); // Oops!
+      break;
+  }
+
+  sprintf(buf, sql_query(query);
+  return;
+}
+\end{verbatim}
+
+This function sanitizes its input {\tt name}, then appends the result to an appropriate SQL
+query, storing the result in {\tt buf}. But, in the default case, the programmer has accidentally
+used the unsanitized string! This creates the opportunity for an SQL injection attack: a caller
+to this function could (presumably at the behest of an outside user) call it with {\tt field} of
+3 and {\tt name} of ``Bobby; drop table;''.
+
+We model this as a form of {\em secure information flow} (SIF), a variant of
+{\em information flow control} (IFC), as described in the venerable Denning and Denning
+\cite{denning1977:SecureInformationFlow}.
+Specifically, this is an {\it intransitive} SIF setting: we wish to allow {\tt name} to influence
+the result of {\tt sanitize}, naturally, and the result of {\tt sanitize} to influence the
+value passed to {\tt sql\_query}, but we do not wish for {\tt name} to influence {\tt sql\_query}
+directly.
+
+SIF is specified by a set of flow rules between what we will term {\em sources} and {\em sinks}.
+A source \(\sigma\) can be an argument of a function, its return value, or a global.
+A sink \(\psi\) can additionally be the set of heap objects allocated by a given function.
+We write these as follows:
+
+\begin{minipage}{0.5\textwidth}
+  \[\begin{aligned}
+  \sigma ::= & x & \textnormal{Global} \\
+  & f(x) & \textnormal{Argument {\tt x} of {\tt f}} \\
+  & f.ret & \textnormal{Return value of {\tt f}} \\
+  \end{aligned}\]
+\end{minipage}
+\begin{minipage}{0.5\textwidth}
+  \[\begin{aligned}
+  \sigma ::= & x & \textnormal{Global} \\
+  & f(x) & \textnormal{Argument {\tt x} of {\tt f}} \\
+  & f.ret & \textnormal{Return value of {\tt f}} \\
+  & f.m & \textnormal{Memory owned by {\tt f}} \\
+  \end{aligned}\]
+\end{minipage}
+
+In classic SIF theory, we specify an {\em information flow policy} (IFPol)---not to be confused with a
+tag policy---as a relation \(\cdot \rightsquigarrow \cdot \in \sigma \times \psi\). However,
+manually defining such a policy is challenging, especially in an intransitive setting.
+We envision the IFPol being initially stated in negative terms, with the ``no-flow'' relation
+\(\not \rightsquigarrow\). That is, we will assume by default that for any source \(\sigma\)
+and any sink \(\psi\), \(\sigma \rightsquigarrow \psi\), unless the user has explicitly
+declared the contrary.
+
+So, in the above example, the user would declare that \(\mathtt{name} \not \rightsquigarrow \mathtt{sql\_query}\).
+But, in the case of \(\mathtt{sanitize}\), we want it to be the case that \(\mathtt{name}\) can flow to
+\(\mathtt{sql\_query}\) only via \(\mathtt{sanitize}\). We therefore need to allow the user to declare
+a {\em declassification} rule. In general we will write \(\sigma / \sigma'\) to indicate that \(\sigma'\)
+supersedes \(\sigma\): if a value that has been influenced by \(\sigma\) influences \(\sigma'\), we
+can safely ignore its history with \(\sigma\). We may write \(* / \sigma\) to say that \(\sigma\)
+declassifies anything.
+
+For example, suppose that in the following code, we want to enforce a no-flow rule between
 the argument {\tt x} of {\tt f} and the global variable {\tt z}
 (\(\mathtt{f.x} \not \rightsquigarrow \mathtt{z}\)), and a declassification rule
 \(* / \mathtt{g.a}\).
@@ -648,7 +794,7 @@ the argument {\tt x} of {\tt f} and the global variable {\tt z}
     z = x;                    // violation
     z = x + y;                // violation
     if(x) z = 1; else z = 0;  // violation
-    z = g(x);                 // legal
+    z = g(x);                 // violation, unless f.x / g.a
   }
 \end{verbatim}
 
@@ -656,13 +802,26 @@ The first three lines of {\tt f} violate the no-flow relation by storing values 
 {\tt x} into {\tt z}. The third line is especially interesting: although {\tt x} is not stored
 directly, the value that is stored is conditioned upon it, and can be used to deduce information
 about the original value. This is termed an {\em implicit flow}. Finally, in the last line,
-while the value of {\tt g(x)} may depend on {\tt x}, it is subject to the declassification rule,
-and so it is permissible.
+the value of {\tt g(x)} depends on {\tt x}, which is a violation unless it is subject to a
+declassification rule.
+
+We can therefore define an IFPol as a set of rules of each kind:
+
+\[I \subseteq \{\}\]
+
+[TODO: specification]
 
 \paragraph{Tagging Taint}
 
-We track the influence of a particular source, or ``taint,'' through the system in the form
-of tags on values. We identify sinks through static tags on functions and through memory location tags,
+We track the influence of a particular source, or its ``taint,'' through the system in the form
+of tags on values. A value that is tagged \(\mathit{taint} ~ \overline{\sigma}\) has been influnced
+by all of the sources in \(\overline{\sigma}\). We also define a set of tags that indicate that a
+particular function argument or the memory location of an object represents a sink that is the
+target of one or more no-flow rules. If a sink \(\psi\) is tagged
+\(\mathit{forbid} ~ \overline{\sigma}\), then for all \(\sigma \in \overline{\sigma}\),
+\(\sigma \not \rightsquigarrow \psi\) is in our IFPol.
+
+We identify sinks through static tags on functions and through memory location tags,
 that encode the ``forbidden'' sources. So, our tag set is as follows, with \(X\) being the
 default tag that indicates no (interesting) source has tainted the value. Note that our
 tags may carry multiple sources.
@@ -710,7 +869,7 @@ the local environment, using the \(\mathbf{ArgT}\) tag rule.
 
 \judgmentbr{\(\mathit{def}(f) = (xs, \stmt)\)}
            {\(\lenv' = \lenv \llbracket x \mapsto v@\vt' \mid
-             (x,v@\vt) \leftarrow \mathit{zip}(xs,args), \vt' \leftarrow \argt{I}{\PCT}{\vt}{x} \rrbracket\)}
+             (x,v@\vt) \leftarrow \mathit{zip}(xs,args), \vt' \leftarrow \argt \rrbracket\)}
            {\(\cstate{\PCT}{\mem}{\genv}{\lenv}{f}{args}{\cont} \longrightarrow
              \sstate{\PCT}{\mem}{\genv}{\lenv'}{\stmt}{\cont}\)}
 
@@ -719,7 +878,7 @@ context saved in the continuation. The program counter on return and the result'
 set by the \(\mathbf{CallerRetT}\) tag rule.
            
 \judgmenttwo{\(\cont = \mathit{Kcall} ~ \lenv' ~ \mathit{ctx} ~ \cont'\)}
-            {\(\PCT'',\vt' \leftarrow \callerrett{\PCT}{\PCT'}{\vt}\)}
+            {\(\PCT'',\vt' \leftarrow \callerrett\)}
             {\(\rstate{\PCT}{\mem}{\genv}{\lenv}{\val{v}{\vt}}{\cont} \longrightarrow
               \sstate{\PCT'}{\mem}{\genv}{\lenv'}{\mathit{ctx}[\val{v}{\vt'}]}{\cont'}\)}
 
@@ -744,17 +903,15 @@ the value being stored or passed against the forbidden list of the target.
 
 Unary and binary operations:
 
-\begin{minipage}[t]{.49\textwidth}            
+\begin{minipage}[t]{.49\textwidth}
   \[\begin{aligned}
-  \truledef{\unopt{\PCT}{\vt}}
-  \settag{\PCT'}{\PCT}
+  \truledef{\unopt}
   \settag{\vt'}{\vt}
   \end{aligned}\]
 \end{minipage}
-\begin{minipage}[t]{.49\textwidth}           
+\begin{minipage}[t]{.49\textwidth}
   \[\begin{aligned}
-  \truledef{\binopt{\PCT}{\vt_1}{\vt_2}}
-  \settag{\PCT'}{\PCT}
+  \truledef{\binopt}
   \settag{\vt'}{
     \vt_1 \sqcup \vt_2
   }
@@ -763,20 +920,20 @@ Unary and binary operations:
 
 Loads and stores:
 
-\begin{minipage}[t]{.4\textwidth}     
+\begin{minipage}[t]{.4\textwidth}
 \[\begin{aligned}
-\truledef{\loadt{\PCT}{\pt}{\vt}{\overline{\lt}}}
+\truledef{\loadt}
 \settag{\vt'}{\PCT \sqcup \pt \sqcup \vt}
 \end{aligned}\]
 \end{minipage}
 \begin{minipage}[t]{.59\textwidth}
 \[\begin{aligned}
-\truledef{\storet{\PCT}{\pt}{\vt_1}{\vt_2}{\overline{\lt}}}
+\truledef{\storet}
 \assert{\forall \lt \in \overline{\lt} . \PCT \sqcup \pt \sqcup \vt_2 \sqsubseteq \lt}
 \settag{\PCT'}{\PCT}
 \settag{\vt'}{\PCT \sqcup \pt \sqcup \vt_2}
 \settag{\overline{\lt'}}{\overline{\lt}}
-\end{aligned}\]            
+\end{aligned}\]
 \end{minipage}
 
 \paragraph{Implicit Flows}
@@ -952,19 +1109,7 @@ When we step into a conditional or loop, we need to record its join point for la
 The join point will always be represented by a label, which is an identifier,
 so we can simply store it in the local environment.
 
-\judgmenttwo
-    {\(\stmt' =
-      \begin{cases}
-        \stmt_1 & \textnormal{if } \mathit{boolof}(v) = \mathbf{t} \\
-        \stmt_2 & \textnormal{if } \mathit{boolof}(v) = \mathbf{f} \\
-      \end{cases}\)}
-    {\begin{tabular}{l r}
-      \multicolumn{2}{c}{\(\PCT'',\PCT''' \leftarrow \splitt{\PCT}{\vt}{\PCT'} \)} \\
-      \(\lenv[L] = \val{\_}{\PCT'}\) & \(\lenv' = \lenv[L \mapsto \val{\vundef}{\PCT''}]\) \\
-      \end{tabular}}
-            {\(\sstate{\PCT}{\mem}{\genv}{\lenv}
-              {\mathit{if}(\val{v}{\vt}) ~ \mathit{then} ~ \stmt_1 ~ \mathit{else} ~ \stmt_2 ~ \mathit{join} ~ L}{\cont} \longrightarrow
-              \sstate{\PCT'}{\mem}{\genv}{\lenv'}{\stmt'}{\cont}\)}
+\ifstepb
 
 The label carries a record of all sources that might currently taint the program's
 control flow, but will be safe once that label is reached. So, just as \(\PCT\) is merged with
@@ -974,14 +1119,14 @@ sources from the PC Tag at that time.
 
 \begin{minipage}{.4\textwidth}
 \[\begin{aligned}
-\truledef{\splitt{\PCT}{\vt}{\optional{\(\PCT'\)}}}
+\truledef{\splitt}
 \settag{\PCT''}{\PCT \sqcup \vt}
 \settag{\optional{\(\PCT'''\)}}{\PCT' \sqcup \vt}
 \end{aligned}\]
 \end{minipage}
 \begin{minipage}{.4\textwidth}
 \[\begin{aligned}
-\truledef{\joint{\PCT}{\optional{\(\PCT'\)}}}
+\truledef{\joint}
 \letin{\PCT'' := \PCT - \{\sigma \mid \sigma'\}}
 \settag{\PCT''}{\PCT \sqcup \vt}
 \settag{\optional{\(\PCT'''\)}}{\PCT' \sqcup \vt}
@@ -992,7 +1137,7 @@ The \(\mathbf{JoinT}\) control point applies whenever we reach a labeled stateme
 
 \judgmentthree
     {\(\lenv[L] = \val{\_}{\PCT'}\)}
-    {\(\PCT'',\PCT''' \leftarrow \joint{\PCT}{\PCT'} \)}
+    {\(\PCT'',\PCT''' \leftarrow \joint \)}
     {\(\lenv' = \lenv[L \mapsto \val{\vundef}{\PCT'''}]\)}
     {\(\sstate{\PCT}{\mem}{\genv}{\lenv}
       {L: \stmt}{\cont} \longrightarrow
@@ -1087,7 +1232,7 @@ instruction tags, and that is exactly how they would be implemented: as a specia
 tag on the appropriate instruction, which might be an existing instruction or a specially
 added no-op. But importantly, in this case, these tags are mutable; in a policy that can be
 expected to take advantage of their mutability, we will need an extra store to set the tag
-fot leter.
+for later.
 
 It remains to generate those labels. For purposes of an IFC policy, we first generate the program's
 control flow graph. Then, for each if, while, do-while, for, and switch statement, we identify the
@@ -1095,5 +1240,16 @@ immediate post-dominator in the graph, and wrap it in a label statement with a f
 That identifier is also added as a field in the original conditional statement. The tags
 associated with the labels are initialized at program state---in the case of IFC, these defaults
 declare that there are no secrets to lowre when it is reached.
+
+\section{Compartmentalization}
+\label{sec:comp}
+
+\section{Evaluation}
+\label{sec:evaluation}
+
+\section{Related and Future Work}
+\label{sec:relwork}
+
+\bibliography{taggedc.bib}
 
 \end{document}
