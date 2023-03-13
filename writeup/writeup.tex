@@ -1053,7 +1053,7 @@ J:  public2 = 42;
 \end{figure}
 
 \begin{figure}
-  \begin{subfigure}{0.3\textwidth}
+  \begin{subfigure}{0.25\textwidth}
 \begin{verbatim}
 int f(bool secret) {
     int public1, public2;
@@ -1072,11 +1072,11 @@ J:  public2 = 42;
 }
 \end{verbatim}
   \end{subfigure}
-  \begin{subfigure}{0.5\textwidth}
+  \begin{subfigure}{0.74\textwidth}
     \begin{tikzpicture}
-      [ initial text={}, initial distance=4em,
+      [ initial text={}, initial distance=3em,
         accepting/.style=accepting by arrow,
-        accepting distance=4em
+        accepting distance=3em
       ]
       \node[state,initial]    (S)                              {$S$};
       \node[state]            (inside) [above right=of S]      {};
@@ -1232,6 +1232,9 @@ declare that there are no secrets to lowre when it is reached.
 
 \section{Compartmentalization}
 \label{sec:comp}
+
+Coverity has examples of:
+``all the old stuff goes over there, new code has stricter requirements.''
 
 \section{Evaluation}
 \label{sec:evaluation}
