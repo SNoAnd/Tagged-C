@@ -1,9 +1,9 @@
 \newcommand{\allocstep}
 {\judgmenttwobrlong
     {\(\trule{\malloctres}{\malloct}\)}
-    {\(\mem,p \leftarrow \mathit{heap\_alloc} ~ \mathit{size} ~ \mem\)}
+    {\(\mem',p \leftarrow \mathit{heap\_alloc} ~ \mathit{size} ~ \mem\)}
     {\(\mem'' = \mem'\left[p + i \mapsto (\vundef,\vt,\lt) \mid 0 \leq i < s\right]\)}
-    {\(\defestate{\ctx{\builtin{\mathit{malloc}}{\mathit{size}@st}}}
+    {\(\defestate{\ctx{\mathit{malloc(\mathit{size}@t)}}}
       \longrightarrow
       \estate{\PCT'}{\mem''}{\genv}{\lenv}
              {\ctx{\val{p}{\pt}}}{\cont}\)}}
@@ -18,40 +18,40 @@
                      {\ctx{\val{v}{\vt'}}}{\cont}\)}}
 
 \newcommand{\assignopstep}
-{\judgmentthree{\(\mem[l]_{|ty|} = v_1@\vt @\overline{\lt}\)}
-              {\(\oplus \in \{+,-,*,/,\%,<<,>>,\&,^\wedge,|\}\)}
-              {\(\trule{\loadtres}{\loadt}\)}
-              {\(\defestate
-                {\ctx{\assignop{\oplus}{\loc{l}{\pt}}
-                    {\val{v_2}{\vt_2}}}}
-                \longrightarrow
-                \defestate
-                    {\ctx{\assign{\loc{l}{\pt}}
-                        {\binop{\oplus}
-                          {\val{v_1}{\vt'}}
-                          {\val{v_2}{\vt_2}}}}}\)}}
+{\judgmenttwobr{\(\mem[l]_{|ty|} = v_1@\vt @\overline{\lt}\)}
+  {\(\oplus \in \{+,-,*,/,\%,<<,>>,\&,^\wedge,|\}\)}
+  {\(\trule{\loadtres}{\loadt}\)}
+  {\(\expr = \assign{\loc{l}{\pt}}
+    {\binop{\oplus}
+      {\val{v_1}{\vt'}}
+      {\val{v_2}{\vt_2}}}\)}
+  {\(\defestate
+    {\ctx{\assignop{\oplus}{\loc{l}{\pt}}
+        {\val{v_2}{\vt_2}}}}
+    \longrightarrow
+    \defestate
+        {\ctx{\expr}}\)}}
 
 \newcommand{\postincstep}
-{\judgmenttwobr{\(\mem[l] = v@\vt @\overline{\lt}\)}
+{\judgmentthreebrtwo{\(\mem[l] = v@\vt @\overline{\lt}\)}
                {\(\oplus \in \{+,-\}\)}
                {\(\trule{\loadtres}{\loadt}\)}
                {\(\trule{\consttres}{\constt}\)}
+               {\(\expr = \comma{\assign{\loc{l}{\pt}}{\binop{\oplus}{\val{v}{\vt'}}{1@\constt}}}
+                 {\val{v}{\vt'}} \)}
                {\(\defestate
-                {\ctx{\postinc{\oplus}
-                    {\loc{l}{\pt}}}}
-                \longrightarrow
-                \defestate
-                    {\ctx{\comma
-                        {\assign{\loc{l}{\pt}}
-                          {\binop{\oplus}{\val{v}{\vt'}}{1@\constt}}}
-                        {\val{v}{\vt'}}}}\)}}
+                 {\ctx{\postinc{\oplus}
+                     {\loc{l}{\pt}}}}
+                 \longrightarrow
+                 \defestate
+                     {\ctx{\expr}}\)}}
 
 \newcommand{\assignstep}
 {\judgmenttwobrlong{\(\mem[l]_{|ty|} = v_1@\vt_1@\overline{\lt}\)}
                   {\(\mem' = \mem[l \mapsto v_2@\vt' @\overline{\lt}']\)}
                   {\(\trule{\storetres}{\storet}\)}
                   {\(\defestate
-                    {\ctx{\assign{\loc{l}{\pt}}{v_2@\vt_2}}{\val{v_2}{\vt_2}}}
+                    {\ctx{\assign{\loc{l}{\pt}}{\val{v_2}{\vt_2}}}}
                     \longrightarrow
                     \estate{\PCT'}{\mem'}{\genv}{\lenv}
                            {\ctx{\val{v_2}{\vt_2}}}{\cont}\)}}
