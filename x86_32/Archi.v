@@ -62,7 +62,7 @@ Definition float_of_single_preserves_sNaN := false.
 Definition float_conversion_default_nan := false.
 
 (** Which ABI to use. *)
-Parameter win64: bool.   (* Always false in 32 bits *)
+Definition win64: bool := false.   (* Always false in 32 bits *)
 
 Global Opaque ptr64 big_endian splitlong
               default_nan_64 choose_nan_64

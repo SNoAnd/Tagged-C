@@ -518,9 +518,8 @@ Admitted.
 Qed.*)
 
 (** External calls *)
-
-(*Variable do_external_function:
-  string -> signature -> Senv.t -> world -> list val -> mem -> option (world * trace * val * mem).
+Variable do_external_function:
+  string -> signature -> Genv.t fundef type -> world -> list atom -> mem -> option (world * trace * atom * mem).
 
 Hypothesis do_external_function_sound:
   forall id sg ge vargs m t vres m' w w',
@@ -533,7 +532,8 @@ Hypothesis do_external_function_complete:
   possible_trace w t w' ->
   do_external_function id sg ge w vargs m = Some(w', t, vres, m').
 
-Variable do_inline_assembly:
+
+(*Variable do_inline_assembly:
   string -> signature -> Senv.t -> world -> list val -> mem -> option (world * trace * val * mem).
 
 Hypothesis do_inline_assembly_sound:
@@ -568,7 +568,7 @@ Definition do_ef_volatile_load_global (chunk: memory_chunk) (id: ident) (ofs: pt
 
 Definition do_ef_volatile_store_global (chunk: memory_chunk) (id: ident) (ofs: ptrofs)
        (w: world) (vargs: list val) (m: mem) : option (world * trace * val * mem) :=
-  do b <- Genv.find_symbol ge id; do_ef_volatile_store chunk w (Vptr b ofs :: vargs) m.
+  do b <- Genv.find_symbol ge id; do_ef_volatile_store chunk w (Vptr b ofs :: vargs) m.*)
 
 Definition do_alloc_size (v: val) : option ptrofs :=
   match v with
@@ -578,17 +578,20 @@ Definition do_alloc_size (v: val) : option ptrofs :=
   end.
 
 Definition do_ef_malloc
-       (w: world) (vargs: list val) (m: mem) : option (world * trace * val * mem) :=
+       (w: world) (vargs: list atom) (m: mem) : option (world * trace * atom * mem) :=
   match vargs with
   | v :: nil =>
-      do sz <- do_alloc_size v;
-      let (m', b) := Mem.alloc m (- size_chunk Mptr) (Ptrofs.unsigned sz) in
-      do m'' <- Mem.store Mptr m' b (- size_chunk Mptr) v;
-      Some(w, E0, Vptr b Ptrofs.zero, m'')
+      do sz <- do_alloc_size (fst v);
+      match Mem.malloc m (- size_chunk Mptr) (Ptrofs.unsigned sz) with
+      | Some (m', base, bound) =>
+          do m'' <- Mem.store Mptr m' (base - size_chunk Mptr) v (repeat def_tag (Z.to_nat (size_chunk Mptr)));
+          Some(w, E0, (Vint (Int.repr base), def_tag), m'')
+      | None => None
+      end
   | _ => None
   end.
 
-Definition do_ef_free
+(*Definition do_ef_free
        (w: world) (vargs: list val) (m: mem) : option (world * trace * val * mem) :=
   match vargs with
   | Vptr b lo :: nil =>
@@ -647,30 +650,31 @@ Definition do_ef_debug (kind: positive) (text: ident) (targs: list typ)
   Some(w, E0, Vundef, m).
 
 Definition do_builtin_or_external (name: string) (sg: signature)
-       (w: world) (vargs: list val) (m: mem) : option (world * trace * val * mem) :=
+       (w: world) (vargs: list atom) (m: mem) : option (world * trace * atom * mem) :=
   match lookup_builtin_function name sg with
   | Some bf => match builtin_function_sem bf vargs with Some v => Some(w, E0, v, m) | None => None end
-  | None    => do_external_function name sg ge w vargs m
-  end.
+  | None    => do_external_function name sg (fst ge) w vargs m
+  end.*)
 
-Definition do_external (ef: external_function):
-       world -> list val -> mem -> option (world * trace * val * mem) :=
+Definition do_external (ef: external_function) (PCT:tag):
+       world -> list atom -> mem -> option (world * trace * atom * mem) :=
   match ef with
-  | EF_external name sg => do_external_function name sg ge
-  | EF_builtin name sg => do_builtin_or_external name sg
+  | EF_external name sg => do_external_function name sg (fst ge)
+(*  | EF_builtin name sg => do_builtin_or_external name sg
   | EF_runtime name sg => do_builtin_or_external name sg
   | EF_vload chunk => do_ef_volatile_load chunk
-  | EF_vstore chunk => do_ef_volatile_store chunk
+  | EF_vstore chunk => do_ef_volatile_store chunk*)
   | EF_malloc => do_ef_malloc
-  | EF_free => do_ef_free
+  (*| EF_free => do_ef_free
   | EF_memcpy sz al => do_ef_memcpy sz al
   | EF_annot kind text targs => do_ef_annot text targs
   | EF_annot_val kind text targ => do_ef_annot_val text targ
   | EF_inline_asm text sg clob => do_inline_assembly text sg ge
-  | EF_debug kind text targs => do_ef_debug kind text targs
+  | EF_debug kind text targs => do_ef_debug kind text targs*)
+  | _ => fun _ _ _ => None
   end.
 
-Lemma do_ef_external_sound:
+(*Lemma do_ef_external_sound:
   forall ef w vargs m w' t vres m',
   do_external ef w vargs m = Some(w', t, vres, m') ->
   external_call ef ge vargs m t vres m' /\ possible_trace w t w'.
@@ -2320,17 +2324,17 @@ Definition do_step (w: world) (s: Csem.state) : list transition :=
       let '(pct',e,m1) := do_alloc_variables pct empty_env m (f.(fn_params) ++ f.(fn_vars)) in
       do m2 <- sem_bind_parameters w e m1 f.(fn_params) vargs;
       ret "step_internal_function" (State f pct' f.(fn_body) k e m2)
-(*  | Callstate (External ef _ _ _) pct vargs k m =>
+  | Callstate (External ef _ _ _) pct vargs k m =>
       match do_external ef pct w vargs m with
       | None => nil
-      | Some(w',t,v,m') => TR "step_external_function" t (Returnstate v k m') :: nil
-      end*)
+      | Some(w',t,v,m') => TR "step_external_function" t (Returnstate pct v k m') :: nil
+      end
 
   | Returnstate pct v (Kcall f e C ty k) m =>
       ret "step_returnstate" (ExprState f pct (C (Eval v ty)) k e m)
 
   | _ => nil
-  end.
+end.
 
 Ltac myinv :=
   match goal with

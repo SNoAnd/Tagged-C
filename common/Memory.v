@@ -67,15 +67,53 @@ Module Mem (P:Policy).
 
     stkalloc : t -> Z -> option (t*Z*Z);
     stkfree : t -> Z -> Z -> t;
-  }. 
+    heapalloc : t -> Z -> option (t*Z*Z);
+    heapfree : t -> Z -> Z -> t;
+  }.
+  
+  Definition freelist : Type := list (Z*Z).
 
-Definition al : allocator :=
-  mkallocator
-    Z
-    1000
-    (fun next size => Some (next+size,next,next+size))
-    (fun next base bound => next)
-    .
+  Fixpoint fl_alloc (fl : freelist) (size : Z) : option (Z*Z*freelist) :=
+    match fl with
+    | [] => None
+    | (base, bound) :: fl' =>
+        if bound - base =? size
+        then Some (base,bound,fl')
+        else if size <? bound - base
+             then Some (base,base+size,(base+size+1,bound)::fl')
+             else match fl_alloc fl' size with
+                  | Some (base',bound',fl'') => Some (base', bound', (base, bound) :: fl'')
+                  | None => None
+                  end
+    end.
+
+  Fixpoint fl_free (fl : freelist) (entry : Z*Z) : freelist :=
+    match fl with
+    | [] => [entry]
+    | (base1,bound1)::fl' =>
+        let (base,bound) := entry in
+        if bound =? base1
+        then (base,bound1)::fl'
+        else if bound <? base1
+             then (base,bound)::fl
+             else match fl_free fl' entry with
+                  | (base2,bound2)::fl'' =>
+                      if bound1 =? base2
+                      then (base1,bound2)::fl''
+                      else (base1,bound1)::(base2,bound2)::fl''
+                  | [] => [(base1,bound1);entry]
+                  end
+    end.                       
+
+  Definition al : allocator :=
+    mkallocator
+      (Z*freelist)   
+      (3000,[(1000,2000)])
+      (fun '(sp,fl) size => Some ((sp-size,fl),sp-size,sp))
+      (fun '(sp,fl) base bound => (bound,fl))
+      (fun '(sp,fl) size => option_map (fun '(base,bound,fl') => ((sp,fl'),base,bound)) (fl_alloc fl size))
+      (fun '(sp,fl) base bound => (sp, fl_free fl (base,bound)))
+  .
 
 Record mem' : Type := mkmem {
   mem_contents: ZMap.t (memval*tag);  (**r [offset -> memval] *)
@@ -352,7 +390,7 @@ Qed.
 
 Definition init_dead : Z -> bool := fun _ => true.
 
-Program Definition empty: mem :=
+Definition empty: mem :=
   mkmem (ZMap.init (Undef, def_tag))
         (fun ofs => if init_dead ofs then Dead else MostlyDead)
         al.(init)
@@ -364,7 +402,7 @@ Program Definition empty: mem :=
   undefined cells.  Note that allocation never fails: we model an
   infinite memory. *)
 
-Program Definition alloc (m: mem) (lo hi: Z) : option (mem*Z*Z) :=
+Definition alloc (m: mem) (lo hi: Z) : option (mem*Z*Z) :=
   match al.(stkalloc) m.(al_state) (hi - lo) with
   | Some (al_state', lo', hi') =>
       Some (mkmem (ZMap.set lo' (Undef, def_tag) m.(mem_contents))
@@ -390,7 +428,7 @@ Proof.
   intros. decide equality; eapply Z.eq_dec.
 Qed.
   
-Program Definition unchecked_free (m: mem) (lo hi: Z): mem :=
+Definition unchecked_free (m: mem) (lo hi: Z): mem :=
   mkmem m.(mem_contents)
             (fun ofs => if zle lo ofs && zlt ofs hi
                         then MostlyDead
@@ -415,6 +453,38 @@ Fixpoint free_list (m: mem) (l: list (Z * Z)) {struct l}: option mem :=
       end
   end.
 
+(** Malloc is now separate from alloc, because we need to keep stack and heap
+    allocs separate. *)
+
+Definition malloc (m: mem) (lo hi: Z) : option (mem*Z*Z) :=
+  match al.(heapalloc) m.(al_state) (hi - lo) with
+  | Some (al_state', lo', hi') =>
+      Some (mkmem (ZMap.set lo' (Undef, def_tag) m.(mem_contents))
+                  (fun ofs => if zle lo' ofs && zlt ofs hi'
+                              then Live
+                              else m.(mem_access) ofs)
+                  al_state'
+                  ((lo',hi')::m.(live))
+                  m.(globals),
+             lo', hi')
+  | None => None
+  end.
+
+Definition unchecked_mfree (m: mem) (lo hi: Z): mem :=
+  mkmem m.(mem_contents)
+            (fun ofs => if zle lo ofs && zlt ofs hi
+                        then MostlyDead
+                        else m.(mem_access) ofs)
+            (al.(heapfree) m.(al_state) lo hi)
+            (remove region_eq_dec (lo,hi) m.(live))
+            m.(globals)
+        .
+
+Definition mfree (m: mem) (lo hi: Z): option mem :=
+  if range_perm_dec m lo hi Live
+  then Some(unchecked_mfree m lo hi)
+  else None.
+        
 (** Memory reads. *)
 
 (** Reading N adjacent bytes in a block content. *)

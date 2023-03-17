@@ -439,7 +439,7 @@ let do_external_function id sg ge w args m =
       Format.print_string fmt';
       flush stdout;
       convert_external_args ge args sg.sig_args >>= fun eargs ->
-      Some(((w, [Events.Event_syscall(id, eargs, Events.EVint (len,Pol.def_tag))]), Vint len), m)
+      Some(((w, [Events.Event_syscall(id, eargs, Events.EVint (len,Pol.def_tag))]), (Vint len,Pol.def_tag)), m)
   | _ ->
       None
 
@@ -551,7 +551,7 @@ let do_step p prog ge time s w =
       | First | Random -> exit (Int32.to_int (camlint_of_coqint r))
       end
   | None ->
-      let l = Cexec.do_step ge (*do_external_function do_inline_assembly*) w s in
+      let l = Cexec.do_step ge do_external_function (*do_inline_assembly*) w s in
       if l = []
       || List.exists (fun (Cexec.TR(r,t,s)) -> s = Csem.Stuckstate) l
       then begin

@@ -86,10 +86,10 @@ Definition empty_env: env := (PTree.empty (Z * Z * tag * type)).
       deref_loc ty m ofs pt Full t (v,vt) lts
   | deref_loc_reference:
       access_mode ty = By_reference ->
-      deref_loc ty m ofs pt Full E0 (Vint (Ptrofs.to_int ofs), pt) []
+      deref_loc ty m ofs pt Full E0 (Vofptrsize (Ptrofs.unsigned ofs), pt) []
   | deref_loc_copy:
       access_mode ty = By_copy ->
-      deref_loc ty m ofs pt Full E0 (Vint (Ptrofs.to_int ofs), pt) []
+      deref_loc ty m ofs pt Full E0 (Vofptrsize (Ptrofs.unsigned ofs), pt) []
   | deref_loc_bitfield: forall sz sg pos width v vt lts,
       load_bitfield ty sz sg pos width m (Ptrofs.unsigned ofs) (v,vt) lts ->
       deref_loc ty m ofs pt (Bits sz sg pos width) E0 (v,vt) lts.

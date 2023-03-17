@@ -18,9 +18,11 @@
 
 open C
 
+let win64 = false
+
 let (va_list_type, va_list_scalar, size_va_list) =
   if Archi.ptr64 then
-    if Archi.win64 then
+    if win64 then
       (* Just a pointer *)
       (TPtr(TVoid [], []), true, 8)
     else
