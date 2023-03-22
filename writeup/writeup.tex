@@ -49,8 +49,26 @@ Demonstrated in this paper: two varieties of {\em memory safety} exploring the t
 security and support for low-level idioms, {\em secure information flow} (SIF),
 and {\em compartmentalization}.
 
-[TODO: Further discussion of: what a reference monitor is, why we would want to use one, why we
-  would do so at the C level, and how this connects to the actual hardware.]
+Legacy codebases, especially C codebases, pose a security conundrum. They are difficult to
+modify, the original programmers having moved on, so it may not be feasible to fix the bugs
+turned up by a conservative static analysis; a more permissive but unsound one, on the other hand,
+may miss bugs entirely. They may also contain undefined behavior (UB), possibly being used intentionally
+as a low-level idiom, while most static analyses treat UB as a failure. Where static analysis
+is unsatisfactory we turn to dynamic enforcement.
+
+A tag-based reference monitor is a mechanism for dynamic security enforcement. It associates
+a metadata tag with the data in the underlying system, and throughout execution it updates these
+tags according to a set a predefined rules. If the program would violate a rule, the system halts
+instead, replacing a security violation with failstop behavior. By attaching such a monitor to
+the C language, we enable dynamic enforcement of arbitrary kinds of security, tuned so that
+non-standard but benign code can still run, while actually dangerous activity is failstopped.
+
+This is the underlying concept of PIPE, an ISA extension that implements a reference monitor in
+hardware, as well as similar systems such as ARM MTE and [that thing from Binghamton]. Being
+implemented at the ISA level, these systems currently require their policies to be defined in terms of
+assembly code, usually with the help of a compiler. Instead, we attach tags to the C language
+itself, and aim to use PIPE as a compilation target, translating the high-level tags into
+PIPE's ISA primitives.
 
 We offer the following contributions:
 
@@ -88,30 +106,33 @@ security concerns.
 \section{The Language}
 
 \begin{figure}
-  \begin{subfigure}[t]{0.1\textwidth}
-    \[\begin{aligned}
-    \odot ::= & ~ ! \\
-    | & \sim \\
-    | & ~ \text{-} \\
-    | & ~ \mathit{abs} \\
-    \end{aligned}\]
-  \end{subfigure}
-  \begin{subfigure}[t]{0.2\textwidth}
-    \[\begin{aligned}
-    \oplus ::= & ~ + \\
-    | & ~ - \\
-    | & ~ \times \\
-    | & ~ \div \\
-    | & ~ \% \\
-    | & \ll \\
-    | & \gg \\
-    | & ~ \& \\
-    | & \mid \\
-    | & ~ \wedge \\
-    \end{aligned}\]
-    \\
-  \end{subfigure}
-  \begin{subfigure}[t]{0.2\textwidth}
+  \begin{subfigure}[t]{0.3\textwidth}
+    \begin{minipage}[t]{0.4\textwidth}
+      \[\begin{aligned}
+      \odot ::= & ~ ! \\
+      | & \sim \\
+      | & ~ \text{-} \\
+      | & ~ \mathit{abs} \\
+      \end{aligned}\]
+    \end{minipage}
+    \begin{minipage}[t]{0.3\textwidth}
+      \[\begin{aligned}
+      \oplus ::= & ~ + \\
+      | & ~ - \\
+      | & ~ \times \\
+      | & ~ \div \\
+      | & ~ \% \\
+      \end{aligned}\]
+    \end{minipage}
+    \begin{minipage}[t]{0.25\textwidth}
+      \[\begin{aligned}
+      | & \ll \\
+      | & \gg \\
+      | & ~ \& \\
+      | & \mid \\
+      | & ~ \wedge \\
+      \end{aligned}\]
+    \end{minipage}
     \[\begin{aligned}
     \stmt ::= & \sskip \\
     | & \sdo{\expr} \\
@@ -131,8 +152,8 @@ security concerns.
   \begin{subfigure}[t]{0.69\textwidth}
     \[\begin{aligned}
     \expr ::= & \val{v}{\vt} & \textnormal{Value} \\
-    | & x & \textnormal{Variable} \\
-    | & \expr [id] & \textnormal{Index} \\
+    | & \var{x} & \textnormal{Variable} \\
+    | & \eindex{\expr}{id} & \textnormal{Index} \\
     | & \valof{\expr} & \textnormal{Load from Object} \\
     | & \deref{\expr} & \textnormal{Dereference Pointer} \\
     | & \addrof{\expr} & \textnormal{Address of Object} \\
@@ -237,15 +258,6 @@ in the case of an array of 10 integers, \(s\) would be 4, and
 with the four bytes of each word tagged with \(\lts\)'s four tags.
 This guarantees that even misaligned loads and stores always have a valid location tag to check
 (possibly multiple, mismatched location tags, in which case the policy can failstop if needed.)
-
-Tags are processed by special functions called {\it tag rules}, which are called at
-{\it control points}. Formally, a control point consists of a return type and a list
-of input types, which are usually tags or lists of tags, but may be optional as described
-below. The control points and their types are listed in Figure \ref{fig:controlpoints}.
-
-The tuple of a tag rule's name and its inputs is a {\it tag continuation} (in the sense of a curried function)
-ranged over by \(T\) or written as a function, such as \(\loadt\). We write that the exection of the
-tag rule succeeds, and bind its results to tag variables, with \(\leftarrow\), as \(\loadtres \leftarrow \loadt\).
 
 States can be of several kinds, denoted by their script prefix: a {\em general state} \(\mathcal{S}(\dots)\),
 an {\em expression state} \(\mathcal{E}(\dots)\), a {\em call state} \(\mathcal{C}(\dots)\), or a
@@ -910,7 +922,7 @@ set by the \(\mathbf{CallerRetT}\) tag rule. Both are given in \cref{fig:callret
   \label{fig:callretsteps}
 \end{figure}
   
-\begin{minipage}[t]{.49\textwidth}            
+\begin{minipage}[t]{.49\textwidth}
   \[\begin{aligned}
   \truledef{\argt}
   \letin{t := \mathit{forbid} ~ \{\sigma \mid \sigma \not \rightsquigarrow f(x) \in I\}}
@@ -1312,8 +1324,23 @@ Coverity has examples of:
 \section{Evaluation}
 \label{sec:evaluation}
 
+Tagged C aims to combine the flexibility of tag-based architectures with the abstraction
+of a high-level language. How well have we achieved this aim?
+
+[Here we list criteria and evaluate how we fulfilled them]
+
+\begin{itemize}
+\item Flexibility: we demonstrate three policies that can be used alone or in conjunction
+\item Applicability: we support the full complement of C language features and give definition
+  to many undefined C programs
+\item Practical security: our example security policies are based on important security concepts
+  from the literature
+\end{itemize}
+
 \section{Related and Future Work}
 \label{sec:relwork}
+
+\paragraph{Proofs}
 
 \bibliography{taggedc.bib}
 
