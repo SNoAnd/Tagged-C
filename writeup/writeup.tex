@@ -49,7 +49,7 @@ Demonstrated in this paper: two varieties of {\em memory safety} exploring the t
 security and support for low-level idioms, {\em secure information flow} (SIF),
 and {\em compartmentalization}.
 
-[Further discussion of: what a reference monitor is, why we would want to use one, why we
+[TODO: Further discussion of: what a reference monitor is, why we would want to use one, why we
   would do so at the C level, and how this connects to the actual hardware.]
 
 We offer the following contributions:
@@ -73,7 +73,13 @@ security concerns.
 
 \subsection{Background}
 
-\paragraph{PIPE}
+\paragraph{Exploits}
+
+[Talk about how there are a lot of exploits, they're problems, etc.]
+
+\paragraph{Hardware Reference Monitors}
+
+[Talk about PIPE, and other related proposals like Arm FTE]
 
 \paragraph{Implementation and Backend}
 
@@ -82,15 +88,31 @@ security concerns.
 \section{The Language}
 
 \begin{figure}
-  \begin{subfigure}[t]{0.3\textwidth}
+  \begin{subfigure}[t]{0.1\textwidth}
     \[\begin{aligned}
     \odot ::= & ~ ! \\
     | & \sim \\
     | & ~ \text{-} \\
-    | & ~ \mathit{abs} \\ \\
-    \oplus ::= & + \\
-    | & - \\
-    | & \times \\ \\
+    | & ~ \mathit{abs} \\
+    \end{aligned}\]
+  \end{subfigure}
+  \begin{subfigure}[t]{0.2\textwidth}
+    \[\begin{aligned}
+    \oplus ::= & ~ + \\
+    | & ~ - \\
+    | & ~ \times \\
+    | & ~ \div \\
+    | & ~ \% \\
+    | & \ll \\
+    | & \gg \\
+    | & ~ \& \\
+    | & \mid \\
+    | & ~ \wedge \\
+    \end{aligned}\]
+    \\
+  \end{subfigure}
+  \begin{subfigure}[t]{0.2\textwidth}
+    \[\begin{aligned}
     \stmt ::= & \sskip \\
     | & \sdo{\expr} \\
     | & \sseq{\stmt_1}{\stmt_2} \\
@@ -111,14 +133,12 @@ security concerns.
     \expr ::= & \val{v}{\vt} & \textnormal{Value} \\
     | & x & \textnormal{Variable} \\
     | & \expr [id] & \textnormal{Index} \\
-    | & \valof{\expr} & \textnormal{R-value of Address} \\
-    | & \deref{\expr} & \textnormal{Dereference} \\
-    | & \addrof{\expr} & \textnormal{Address Of} \\
+    | & \valof{\expr} & \textnormal{Load from Object} \\
+    | & \deref{\expr} & \textnormal{Dereference Pointer} \\
+    | & \addrof{\expr} & \textnormal{Address of Object} \\
     | & \unop{\odot}{\expr} & \textnormal{Unary Operator} \\
     | & \binop{\oplus}{\expr_1}{\expr_2} & \textnormal{Binary Operator} \\
     | & \cast{\expr}{ty} & \textnormal{Cast} \\
-    | & \binop{\land}{\expr_1}{\expr_2} & \textnormal{Sequential And} \\
-    | & \binop{\lor}{\expr_1}{\expr_2} & \textnormal{Sequential Or} \\
     | & \condition{\expr_1}{\expr_2}{\expr_3} & \textnormal{Conditional} \\
     | & \sizeof{ty} & \textnormal{Size of Type} \\
     | & \alignof{ty} & \textnormal{Alignment of Type} \\
@@ -131,7 +151,7 @@ security concerns.
     | & \paren{\expr}{ty} & \textnormal{Parenthetical Cast} \\
     \end{aligned}\]
   \end{subfigure}
-  \caption{Syntax}
+  \caption{Tagged C Abstract Syntax}
   \label{fig:syntax}
 \end{figure}
 
