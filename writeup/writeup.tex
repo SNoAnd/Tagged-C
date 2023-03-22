@@ -40,47 +40,46 @@
 
 \section{Introduction}
 
-[Motivation goes here]
+Today's computing infrastructure is built atop layers of legacy C code, much of it distressingly
+insecure and difficult to maintain. These foundations need be shored up with additional security
+enforcement, but such mechanisms vary widely in their security goals and carry nuanced trade-offs
+between permissiveness and power. Enter Tagged C, a C variant with a built-in
+{\em tag-based reference monitor} that supports a range of user-defined security policies.
+Demonstrated in this paper: two varieties of {\em memory safety} exploring the trade-off between
+security and support for low-level idioms, {\em secure information flow} (SIF),
+and {\em compartmentalization}.
 
-In this paper we introduce Tagged C, a variant of C with a built-in reference monitor that
-supports a wide range of user-defined security policies.
+[Further discussion of: what a reference monitor is, why we would want to use one, why we
+  would do so at the C level, and how this connects to the actual hardware.]
 
-Absent a security policy, Tagged C
-gives definition to C's memory-undefined-behaviors in the form of a concrete memory model
-with integer pointers. This permissive environment can be restricted using a {\it memory safety}
-policy to give a stricter definition in which some memory UBs are defined as failstops.
-
-We describe two additional classes of policy that can be implemented in Tagged C using input from
-an engineer familiar with the codebase: {\em secure information flow} (SIF), often called
-information flow control, and {\em compartmentalization}. Both are desirable forms of security.
-Compartmentalization divides the system into components with limited access to one another's
-memory, helping isolate errors. SIF allows fine-grained control of which function inputs and
-outputs are allowed to influence other functions and/or memory objects.
-
-\paragraph{Contributions}
+We offer the following contributions:
 
 \begin{itemize}
 \item A full formal semantics for Tagged C, formalized in Coq
+\item Proposed {\em control points} at which the language interfaces with the policy
 \item A Tagged C interpreter, implemented in Coq and extracted to Ocaml
 \item Policies implementing (1) realistic, permissive memory models from the literature (PVI and PNVI),
-  (2) Secure Information Flow (SIF) based on minimal user annotations, and (3) compartmentalization
-  for fault isolation
+  (2) Secure Information Flow (SIF), and (3) compartmentalization
 \end{itemize}
-
-\paragraph{Paper Map}
 
 In the next section, we give a full account of the formal semantics of Tagged C,
 including its control points. Then in \cref{sec:memsafe}, we describe how we attach
 a memory safety policy to it, in the process giving some justification of how we chose to
 attach the control points. In \cref{sec:SIF}, we give a similar description of
 a secure information flow policy. We round out our policies in \cref{sec:comp} with
-a compartmentalization policy.
+a compartmentalization policy. In \cref{sec:evaluations} we discuss the degree to
+which the design meets our goals of flexibility and applicability to realistic
+security concerns.
 
-In \cref{sec:validation} we give a case study of applying Tagged C policies to
-a real C codebase: the Apache webserver.
+\subsection{Background}
 
-\section{Formal Semantics}
-\label{sec:semantics}
+\paragraph{PIPE}
+
+\paragraph{Implementation and Backend}
+
+[Talk about Chris' paper]
+
+\section{The Language}
 
 \begin{figure}
   \begin{subfigure}[t]{0.3\textwidth}
@@ -136,20 +135,55 @@ a real C codebase: the Apache webserver.
   \label{fig:syntax}
 \end{figure}
 
-\begin{figure}
-  %% Expression rules %%
-  \allocstep
-  \valofstep
-  \assignopstep
-  \postincstep
-  \assignstep
-  \varstep
-  \unopstep
-  \binopstep
-  
-  \caption{Expression rules}
-  \label{fig:exprstep}
-\end{figure}
+Tagged C uses full C syntax with minimal modification (\cref{fig:syntax}), but its semantics differ in
+two key respects. First, there is no memory-undefined behavior: the source semantics reflect a
+concrete target-level view of memory as a flat address space. Without memory safety, programs
+that exhibit memory-undefined behavior will act as their compiled equivalents would, potentially
+corrupting memory; we expect that a memory safety policy will be a standard default, but that the
+strictness of the policy may need to be tuned for programs that use low-level idioms.
+
+Secondly, and more crucially, Tagged C's semantics contain {\em control points}: hooks within the
+operational semantics at which the tag policy is consulted and either tags are updated, or the system
+failstops. Control points resemble ``advice points'' in aspect-oriented programming, but narrowly
+focused on the manipulation of tags. A control point consists of the name of a {\em tag rule}
+and the bindings of its inputs and outputs; a tag rule is a partial function. The names and
+signatures of the tag rules, and their corresponding control points, are listed in \Cref{fig:controlpoints}.
+
+The choice of control points and their associations with tag rules, as well as the tag rules'
+signatures, are a crucial design element. Our proposed design is sufficient for the three classes of
+policy that we explore in this paper, but it may not be complete.
+
+\begin{table}
+  \begin{tabular}{|l|l|l|l|}
+    \hline
+    Name & Inputs & Outputs & Control Points \\
+    \hline
+    \(\globaltname\)    & \(\globaltargstyped\) & \(\globaltres\)    & Program initialization \\
+    \(\localtname\)     & \(\localtargstyped\)  & \(\localtres\)     & Call \\
+    \(\loadtname\)      & \(\loadtargs\)        & \(\loadtres\)      & ValOf, AssignOp, PostIncr \\
+    \(\storetname\)     & \(\storetargs\)       & \(\storetres\)     & Assign \\
+    \(\consttname\)     &                       & \(\consttres\)     & Const, PostIncr \\
+    \(\unoptname\)      & \(\unoptargs\)        & \(\unoptres\)      & UnOp \\
+    \(\binoptname\)     & \(\binoptargs\)       & \(\binoptres\)     & BinOp \\
+    \(\malloctname\)    & \(\malloctargs\)      & \(\malloctres\)    & Call to {\tt malloc} \\
+    \(\freetname\)      & \(\freetargs\)        & \(\freetres\)      & Call to {\tt free} \\
+    \(\picasttname\)    & \(\picasttargs\)      & \(\picasttres\)    & Cast from pointer to scalar \\
+    \(\ipcasttname\)    & \(\ipcasttargs\)      & \(\ipcasttres\)    & Cast from scalar to pointer \\
+    \(\ppcasttname\)    & \(\ppcasttargs\)      & \(\ppcasttres\)    & Cast between pointers \\
+    \(\iicasttname\)    & \(\iicasttargs\)      & \(\iicasttres\)    & Cast between scalars \\
+    \(\splittname\)     & \(\splittargs\)       & \(\splittres\)     & Split points (\cref{fig:splits})\\
+    \(\jointname\)      & \(\jointargs\)        & \(\jointres\)      & Label \\
+    \(\argtname\)       & \(\argtargs\)         & \(\argtres\)       & Call \\
+    \(\callerrettname\) & \(\callerrettargs\)   & \(\callerrettres\) & Return \\
+    \(\calleerettname\) & \(\calleerettargs\)   & \(\calleerettres\) & Return \\
+    \hline
+  \end{tabular}
+
+  \label{fig:controlpoints}
+\end{table}
+
+\section{Formal Semantics}
+\label{sec:semantics}
 
 Tagged C uses a small-step reduction semantics, given in full in the appendix.
 
@@ -171,13 +205,13 @@ ranged over by \(\lenv\), map identifiers to atoms.
 Memories \(\mem\) map integers to
 triples: a value, a ``value tag'' \(\vt\), and a list of ``location tags'' \(\lts\).
 
-A memory is an array of bytes, and a load or store will access some number of bytes. I write
+A memory is an array of bytes, and a load or store will access some number of bytes. We write
 \(\mem[l]_s = v@\vt @\lts\) to denote loading \(s\) bytes,
 starting at location \(l\), and interpreting them as a value \(v\), a value tag \(\vt\), and a list of
 \(s\) location tags. Likewise, \(\mem[l \mapsto v@\vt @ \lts]_s\)
 denotes storing that many bytes. \(\vt\) is tied to a full value, which may consist of
 multiple bytes, while each tag in \(\lts\) is tied to an individual byte.
-When writing multiple contiguous values, I will write a range of locations. So
+When writing multiple contiguous values, we will write a range of locations. So
 in the case of an array of 10 integers, \(s\) would be 4, and
 \(\mem[l \dots l+10 \mapsto v@\vt @ \lts]_4\) would write \(v@\vt\) to ten words starting at \(l\),
 with the four bytes of each word tagged with \(\lts\)'s four tags.
@@ -188,29 +222,6 @@ Tags are processed by special functions called {\it tag rules}, which are called
 {\it control points}. Formally, a control point consists of a return type and a list
 of input types, which are usually tags or lists of tags, but may be optional as described
 below. The control points and their types are listed in Figure \ref{fig:controlpoints}.
-
-\begin{figure}
-  \[\begin{aligned}
-  \loadtname      & : & \loadtargs & \rightharpoonup \loadtres \\
-  \storetname     & : & \storetargs & \rightharpoonup \storetres \\
-  \consttname     & : & & \rightharpoonup \consttres \\
-  \unoptname      & : & \unoptargs & \rightharpoonup \unoptres \\
-  \binoptname     & : & \binoptargs & \rightharpoonup \binoptres \\
-  \globaltname    & : & \globaltargstyped & \rightharpoonup \globaltres \\
-  \localtname     & : & \localtargstyped & \rightharpoonup \localtres \\
-  \vartname       & : & \vartargs & \rightharpoonup \vartres \\
-  \malloctname    & : & \malloctargs & \rightharpoonup \malloctres \\
-  \picasttname    & : & \picasttargs & \rightharpoonup \picasttres \\
-  \ipcasttname    & : & \ipcasttargs & \rightharpoonup \ipcasttres \\
-  \splittname     & : & \splittargs & \rightharpoonup \splittres \\
-  \jointname      & : & \jointargs & \rightharpoonup \jointres \\
-  \argtname       & : & \argtargs & \rightharpoonup \argtres \\
-  \callerrettname & : & \callerrettargs & \rightharpoonup \callerrettres \\
-  \calleerettname & : & \calleerettargs & \rightharpoonup \calleerettres \\
-  \end{aligned}\]
-
-  \label{fig:controlpoints}
-\end{figure}
 
 The tuple of a tag rule's name and its inputs is a {\it tag continuation} (in the sense of a curried function)
 ranged over by \(T\) or written as a function, such as \(\loadt\). We write that the exection of the
@@ -238,7 +249,7 @@ Most control points can be mapped cleanly onto one or more instructions in a com
 program. For example, the \(\mathbf{BinopT}\) control point takes as input the tags on the parameters
 of an operation (as well as the PC tag) and yields a tag for the result, so the target-level
 rule, which does the same, can be identical. Other control points may correspond to multiple
-target-level instructions, requiring a more complicated mapping. I will not call these out
+target-level instructions, requiring a more complicated mapping. We will not call these out
 unless they are particularly noteworthy. From a performance standpoint, the most problematic
 situation is when a Tagged-C control point requires a tag from a location that is not read under
 a normal compilation scheme, which must update tags in locations that are not written, or in which
@@ -247,7 +258,7 @@ the source construct does not have corresponding instructions in the target.
 These situations require the compiler to add instructions to manipulate tags.
 If the tag rules that instantiate those control points do not make use of them, these instructions
 are needless overhead. In these cases, the control points will take optional parameters or return
-optional results, and I will explain how the rule should be implemented in the target if the
+optional results, and we will explain how the rule should be implemented in the target if the
 options are used. If compiling with a known policy that does not make use of the options, it will
 be sound to eliminate the extra instructions. If {\it all} of the control point's outputs are
 optional and unused, the control point need not be compiled at all. In this document, optional inputs
@@ -326,7 +337,7 @@ be read or written through, to avoid pointer forging, like this:
 \begin{verbatim}
 void main() {
   int* a = malloc(10 * sizeof(int));
-  // I happen to know that a will be at address 1000
+  // We happen to know that a will be at address 1000
   *1000 = 42;
 }
 \end{verbatim}
@@ -792,7 +803,7 @@ the above definition to talk about all of \(I\).
 \mathbf{K}(S_1,\overline{\alpha},\sigma,\psi) &
 \textnormal{if } \sigma \not \rightsquigarrow \psi \in I \\
 \mathbf{K}(S_2,\overline{\alpha}\cdot \alpha,\sigma,\psi) \supseteq
-\mathbf{K}(S_1,\overline{\alpha},\sigma,\psi &
+\mathbf{K}(S_1,\overline{\alpha},\sigma \sqcup \sigma',\psi &
 \textnormal{if } \sigma / \sigma' \in I \land \sigma' \rightsquigarrow \psi \in I \\
 \end{cases}\]
 

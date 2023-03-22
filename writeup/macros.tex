@@ -65,9 +65,14 @@
 \newcommand{\vart}{\vartname(\vartargs)}
 
 \newcommand{\malloctname}{\mathbf{MallocT}}
-\newcommand{\malloctargs}{\PCT, \vt, f}
-\newcommand{\malloctres}{\PCT',\pt,\optional{\(\vt\)},\optional{\(\lt\)}}
+\newcommand{\malloctargs}{\PCT, \vt}
+\newcommand{\malloctres}{\PCT',\pt,\optional{\(\vt,\overline{\lt}\)}}
 \newcommand{\malloct}{\malloctname(\malloctargs)}
+
+\newcommand{\freetname}{\mathbf{FreeT}}
+\newcommand{\freetargs}{\PCT, \vt}
+\newcommand{\freetres}{\PCT',\pt,\optional{\(\vt,\overline{\lt}\)}}
+\newcommand{\freet}{\freetname(\freetargs)}
 
 \newcommand{\picasttname}{\mathbf{PICastT}}
 \newcommand{\picasttargs}{\PCT, \pt, \optional{\(\vt, \overline{\lt}\)}}
@@ -78,6 +83,16 @@
 \newcommand{\ipcasttargs}{\PCT, \vt_1, \optional{\(\vt_2, \overline{\lt}\)}}
 \newcommand{\ipcasttres}{\PCT',\pt}
 \newcommand{\ipcastt}{\ipcasttname(\ipcasttargs)}
+
+\newcommand{\ppcasttname}{\mathbf{PPCastT}}
+\newcommand{\ppcasttargs}{\PCT, \pt, \optional{\(\vt, \overline{\lt}\)}}
+\newcommand{\ppcasttres}{\PCT',\pt'}
+\newcommand{\ppcastt}{\picasttname(\picasttargs)}
+
+\newcommand{\iicasttname}{\mathbf{IICastT}}
+\newcommand{\iicasttargs}{\PCT, \vt_1}
+\newcommand{\iicasttres}{\PCT',\pt}
+\newcommand{\iicastt}{\ipcasttname(\ipcasttargs)}
 
 \newcommand{\splittname}{\mathbf{SplitT}}
 \newcommand{\splittargs}{\PCT, \vt, \optional{\(L\)}}
