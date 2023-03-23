@@ -138,10 +138,10 @@
 
 \newcommand{\ctx}[1]{ctx \left[#1\right]}
 
-\newcommand{\sstate}[6]{\mathcal{S}\left(f,#2,#3,#4 \mid #5 \gg #6 @ #1\right)}
-\newcommand{\estate}[6]{\mathcal{E}\left(f,#2,#3,#4 \mid #5; \gg #6 @ #1\right)}
+\newcommand{\sstate}[4]{\mathcal{S}\left(#2 \mid #3 \gg #4 @ #1\right)}
+\newcommand{\estate}[4]{\mathcal{E}\left(#2 \mid #3 \gg #4 @ #1\right)}
 \newcommand{\cstate}[7]{\mathcal{C}\left(#1,#3,#4 \mid #5(#6) \gg #7 @ #2\right)}
-\newcommand{\rstate}[6]{\mathcal{R}\left(#1,#3,#4 \mid #5 \gg #6 @ #2\right)}
+\newcommand{\rstate}[6]{\mathcal{R}\left(#2,#3,#4 \mid #5 \gg #6 @ #1\right)}
 \newcommand{\fstate}[1]{\mathcal{F}\left(#1\right)}
 
 \newcommand{\mem}{m}
@@ -152,9 +152,9 @@
 \newcommand{\expr}{e}
 \newcommand{\type}{ty}
 \newcommand{\defestate}[1]
-           {\estate{\PCT}{\mem}{\genv}{\lenv}{#1}{\cont}}
+           {\estate{\PCT}{\mem}{#1}{\cont}}
 \newcommand{\defsstate}[1]
-           {\sstate{\PCT}{\mem}{\genv}{\lenv}{#1}{\cont}}
+           {\sstate{\PCT}{\mem}{#1}{\cont}}
 
 \newcommand{\valof}[1]{\mathit{EvalOf} ~ #1}
 \newcommand{\deref}[1]{\mathit{Ederef} ~ #1}

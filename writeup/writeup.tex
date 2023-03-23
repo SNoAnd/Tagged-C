@@ -99,9 +99,23 @@ security concerns.
 
 [Talk about PIPE, and other related proposals like Arm FTE]
 
-\paragraph{Implementation and Backend}
+\paragraph{PIPE Backend Implementation}
 
-[Talk about Chris' paper]
+In \cref{Chhak20:VerifiedCompilation}, Chhak et al. introduce a verified compiler from a toy
+high-level language with tags
+to a control-flow-graph-based intermediate representation with a PIPE-based
+ISA. This establishes a proof-of-concept for compiling a source language's tag policy to
+realistic hardware. They take advantage of the fact that, like everything else in a PIPE system,
+instructions in memory carry tags. Instruction tags are statically determined at compile-time.
+They ``piggyback'' information about source-level control points onto the tags of the instructions
+that implement those source constructs.
+
+Tagged C is designed to be implemented in the same way. But, before we can soundly transmit
+tag rules from the source language to the assembly level, we also need to protect the basic
+control-flow properties of the source language. So, a compiled Tagged C requires a backend that
+can at the very least protect its control flow. In the case of a PIPE-based backend, we would
+run a basic stack-and-function-pointer-safety policy in parallel with whatever Tagged C policy
+the user has provided.
 
 \section{The Language}
 
@@ -262,14 +276,14 @@ This guarantees that even misaligned loads and stores always have a valid locati
 States can be of several kinds, denoted by their script prefix: a {\em general state} \(\mathcal{S}(\dots)\),
 an {\em expression state} \(\mathcal{E}(\dots)\), a {\em call state} \(\mathcal{C}(\dots)\), or a
 {\em return state} \(\mathcal{R}(\dots)\). Finally, the special state {\em failstop} (\(\mathcal{F}(\dots)\))
-represents a tag failure, and carries the failed tag continuation.
+represents a tag failure, and carries the state that produced the failure.
 
 \[\begin{aligned}
-S ::= & \sstate{\PCT}{\mem}{\genv}{\lenv}{\stmt}{\cont} \\
-| & \estate{\PCT}{\mem}{\genv}{\lenv}{\expr}{\type}{\cont} \\
+S ::= & \sstate{\PCT}{\mem}{\stmt}{\cont} \\
+| & \estate{\PCT}{\mem}{\expr}{\cont} \\
 | & \cstate{f}{\PCT}{\mem}{\genv}{\lenv}{f}{\overline{\val{v}{\vt}}}{\cont} \\
 | & \rstate{\PCT}{\mem}{\genv}{\lenv}{\val{v}{\vt}}{\cont} \\
-| & \fstate{T} \\
+| & \fstate{S} \\
 \end{aligned}\]
 
 Expressions (\cref{fig:exprstep}) use a contextual semantics; a call expression stores the
@@ -1019,13 +1033,13 @@ an information flow.
 To be more specific, consider a statement that contains an expression, \(\stmt(\expr)\),
 such that when filled in with a tainted value:
 %
-\[\sstate{\PCT}{\mem}{\genv}{\lenv}{\stmt\val{v_1}{\mathit{taint} ~ \sigma}}{\cont} \longrightarrow
-\sstate{\PCT_1}{\mem_1}{\genv_1}{\lenv_1}{\stmt_1}{\cont_1}\]
+\[\sstate{\PCT}{\mem}{\stmt\val{v_1}{\mathit{taint} ~ \sigma}}{\cont} \longrightarrow
+\sstate{\PCT_1}{\mem_1}{\stmt_1}{\cont_1}\]
 %
 while
 %
-\[\sstate{\PCT}{\mem}{\genv}{\lenv}{\stmt\val{v_1}{\mathit{taint} ~ \sigma}}{\cont} \longrightarrow
-\sstate{\PCT_2}{\mem_2}{\genv_2}{\lenv_2}{\stmt_2}{\cont_2}\]
+\[\sstate{\PCT}{\mem}{\stmt\val{v_1}{\mathit{taint} ~ \sigma}}{\cont} \longrightarrow
+\sstate{\PCT_2}{\mem_2}{\stmt_2}{\cont_2}\]
 %
 and where \(\stmt_1 \not = \stmt_2\) or \(\cont_1 \not = \cont_2\). Taking either step
 should taint the program state itself! We represent this as a taint on the PC Tag.
