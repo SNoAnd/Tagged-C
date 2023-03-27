@@ -62,5 +62,18 @@ series = {CPP 2021}
   year = 1982
 }
 
-
-
+﻿@phdthesis{Lundblad13IRM:,
+   author = {Lundblad, Andreas},
+   institution = {KTH, Theoretical Computer Science, TCS},
+   note = {QC 20130220},
+   pages = {viii, 20},
+   school = {KTH, Theoretical Computer Science, TCS},
+   title = {Inlined Reference Monitors : Certification,Concurrency and Tree Based Monitoring},
+   series = {Trita-CSC-A},
+   ISSN = {1653-5723},
+   number = {2013:01},
+   keywords = {Runtime monitoring, policy enforcement, tree automata, monitor inlining, certification, concurrency},
+   abstract = {Reference monitor inlining is a technique for enforcing security policies by injecting security checks into the untrusted software in a style similar to aspect-oriented programming. The intention is that the injected code enforces compliance with the policy (security), without adding behavior (conservativity) or affecting existing policy compliant behavior (transparency). This thesis consists of four papers which covers a range of topics including formalization of monitor inlining correctness properties, certification of inlined monitors, limitations in multithreaded settings and extensions using data-flow monitoring. The first paper addresses the problem of having a potentially complex program rewriter as part of the trusted computing base. By means of proof-carrying code we show how the inliner can be replaced by a relatively simple proof-checker. This technique also enables the use of monitor inlining for quality assurance at development time, while minimizing the need for post-shipping code rewrites. The second paper focuses on the issues associated with monitor inlining in a concurrent setting. Specifically, it discusses the problem of maintaining transparency when introducing locks for synchronizing monitor state reads and updates. Due to Java's relaxed memory model, it turns out to be impossible for a monitor to be entirely transparent without sacrificing the security property. To accommodate for this, the paper proposes a set of new correctness properties shown to be realistic and realizable. The third paper also focuses on problems due to concurrency and identifies a class of race-free policies that precisely characterizes the set of inlineable policies. This is done by showing that inlining of a policy outside this class is either not secure or not transparent, and by exhibiting a concrete algorithm for inlining of policies inside the class which is secure, conservative, and transparent. The paper also discusses how certification in the style of proof-carrying code could be supported in multithreaded Java programs. The fourth paper formalizes a new type of data centric runtime monitoring which combines monitor inlining with taint tracking. As opposed to ordinary techniques which focus on monitoring linear flows of events, the approach presented here relies on tree shaped traces. The paper describes how the approach can be efficiently implemented and presents a denotational semantics for a simple ``while'' language illustrating how the theoretical foundations is to be used in a practical setting. Each paper is concluded by a practical evaluation of the theoretical results, based on a prototype implementation and case studies on real-world applications and policies. },
+   ISBN = {978-91-7501-654-2},
+   year = {2013}
+}

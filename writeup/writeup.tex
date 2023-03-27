@@ -30,6 +30,16 @@
   \department{Computer Science}
   \institution{Portland State University}
 }
+\author{Allison Naaktgeboren}
+\affiliation{
+  \department{Computer Science}
+  \institution{Portland State University}
+}
+\author{Andrew Tolmach}
+\affiliation{
+  \department{Computer Science}
+  \institution{Portland State University}
+}
 
 \begin{document}
 
@@ -1400,6 +1410,15 @@ of a high-level language. How well have we achieved this aim?
 \item Practical security: our example security policies are based on important security concepts
   from the literature
 \end{itemize}
+
+\subsection{Limitations of the Tag Mechanism}
+
+By committing to a tag-based mechanism, we do restrict the space of policies that Tagged C
+can enforce. In general, a reference monitor can enforce any policy that constitutes a
+{\em safety property}---any policy whose violation can be demonstrated by a single finite
+trace. This class includes such policies as ``no integer overflow'' and ``pointers are always in-bounds,''
+which depend on the values of variables. Tag-based monitors cannot enforce any policy that
+depends on the value of a variable rather than its tags.
 
 \section{Related and Future Work}
 \label{sec:relwork}
