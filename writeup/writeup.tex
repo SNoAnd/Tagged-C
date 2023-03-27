@@ -95,29 +95,46 @@ security concerns.
 
 [Talk about how there are a lot of exploits, they're problems, etc.]
 
-\paragraph{Hardware Reference Monitors}
+\paragraph{Reference Monitors}
 
-The concept of a reference monitor has been around for a long time, initially as a theoretical
-construct [TODO: cite the security automaton paper]. Recently, several hardware implementations have
-cropped up, all tag-based. Arm MTE is specifically designed to enforce a narrow form of memory safety.
-It gives each address and register a 4-bit tag, which by default is used to distinguish adjacent objects
-in memory from one another, preventing buffer overflows, but not necessarily other kinds of memory safety
-violations.
-[TODO: read the Binghamton paper, figure out where they sit here.] 
+The concept of a reference monitor was first introduced fifty years ago in \cref{Anderson72:PlanningStudy}:
+a tamper-proof and verifiable subsystem that checks every security-relevant operation in a system to
+ensure that it conforms to a security {\em policy} (a general specification of acceptable behavior;
+see \cref{Goguen82:SecurityPolicies}.)
+
+A reference monitor can be implemented at any level of a system. An {\em inline reference monitor}
+is a purely compiler-based system that inserts checks at appropriate places in the code.
+Alternatively, a reference monitor might be embedded in the operating system, or in an interpreted
+language's runtime. A {\em hardware reference monitor} instead provides primitives at the ISA-level
+that accelerate security and make it harder to subvert.
 
 Programmable Interlocks for Policy Enforcement (PIPE) \cite{Dhawan14:PUMP} is a hardware extension
-that uses large (word-sized in the underlying ISA) tags. The size of its tags gives it the flexibility
+that uses {\em metadata tagging}. Each register and each word of memory is associated with
+an additional array of bits called a tag. The policy is decomposed into a set of {\em tag rules}
+that act in parallel with each executing instruction, using the tags on its operands to
+decide whether the instruction is legal and, if so, determine which tags to place on its results.
+PIPE tags are large relative to other tag-based hardware, giving it the flexibility
 to implement complex policies with structured tags, and even run multiple policies at once.
-PIPE is therefore our primary target for Tagged C.
 
-While it is not a reference monitor, no discussion of hardware enforcement mechanisms would
-be complete without a discussion of CHERI, a dedicated capability machine. In CHERI, capabilities
+Other hardware monitors include Arm MTE, [Binghamton], and CHERI.
+Arm MTE aims to enforce a narrow form of memory safety using 4-bit tags, which distinguish adjacent objects
+in memory from one another, preventing buffer overflows, but not necessarily other memory violations.
+[TODO: read the Binghamton paper, figure out where they sit here.] 
+
+CHERI is capability machine [TODO: cite OG CHERI]. In CHERI, capabilities
 are ``fat pointers'' carrying extra bounds and permission information, and capability-protected
 memory can only be accessed via a capability with the appropriate privilege. This is a natural
 way to enforce spatial memory safety, and techniques have been demonstrated for enforcing
 temporal safety \cite{NWF20:Cornucopia}, stack safety \cite{Skorstengaard19:stktokens},
-and compartmentalization [TODO: figure out what to cite], with varying degrees of ease and efficiency. But CHERI
-cannot easily enforce notions of security based on dataflow, such as Secure Information Flow.
+and compartmentalization [TODO: figure out what to cite], with varying degrees of ease and
+efficiency. But CHERI cannot easily enforce notions of security based on dataflow,
+such as Secure Information Flow.
+
+In this paper, we describe a programming language with an abstract reference monitor.
+We realize it as an interpreter with the reference monitor built in, and envision
+eventually compiling to PIPE-equipped hardware. An inlining compiler would also be plausible.
+As a result of this choice, our abstract reference monitor uses a PIPE-esque notion of
+tags.
 
 \paragraph{PIPE Backend Implementation}
 
@@ -266,7 +283,8 @@ policy that we explore in this paper, but it may not be complete.
 \section{Formal Semantics}
 \label{sec:semantics}
 
-Tagged C uses a small-step reduction semantics, given in full in the appendix.
+Tagged C uses a small-step reduction semantics, given in full in the appendix. We will introduce
+a limited set of step rules as they become relevant.
 
 Values are ranged over by \(v\), variable identifiers by \(x\), and function identifiers by \(f\).
 Tags use a number of metavariables: \(t\) ranges over all tags, while we will use
@@ -315,26 +333,37 @@ S ::= & \sstate{\PCT}{\mem}{\stmt}{\cont} \\
 Expressions (\cref{fig:exprstep}) use a contextual semantics; a call expression stores the
 context in the continuation all with the caller's continuation.
 
+\section{Tags and Policies}
+
+[TODO: consider moving control point discussion here]
+
+Tagged C can enforce a wide range of policies, as follows.
+A policy consists of a tag type, a default tag inhabiting that type, and an instantiation
+of each tag rule identified in \cref{fig:controlpoints}.
+
+\paragraph*{Realizing the Policy}
+
+For each policy under discussion, we will give a code example of the sort of security
+situation in which it might be useful. We will introduce a formal characterization drawn
+from the literature of a security property that a correct policy should satisfy.
+[TODO: talk about properties somewhere before this?]
+Then we will walk through the important tag rules, and the control points that call them,
+introducing step rules as needed. Finally, if there are any implementation details that
+are necessary to realize a policy, we discuss those.
+
 \paragraph*{Control Points with Side-effects and Optional Arguments}
 
-Most control points can be mapped cleanly onto one or more instructions in a compiled
-program. For example, the \(\mathbf{BinopT}\) control point takes as input the tags on the parameters
-of an operation (as well as the PC tag) and yields a tag for the result, so the target-level
-rule, which does the same, can be identical. Other control points may correspond to multiple
-target-level instructions, requiring a more complicated mapping. We will not call these out
-unless they are particularly noteworthy. From a performance standpoint, the most problematic
+Chhak et al. \cite{Chhak21:Tagine} give a general strategy for mapping Tagged C's tag rules
+onto instructions in a PIPE target. But as they note, translating tag rules in full generality
+requires adding extra instructions that may be unnecessary for some policies. The most problematic
 situation is when a Tagged-C control point requires a tag from a location that is not read under
-a normal compilation scheme, which must update tags in locations that are not written, or in which
-the source construct does not have corresponding instructions in the target.
+a normal compilation scheme or must update tags in locations that would otherwise not be written.
 
-These situations require the compiler to add instructions to manipulate tags.
-If the tag rules that instantiate those control points do not make use of them, these instructions
-are needless overhead. In these cases, the control points will take optional parameters or return
-optional results, and we will explain how the rule should be implemented in the target if the
-options are used. If compiling with a known policy that does not make use of the options, it will
-be sound to eliminate the extra instructions. If {\it all} of the control point's outputs are
-optional and unused, the control point need not be compiled at all. In this document, optional inputs
-and outputs will be marked with \(\optional{boxes}\).
+To mitigate this, control points whose compilation would add potentially extraneous instructions
+take optional parameters or return optional results. We will explain how the rule should be
+implemented in the target if the options are used. If a policy does not make use of the options, it will
+be sound to compile without the extra instructions. Optional inputs
+and outputs are marked with \(\optional{boxes}\).
 
 \paragraph*{Name Tags}
 
@@ -349,12 +378,7 @@ which are available to all policies. These are called {\em name tags} and are ra
 \item Labels
 \end{itemize}
 
-\subsection{Writing Policies}
-
-We currently write policies by embedding them directly in Coq. That is not going to change in the near future,
-but we should tell a story about how we envision it being done in general, in a production version.
-
-\section{Enforcing Memory Safety}
+\subsection{Enforcing Memory Safety}
 \label{sec:memsafe}
 
 Memory safety policies operate on under a ``lock and key'' model, in which objects in memory
@@ -714,7 +738,7 @@ binary operation. In this case both operations are identical, but we still need 
 Finally, the {\tt IPCAST} tag declares that this instruction should mimic the Tagged-C-level
 rule.
 
-\section{Secure Information Flow}
+\subsection{Secure Information Flow}
 \label{sec:SIF}
 
 To motivate our next policy, let's consider an erroneous piece of code:
@@ -1355,7 +1379,7 @@ That identifier is also added as a field in the original conditional statement. 
 associated with the labels are initialized at program state---in the case of IFC, these defaults
 declare that there are no secrets to lowre when it is reached.
 
-\section{Compartmentalization}
+\subsection{Compartmentalization}
 \label{sec:comp}
 
 Coverity has examples of:
