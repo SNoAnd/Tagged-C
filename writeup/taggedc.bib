@@ -1,4 +1,4 @@
-@article{Denning1977:SecureInformationFlow,
+@article{Denning77:SecureInformationFlow,
 author = {Denning, Dorothy E. and Denning, Peter J.},
 title = {Certification of Programs for Secure Information Flow},
 year = {1977},
@@ -16,4 +16,22 @@ month = {jul},
 pages = {504–513},
 numpages = {10},
 keywords = {program certification, confinement, information flow, security, lattice, protection, security classes}
+}
+
+@inproceedings{Chhak21:Tagine,
+author = {Chhak, CHR and Tolmach, Andrew and Anderson, Sean},
+title = {Towards Formally Verified Compilation of Tag-Based Policy Enforcement},
+year = {2021},
+isbn = {9781450382991},
+publisher = {Association for Computing Machinery},
+address = {New York, NY, USA},
+url = {https://doi.org/10.1145/3437992.3439929},
+doi = {10.1145/3437992.3439929},
+abstract = {Hardware-assisted reference monitoring is receiving increasing attention as a way to improve the security of existing software. One example is the PIPE architecture extension, which attaches metadata tags to register and memory values and executes tag-based rules at each machine instruction to enforce a software-defined security policy. To use PIPE effectively, engineers should be able to write security policies in terms of source-level concepts like functions, local variables, and structured control operators, which are not visible at machine level. It is the job of the compiler to generate PIPE-aware machine code that enforces these source-level policies. The compiler thus becomes part of the monitored system’s trusted computing base---and hence a prime candidate for verification. To formalize compiler correctness in this setting, we extend the source language semantics with its own form of user-specified tag-based monitoring, and show that the compiler preserves that monitoring behavior. The challenges of compilation include mapping source-level monitoring policies to instruction-level tag rules, preserving fail-stop behaviors, and satisfying the surprisingly complex preconditions for conventional optimizations. In this paper, we describe the design and verification of Tagine, a small prototype compiler that translates a simple tagged WHILE language to a tagged register transfer language and performs simple optimizations. Tagine is based on the RTLgen and Deadcode phases of the CompCert compiler, and hence is written and verified in Coq. This work is a first step toward verification of a full-scale compiler for a realistic tagged source language.},
+booktitle = {Proceedings of the 10th ACM SIGPLAN International Conference on Certified Programs and Proofs},
+pages = {137–151},
+numpages = {15},
+keywords = {tag-based secure hardware, reference monitors, verified compilers, Coq proof assistant},
+location = {Virtual, Denmark},
+series = {CPP 2021}
 }

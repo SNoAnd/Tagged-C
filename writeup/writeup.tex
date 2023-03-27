@@ -105,7 +105,7 @@ in memory from one another, preventing buffer overflows, but not necessarily oth
 violations.
 [TODO: read the Binghamton paper, figure out where they sit here.] 
 
-Programmable Interlocks for Policy Enforcement (PIPE) [TODO:cite] is a hardware extension
+Programmable Interlocks for Policy Enforcement (PIPE) \cite{Dhawan14:PUMP} is a hardware extension
 that uses large (word-sized in the underlying ISA) tags. The size of its tags gives it the flexibility
 to implement complex policies with structured tags, and even run multiple policies at once.
 PIPE is therefore our primary target for Tagged C.
@@ -115,8 +115,8 @@ be complete without a discussion of CHERI, a dedicated capability machine. In CH
 are ``fat pointers'' carrying extra bounds and permission information, and capability-protected
 memory can only be accessed via a capability with the appropriate privilege. This is a natural
 way to enforce spatial memory safety, and techniques have been demonstrated for enforcing
-temporal safety [TODO: cite Cornucopia], stack safety [TODO: StkTokens], and compartmentalization
-[TODO: figure out what to cite], with varying degrees of ease and efficiency. But CHERI
+temporal safety \cite{NWF20:Cornucopia}, stack safety \cite{Skorstengaard19:stktokens},
+and compartmentalization [TODO: figure out what to cite], with varying degrees of ease and efficiency. But CHERI
 cannot easily enforce notions of security based on dataflow, such as Secure Information Flow.
 
 \paragraph{PIPE Backend Implementation}
@@ -142,6 +142,12 @@ the user has provided.
 \begin{figure}
   \begin{subfigure}[t]{0.3\textwidth}
     \begin{minipage}[t]{0.4\textwidth}
+      \begin{tabular}{l l}
+        \(\odot\) = & \(~!\) \\
+        | &\(\sim\) \\
+        | &\text{-} \\
+        | &\(\mathit{abs}\) \\
+      \end{tabular}
       \[\begin{aligned}
       \odot ::= & ~ ! \\
       | & \sim \\
@@ -751,7 +757,7 @@ to this function could (presumably at the behest of an outside user) call it wit
 
 We model this as a form of {\em secure information flow} (SIF), a variant of
 {\em information flow control} (IFC), as described in the venerable Denning and Denning
-\cite{denning1977:SecureInformationFlow}.
+\cite{Denning77:SecureInformationFlow}.
 Specifically, this is an {\it intransitive} SIF setting: we wish to allow {\tt name} to influence
 the result of {\tt sanitize}, naturally, and the result of {\tt sanitize} to influence the
 value passed to {\tt sql\_query}, but we do not wish for {\tt name} to influence {\tt sql\_query}
