@@ -97,7 +97,27 @@ security concerns.
 
 \paragraph{Hardware Reference Monitors}
 
-[Talk about PIPE, and other related proposals like Arm FTE]
+The concept of a reference monitor has been around for a long time, initially as a theoretical
+construct [TODO: cite the security automaton paper]. Recently, several hardware implementations have
+cropped up, all tag-based. Arm MTE is specifically designed to enforce a narrow form of memory safety.
+It gives each address and register a 4-bit tag, which by default is used to distinguish adjacent objects
+in memory from one another, preventing buffer overflows, but not necessarily other kinds of memory safety
+violations.
+[TODO: read the Binghamton paper, figure out where they sit here.] 
+
+Programmable Interlocks for Policy Enforcement (PIPE) [TODO:cite] is a hardware extension
+that uses large (word-sized in the underlying ISA) tags. The size of its tags gives it the flexibility
+to implement complex policies with structured tags, and even run multiple policies at once.
+PIPE is therefore our primary target for Tagged C.
+
+While it is not a reference monitor, no discussion of hardware enforcement mechanisms would
+be complete without a discussion of CHERI, a dedicated capability machine. In CHERI, capabilities
+are ``fat pointers'' carrying extra bounds and permission information, and capability-protected
+memory can only be accessed via a capability with the appropriate privilege. This is a natural
+way to enforce spatial memory safety, and techniques have been demonstrated for enforcing
+temporal safety [TODO: cite Cornucopia], stack safety [TODO: StkTokens], and compartmentalization
+[TODO: figure out what to cite], with varying degrees of ease and efficiency. But CHERI
+cannot easily enforce notions of security based on dataflow, such as Secure Information Flow.
 
 \paragraph{PIPE Backend Implementation}
 
@@ -281,7 +301,7 @@ represents a tag failure, and carries the state that produced the failure.
 \[\begin{aligned}
 S ::= & \sstate{\PCT}{\mem}{\stmt}{\cont} \\
 | & \estate{\PCT}{\mem}{\expr}{\cont} \\
-| & \cstate{f}{\PCT}{\mem}{\genv}{\lenv}{f}{\overline{\val{v}{\vt}}}{\cont} \\
+| & \cstate{f}{\PCT}{\mem}{\lenv}{f'}{\overline{\val{v}{\vt}}}{\cont} \\
 | & \rstate{\PCT}{\mem}{\genv}{\lenv}{\val{v}{\vt}}{\cont} \\
 | & \fstate{S} \\
 \end{aligned}\]
