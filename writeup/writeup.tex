@@ -1392,8 +1392,17 @@ declare that there are no secrets to lowre when it is reached.
 \subsection{Compartmentalization}
 \label{sec:comp}
 
-Coverity has examples of:
-``all the old stuff goes over there, new code has stricter requirements.''
+Last, but not least, we have compartmentalization.
+The goal is to isolate potentially risky code from safety-critical code.
+This is a very common form of protection! It is often built into a system, like
+a web browser sandbox untrusted javascript. But for our use-case, with a legacy
+codebase, we are applying compartmentalization after the fact.
+
+It is fairly common, for instance, for a large established code-base to have known
+bugs that will not be fixed, while new or recently updated code is held to a higher
+standard \cite{Bessey10:Coverity}.
+
+Consider the code in [TODO: example].
 
 \section{Evaluation}
 \label{sec:evaluation}
