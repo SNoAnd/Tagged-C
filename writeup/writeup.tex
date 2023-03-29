@@ -1429,10 +1429,37 @@ trace. This class includes such policies as ``no integer overflow'' and ``pointe
 which depend on the values of variables. Tag-based monitors cannot enforce any policy that
 depends on the value of a variable rather than its tags.
 
-\section{Related and Future Work}
-\label{sec:relwork}
+\section{Future Work}
+\label{sec:futurework}
 
-\paragraph{Proofs}
+We have presented the language and a reference interpreter, built on top of the CompCert interpreter
+\cite{Leroy09:CompCert}, and three example policies. There are several significant next-steps.
+
+\paragraph{Compilation}
+
+An interpreter is all well and good, but a compiler would be preferable for many reasons.
+A compiled Tagged C could use the hardware acceleration of a PIPE target, and could more easily
+support linked libraries, including linking against code written in other languages.
+The ultimate goal would be a fully verified compiler, but that is a very long way off.
+
+\paragraph{Language Proofs}
+
+There are a couple of properties of the language semantics itself that we would like to prove.
+Namely (1) that its behavior (prior to adding a policy) matches that of CompCert C and
+(2) that the behavior of a given program is invariant under all policies up to truncation due
+to failstop.
+
+\paragraph{Policy Correctness Proofs}
+
+For each example policy discussed in this paper, we sketched a formal specification for the
+security property it ought to enforce. A natural continuation would be to prove the correctness
+of each policy against these specifications.
+
+\paragraph{Policy DSL}
+
+Currently, policies are written in Gallina, the language embedded in Coq. This is fine for a
+proof-of-concept, but not satisfactory for real use. We plan to develop a domain-specific policy
+language to make it easier to write Tagged C policies.
 
 \bibliography{taggedc.bib}
 
