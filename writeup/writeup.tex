@@ -47,23 +47,54 @@
 
 \input{macros.tex}
 \input{semantics.tex}
-
-\section{Introduction}
-
-Today's computing infrastructure is built atop layers of legacy C code, much of it distressingly
-insecure and difficult to maintain. These foundations need be shored up with additional security
-enforcement, but such mechanisms vary widely in their security goals and carry nuanced trade-offs
-between permissiveness and power. Enter Tagged C, a C variant with a built-in
+\section{Abstract placeholder}
+% i think we should refer to it as the C family, because its not really one language
+% the first paragraph was really more of an abstract so I moved it here
+Today's computing infrastructure is built atop layers of legacy C code, often
+insecure, poorly understood, and/or difficult to maintain. These foundations may be shored up with retroactive security
+enforcement, but such mechanisms vary widely in their security goals and carry nuanced trade-offs which are often 
+not desirable to legacy code owners. We introduce Tagged C, a C variant with a built-in
 {\em tag-based reference monitor} that supports a range of user-defined security policies.
 Demonstrated in this paper: two varieties of {\em memory safety} exploring the trade-off between
 security and support for low-level idioms, {\em secure information flow} (SIF),
 and {\em compartmentalization}.
 
-Legacy codebases, especially C codebases, pose a security conundrum. They are difficult to
-modify, the original programmers having moved on, so it may not be feasible to fix the bugs
+\section{Introduction}
+
+%
+% lazy citations - move to bib if they survive editing
+% [so dev survey] https://survey.stackoverflow.co/2022
+% [rise of C] https://www.toptal.com/c/after-all-these-years-the-world-is-still-powered-by-c-programming 
+% [apache] https://httpd.apache.org/
+% [sec code review paper] https://dl.acm.org/doi/10.1007/978-3-642-36563-8_14 https://people.eecs.berkeley.edu/~daw/papers/coderev-essos13.pdf
+
+% establish C is everywhere and that you care about your car working correctly
+Many facets of modern life rely on new and old C. The orginal C langauge rose to prominence 30 years ago by powering
+the UNIX, Windows, and OSX operating systems,  as well as major applications like the Oracle database [rise of C] 
+and the Apache web server [apache]. Now our cars, smartphones, 
+home appliances (embedded systems like your garage door or tv remote), smart homes and hospitals (Internet of Things, embedded devices), 
+and most of the internet runs the C language family (though it may not be the only language) [rise of C]. 
+The C language family remains a force in active development, in a 2022 more 
+than 35\% of professionals report using it.
+
+% establish that C has security problems, Csmith paper for why there is no 1 C
+Legacy codebases, especially C codebases, pose a security conundrum. 
+% then the damage a sec problem can do
+% wanna get this scary medical device one in there 
+%   https://www.hipaajournal.com/83-of-medical-devices-run-on-outdated-operating-systems/
+%    "57% all IoT devices are vulnerable to high or medium severity attacks." and those all run C
+% then why do we still have problems, vvv
+They are difficult or impossible to
+modify, the original programmers are unavailable, and no specification of behavior (however informal), is available.
+
+% establish that we need dynamic analysis
+% why static isnt good enough (seans bits probably have this covered)
+% also need to talk about code review here. and why it isnt enough either. 
+
+so it may not be feasible to fix the bugs
 turned up by a conservative static analysis; a more permissive but unsound one, on the other hand,
-may miss bugs entirely. They may also contain undefined behavior (UB), possibly being used intentionally
-as a low-level idiom, while most static analyses treat UB as a failure. Where static analysis
+may miss bugs entirely. They may also delibrately use undefined behavior (UB), being used intentionally
+as a low-level idiom, while most static analyses treat all UB as a failure. Where static analysis
 is unsatisfactory we turn to dynamic enforcement.
 
 A tag-based reference monitor is a mechanism for dynamic security enforcement. It associates
