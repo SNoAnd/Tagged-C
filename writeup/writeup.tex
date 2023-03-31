@@ -388,365 +388,22 @@ which are available to all policies. These are called {\em name tags} and are ra
 \item Labels
 \end{itemize}
 
-\subsection{Enforcing Memory Safety}
+\subsection{PVI Memory Safety}
 \label{sec:memsafe}
 
-Memory safety policies operate on under a ``lock and key'' model, in which objects in memory
-are tagged with a unique identifier (the ``lock'') and may only be accessed via a pointer tagged
-with the same identifier (the ``key.'') For a simple example, consider the following code:
-%
-\vspace{\abovedisplayskip}
 \begin{verbatim}
 void main() {
-  int a[10];
-  int b[10];
-  a[10] = 42;    
+  int* x = malloc(10);
+  int* y = malloc(10);
+  x[10] = 0;
 }
 \end{verbatim}
-\vspace{\belowdisplayskip}
-%
-In a typical stack allocator---such as the one used by my interpreter---{\tt a} and {\tt b} will
-be allocated next to one another on the stack, like this:
 
-\includegraphics[width=.5\textwidth]{example.png}
-
-To prevent the expression {\tt a[10] = 42} from overwriting {\tt b[0]}, we give {\tt a} and {\tt b}
-unique {\it color tags} when they are allocated. In this case, we'll tag {\tt a} with \(\mathit{dyn ~ 0}\),
-indicating that it's the first dynamically allocated object, and {\tt b} with \(\mathit{dyn ~ 1}\).
-Then, when we evaluate the left-hand expression {\tt a} into its memory location \(l\), we tag
-\(l\) with \(\mathit{dyn ~ 0}\). When we take the offset \(l + 10\), we keep that tag. And when we
-perform the assignment, we check that the location tag at \(l\) matches. It doesn't, so we failstop.
-
-The same principle applies for this code:
-
-\vspace{\abovedisplayskip}
-\begin{verbatim}
-void main() {
-  int* a = malloc(10 * sizeof(int));
-  int* b = malloc(10 * sizeof(int));
-  *(a + (b - a)) = 42;
-}
-\end{verbatim}
-\vspace{\belowdisplayskip}
-
-In this case, {\tt a} and {\tt b} could be allocated anywhere in the heap, and in Tagged C
-the expression {\tt *(a + (b - a)) = 42} will always write to {\tt *b}. While this might be intentional
-on the part of the programmer, it is also undefined behavior in the C standard, and in some
-(but not all; see below) formal C semantics. Likewise, if {\tt a} and {\tt b} are next to each other
-or in some other predictable arrangement, arithmetic like our first example can apply.
-The memory safety policy works just the same in this scenario, with the tags being attached
-by the call to malloc, once again using the \(\mathit{dyn}\) label in a global count of allocated blocks.
-Meanwhile, values that are not derived from valid pointers at all are tagged \(X\), and can never
-be read or written through, to avoid pointer forging, like this:
-
-\vspace{\abovedisplayskip}
-\begin{verbatim}
-void main() {
-  int* a = malloc(10 * sizeof(int));
-  // We happen to know that a will be at address 1000
-  *1000 = 42;
-}
-\end{verbatim}
-\vspace{\belowdisplayskip}
-
-Both stack and heap allocations use the \(\mathit{dyn}\) label and have a color that can grow arbitrarily
-high. This is because over a program's execution, it might allocate an unbounded number of heap- or
-stack-allocated objects, and each needs a unique identifier. Existing work has shown that in practice,
-tag colors can be ``garbage collected'' and reused, but in Tagged C we assume them to be infinite and unique.
-
-Lastly, we have global variables. While ``global safety'' is not as prominent a topic as heap or
-stack safety, overrunning a global buffer is still a problem. It is also easy to forge a pointer to a global,
-and when this happens it can undermine assumptions about the behavior of linked libraries whose globals
-are not exported. Globals do not need dynamic colors, but can use their identifiers as tags, of the form
-\(\mathit{glob} ~ id\).
-
-\paragraph{Memory Safety: PVI and PNVI}
-
-Our policies aim to enforce two memory models in particular: {\it PVI} (provenanace via integer) and
-{\it PNVI} (provenance not via integer) from Memarian et al. \cite{???}. They propose PVI and PNVI
-as memory models that support common idioms that are undefined in the C standard, but are still restrictive
-enough as to support useful alias analysis for optimization. This application is orthogonal to
-security, and violations of either memory model are treated as undefined behavior, just as in the
-C standard. Our goal is to turn that UB into failstop behavior, so that undefined programs cannot accidentally
-undermine their own security.
-
-Both memory models represent pointers as integers, just as Tagged C does, with additional provenance
-associated with each object. An integer cast to a pointer in PVI retains this provenance, enabling
-integer operations to be performed on it prior to it being cast back to a pointer.
-In PNVI, by contrast, an integer cast to a pointer gains the provenance of the object it points
-to when the cast occurs. While PNVI supports a wider range of programs, it is inconsistent with important
-assumptions of the C memory model, in ways that may have serious security consequences.
-The difference between PVI and PNVI is illustrated in Figure \ref{fig:PVI-PNVI}.
-
-\begin{figure}
-  \includegraphics[width=.6\textwidth]{PVIvsPNVI.png}
-  \caption{Integer-pointer casts in PVI and PNVI}
-  \label{fig:PVI-PNVI}
-\end{figure}
-
-We will aim to prove that for any program, if it is run in both the PVI semantics
-and in Tagged C with our PVI policy, it either produces identical output, or it is both
-undefined in the PVI semantics and failstops in Tagged C. Likewise for PNVI, except that
-some UB in PNVI is non-deterministic, and we only require that it failstop in an execution
-that would {\it reach} the UB.
-
-\subsection{PVI Definitions}
-
-Here we give the relevant tag rules for the PVI policy, and describe the control points that
-they attach to. We will, for each rule, first give the control point(s) that use it, along
-with a brief explanation of what the surrounding semantics rules do, and then give the rule.
-For these policies, all control points appear in expression reduction steps.
-The machine state consists of the PC tag \(\PCT\), a memory \(\mem\),
-the global environment \(\genv\), and a local environment \(\lenv\). These are contextual semantics,
-so each expression is situated in some context \(\mathit{ctx}\).
-
-The core of the PVI policy is the {\it provenance color}, represented
-by a natural number.
-%
-\begin{align*}
-  T ::= & \mathit{glob} ~ id & id \in \mathit{ident} \\
-  & \mathit{dyn} ~ \tagcolor & \tagcolor \in \mathbb{N} \\
-\end{align*}
-
-\paragraph*{Color generation}
-
-New colors are generated when objects are allocated. When exactly that occurs
-depends on where the object lives. Global variables are a special case: they are
-allocated during program initialization, before execution begins. As such they
-do not have a control point per se, but a rule that functions similarly, while
-being more expressive.
-
-%All of our allocation control points differ from the normal ones in that they
-%pass a type as a parameter and recieve a list of tags that they apply to
-%a memory region of the size of that type.
-
-Given a list \(xs\) of variable identifiers \(id\) and types
-\(ty\), a program's initial memory is defined by iteratively allocating each one
-in memory and updating the global environment with its base address, bound, type,
-and a static identity tag. Let \(|ty|\) be a function from types to their sizes
-in bytes. The memory is initialized \(\vundef@\vt@\overline{\lt}\)
-for some \(\vt\) and \(\overline{\lt}\), unless given an initializer.
-Let \(\mem_0\) and \(\genv_0\) be the initial (empty) memory and environment.
-The parameter \(b\) marks the start of the global region.
-
-%Since we don't need to initialize tags in memory dynamically, our rule for
-%selecting these tags can cover the entire initialization of the memory with arbitrary
-%granularity. We represent this as a list of tags of length \(|ty|\).
-
-\[\mathit{globals} ~ xs ~ b =
-\begin{cases}
-  (\mem_0, \genv_0) & \textnormal{if } xs = \varepsilon \\
-  (\mem[p \dots p+|ty| \mapsto \vundef@\vt@\overline{\lt}]_{|ty|}, & \textnormal{if } xs = (id,ty)::xs' \\
-  ~ \genv[id \mapsto (\mathit{p, p+|ty|,ty,\pt})]) & \textnormal{and } \trule{\globaltres}{\globalt} \\
-  & \textnormal{where } (\mem,\genv) = \mathit{globals} ~ xs' ~ (b + |ty|) \\
-\end{cases}\]
-
-\[\begin{aligned}
-\truledef{\globalt}
-\settag{\pt}{\mathit{glob ~ id}}
-\settag{\vt}{X}
-\settag{\overline{\lt}}{\left[\mathit{glob} ~ id \mid 0 \leq i < s\right]}
-\end{aligned}\]
-
-Stack-allocated locals are allocated at the start of a function call. Like a global environment,
-a local environment maps indentifiers to base, bound, type, and tag. The rule is almost identical
-to allocation of globals, except that the stack allocator, \(\mathit{stack\_alloc}\) will be more
-complex in order to support deallocation (in practice, it uses a normal stack structure and allocates
-and deallocates by increasing and decreasing a ``stack pointer''.)
-
-Since allocations occur at runtime, the value and location tags that initialize the allocated memory
-are optional. They would be realized by initializing the entire allocated object at allocation-time,
-which adds linear overhead if the object was not otherwise being initialized.
-
-\[\mathit{locals} ~ xs ~ \mem ~ \lenv =
-\begin{cases}
-  (\mem, \lenv) & \textnormal{if } xs = \varepsilon \\
-  \mathit{locals} ~ xs' ~ \mem'' ~ \lenv' & \textnormal{if } xs = (id,ty)::xs' \\
-  & \textnormal{where } (\mem',p) \leftarrow \mathit{stack\_alloc} ~ |ty| ~ \mem, \\
-  & \mem'' = \mem'[p \dots p+|ty| \mapsto \vundef@\vt@\overline{\lt}]_{|ty|}, \\
-  & \trule{\localtres}{\localt}, \\
-  & \textnormal{and } \lenv' = \lenv[id \mapsto (\mathit{p, p+|ty|,ty,\pt})]) \\
-\end{cases}\]
-              
-In the tag rule, the PC Tag carries the ``next'' color to be assigned. We mark both the pointer tag
-(which is stored in the local environment) with that color, along with the location tags on the
-allocated memory. Then we increment the PC Tag to give the next allocation a unique color.
-
-\[\begin{aligned}
-\truledef{\localt}
-\settag{\pt}{dyn ~ \PCT}
-\settagopt{\vt}{X}
-\settagopt{\overline{\lt}}{\left[dyn ~ \PCT \mid 0 \leq i < s\right]}
-\settag{\PCT'}{\PCT+1}
-\end{aligned}\]
-         
-Heap objects are the most interesting: they are allocated via calls to malloc.
-In Tagged C, malloc is modeled as an external call to a built-in, so this takes the form
-of a special case of that expression. Where \(\mathit{heap\_alloc}\) is some allocation
-function (a parameter of the memory model) that takes a size and a memory and returns an address:
-
-\allocstep
-
-And the tag rule is identical to \(\mathbf{LocalT}\), except that it always treats the allocated
-object as an array of bytes (making the location tags are always identical.)
-
-\[\begin{aligned}
-\truledef{\malloct}
-\settag{\pt}{dyn ~ \PCT}
-\settagopt{\vt}{X}
-\settagopt{\overline{\lt}}{\left[dyn ~ \PCT\right]}
-\settag{\PCT'}{\PCT + 1}
-\end{aligned}\]
-
-\paragraph*{Color Checking}
-
-When we perform a memory load or store, we check that the pointer tag on the left hand
-of the assignment matches the location tag on all of the bytes being loaded or stored.
-For instance, in a normal {\it valof} expression, which accesses a left-hand value:
-
-\valofstep
-
-We want to both check that the pointer tag matches all of the location tags, and propagate the
-value tag on the value in memory alongside that value.
-
-\[\begin{aligned}
-\truledef{\loadt}
-\assert{\forall \lt \in \overline{\lt} . \pt = \lt}
-\settag{\vt'}{\vt}
-\end{aligned}\]
-
-There are two other expressions that load from memory, and which therefore invoke
-this same rule, {\it assignop} and {\it postincr}. Note that the C spec has the order
-of evaluation for {\it assignop} ``unsequenced''; I follow CompCert in evaluating both the left
-and right completely before performing the load. Intuitively, assignment-with-an-operator is
-classed along with the standard assignment in the spec, so it is appropriate that it be ordered
-in the same way.
-
-\assignopstep
-
-\postincstep
-
-On the flip side, we store values to memory using the {\it assign} expression:
-
-\assignstep
-
-As before, we check that the pointer tag matches the locations tags, and then propagate the
-value tag (ignoring and overwriting the original value tag.) In addition, we propagate the PC Tag.
-                  
-\[\begin{aligned}
-\truledef{\storet}
-\assert{\forall \lt \in \overline{\lt} . \pt = \lt}
-\settag{\PCT'}{\PCT}
-\settag{\vt'}{\vt_2}
-\settag{\overline{\lt'}}{\overline{\lt}}
-\end{aligned}\]
-
-\paragraph*{Color Propagation}
-
-When a value moves from one location to another, it carries the same tag.
-We already saw this in the load and store rules: they maintain the relationship
-between the pointer and its tag. Of note here is the \(\mathbf{VarT}\) control point,
-which transmits the pointer tag from the environment onto the location expression.
-In this policy, it propagates the color unchanged.
-
-\varstep
-
-%In PVI semantics, a pointer cast to an integer maintains its provenance, so the
-%cast rule should not change its tag. When cast in this way, integer operations
-%are defined on them. Our semantics convert a pointer value to an integer and back
-%on cast.
-
-Then the color is propagated via all unary operations and all binary operations
-where exactly one argument has a color. Performing an operation with two values
-with color tags (i.e., two cast pointers) clears the tag on the result. It can still
-be used as an integer, but if cast back to a pointer it will be invalid.
-
-\unopstep
-
-\binopstep
-
-\vspace{\abovedisplayskip}
-            
-\begin{minipage}[t]{.49\textwidth}            
-  \[\begin{aligned}
-  \truledef{\unopt}
-  \settag{\PCT'}{\PCT}
-  \settag{\vt'}{\vt}
-  \end{aligned}\]
-\end{minipage}
-\begin{minipage}[t]{.49\textwidth}           
-  \[\begin{aligned}
-  \truledef{\binopt}
-  \settag{\PCT'}{\PCT}
-  \settag{\vt'}{\caseof{(\vt_1,~ \vt_2)}}
-  \caseentry{\mathit{dyn ~ n},X}{\mathit{dyn ~ n}} \\
-  \caseentry{\mathit{glob ~ id},X}{\mathit{glob ~ id}} \\
-  \caseentry{X,t}{t} \\
-  \end{aligned}\]
-\end{minipage}
-
-\subsection{PNVI Definitions}
-
-In PNVI, the basic provenance model remains the same as PVI, so we can reuse most of the
-same rules. The primary difference is what happens when we cast a pointer to an integer.
-In PVI, tags are propagated as normal.
-
-To support PNVI, we need the {\it cast} expression to update the tags of a pointer
-being cast to an integer and vice versa. We add two special-case steps to reflect this.
-
-\judgmenttwo{\optional{\(\mem[p]_{|ty|} = \_@\vt_2 @ \overline{\lt}\)}}
-            {\(\trule{\picasttres}{\picastt}\)}
-            {\(\defestate{\cast{int}{\val{p}{\pt}}}{\tptr{ty}} \longrightarrow
-              \defestate{\val{p}{vt}}{int}\)}
-
-\judgmenttwo{\optional{\(\mem[p]_{|ty|} = \_@\vt_2 @ \overline{\lt}\)}}
-            {\(\trule{\ipcasttres}{\ipcastt}\)}
-            {\(\defestate{\cast{int}{\val{p}{\pt}}}{\tptr{ty}} \longrightarrow
-              \defestate{\val{p}{vt}}{int}\)}
-
-For casting an integer to a pointer, we don't need the optional ``peek'' at the memory that it points to.
-We simply clear the tag on the resulting integer.
-\[\begin{aligned}
-\truledef{\picastt}
-\settag{\PCT'}{\PCT}
-\settag{\vt}{X}
-\end{aligned}\]
-
-On the other hand, when casting back to a pointer, we need to check the color
-of the object that it points to.
-
-\[\begin{aligned}
-\truledef{\ipcastt}
-\assert{\exists t . \forall \lt \in \overline{\lt} . \lt = t \land t \not = X}
-\settag{\PCT'}{\PCT}
-\settag{\pt}{t}
-\end{aligned}\]
-
-\paragraph{Realizing the Integer-Pointer Cast}
-
-The pointer cast rules take as input the tags on the location pointed to by the
-argument being cast. This requires the compiler to add extra instructions to retrieve that tag.
-On RISCV, the sequence would be as follows, assuming that {\tt a0} contains the
-value being cast. The meaning of instruction tags will be explained below.
-
-\begin{verbatim}
-lw a1 a0 0 @ RETRIEVE
-sub a1 a1 a1 @ L
-add a0 a1 a0 @ IPCAST
-\end{verbatim}
-
-In the underlying assembly, we use instruction tags to inform the low-level monitor
-of the purpose of each instruction. {\tt RETRIEVE} indicates a special load
-whose job is retrieve value and location tags from a location in memory. When it sees
-a {\tt RETRIEVE} tag, the monitor allows the load even if it should failstop under the
-Concrete C backstop policy. If the load should failstop, however, it is given a default
-tag rather than the tags on the memory. A legal load recieves both the value and the location
-tags.
-
-The {\tt L} instruction tag simply denotes taking the left-operand's tag on the result of a
-binary operation. In this case both operations are identical, but we still need to pick one.
-Finally, the {\tt IPCAST} tag declares that this instruction should mimic the Tagged-C-level
-rule.
+The above code is undefined behavior in C. In Tagged C, it is defined in correspondence to
+the allocation strategy. {\tt x} and {\tt y} are given concrete addresses, and the program
+writes to the address of {\tt x+10}. It's possible that this address is free, in which case
+there is no harm; but if {\tt y} is allocated there, then it will write to the first address
+of {\tt y}.
 
 \subsection{Secure Information Flow}
 \label{sec:SIF}
@@ -758,7 +415,7 @@ void sanitize(src, dst);
 char* sql_query(char* query);
 
 void get_data(char* name, char* buf, int field) {
-  // field: 1=address, 2=phone, default=astrological sign
+  // field: 1=address, 2=phone, 3(default)=astrological sign
   char[10] name_san;
   char[100] query;
   sanitize(name, name_san);
@@ -1543,5 +1200,364 @@ TODO: switch
 
 \callstep
 \returnstep
+
+\subsection{Memory safety (old)}
+
+Memory safety policies operate on under a ``lock and key'' model, in which objects in memory
+are tagged with a unique identifier (the ``lock'') and may only be accessed via a pointer tagged
+with the same identifier (the ``key.'') For a simple example, consider the following code:
+%
+\vspace{\abovedisplayskip}
+\begin{verbatim}
+void main() {
+  int a[10];
+  int b[10];
+  a[10] = 42;    
+}
+\end{verbatim}
+\vspace{\belowdisplayskip}
+%
+In a typical stack allocator---such as the one used by my interpreter---{\tt a} and {\tt b} will
+be allocated next to one another on the stack, like this:
+
+\includegraphics[width=.5\textwidth]{example.png}
+
+To prevent the expression {\tt a[10] = 42} from overwriting {\tt b[0]}, we give {\tt a} and {\tt b}
+unique {\it color tags} when they are allocated. In this case, we'll tag {\tt a} with \(\mathit{dyn ~ 0}\),
+indicating that it's the first dynamically allocated object, and {\tt b} with \(\mathit{dyn ~ 1}\).
+Then, when we evaluate the left-hand expression {\tt a} into its memory location \(l\), we tag
+\(l\) with \(\mathit{dyn ~ 0}\). When we take the offset \(l + 10\), we keep that tag. And when we
+perform the assignment, we check that the location tag at \(l\) matches. It doesn't, so we failstop.
+
+The same principle applies for this code:
+
+\vspace{\abovedisplayskip}
+\begin{verbatim}
+void main() {
+  int* a = malloc(10 * sizeof(int));
+  int* b = malloc(10 * sizeof(int));
+  *(a + (b - a)) = 42;
+}
+\end{verbatim}
+\vspace{\belowdisplayskip}
+
+In this case, {\tt a} and {\tt b} could be allocated anywhere in the heap, and in Tagged C
+the expression {\tt *(a + (b - a)) = 42} will always write to {\tt *b}. While this might be intentional
+on the part of the programmer, it is also undefined behavior in the C standard, and in some
+(but not all; see below) formal C semantics. Likewise, if {\tt a} and {\tt b} are next to each other
+or in some other predictable arrangement, arithmetic like our first example can apply.
+The memory safety policy works just the same in this scenario, with the tags being attached
+by the call to malloc, once again using the \(\mathit{dyn}\) label in a global count of allocated blocks.
+Meanwhile, values that are not derived from valid pointers at all are tagged \(X\), and can never
+be read or written through, to avoid pointer forging, like this:
+
+\vspace{\abovedisplayskip}
+\begin{verbatim}
+void main() {
+  int* a = malloc(10 * sizeof(int));
+  // We happen to know that a will be at address 1000
+  *1000 = 42;
+}
+\end{verbatim}
+\vspace{\belowdisplayskip}
+
+Both stack and heap allocations use the \(\mathit{dyn}\) label and have a color that can grow arbitrarily
+high. This is because over a program's execution, it might allocate an unbounded number of heap- or
+stack-allocated objects, and each needs a unique identifier. Existing work has shown that in practice,
+tag colors can be ``garbage collected'' and reused, but in Tagged C we assume them to be infinite and unique.
+
+Lastly, we have global variables. While ``global safety'' is not as prominent a topic as heap or
+stack safety, overrunning a global buffer is still a problem. It is also easy to forge a pointer to a global,
+and when this happens it can undermine assumptions about the behavior of linked libraries whose globals
+are not exported. Globals do not need dynamic colors, but can use their identifiers as tags, of the form
+\(\mathit{glob} ~ id\).
+
+\paragraph{Memory Safety: PVI and PNVI}
+
+Our policies aim to enforce two memory models in particular: {\it PVI} (provenanace via integer) and
+{\it PNVI} (provenance not via integer) from Memarian et al. \cite{???}. They propose PVI and PNVI
+as memory models that support common idioms that are undefined in the C standard, but are still restrictive
+enough as to support useful alias analysis for optimization. This application is orthogonal to
+security, and violations of either memory model are treated as undefined behavior, just as in the
+C standard. Our goal is to turn that UB into failstop behavior, so that undefined programs cannot accidentally
+undermine their own security.
+
+Both memory models represent pointers as integers, just as Tagged C does, with additional provenance
+associated with each object. An integer cast to a pointer in PVI retains this provenance, enabling
+integer operations to be performed on it prior to it being cast back to a pointer.
+In PNVI, by contrast, an integer cast to a pointer gains the provenance of the object it points
+to when the cast occurs. While PNVI supports a wider range of programs, it is inconsistent with important
+assumptions of the C memory model, in ways that may have serious security consequences.
+The difference between PVI and PNVI is illustrated in Figure \ref{fig:PVI-PNVI}.
+
+\begin{figure}
+  \includegraphics[width=.6\textwidth]{PVIvsPNVI.png}
+  \caption{Integer-pointer casts in PVI and PNVI}
+  \label{fig:PVI-PNVI}
+\end{figure}
+
+We will aim to prove that for any program, if it is run in both the PVI semantics
+and in Tagged C with our PVI policy, it either produces identical output, or it is both
+undefined in the PVI semantics and failstops in Tagged C. Likewise for PNVI, except that
+some UB in PNVI is non-deterministic, and we only require that it failstop in an execution
+that would {\it reach} the UB.
+
+\subsection{PVI Definitions}
+
+Here we give the relevant tag rules for the PVI policy, and describe the control points that
+they attach to. We will, for each rule, first give the control point(s) that use it, along
+with a brief explanation of what the surrounding semantics rules do, and then give the rule.
+For these policies, all control points appear in expression reduction steps.
+The machine state consists of the PC tag \(\PCT\), a memory \(\mem\),
+the global environment \(\genv\), and a local environment \(\lenv\). These are contextual semantics,
+so each expression is situated in some context \(\mathit{ctx}\).
+
+The core of the PVI policy is the {\it provenance color}, represented
+by a natural number.
+%
+\begin{align*}
+  T ::= & \mathit{glob} ~ id & id \in \mathit{ident} \\
+  & \mathit{dyn} ~ \tagcolor & \tagcolor \in \mathbb{N} \\
+\end{align*}
+
+\paragraph*{Color generation}
+
+New colors are generated when objects are allocated. When exactly that occurs
+depends on where the object lives. Global variables are a special case: they are
+allocated during program initialization, before execution begins. As such they
+do not have a control point per se, but a rule that functions similarly, while
+being more expressive.
+
+%All of our allocation control points differ from the normal ones in that they
+%pass a type as a parameter and recieve a list of tags that they apply to
+%a memory region of the size of that type.
+
+Given a list \(xs\) of variable identifiers \(id\) and types
+\(ty\), a program's initial memory is defined by iteratively allocating each one
+in memory and updating the global environment with its base address, bound, type,
+and a static identity tag. Let \(|ty|\) be a function from types to their sizes
+in bytes. The memory is initialized \(\vundef@\vt@\overline{\lt}\)
+for some \(\vt\) and \(\overline{\lt}\), unless given an initializer.
+Let \(\mem_0\) and \(\genv_0\) be the initial (empty) memory and environment.
+The parameter \(b\) marks the start of the global region.
+
+%Since we don't need to initialize tags in memory dynamically, our rule for
+%selecting these tags can cover the entire initialization of the memory with arbitrary
+%granularity. We represent this as a list of tags of length \(|ty|\).
+
+\[\mathit{globals} ~ xs ~ b =
+\begin{cases}
+  (\mem_0, \genv_0) & \textnormal{if } xs = \varepsilon \\
+  (\mem[p \dots p+|ty| \mapsto \vundef@\vt@\overline{\lt}]_{|ty|}, & \textnormal{if } xs = (id,ty)::xs' \\
+  ~ \genv[id \mapsto (\mathit{p, p+|ty|,ty,\pt})]) & \textnormal{and } \trule{\globaltres}{\globalt} \\
+  & \textnormal{where } (\mem,\genv) = \mathit{globals} ~ xs' ~ (b + |ty|) \\
+\end{cases}\]
+
+\[\begin{aligned}
+\truledef{\globalt}
+\settag{\pt}{\mathit{glob ~ id}}
+\settag{\vt}{X}
+\settag{\overline{\lt}}{\left[\mathit{glob} ~ id \mid 0 \leq i < s\right]}
+\end{aligned}\]
+
+Stack-allocated locals are allocated at the start of a function call. Like a global environment,
+a local environment maps indentifiers to base, bound, type, and tag. The rule is almost identical
+to allocation of globals, except that the stack allocator, \(\mathit{stack\_alloc}\) will be more
+complex in order to support deallocation (in practice, it uses a normal stack structure and allocates
+and deallocates by increasing and decreasing a ``stack pointer''.)
+
+Since allocations occur at runtime, the value and location tags that initialize the allocated memory
+are optional. They would be realized by initializing the entire allocated object at allocation-time,
+which adds linear overhead if the object was not otherwise being initialized.
+
+\[\mathit{locals} ~ xs ~ \mem ~ \lenv =
+\begin{cases}
+  (\mem, \lenv) & \textnormal{if } xs = \varepsilon \\
+  \mathit{locals} ~ xs' ~ \mem'' ~ \lenv' & \textnormal{if } xs = (id,ty)::xs' \\
+  & \textnormal{where } (\mem',p) \leftarrow \mathit{stack\_alloc} ~ |ty| ~ \mem, \\
+  & \mem'' = \mem'[p \dots p+|ty| \mapsto \vundef@\vt@\overline{\lt}]_{|ty|}, \\
+  & \trule{\localtres}{\localt}, \\
+  & \textnormal{and } \lenv' = \lenv[id \mapsto (\mathit{p, p+|ty|,ty,\pt})]) \\
+\end{cases}\]
+              
+In the tag rule, the PC Tag carries the ``next'' color to be assigned. We mark both the pointer tag
+(which is stored in the local environment) with that color, along with the location tags on the
+allocated memory. Then we increment the PC Tag to give the next allocation a unique color.
+
+\[\begin{aligned}
+\truledef{\localt}
+\settag{\pt}{dyn ~ \PCT}
+\settagopt{\vt}{X}
+\settagopt{\overline{\lt}}{\left[dyn ~ \PCT \mid 0 \leq i < s\right]}
+\settag{\PCT'}{\PCT+1}
+\end{aligned}\]
+         
+Heap objects are the most interesting: they are allocated via calls to malloc.
+In Tagged C, malloc is modeled as an external call to a built-in, so this takes the form
+of a special case of that expression. Where \(\mathit{heap\_alloc}\) is some allocation
+function (a parameter of the memory model) that takes a size and a memory and returns an address:
+
+\allocstep
+
+And the tag rule is identical to \(\mathbf{LocalT}\), except that it always treats the allocated
+object as an array of bytes (making the location tags are always identical.)
+
+\[\begin{aligned}
+\truledef{\malloct}
+\settag{\pt}{dyn ~ \PCT}
+\settagopt{\vt}{X}
+\settagopt{\overline{\lt}}{\left[dyn ~ \PCT\right]}
+\settag{\PCT'}{\PCT + 1}
+\end{aligned}\]
+
+\paragraph*{Color Checking}
+
+When we perform a memory load or store, we check that the pointer tag on the left hand
+of the assignment matches the location tag on all of the bytes being loaded or stored.
+For instance, in a normal {\it valof} expression, which accesses a left-hand value:
+
+\valofstep
+
+We want to both check that the pointer tag matches all of the location tags, and propagate the
+value tag on the value in memory alongside that value.
+
+\[\begin{aligned}
+\truledef{\loadt}
+\assert{\forall \lt \in \overline{\lt} . \pt = \lt}
+\settag{\vt'}{\vt}
+\end{aligned}\]
+
+There are two other expressions that load from memory, and which therefore invoke
+this same rule, {\it assignop} and {\it postincr}. Note that the C spec has the order
+of evaluation for {\it assignop} ``unsequenced''; I follow CompCert in evaluating both the left
+and right completely before performing the load. Intuitively, assignment-with-an-operator is
+classed along with the standard assignment in the spec, so it is appropriate that it be ordered
+in the same way.
+
+\assignopstep
+
+\postincstep
+
+On the flip side, we store values to memory using the {\it assign} expression:
+
+\assignstep
+
+As before, we check that the pointer tag matches the locations tags, and then propagate the
+value tag (ignoring and overwriting the original value tag.) In addition, we propagate the PC Tag.
+                  
+\[\begin{aligned}
+\truledef{\storet}
+\assert{\forall \lt \in \overline{\lt} . \pt = \lt}
+\settag{\PCT'}{\PCT}
+\settag{\vt'}{\vt_2}
+\settag{\overline{\lt'}}{\overline{\lt}}
+\end{aligned}\]
+
+\paragraph*{Color Propagation}
+
+When a value moves from one location to another, it carries the same tag.
+We already saw this in the load and store rules: they maintain the relationship
+between the pointer and its tag. Of note here is the \(\mathbf{VarT}\) control point,
+which transmits the pointer tag from the environment onto the location expression.
+In this policy, it propagates the color unchanged.
+
+\varstep
+
+%In PVI semantics, a pointer cast to an integer maintains its provenance, so the
+%cast rule should not change its tag. When cast in this way, integer operations
+%are defined on them. Our semantics convert a pointer value to an integer and back
+%on cast.
+
+Then the color is propagated via all unary operations and all binary operations
+where exactly one argument has a color. Performing an operation with two values
+with color tags (i.e., two cast pointers) clears the tag on the result. It can still
+be used as an integer, but if cast back to a pointer it will be invalid.
+
+\unopstep
+
+\binopstep
+
+\vspace{\abovedisplayskip}
+            
+\begin{minipage}[t]{.49\textwidth}            
+  \[\begin{aligned}
+  \truledef{\unopt}
+  \settag{\PCT'}{\PCT}
+  \settag{\vt'}{\vt}
+  \end{aligned}\]
+\end{minipage}
+\begin{minipage}[t]{.49\textwidth}           
+  \[\begin{aligned}
+  \truledef{\binopt}
+  \settag{\PCT'}{\PCT}
+  \settag{\vt'}{\caseof{(\vt_1,~ \vt_2)}}
+  \caseentry{\mathit{dyn ~ n},X}{\mathit{dyn ~ n}} \\
+  \caseentry{\mathit{glob ~ id},X}{\mathit{glob ~ id}} \\
+  \caseentry{X,t}{t} \\
+  \end{aligned}\]
+\end{minipage}
+
+\subsection{PNVI Definitions}
+
+In PNVI, the basic provenance model remains the same as PVI, so we can reuse most of the
+same rules. The primary difference is what happens when we cast a pointer to an integer.
+In PVI, tags are propagated as normal.
+
+To support PNVI, we need the {\it cast} expression to update the tags of a pointer
+being cast to an integer and vice versa. We add two special-case steps to reflect this.
+
+\judgmenttwo{\optional{\(\mem[p]_{|ty|} = \_@\vt_2 @ \overline{\lt}\)}}
+            {\(\trule{\picasttres}{\picastt}\)}
+            {\(\defestate{\cast{int}{\val{p}{\pt}}}{\tptr{ty}} \longrightarrow
+              \defestate{\val{p}{vt}}{int}\)}
+
+\judgmenttwo{\optional{\(\mem[p]_{|ty|} = \_@\vt_2 @ \overline{\lt}\)}}
+            {\(\trule{\ipcasttres}{\ipcastt}\)}
+            {\(\defestate{\cast{int}{\val{p}{\pt}}}{\tptr{ty}} \longrightarrow
+              \defestate{\val{p}{vt}}{int}\)}
+
+For casting an integer to a pointer, we don't need the optional ``peek'' at the memory that it points to.
+We simply clear the tag on the resulting integer.
+\[\begin{aligned}
+\truledef{\picastt}
+\settag{\PCT'}{\PCT}
+\settag{\vt}{X}
+\end{aligned}\]
+
+On the other hand, when casting back to a pointer, we need to check the color
+of the object that it points to.
+
+\[\begin{aligned}
+\truledef{\ipcastt}
+\assert{\exists t . \forall \lt \in \overline{\lt} . \lt = t \land t \not = X}
+\settag{\PCT'}{\PCT}
+\settag{\pt}{t}
+\end{aligned}\]
+
+\paragraph{Realizing the Integer-Pointer Cast}
+
+The pointer cast rules take as input the tags on the location pointed to by the
+argument being cast. This requires the compiler to add extra instructions to retrieve that tag.
+On RISCV, the sequence would be as follows, assuming that {\tt a0} contains the
+value being cast. The meaning of instruction tags will be explained below.
+
+\begin{verbatim}
+lw a1 a0 0 @ RETRIEVE
+sub a1 a1 a1 @ L
+add a0 a1 a0 @ IPCAST
+\end{verbatim}
+
+In the underlying assembly, we use instruction tags to inform the low-level monitor
+of the purpose of each instruction. {\tt RETRIEVE} indicates a special load
+whose job is retrieve value and location tags from a location in memory. When it sees
+a {\tt RETRIEVE} tag, the monitor allows the load even if it should failstop under the
+Concrete C backstop policy. If the load should failstop, however, it is given a default
+tag rather than the tags on the memory. A legal load recieves both the value and the location
+tags.
+
+The {\tt L} instruction tag simply denotes taking the left-operand's tag on the result of a
+binary operation. In this case both operations are identical, but we still need to pick one.
+Finally, the {\tt IPCAST} tag declares that this instruction should mimic the Tagged-C-level
+rule.
 
 \end{document}
