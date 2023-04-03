@@ -300,24 +300,23 @@ policy that we explore in this paper, but it may not be complete.
     \hline
     Name & Inputs & Outputs & Control Points \\
     \hline
-    \(\globaltname\)    & \(\globaltargstyped\) & \(\globaltres\)    & Program initialization \\
-    \(\localtname\)     & \(\localtargstyped\)  & \(\localtres\)     & Call \\
-    \(\loadtname\)      & \(\loadtargs\)        & \(\loadtres\)      & ValOf, AssignOp, PostIncr \\
-    \(\storetname\)     & \(\storetargs\)       & \(\storetres\)     & Assign \\
-    \(\consttname\)     &                       & \(\consttres\)     & Const, PostIncr \\
-    \(\unoptname\)      & \(\unoptargs\)        & \(\unoptres\)      & UnOp \\
-    \(\binoptname\)     & \(\binoptargs\)       & \(\binoptres\)     & BinOp \\
-    \(\malloctname\)    & \(\malloctargs\)      & \(\malloctres\)    & Call to {\tt malloc} \\
-    \(\freetname\)      & \(\freetargs\)        & \(\freetres\)      & Call to {\tt free} \\
-    \(\picasttname\)    & \(\picasttargs\)      & \(\picasttres\)    & Cast from pointer to scalar \\
-    \(\ipcasttname\)    & \(\ipcasttargs\)      & \(\ipcasttres\)    & Cast from scalar to pointer \\
-    \(\ppcasttname\)    & \(\ppcasttargs\)      & \(\ppcasttres\)    & Cast between pointers \\
-    \(\iicasttname\)    & \(\iicasttargs\)      & \(\iicasttres\)    & Cast between scalars \\
-    \(\splittname\)     & \(\splittargs\)       & \(\splittres\)     & Split points (\cref{fig:splits})\\
-    \(\jointname\)      & \(\jointargs\)        & \(\jointres\)      & Label \\
-    \(\argtname\)       & \(\argtargs\)         & \(\argtres\)       & Call \\
-    \(\callerrettname\) & \(\callerrettargs\)   & \(\callerrettres\) & Return \\
-    \(\calleerettname\) & \(\calleerettargs\)   & \(\calleerettres\) & Return \\
+    \(\globaltname\) & \(\globaltargstyped\) & \(\globaltres\)    & Program initialization \\
+    \(\localtname\)  & \(\localtargstyped\)  & \(\localtres\)     & Call \\
+    \(\loadtname\)   & \(\loadtargs\)        & \(\loadtres\)      & ValOf, AssignOp, PostIncr \\
+    \(\storetname\)  & \(\storetargs\)       & \(\storetres\)     & Assign \\
+    \(\consttname\)  &                       & \(\consttres\)     & Const, PostIncr \\
+    \(\unoptname\)   & \(\unoptargs\)        & \(\unoptres\)      & UnOp \\
+    \(\binoptname\)  & \(\binoptargs\)       & \(\binoptres\)     & BinOp \\
+    \(\malloctname\) & \(\malloctargs\)      & \(\malloctres\)    & Call to {\tt malloc} \\
+    \(\freetname\)   & \(\freetargs\)        & \(\freetres\)      & Call to {\tt free} \\
+    \(\picasttname\) & \(\picasttargs\)      & \(\picasttres\)    & Cast from pointer to scalar \\
+    \(\ipcasttname\) & \(\ipcasttargs\)      & \(\ipcasttres\)    & Cast from scalar to pointer \\
+    \(\ppcasttname\) & \(\ppcasttargs\)      & \(\ppcasttres\)    & Cast between pointers \\
+    \(\iicasttname\) & \(\iicasttargs\)      & \(\iicasttres\)    & Cast between scalars \\
+    \(\splittname\)  & \(\splittargs\)       & \(\splittres\)     & Split points (\cref{fig:splits})\\
+    \(\jointname\)   & \(\jointargs\)        & \(\jointres\)      & Label \\
+    \(\argtname\)    & \(\argtargs\)         & \(\argtres\)       & Call \\
+    \(\rettname\)    & \(\rettargs\)         & \(\rettres\)       & Return \\
     \hline
   \end{tabular}
 
@@ -343,23 +342,26 @@ statements by \(\stmt\), and continuations by \(\cont\).
 The continuations are defined in \cref{app:continuations}, and step rules in \cref{app:rules}.
 
 Global environments, ranged over by \(\genv\), map identifiers to either function
-or global variable definitions (including the variable's location in memory. Local environments,
+or global variable definitions, including the variable's location in memory. Local environments,
 ranged over by \(\lenv\), map identifiers to atoms.
 Memories \(\mem\) map integers to
 triples: a value, a ``value tag'' \(\vt\), and a list of ``location tags'' \(\lts\).
 
-A memory is an array of bytes, and a load or store will access some number of bytes. We write
-\(\mem[l]_s = v@\vt @\lts\) to denote loading \(s\) bytes,
-starting at location \(l\), and interpreting them as a value \(v\), a value tag \(\vt\), and a list of
-\(s\) location tags. Likewise, \(\mem[l \mapsto v@\vt @ \lts]_s\)
-denotes storing that many bytes. \(\vt\) is tied to a full value, which may consist of
-multiple bytes, while each tag in \(\lts\) is tied to an individual byte.
-When writing multiple contiguous values, we will write a range of locations. So
-in the case of an array of 10 integers, \(s\) would be 4, and
-\(\mem[l \dots l+10 \mapsto v@\vt @ \lts]_4\) would write \(v@\vt\) to ten words starting at \(l\),
-with the four bytes of each word tagged with \(\lts\)'s four tags.
-This guarantees that even misaligned loads and stores always have a valid location tag to check
-(possibly multiple, mismatched location tags, in which case the policy can failstop if needed.)
+A memory is an array of bytes, where each byte is part of an atom.
+Each byte is also associated with a ``location tag'' \(\lt\). When a contiguous region of \(s\) bytes
+starting at location \(l\) comprise an atom \(v@\vt\), and their locations tags comprise the list \(\lts\),
+we write \(\mem[l]_s = v@\vt @\lts\). Likewise, \(\mem[l \dots l + s \mapsto v@\vt @ \lts]_s\)
+denotes storing that many bytes. Visually, we will represent whole atoms in memory as condensed boxes,
+with their location tags separate. For example, a four-byte aligned address:
+
+\begin{tabular}{|c|c|c|c|}
+  \multicolumn{4}{l}{\(l\)} \\
+  \hline
+  \multicolumn{4}{|c|}{\(v @ \vt\)} \\
+  \hline
+  \(\lt_1\) & \(\lt_2\) & \(\lt_3\) & \(\lt_4\) \\
+  \hline
+\end{tabular}
 
 States can be of several kinds, denoted by their script prefix: a {\em general state} \(\mathcal{S}(\dots)\),
 an {\em expression state} \(\mathcal{E}(\dots)\), a {\em call state} \(\mathcal{C}(\dots)\), or a
@@ -422,22 +424,333 @@ which are available to all policies. These are called {\em name tags} and are ra
 \item Labels
 \end{itemize}
 
-\subsection{PVI Memory Safety}
+\subsection{Basic Memory Safety}
 \label{sec:memsafe}
+
+Let's begin by walking through a common type of policy: memory safety. Variations of memory safety
+have been enforced in PIPE at the assembly level already, but what does it look like to enforce it
+at the source level? Consider some example code:
 
 \begin{verbatim}
 void main() {
-  int* x = malloc(10);
-  int* y = malloc(10);
-  x[10] = 0;
+  int* x = malloc(1);
+  int* y = malloc(1);
+  *x = 0;
+  *(x+1) = 0;
 }
 \end{verbatim}
 
-The above code is undefined behavior in C. In Tagged C, it is defined in correspondence to
+The above code is undefined behavior in C, because it writes to the address one past the end
+of the array pointed to by {\tt x}. In Tagged C, it is defined in correspondence to
 the allocation strategy. {\tt x} and {\tt y} are given concrete addresses, and the program
-writes to the address of {\tt x+10}. It's possible that this address is free, in which case
+writes to the address of {\tt x+1}. It's possible that this address is free, in which case
 there is no harm; but if {\tt y} is allocated there, then it will write to the first address
 of {\tt y}.
+
+For our example, we'll assume a straightforward first-fit allocator, with the heap growing upward
+from address 1000, and the stack growing downward from address 2000. Our set of tags consists of
+\(N\), for non-pointers, and pointer ``colors'' \(c \in \mathbb{N}\). The PC Tag
+(\(\PCT\)) tracks the next color to allocate, so it's initialized to \(\tagz\), and everything else is \(N\).
+\(N\) is the default for constants.
+
+\vspace{\abovedisplayskip}
+
+\(\mathcal{P}: \tagz\)
+
+\vspace{\abovedisplayskip}
+
+\begin{tabular}{|c|c|c|c|}
+  \multicolumn{4}{l}{\(1000\)} \\
+  \hline
+  \multicolumn{4}{|c|}{\(\vundef @ N\)} \\
+  \hline
+  \footnotesize \(N\) & \footnotesize \(N\) & \footnotesize \(N\) & \footnotesize \(N\) \\
+  \hline
+\end{tabular}\hspace{-2pt}
+\begin{tabular}{|c|c|c|c|}
+  \multicolumn{4}{l}{\(1004\)} \\
+  \hline
+  \multicolumn{4}{|c|}{\(\vundef @ N\)} \\
+  \hline
+  \footnotesize \(N\) & \footnotesize \(N\) & \footnotesize \(N\) & \footnotesize \(N\) \\
+  \hline
+\end{tabular}\hspace{-2pt}
+\begin{tabular}{|c|c|c|c|}
+  \multicolumn{4}{l}{\(1008\)} \\
+  \hline
+  \multicolumn{4}{|c|}{\(\vundef @ N\)} \\
+  \hline
+  \footnotesize \(N\) & \footnotesize \(N\) & \footnotesize \(N\) & \footnotesize \(N\) \\
+  \hline
+\end{tabular}~ ~\dots~ ~
+\begin{tabular}{|c|c|c|c|}
+  \multicolumn{4}{l}{\(1092\) ({\tt y})} \\
+  \hline
+  \multicolumn{4}{|c|}{\(\vundef @ N\)} \\
+  \hline
+  \footnotesize \(N\) & \footnotesize \(N\) & \footnotesize \(N\) & \footnotesize \(N\) \\
+  \hline
+\end{tabular}\hspace{-2pt}
+\begin{tabular}{|c|c|c|c|}
+  \multicolumn{4}{l}{\(1096\) ({\tt x})} \\
+  \hline
+  \multicolumn{4}{|c|}{\(\vundef @ N\)} \\
+  \hline
+  \footnotesize \(N\) & \footnotesize \(N\) & \footnotesize \(N\) & \footnotesize \(N\) \\
+  \hline
+\end{tabular}
+
+\vspace{\belowdisplayskip}
+
+The call to malloc allocates the region from 1000 to 1039, and returns a pointer to the base
+address, 1000. We consult the policy to determine (1) the tag on the resulting value,
+(2) the updated tags on the allocated memory region, and (3) the updated PC Tag.
+Specifically, we invoke the \(\malloctname\) tag rule, which takes the PC Tag and the tag on
+the size argument and returns these three updated tags.
+
+\[\begin{aligned}
+\truledef{\malloct}
+\settag{\pt}{\PCT}
+\settagopt{\vt}{N}
+\settagopt{\overline{\lt}}{\left[\PCT\right]}
+\settag{\PCT'}{\PCT + 1}
+\end{aligned}\]
+
+In this case, we tag the pointer and the memory region with the current count, and then
+increment the count. Once the pointer is stored in {\tt x}, our memory is:
+
+\vspace{\abovedisplayskip}
+
+\(\PCT: 1\)
+
+\vspace{\abovedisplayskip}
+\begin{tabular}{|c|c|c|c|}
+  \multicolumn{4}{l}{\(1000\)} \\
+  \hline
+  \multicolumn{4}{|c|}{\(\vundef @ \N\)} \\
+  \hline
+  \(\tagz\) & \(\tagz\) & \(\tagz\) & \(\tagz\) \\
+  \hline
+\end{tabular}\hspace{-2pt}
+\begin{tabular}{|c|c|c|c|}
+  \multicolumn{4}{l}{\(1004\)} \\
+  \hline
+  \multicolumn{4}{|c|}{\(\vundef @ \N\)} \\
+  \hline
+  \footnotesize \(\N\) & \footnotesize \(\N\) & \footnotesize \(\N\) & \footnotesize \(\N\) \\
+  \hline
+\end{tabular}\hspace{-2pt}
+\begin{tabular}{|c|c|c|c|}
+  \multicolumn{4}{l}{\(1008\)} \\
+  \hline
+  \multicolumn{4}{|c|}{\(\vundef @ \N\)} \\
+  \hline
+  \footnotesize \(\N\) & \footnotesize \(\N\) & \footnotesize \(\N\) & \footnotesize \(\N\) \\
+  \hline
+\end{tabular}~ ~\dots~ ~
+\begin{tabular}{|c|c|c|c|}
+  \multicolumn{4}{l}{\(1092\) ({\tt y})} \\
+  \hline
+  \multicolumn{4}{|c|}{\(\vundef @ \N\)} \\
+  \hline
+  \footnotesize \(\N\) & \footnotesize \(\N\) & \footnotesize \(\N\) & \footnotesize \(\N\) \\
+  \hline
+\end{tabular}\hspace{-2pt}
+\begin{tabular}{|c|c|c|c|}
+  \multicolumn{4}{l}{\(1096\) ({\tt x})} \\
+  \hline
+  \multicolumn{4}{|c|}{\(1000 @ \tagz\)} \\
+  \hline
+  \footnotesize \(\N\) & \footnotesize \(\N\) & \footnotesize \(\N\) & \footnotesize \(\N\) \\
+  \hline
+\end{tabular}
+
+\vspace{\belowdisplayskip}
+
+We do the same for allocating {\tt y}, to get:
+\vspace{\abovedisplayskip}
+
+\(\PCT: 2\)
+
+\vspace{\abovedisplayskip}
+
+\begin{tabular}{|c|c|c|c|}
+  \multicolumn{4}{l}{\(1000\)} \\
+  \hline
+  \multicolumn{4}{|c|}{\(\vundef @ \N\)} \\
+  \hline
+  \(\tagz\) & \(\tagz\) & \(\tagz\) & \(\tagz\) \\
+  \hline
+\end{tabular}\hspace{-2pt}
+\begin{tabular}{|c|c|c|c|}
+  \multicolumn{4}{l}{\(1004\)} \\
+  \hline
+  \multicolumn{4}{|c|}{\(\vundef @ \N\)} \\
+  \hline
+  \(1\) & \(1\) & \(1\) & \(1\) \\
+  \hline
+\end{tabular}\hspace{-2pt}
+\begin{tabular}{|c|c|c|c|}
+  \multicolumn{4}{l}{\(1008\)} \\
+  \hline
+  \multicolumn{4}{|c|}{\(\vundef @ \N\)} \\
+  \hline
+  \footnotesize \(\N\) & \footnotesize \(\N\) & \footnotesize \(\N\) & \footnotesize \(\N\) \\
+  \hline
+\end{tabular}~ ~\dots~ ~
+\begin{tabular}{|c|c|c|c|}
+  \multicolumn{4}{l}{\(1092\) ({\tt y})} \\
+  \hline
+  \multicolumn{4}{|c|}{\(1004 @ 1\)} \\
+  \hline
+  \footnotesize \(\N\) & \footnotesize \(\N\) & \footnotesize \(\N\) & \footnotesize \(\N\) \\
+  \hline
+\end{tabular}\hspace{-2pt}
+\begin{tabular}{|c|c|c|c|}
+  \multicolumn{4}{l}{\(1096\) ({\tt x})} \\
+  \hline
+  \multicolumn{4}{|c|}{\(1000 @ \tagz\)} \\
+  \hline
+  \footnotesize \(\N\) & \footnotesize \(\N\) & \footnotesize \(\N\) & \footnotesize \(\N\) \\
+  \hline
+\end{tabular}
+
+\vspace{\belowdisplayskip}
+
+Next, the program stores a 0 to address 1000. The constant 0
+takes on the default tag, \(I\). The policy needs to check that
+this store is valid, in addition to determining the tags on the value that is stored.
+This check is performed by comparing the tag on the pointer to the tags on memory---each
+byte being written, in case the pointer is misaligned. Then the tag on the value being stored
+is propagated with it into memory, unchanged.
+
+\[\begin{aligned}
+\truledef{\storet}
+\assert{\forall \lt \in \overline{\lt} . \pt = \lt}
+\settag{\PCT'}{\PCT}
+\settag{\vt'}{\vt_2}
+\settag{\overline{\lt'}}{\overline{\lt}}
+\end{aligned}\]
+
+\vspace{\abovedisplayskip}
+
+\(\PCT: 2\)
+
+\vspace{\abovedisplayskip}
+
+\begin{tabular}{|c|c|c|c|}
+  \multicolumn{4}{l}{\(1000\)} \\
+  \hline
+  \multicolumn{4}{|c|}{\(\vundef @ \N\)} \\
+  \hline
+  \(\tagz\) & \(\tagz\) & \(\tagz\) & \(\tagz\) \\
+  \hline
+\end{tabular}\hspace{-2pt}
+\begin{tabular}{|c|c|c|c|}
+  \multicolumn{4}{l}{\(1004\)} \\
+  \hline
+  \multicolumn{4}{|c|}{\(\vundef @ \N\)} \\
+  \hline
+  \(\tagone\) & \(\tagone\) & \(\tagone\) & \(\tagone\) \\
+  \hline
+\end{tabular}\hspace{-2pt}
+\begin{tabular}{|c|c|c|c|}
+  \multicolumn{4}{l}{\(1008\)} \\
+  \hline
+  \multicolumn{4}{|c|}{\(\vundef @ \N\)} \\
+  \hline
+  \footnotesize \(\N\) & \footnotesize \(\N\) & \footnotesize \(\N\) & \footnotesize \(\N\) \\
+  \hline
+\end{tabular}~ ~\dots~ ~
+\begin{tabular}{|c|c|c|c|}
+  \multicolumn{4}{l}{\(1092\) ({\tt y})} \\
+  \hline
+  \multicolumn{4}{|c|}{\(1004 @ 1\)} \\
+  \hline
+  \footnotesize \(\N\) & \footnotesize \(\N\) & \footnotesize \(\N\) & \footnotesize \(\N\) \\
+  \hline
+\end{tabular}\hspace{-2pt}
+\begin{tabular}{|c|c|c|c|}
+  \multicolumn{4}{l}{\(1096\) ({\tt x})} \\
+  \hline
+  \multicolumn{4}{|c|}{\(1000 @ 0\)} \\
+  \hline
+  \footnotesize \(\N\) & \footnotesize \(\N\) & \footnotesize \(\N\) & \footnotesize \(\N\) \\
+  \hline
+\end{tabular}
+
+\vspace{\belowdisplayskip}
+
+Finally, on the last line, we add 2 to {\tt x}, which invokes the \(\binoptname\) tag rule
+to combine the tags on the arguments. \(\binoptname\) takes as argument the operation \(\oplus\).
+In memory safety terms, we can add a pointer to a non-pointer in either order, and we can subtract
+a non-pointer from a pointer (but not the reverse), to yield a pointer to the same object. We can
+subtract two pointers to the same object from one another to yield a non-pointer, the offset between them.
+All other binary operations are only permitted between non-pointers.
+
+\[\begin{aligned}
+\truledef{\binopt}
+\settag{\PCT'}{\PCT}
+\settag{\vt'}{\caseof{(\oplus,~ \vt_1,~ \vt_2)}}
+\caseentry{+, c, \N \mid +, \N, c \mid -, c, \N}{c} \\
+\caseentry{-, c, c \mid \_, \N, \N}{\N} \\
+\caseentry{\_, c_1, c_2}{\textnormal{\color{red} fail}} \\
+\end{aligned}\]
+
+So, when we try to write through the pointer \(1004@0\), the bytes at addresses 1004-1007 are
+tagged \(1\), and the policy issues a failstop.
+
+\subsection{Compartmentalization}
+\label{sec:comp}
+
+In a perfect world, all C programs would be memory safe. But it is unfortunately common
+for a codebase to contain undefined behavior that will not be fixed, including memory undefined
+behavior. This may occur because developers intentionally use low-level idioms that are UB \cite{DeFacto}.
+Or the cost and potential risk of regressions may make it undesirable to fix bugs in older code,
+as opposed to code under active development that is held to a higher standard \cite{Bessey10:Coverity}.
+
+A compartmentalization policy isolates potentially risky code, such as code with known UB,
+from safety-critical code, minimizing the damage that can be done if a vulnerability is exploited.
+This is a very common form of protection that can be implemented at many levels. It is often built
+into a system's fundamental design, like a web browser sandbox untrusted javascript.
+But for our use-case, we consider a compartmentalization scheme being added to the system
+after the fact.
+
+Let's assume that we have a set of compartment identifiers, ranged over by \(C\), and a mapping
+from function identifiers to compartments, \(\mathit{comp}(f)\). This mapping must be provided by
+a security engineer.
+
+\paragraph{Coarse-grained Memory Safety}
+
+The core of a compartmentalization scheme is once again memory protection. For the simplest version,
+we will enforce that memory allocated by a function is only accessible by functions that share its
+compartment. To do that, we need to keep track of which compartment we're in, using the PC Tag.
+
+Calls and returns each take two steps: first to an intermediate call or return state, and
+then to the normal execution state, as shown in \cref{fig:functions} with to example functions,
+\(f\) and \(f'\). Three of these steps feature control points. In the initial call step, \(\calltname\)
+uses the name-tags of the caller and callee to update the PC Tag. Then, in the step from the call
+state, we place the function arguments in memory, tagging their values and locations with
+the results of \(\argtname\). And on return, \(\rettname\) updates both the PC Tag and
+the tag on the returned value.
+
+\begin{figure}
+  \begin{tikzpicture}[]
+    \node[state]                                      (f)                           {$f$};
+    \node[state, inner sep = 0pt, minimum size = 0pt] (call) [above right=of f]     {$\mathcal{C}$};
+    \node[state]                                      (g)    [below right=of call]  {$f'$};
+    \node[state, inner sep = 0pt, minimum size = 0pt] (ret)  [below right=of f]     {$\mathcal{R}$};
+    
+    \path[->]
+    (f)    edge [bend left] node [pos=0.5,above left] {\(\calltres \leftarrow \callt\)}       (call)
+    (call) edge [bend left] node [pos=0.5,above right] {\(\argtres \leftarrow \argtname(\PCT, \vt, f', x)\)}        (g)
+    (g)    edge [bend left] node [pos=0.5,below right] {}  (ret)
+    (ret)  edge [bend left] node [pos=0.5,below left] {\(\rettres \leftarrow \rett\)}  (f);
+  \end{tikzpicture}
+
+  \caption{Structure of a function call}
+  \label{fig:functions}
+\end{figure}
 
 \subsection{Secure Information Flow}
 \label{sec:SIF}
@@ -457,7 +770,7 @@ void get_data(char* name, char* buf, int field) {
   switch(field) {
     case 1:
       sprintf(query, "select address where name =");
-      strncat(query, name_san, strlen(name_san));
+      strncat(query, name_san, strlen(name_san));~~
       break;
     case 2:
       sprintf(query, "select phone where name =");
@@ -594,7 +907,7 @@ In the presence of declassification, we add an exception for the case where \(\a
 reflects an event that should indeed allow an observer to gain some information. We extend
 the above definition to talk about all of \(I\).
 
-\[NI_I \triangleq \forall S_1, S_2, \overline{\alpha}, \alpha .
+\[\NI_I \triangleq \forall S_1, S_2, \overline{\alpha}, \alpha .
 \begin{cases}
 \mathbf{K}(S_2,\overline{\alpha}\cdot \alpha,\sigma,\psi) \supseteq
 \mathbf{K}(S_1,\overline{\alpha},\sigma,\psi) &
@@ -678,7 +991,7 @@ The call-state rule executes at the beginning of a call, moving all of its argum
 the local environment, using the \(\mathbf{ArgT}\) tag rule.
 The return-state rule executes after the call returns, inserting the result into the
 context saved in the continuation. The program counter on return and the result's tag are
-set by the \(\mathbf{CallerRetT}\) tag rule. Both are given in \cref{fig:callretsteps}.
+set by the \(\mathbf{rettname}\) tag rule. Both are given in \cref{fig:callretsteps}.
 
 \begin{figure}
   \callstep
@@ -699,7 +1012,7 @@ set by the \(\mathbf{CallerRetT}\) tag rule. Both are given in \cref{fig:callret
 \end{minipage}
 \begin{minipage}[t]{.49\textwidth}            
   \[\begin{aligned}
-  \truledef{\callerrett}
+  \truledef{\rett}
   \letin{t := \mathit{forbid} ~ \{\sigma \mid \sigma \not \rightsquigarrow f.ret \in I\}}
   \assert{t \models \PCT \sqcup \vt}
   \letin{\vt_1 := \vt - \{\sigma \mid \sigma / f.ret \in I \}}
@@ -804,7 +1117,7 @@ In many simple programs, the join point of a conditional or loop is obvious:
 the point at which the chosen branch is complete, or the loop has ended.
 Such a simple example can be seen in \cref{fig:ifthenelse}; {\tt public1} must be
 tagged with the taint tag of {\tt secret}, while it is safe to tag {\tt public2}
-\(X\), because that is after the join point, {\tt J}. The same goes for \cref{fig:while},
+\(\N\), because that is after the join point, {\tt J}. The same goes for \cref{fig:while},
 because we are in a {\em termination-insensitive} setting \cite{}. This means that we
 consider only terminating runs. So, we can guarantee that the post-dominator \(J\)
 of the while loop is reached.
@@ -1080,21 +1393,6 @@ That identifier is also added as a field in the original conditional statement. 
 associated with the labels are initialized at program state---in the case of IFC, these defaults
 declare that there are no secrets to lowre when it is reached.
 
-\subsection{Compartmentalization}
-\label{sec:comp}
-
-Last, but not least, we have compartmentalization.
-The goal is to isolate potentially risky code from safety-critical code.
-This is a very common form of protection! It is often built into a system, like
-a web browser sandbox untrusted javascript. But for our use-case, with a legacy
-codebase, we are applying compartmentalization after the fact.
-
-It is fairly common, for instance, for a large established code-base to have known
-bugs that will not be fixed, while new or recently updated code is held to a higher
-standard \cite{Bessey10:Coverity}.
-
-Consider the code in [TODO: example].
-
 \section{Evaluation}
 \label{sec:evaluation}
 
@@ -1220,7 +1518,7 @@ TODO: switch
 
 \subsection{Expression Rules}
 
-\allocstep
+\mallocstep
 \valofstep
 \assignopstep
 \postincstep
@@ -1282,7 +1580,7 @@ on the part of the programmer, it is also undefined behavior in the C standard, 
 or in some other predictable arrangement, arithmetic like our first example can apply.
 The memory safety policy works just the same in this scenario, with the tags being attached
 by the call to malloc, once again using the \(\mathit{dyn}\) label in a global count of allocated blocks.
-Meanwhile, values that are not derived from valid pointers at all are tagged \(X\), and can never
+Meanwhile, values that are not derived from valid pointers at all are tagged \(\N\), and can never
 be read or written through, to avoid pointer forging, like this:
 
 \vspace{\abovedisplayskip}
@@ -1390,7 +1688,7 @@ The parameter \(b\) marks the start of the global region.
 \[\begin{aligned}
 \truledef{\globalt}
 \settag{\pt}{\mathit{glob ~ id}}
-\settag{\vt}{X}
+\settag{\vt}{N}
 \settag{\overline{\lt}}{\left[\mathit{glob} ~ id \mid 0 \leq i < s\right]}
 \end{aligned}\]
 
@@ -1421,7 +1719,7 @@ allocated memory. Then we increment the PC Tag to give the next allocation a uni
 \[\begin{aligned}
 \truledef{\localt}
 \settag{\pt}{dyn ~ \PCT}
-\settagopt{\vt}{X}
+\settagopt{\vt}{N}
 \settagopt{\overline{\lt}}{\left[dyn ~ \PCT \mid 0 \leq i < s\right]}
 \settag{\PCT'}{\PCT+1}
 \end{aligned}\]
@@ -1431,7 +1729,7 @@ In Tagged C, malloc is modeled as an external call to a built-in, so this takes 
 of a special case of that expression. Where \(\mathit{heap\_alloc}\) is some allocation
 function (a parameter of the memory model) that takes a size and a memory and returns an address:
 
-\allocstep
+\mallocstep
 
 And the tag rule is identical to \(\mathbf{LocalT}\), except that it always treats the allocated
 object as an array of bytes (making the location tags are always identical.)
@@ -1439,7 +1737,7 @@ object as an array of bytes (making the location tags are always identical.)
 \[\begin{aligned}
 \truledef{\malloct}
 \settag{\pt}{dyn ~ \PCT}
-\settagopt{\vt}{X}
+\settagopt{\vt}{N}
 \settagopt{\overline{\lt}}{\left[dyn ~ \PCT\right]}
 \settag{\PCT'}{\PCT + 1}
 \end{aligned}\]
@@ -1525,9 +1823,9 @@ be used as an integer, but if cast back to a pointer it will be invalid.
   \truledef{\binopt}
   \settag{\PCT'}{\PCT}
   \settag{\vt'}{\caseof{(\vt_1,~ \vt_2)}}
-  \caseentry{\mathit{dyn ~ n},X}{\mathit{dyn ~ n}} \\
-  \caseentry{\mathit{glob ~ id},X}{\mathit{glob ~ id}} \\
-  \caseentry{X,t}{t} \\
+  \caseentry{\mathit{dyn ~ n},N}{\mathit{dyn ~ n}} \\
+  \caseentry{\mathit{glob ~ id},N}{\mathit{glob ~ id}} \\
+  \caseentry{N,t}{t} \\
   \end{aligned}\]
 \end{minipage}
 
@@ -1555,7 +1853,7 @@ We simply clear the tag on the resulting integer.
 \[\begin{aligned}
 \truledef{\picastt}
 \settag{\PCT'}{\PCT}
-\settag{\vt}{X}
+\settag{\vt}{N}
 \end{aligned}\]
 
 On the other hand, when casting back to a pointer, we need to check the color
@@ -1563,7 +1861,7 @@ of the object that it points to.
 
 \[\begin{aligned}
 \truledef{\ipcastt}
-\assert{\exists t . \forall \lt \in \overline{\lt} . \lt = t \land t \not = X}
+\assert{\exists t . \forall \lt \in \overline{\lt} . \lt = t \land t \not = N}
 \settag{\PCT'}{\PCT}
 \settag{\pt}{t}
 \end{aligned}\]

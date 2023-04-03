@@ -1,0 +1,165 @@
+%%% -*-BibTeX-*-
+%%% Do NOT edit. File created by BibTeX with style
+%%% ACM-Reference-Format-Journals [18-Jan-2012].
+
+\begin{thebibliography}{7}
+
+%%% ====================================================================
+%%% NOTE TO THE USER: you can override these defaults by providing
+%%% customized versions of any of these macros before the \bibliography
+%%% command.  Each of them MUST provide its own final punctuation,
+%%% except for \shownote{}, \showDOI{}, and \showURL{}.  The latter two
+%%% do not use final punctuation, in order to avoid confusing it with
+%%% the Web address.
+%%%
+%%% To suppress output of a particular field, define its macro to expand
+%%% to an empty string, or better, \unskip, like this:
+%%%
+%%% \newcommand{\showDOI}[1]{\unskip}   % LaTeX syntax
+%%%
+%%% \def \showDOI #1{\unskip}           % plain TeX syntax
+%%%
+%%% ====================================================================
+
+\ifx \showCODEN    \undefined \def \showCODEN     #1{\unskip}     \fi
+\ifx \showDOI      \undefined \def \showDOI       #1{#1}\fi
+\ifx \showISBNx    \undefined \def \showISBNx     #1{\unskip}     \fi
+\ifx \showISBNxiii \undefined \def \showISBNxiii  #1{\unskip}     \fi
+\ifx \showISSN     \undefined \def \showISSN      #1{\unskip}     \fi
+\ifx \showLCCN     \undefined \def \showLCCN      #1{\unskip}     \fi
+\ifx \shownote     \undefined \def \shownote      #1{#1}          \fi
+\ifx \showarticletitle \undefined \def \showarticletitle #1{#1}   \fi
+\ifx \showURL      \undefined \def \showURL       {\relax}        \fi
+% The following commands are used for tagged output and should be
+% invisible to TeX
+\providecommand\bibfield[2]{#2}
+\providecommand\bibinfo[2]{#2}
+\providecommand\natexlab[1]{#1}
+\providecommand\showeprint[2][]{arXiv:#2}
+
+\bibitem[Bessey et~al\mbox{.}(2010)]%
+        {Bessey10:Coverity}
+\bibfield{author}{\bibinfo{person}{Al Bessey}, \bibinfo{person}{Ken Block},
+  \bibinfo{person}{Ben Chelf}, \bibinfo{person}{Andy Chou},
+  \bibinfo{person}{Bryan Fulton}, \bibinfo{person}{Seth Hallem},
+  \bibinfo{person}{Charles Henri-Gros}, \bibinfo{person}{Asya Kamsky},
+  \bibinfo{person}{Scott McPeak}, {and} \bibinfo{person}{Dawson Engler}.}
+  \bibinfo{year}{2010}\natexlab{}.
+\newblock \showarticletitle{A Few Billion Lines of Code Later: Using Static
+  Analysis to Find Bugs in the Real World}.
+\newblock \bibinfo{journal}{\emph{Commun. ACM}} \bibinfo{volume}{53},
+  \bibinfo{number}{2} (\bibinfo{date}{feb} \bibinfo{year}{2010}),
+  \bibinfo{pages}{66–75}.
+\newblock
+\showISSN{0001-0782}
+\urldef\tempurl%
+\url{https://doi.org/10.1145/1646353.1646374}
+\showDOI{\tempurl}
+
+
+\bibitem[Chhak et~al\mbox{.}(2021)]%
+        {Chhak21:Tagine}
+\bibfield{author}{\bibinfo{person}{CHR Chhak}, \bibinfo{person}{Andrew
+  Tolmach}, {and} \bibinfo{person}{Sean Anderson}.}
+  \bibinfo{year}{2021}\natexlab{}.
+\newblock \showarticletitle{Towards Formally Verified Compilation of Tag-Based
+  Policy Enforcement}. In \bibinfo{booktitle}{\emph{Proceedings of the 10th ACM
+  SIGPLAN International Conference on Certified Programs and Proofs}} (Virtual,
+  Denmark) \emph{(\bibinfo{series}{CPP 2021})}. \bibinfo{publisher}{Association
+  for Computing Machinery}, \bibinfo{address}{New York, NY, USA},
+  \bibinfo{pages}{137–151}.
+\newblock
+\showISBNx{9781450382991}
+\urldef\tempurl%
+\url{https://doi.org/10.1145/3437992.3439929}
+\showDOI{\tempurl}
+
+
+\bibitem[Denning and Denning(1977)]%
+        {Denning77:SecureInformationFlow}
+\bibfield{author}{\bibinfo{person}{Dorothy~E. Denning} {and}
+  \bibinfo{person}{Peter~J. Denning}.} \bibinfo{year}{1977}\natexlab{}.
+\newblock \showarticletitle{Certification of Programs for Secure Information
+  Flow}.
+\newblock \bibinfo{journal}{\emph{Commun. ACM}} \bibinfo{volume}{20},
+  \bibinfo{number}{7} (\bibinfo{date}{jul} \bibinfo{year}{1977}),
+  \bibinfo{pages}{504–513}.
+\newblock
+\showISSN{0001-0782}
+\urldef\tempurl%
+\url{https://doi.org/10.1145/359636.359712}
+\showDOI{\tempurl}
+
+
+\bibitem[Dhawan et~al\mbox{.}(2014)]%
+        {Dhawan14:PUMP}
+\bibfield{author}{\bibinfo{person}{Udit Dhawan}, \bibinfo{person}{Nikos
+  Vasilakis}, \bibinfo{person}{Raphael Rubin}, \bibinfo{person}{Silviu
+  Chiricescu}, \bibinfo{person}{Jonathan~M Smith}, \bibinfo{person}{Thomas~F
+  Knight~Jr.}, \bibinfo{person}{Benjamin~C Pierce}, {and}
+  \bibinfo{person}{André DeHon}.} \bibinfo{year}{2014}\natexlab{}.
+\newblock \showarticletitle{{PUMP: A Programmable Unit for Metadata
+  Processing}}. In \bibinfo{booktitle}{\emph{Proceedings of the Third Workshop
+  on Hardware and Architectural Support for Security and Privacy}}
+  \emph{(\bibinfo{series}{HASP '14})}. \bibinfo{publisher}{ACM},
+  \bibinfo{address}{New York, NY, USA}, \bibinfo{pages}{8:1–8:8}.
+\newblock
+\showISBNx{978-1-4503-2777-0}
+\urldef\tempurl%
+\url{https://doi.org/10.1145/2611765.2611773}
+\showDOI{\tempurl}
+
+
+\bibitem[Leroy(2009)]%
+        {Leroy09:CompCert}
+\bibfield{author}{\bibinfo{person}{Xavier Leroy}.}
+  \bibinfo{year}{2009}\natexlab{}.
+\newblock \showarticletitle{Formal Verification of a Realistic Compiler}.
+\newblock \bibinfo{journal}{\emph{Commun. ACM}} \bibinfo{volume}{52},
+  \bibinfo{number}{7} (\bibinfo{date}{jul} \bibinfo{year}{2009}),
+  \bibinfo{pages}{107–115}.
+\newblock
+\showISSN{0001-0782}
+\urldef\tempurl%
+\url{https://doi.org/10.1145/1538788.1538814}
+\showDOI{\tempurl}
+
+
+\bibitem[Skorstengaard et~al\mbox{.}(2019)]%
+        {Skorstengaard19:stktokens}
+\bibfield{author}{\bibinfo{person}{Lau Skorstengaard},
+  \bibinfo{person}{Dominique Devriese}, {and} \bibinfo{person}{Lars Birkedal}.}
+  \bibinfo{year}{2019}\natexlab{}.
+\newblock \showarticletitle{{StkTokens: Enforcing Well-bracketed Control Flow
+  and Stack Encapsulation using Linear Capabilities}}.
+\newblock \bibinfo{journal}{\emph{Proceedings of the ACM on Programming
+  Languages}} \bibinfo{volume}{3}, \bibinfo{number}{POPL}
+  (\bibinfo{year}{2019}), \bibinfo{pages}{1--28}.
+\newblock
+
+
+\bibitem[Wesley~Filardo et~al\mbox{.}(2020)]%
+        {NWF20:Cornucopia}
+\bibfield{author}{\bibinfo{person}{Nathaniel Wesley~Filardo},
+  \bibinfo{person}{Brett~F. Gutstein}, \bibinfo{person}{Jonathan Woodruff},
+  \bibinfo{person}{Sam Ainsworth}, \bibinfo{person}{Lucian Paul-Trifu},
+  \bibinfo{person}{Brooks Davis}, \bibinfo{person}{Hongyan Xia},
+  \bibinfo{person}{Edward Tomasz~Napierala}, \bibinfo{person}{Alexander
+  Richardson}, \bibinfo{person}{John Baldwin}, \bibinfo{person}{David
+  Chisnall}, \bibinfo{person}{Jessica Clarke}, \bibinfo{person}{Khilan Gudka},
+  \bibinfo{person}{Alexandre Joannou}, \bibinfo{person}{A. Theodore~Markettos},
+  \bibinfo{person}{Alfredo Mazzinghi}, \bibinfo{person}{Robert~M. Norton},
+  \bibinfo{person}{Michael Roe}, \bibinfo{person}{Peter Sewell},
+  \bibinfo{person}{Stacey Son}, \bibinfo{person}{Timothy~M. Jones},
+  \bibinfo{person}{Simon~W. Moore}, \bibinfo{person}{Peter~G. Neumann}, {and}
+  \bibinfo{person}{Robert N.~M. Watson}.} \bibinfo{year}{2020}\natexlab{}.
+\newblock \showarticletitle{Cornucopia: Temporal Safety for CHERI Heaps}. In
+  \bibinfo{booktitle}{\emph{2020 IEEE Symposium on Security and Privacy (SP)}}.
+  \bibinfo{pages}{608--625}.
+\newblock
+\urldef\tempurl%
+\url{https://doi.org/10.1109/SP40000.2020.00098}
+\showDOI{\tempurl}
+
+
+\end{thebibliography}

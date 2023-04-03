@@ -1,16 +1,19 @@
 \newcommand{\tagcolor}{C}
 
-\newcommand{\vt}{\mathit{vt}}
-\newcommand{\pt}{\mathit{pt}}
-\newcommand{\lt}{\mathit{lt}}
-\newcommand{\lts}{\overline{\lt}}
-\newcommand{\nt}{\mathit{nt}}
-\newcommand{\PCT}{\mathcal{P}}
+\newcommand{\vt}{\mathit{\color{blue} vt}}
+\newcommand{\pt}{\mathit{\color{blue} pt}}
+\newcommand{\lt}{\mathit{\color{blue} lt}}
+\newcommand{\lts}{\overline{\color{blue} \lt}}
+\newcommand{\nt}{\mathit{\color{blue} nt}}
+\newcommand{\PCT}{\mathcal{\color{blue} P}}
+\newcommand{\N}{{\color{blue} N}}
+\newcommand{\tagz}{{\color{blue} 0}}
+\newcommand{\tagone}{{\color{blue} 1}}
 
-\newcommand{\trule}[2]{#1 \leftarrow #2}
+\newcommand{\trule}[2]{{\color{blue} #1 \leftarrow #2}}
 
 \newcommand{\truledef}[1]{
-  & \multispan{3} \(#1\) \\}
+  & \multispan{3} \({\color{blue} #1}\) \\}
 
 \newcommand{\assert}[1]{& & & \multispan{2} \(\mathbf{assert} ~ #1\) \hfill \\}
 \newcommand{\letin}[1]{& & & \multispan{2} \(\mathit{let} ~ #1 ~ \mathit{in}\) \\}
@@ -43,7 +46,7 @@
 \newcommand{\unopt}{\unoptname(\unoptargs)}
 
 \newcommand{\binoptname}{\mathbf{BinopT}}
-\newcommand{\binoptargs}{\PCT, \vt_1, \vt_2}
+\newcommand{\binoptargs}{\oplus, \PCT, \vt_1, \vt_2}
 \newcommand{\binoptres}{\vt'}
 \newcommand{\binopt}{\binoptname(\binoptargs)}
 
@@ -104,21 +107,21 @@
 \newcommand{\jointres}{\PCT'}
 \newcommand{\joint}{\jointname(\jointargs)}
 
+\newcommand{\calltname}{\mathbf{CallT}}
+\newcommand{\calltargs}{\PCT, f, f'}
+\newcommand{\calltres}{\PCT'}
+\newcommand{\callt}{\calltname(\calltargs)}
+
 \newcommand{\argtname}{\mathbf{ArgT}}
 \newcommand{\argtargs}{\PCT, \vt, f, x}
 \newcommand{\argtargstyped}{\PCT, \vt, f, x \in ident}
-\newcommand{\argtres}{\vt'}
+\newcommand{\argtres}{\vt',\lts}
 \newcommand{\argt}{\argtname(\argtargs)}
 
-\newcommand{\callerrettname}{\mathbf{CallerRetT}}
-\newcommand{\callerrettargs}{\PCT, \PCT', \vt}
-\newcommand{\callerrettres}{\vt'}
-\newcommand{\callerrett}{\callerrettname(\callerrettargs)}
-
-\newcommand{\calleerettname}{\mathbf{CalleeRetT}}
-\newcommand{\calleerettargs}{\PCT, \PCT', \vt}
-\newcommand{\calleerettres}{\vt'}
-\newcommand{\calleerett}{\calleerettname(\calleerettargs)}
+\newcommand{\rettname}{\mathbf{RetT}}
+\newcommand{\rettargs}{\PCT_{CLE}, \PCT_{CLR}, \vt}
+\newcommand{\rettres}{\PCT',\vt'}
+\newcommand{\rett}{\rettname(\rettargs)}
 
 %%%%%%%%%%%%%%%%%
 

@@ -1,4 +1,4 @@
-\newcommand{\allocstep}
+\newcommand{\mallocstep}
 {\judgmenttwobrlong
     {\(\trule{\malloctres}{\malloct}\)}
     {\(\mem',p \leftarrow \mathit{heap\_alloc} ~ \mathit{size} ~ \mem\)}
@@ -275,7 +275,7 @@
 
 \newcommand{\returnstep}
 {\judgmenttwo{\(\cont = \mathit{Kcall} ~ \lenv' ~ \mathit{ctx} ~ \cont'\)}
-  {\(\PCT'',\vt' \leftarrow \callerrett\)}
+  {\(\PCT'',\vt' \leftarrow \rett\)}
   {\(\rstate{\PCT}{\mem}{\genv}{\lenv}{\val{v}{\vt}}{\cont} \longrightarrow
     \estate{\PCT'}{\mem}{\mathit{ctx}[\val{v}{\vt'}]}{\cont'}\)}}
 
