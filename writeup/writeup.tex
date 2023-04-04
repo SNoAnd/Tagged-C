@@ -323,7 +323,7 @@ policy that we explore in this paper, but it may not be complete.
   \label{fig:controlpoints}
 \end{table}
 
-\section{Formal Semantics}
+\paragraph{Formal Semantics}
 \label{sec:semantics}
 
 Tagged C uses a small-step reduction semantics, given in full in the appendix. We will introduce
@@ -384,7 +384,7 @@ context in the continuation all with the caller's continuation.
 [TODO: consider moving control point discussion here]
 
 Tagged C can enforce a wide range of policies, as follows.
-A policy consists of a tag type, a default tag inhabiting that type, and an instantiation
+A policy consists of a tag type \(\tau\), a default tag inhabiting that type, and an instantiation
 of each tag rule identified in \cref{fig:controlpoints}.
 
 \paragraph*{Realizing the Policy}
@@ -720,7 +720,7 @@ Let's assume that we have a set of compartment identifiers, ranged over by \(C\)
 from function identifiers to compartments, \(\mathit{comp}(f)\). This mapping must be provided by
 a security engineer.
 
-\paragraph{Coarse-grained Memory Safety}
+\paragraph{Coarse-grained Protection}
 
 The core of a compartmentalization scheme is once again memory protection. For the simplest version,
 we will enforce that memory allocated by a function is only accessible by functions that share its
@@ -751,6 +751,85 @@ the tag on the returned value.
   \caption{Structure of a function call}
   \label{fig:functions}
 \end{figure}
+
+In our compartmentalization policy, we define a tag to be a compartment identifier or
+the default \(\N\) tag.
+%
+\[\tau ::= C | \N\]
+%
+At any given time, the PC Tag carries the compartment of the active function.
+This is kept up to date by the \(\calltname\) and \(\rettname\) rules. Note that
+Tagged C automatically keeps track of the PC Tag at the time of a call, so that
+it can be used as a parameter in the return.
+
+\begin{minipage}[t]{.49\textwidth}
+  \[\begin{aligned}
+  \truledef{\callt}
+  \letin{C := \mathit{comp}(f')}
+  \settag{\PCT'}{\PCT}
+  \end{aligned}\]
+\end{minipage}
+\begin{minipage}[t]{.49\textwidth}
+  \[\begin{aligned}
+  \truledef{\rett}
+  \settag{\PCT'}{\PCT_{CLR}}}
+  \settag{\vt'}{\vt}
+  \end{aligned}\]
+\end{minipage}
+
+Now that we know which compartment we're in, we can make sure that its memory is protected.
+This will essentially work just like the basic memory safety policy, except that coarse-grained
+protection means that the ``color'' we assign to an allocation is the active compartment.
+And during a load or store, we compare the memory tags to the PC Tag, not the pointer.
+
+\begin{minipage}[t]{0.25\textwidth}
+\[\begin{aligned}
+\truledef{\malloct}
+\settag{\pt}{\N}
+\settagopt{\vt}{\N}
+\settagopt{\overline{\lt}}{\left[\PCT\right]}
+\settag{\PCT'}{\PCT}
+\end{aligned}\]
+\end{minipage}
+\begin{minipage}[t]{0.3\textwidth}
+\[\begin{aligned}
+\truledef{\loadt}
+\assert{\forall \lt \in \overline{\lt} . \PCT = \lt}
+\settag{\vt'}{\vt}
+\end{aligned}\]
+\end{minipage}
+\begin{minipage}[t]{0.5\textwidth}
+\[\begin{aligned}
+\truledef{\storet}
+\assert{\forall \lt \in \overline{\lt} . \lt = \PCT}
+\settag{\PCT'}{\PCT}
+\settag{\vt'}{\N}
+\settag{\overline{\lt'}}{\overline{\lt}}
+\end{aligned}\]
+\end{minipage}
+
+[TODO: talk about allocating locals here]
+
+\paragraph{Adding Shared Memory}
+
+The above policy is very restrictive! Compartments can never share memory with one
+another---they can pass pointers, but the pointers are functionally just integers
+until they're passed back. This is obviously unsatisfying. What can we do?
+
+Assuming that we know {\em which} objects should be shared, we can implement a hybrid
+system in which shared objects follow rules resembling standard fine-grained memory
+safety, while objects that are not intended to be shared default to coarse-grained
+protection.
+
+\paragraph{Avoiding Confused Deputies}
+
+[TODO: need a solid example of this]
+
+\subsection{PVI Memory Safety}
+\label{sec:PVI}
+
+\subsection{PNVI Memory Safety}
+\label{sec:PNVI}
 
 \subsection{Secure Information Flow}
 \label{sec:SIF}
@@ -1364,8 +1443,6 @@ in the appendix.
     \end{tikzpicture}
     \subcaption{Switch}
   \end{subfigure}
-
-  
   
   \caption{Remaining Branch Statements}
   \label{fig:rest}
