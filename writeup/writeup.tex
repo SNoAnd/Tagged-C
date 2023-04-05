@@ -810,7 +810,14 @@ And during a load or store, we compare the memory tags to the PC Tag, not the po
 
 [TODO: talk about allocating locals here]
 
-\paragraph{Adding Shared Memory}
+\paragraph{Mandatory Access Control}
+
+The policy described so far isolates memory errors, and prevents memory sharing outright,
+but otherwise puts no restrictions on the interactions between compartments. We can go a
+step further and build in a {\em Mandatory Access Control} (MAC) table, restricting each
+compartment's ability to call into other compartments and access globals.
+
+\paragraph{Memory Shared by Capability}
 
 The above policy is very restrictive! Compartments can never share memory with one
 another---they can pass pointers, but the pointers are functionally just integers
@@ -820,6 +827,23 @@ Assuming that we know {\em which} objects should be shared, we can implement a h
 system in which shared objects follow rules resembling standard fine-grained memory
 safety, while objects that are not intended to be shared default to coarse-grained
 protection.
+
+For example, suppose we have a function {\tt foo\_factory} that allocates an object,
+initializes it, and then returns its pointer. We want its caller to be able to use that pointer,
+but by default, we don't want an outside function accessing the other internal data of
+the compartment.
+
+\begin{verbatim}
+foo* foo_factory() {
+  foo* bar = malloc(size(foo));
+  ... // initialize bar
+  return bar;
+}
+\end{verbatim}
+
+In this case, the idiomatic Tagged C way to distinguish {\tt bar} from other allocations is
+to mark its allocation point with a label. The name tag associated with the label will be
+fed to the \(\labelt\) rule.
 
 \paragraph{Avoiding Confused Deputies}
 
