@@ -1,0 +1,20 @@
+\newcommand{\memory}[4]
+           {             
+             \begin{tabular}{|c|c|c|c|}
+               \multicolumn{4}{l}{#1} \\
+               \hline
+               \multicolumn{4}{|c|}{#2 \(@\) #3} \\
+               \hline
+               \footnotesize #4 & \footnotesize #4 & \footnotesize #4 & \footnotesize #4 \\
+               \hline
+             \end{tabular}
+           }
+           
+\newcommand{\memoryA}
+           {
+             node {\memory{1000}{\(\vundef\)}{\(\N\)}{\(\N\)}}; \&
+             node {\memory{1004}{\(\vundef\)}{\(\N\)}{\(\N\)}}; \&
+             node {\memory{1008}{\(\vundef\)}{\(\N\)}{\(\N\)}}; \&
+             node {\memory{1092}{\(\vundef\)}{\(\N\)}{\(\N\)}}; \&
+             node {\memory{1096}{\(\vundef\)}{\(\N\)}{\(\N\)}}; \\
+           }

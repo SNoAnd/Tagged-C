@@ -47,6 +47,8 @@
 
 \input{macros.tex}
 \input{semantics.tex}
+\input{memorygraphics.tex}
+
 \section{Abstract placeholder}
 % i think we should refer to it as the C family, because its not really one language
 % the first paragraph was really more of an abstract so I moved it here
@@ -454,52 +456,28 @@ from address 1000, and the stack growing downward from address 2000. Our set of 
 
 \vspace{\abovedisplayskip}
 
-\(\mathcal{P}: \tagz\)
+\begin{tikzpicture}[]
+    \node[matrix, ampersand replacement=\&, column sep=-0.6em]  (mem)
+       {
+         \node (a) {\memory{\(1000\)}{\(\vundef\)}{\(\N\)}{\(\N\)}}; \&
+         \node {\memory{\(1004\)}{\(\vundef\)}{\(\N\)}{\(\N\)}}; \&
+         \node {\memory{\(1008\)}{\(\vundef\)}{\(\N\)}{\(\N\)}}; \&
+         \node[anchor=north] {\(~ ~\dots ~ ~\)}; \&
+         \node {\memory{\(1092\)}{\(\vundef\)}{\(\N\)}{\(\N\)}}; \&
+         \node {\memory{\(1096\)}{\(\vundef\)}{\(\N\)}{\(\N\)}}; \\
+       };
+  
+  \node         (pctag)  [node distance=1em, above=of a]        {\(\PCT=\tagz\)};
+  \node         (expr)   [right=of pctag]             {\(\expr=\mathit{malloc}(1 @ t)\)};
+  
+%  \path[->]
+%  (f)    edge [bend left] node [pos=0.5,above left] {\(\calltres \leftarrow \callt\)}       (call)
+%  (call) edge [bend left] node [pos=0.5,above right] {\(\argtres \leftarrow \argtname(\PCT, \vt, f', x)\)}        (g)
+%  (g)    edge [bend left] node [pos=0.5,below right] {}  (ret)
+%  (ret)  edge [bend left] node [pos=0.5,below left] {\(\rettres \leftarrow \rett\)}  (f);
+\end{tikzpicture}
 
-\vspace{\abovedisplayskip}
-
-\begin{tabular}{|c|c|c|c|}
-  \multicolumn{4}{l}{\(1000\)} \\
-  \hline
-  \multicolumn{4}{|c|}{\(\vundef @ N\)} \\
-  \hline
-  \footnotesize \(N\) & \footnotesize \(N\) & \footnotesize \(N\) & \footnotesize \(N\) \\
-  \hline
-\end{tabular}\hspace{-2pt}
-\begin{tabular}{|c|c|c|c|}
-  \multicolumn{4}{l}{\(1004\)} \\
-  \hline
-  \multicolumn{4}{|c|}{\(\vundef @ N\)} \\
-  \hline
-  \footnotesize \(N\) & \footnotesize \(N\) & \footnotesize \(N\) & \footnotesize \(N\) \\
-  \hline
-\end{tabular}\hspace{-2pt}
-\begin{tabular}{|c|c|c|c|}
-  \multicolumn{4}{l}{\(1008\)} \\
-  \hline
-  \multicolumn{4}{|c|}{\(\vundef @ N\)} \\
-  \hline
-  \footnotesize \(N\) & \footnotesize \(N\) & \footnotesize \(N\) & \footnotesize \(N\) \\
-  \hline
-\end{tabular}~ ~\dots~ ~
-\begin{tabular}{|c|c|c|c|}
-  \multicolumn{4}{l}{\(1092\) ({\tt y})} \\
-  \hline
-  \multicolumn{4}{|c|}{\(\vundef @ N\)} \\
-  \hline
-  \footnotesize \(N\) & \footnotesize \(N\) & \footnotesize \(N\) & \footnotesize \(N\) \\
-  \hline
-\end{tabular}\hspace{-2pt}
-\begin{tabular}{|c|c|c|c|}
-  \multicolumn{4}{l}{\(1096\) ({\tt x})} \\
-  \hline
-  \multicolumn{4}{|c|}{\(\vundef @ N\)} \\
-  \hline
-  \footnotesize \(N\) & \footnotesize \(N\) & \footnotesize \(N\) & \footnotesize \(N\) \\
-  \hline
-\end{tabular}
-
-\vspace{\belowdisplayskip}
+\vspace{4\belowdisplayskip}
 
 The call to malloc allocates the region from 1000 to 1039, and returns a pointer to the base
 address, 1000. We consult the policy to determine (1) the tag on the resulting value,
@@ -507,13 +485,44 @@ address, 1000. We consult the policy to determine (1) the tag on the resulting v
 Specifically, we invoke the \(\malloctname\) tag rule, which takes the PC Tag and the tag on
 the size argument and returns these three updated tags.
 
-\[\begin{aligned}
-\truledef{\malloct}
-\settag{\pt}{\PCT}
-\settagopt{\vt}{N}
-\settagopt{\overline{\lt}}{\left[\PCT\right]}
-\settag{\PCT'}{\PCT + 1}
-\end{aligned}\]
+\begin{tikzpicture}[]
+  \node[matrix, ampersand replacement=\&, column sep=-0.6em]  (mem)
+       {
+         \node[outer ysep=-5pt] (a) {\(\underbrace{\memory{1000}{\(\vundef\)}{\N}{\tagz}}\)};\\ %\&
+%         \node {\memory{\(1004\)}{\(\vundef\)}{\(\N\)}{\(\N\)}}; \&
+%         \node {\memory{\(1008\)}{\(\vundef\)}{\(\N\)}{\(\N\)}}; \\
+       };
+  
+  \node         (pctag)  [node distance=1.2em, above=of a]        {\(\PCT=\tagz\)};
+  \node         (expr)   [node distance=0.1em, above=of a]      {\(\expr=p @ \pt\)};
+
+  \node[matrix, ampersand replacement=\&, right = of mem] (tr)
+       {
+         \& \node[anchor=center] {\(\malloct\)}; \\
+         \node (pctout) {\(\PCT'\)}; \& \node[anchor=west] (pctret) {\(\PCT+1\)}; \\
+         \node (ptout)  {\(\pt\)};   \& \node[anchor=west] (ptret)  {\(\PCT\)}; \\
+         \node (vtout)  {\(\vt\)};   \& \node[anchor=west] (vtret)  {\(\N\)}; \\
+         \node (ltsout) {\(\lt\)};   \& \node[anchor=west] (ltsret) {\(\left[\PCT\right]\)}; \\
+       };
+
+  \path[->]
+  (pctret) edge (pctout)
+  (ptret)  edge (ptout)
+  (vtret)  edge (vtout)
+  (ltsret) edge (ltsout);
+
+  \draw[->]
+  (pctout.north) |- (pctag.east);
+
+  \draw[->]
+  (ptout.west) |- (expr.east);
+
+  \draw[->]
+  (vtout.west) -- (a.east);
+  
+  \draw[->]
+  (ltsout) -| (a.south);
+\end{tikzpicture}
 
 In this case, we tag the pointer and the memory region with the current count, and then
 increment the count. Once the pointer is stored in {\tt x}, our memory is:
