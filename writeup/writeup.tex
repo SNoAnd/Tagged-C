@@ -127,6 +127,7 @@ We offer the following contributions:
   (2) Secure Information Flow (SIF), and (3) compartmentalization
 \end{itemize}
 
+% restructure to be the paper map. In Section X we do Y, etc
 In the next section, we give a full account of the formal semantics of Tagged C,
 including its control points. Then in \cref{sec:memsafe}, we describe how we attach
 a memory safety policy to it, in the process giving some justification of how we chose to
@@ -136,11 +137,8 @@ a compartmentalization policy. In \cref{sec:evaluations} we discuss the degree t
 which the design meets our goals of flexibility and applicability to realistic
 security concerns.
 
-\subsection{Background}
-
-\paragraph{Exploits}
-
-[Talk about how there are a lot of exploits, they're problems, etc.]
+%turn into related work 
+\section{Related Work}
 
 \paragraph{Reference Monitors}
 
@@ -716,7 +714,7 @@ target. This will serve to outline the basic structure of the compilation scheme
 
 \subsection{Compartmentalization}
 \label{sec:comp}
-
+% notes ended up below, in the coarse grained section
 In a perfect world, all C programs would be memory safe. But it is unfortunately common
 for a codebase to contain undefined behavior that will not be fixed, including memory undefined
 behavior. This may occur because developers intentionally use low-level idioms that are UB \cite{DeFacto}.
@@ -736,6 +734,15 @@ a security engineer.
 
 \paragraph{Coarse-grained Protection}
 
+% this is two tasks in the same process, all they want to do is pass scalars adn not stomp
+% on each other
+% then fine grained is libaries + your code, which usually need more
+% than mere scalars. think libc. could foil rop gadgets? 
+% mac - explicit list of allowed calls
+% capability - says this is shared, protects with basic safety. anything 
+%   else cannot be shared. unique colors to defeat forced pointer arthimetic. hybrid system
+%   roughly the effect of containing things, but wihtout the issues of the MAC
+%
 The core of a compartmentalization scheme is once again memory protection. For the simplest version,
 we will enforce that memory allocated by a function is only accessible by functions that share its
 compartment. To do that, we need to keep track of which compartment we're in, using the PC Tag.
@@ -862,7 +869,10 @@ fed to the \(\labelt\) rule.
 \paragraph{Avoiding Confused Deputies}
 
 [TODO: need a solid example of this]
-
+% compartments are not a silver bullet, incomplete barrier (software compartments, bsd capabilites)
+% can pass around and get things written when unexpected
+% can use a hardware policy to clamp down on that regardless of the compartmentalization method
+% assuming you cant touch the (software) compartment mechaism 
 \subsection{PVI Memory Safety}
 \label{sec:PVI}
 
