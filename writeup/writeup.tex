@@ -1168,7 +1168,8 @@ used the unsanitized string! This creates the opportunity for an SQL injection a
 to this function could (presumably at the behest of an outside user) call it with {\tt field} of
 3 and {\tt name} of ``Bobby; drop table;''.
 
-We model this as a form of {\em secure information flow} (SIF), a variant of
+It would be good to be able to prevent this situation!
+Doing so requires a form of {\em secure information flow} (SIF), a variant of
 {\em information flow control} (IFC), as described in the venerable Denning and Denning
 \cite{Denning77:SecureInformationFlow}.
 Specifically, this is an {\it intransitive} SIF setting: we wish to allow {\tt name} to influence
@@ -1261,7 +1262,7 @@ or \(\pi_\psi(\alpha)\).
 & \\
 \end{aligned}\]
 
-[TODO: add the relevant events to their transitions in the semantics.]
+[TODO: add the relevant events to their transitions in the semantics, and list them here.]
 
 Now, we define the knowledge that an observer monitoring a particular sink can extrapolate about the
 state of the system as a whole, as a set of states that are consistent with the events it observes.
