@@ -1092,7 +1092,7 @@ we need to check the color of the object that it points to.
 \settag{\vt}{N}
 \end{aligned}\]
 \end{minipage}
-\begin{minipage}{0.65[\textwidth}
+\begin{minipage}{0.65\textwidth}
 \[\begin{aligned}
 \truledef{\ipcastt}
 \assert{\exists t . \forall \lt \in \overline{\lt} . \lt = t \land t \not = N}
@@ -1130,7 +1130,40 @@ rule.
 \subsection{Secure Information Flow}
 \label{sec:SIF}
 
-To motivate our next policy, let's consider an erroneous piece of code:
+Memory safety and compartmentalization are both aimed at preventing or mitigating
+memory errors. But programs can be memory safe and still do insecure things! Consider the
+following two examples. In the first case, we have some error-handling code that writes
+to a log.
+
+\begin{verbatim}
+int checked_div(int a, int b) {
+  if (a % b == 0) {
+    return a / b;
+  } else {
+    fprintf(log, "%d should divide %d but doesn't\n", b, a);
+    return 0;
+  }
+}
+
+void main(int factor) {
+  ...
+  int key = read(keyfile);
+  
+  int dividend = checked_div(key, factor);
+  if (!dividend) {
+    ...
+  } else {
+    ...
+  }
+}
+\end{verbatim}
+
+The {\tt checked\_div} function sometimes writes its arguments to a log,
+which is reasonable enough, except when it's called with a key as an argument!
+Suddenly we have keys being written to an unexpected and probably unprotected file.
+
+Our second example involves information from outside of the system ending up somewhere
+it isn't supposed to.
 
 \begin{verbatim}
 void sanitize(src, dst);
@@ -1168,13 +1201,14 @@ used the unsanitized string! This creates the opportunity for an SQL injection a
 to this function could (presumably at the behest of an outside user) call it with {\tt field} of
 3 and {\tt name} of ``Bobby; drop table;''.
 
-We model this as a form of {\em secure information flow} (SIF), a variant of
-{\em information flow control} (IFC), as described in the venerable Denning and Denning
+Both examples are instances of problematic information-flow. The solution is to implement
+a {\em secure information flow} (SIF) policy in Tagged C. SIF is a variant of
+{\em information flow control} (IFC) described in the venerable Denning and Denning
 \cite{Denning77:SecureInformationFlow}.
-Specifically, this is an {\it intransitive} SIF setting: we wish to allow {\tt name} to influence
-the result of {\tt sanitize}, naturally, and the result of {\tt sanitize} to influence the
-value passed to {\tt sql\_query}, but we do not wish for {\tt name} to influence {\tt sql\_query}
-directly.
+In the second example, we particularly want to implement an {\it intransitive} SIF policy:
+we wish to allow {\tt name} to influence the result of {\tt sanitize}, naturally, and the result
+of {\tt sanitize} to influence the value passed to {\tt sql\_query}, but we do not wish for
+{\tt name} to influence {\tt sql\_query} directly.
 
 SIF is specified by a set of flow rules between what we will term {\em sources} and {\em sinks}.
 A source \(\sigma\) can be an argument of a function, its return value, or a global.
