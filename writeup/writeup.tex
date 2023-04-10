@@ -43,13 +43,11 @@
 
 \begin{document}
 
-\maketitle
-
 \input{macros.tex}
 \input{semantics.tex}
 \input{memorygraphics.tex}
 
-\section{Abstract placeholder}
+\begin{abstract}
 % i think we should refer to it as the C family, because its not really one language
 % the first paragraph was really more of an abstract so I moved it here
 Today's computing infrastructure is built atop layers of legacy C code, often
@@ -60,6 +58,9 @@ not desirable to legacy code owners. We introduce Tagged C, a C variant with a b
 Demonstrated in this paper: two varieties of {\em memory safety} exploring the trade-off between
 security and support for low-level idioms, {\em secure information flow} (SIF),
 and {\em compartmentalization}.
+\end{abstract}
+
+\maketitle
 
 \section{Introduction}
 
@@ -137,8 +138,14 @@ a compartmentalization policy. In \cref{sec:evaluations} we discuss the degree t
 which the design meets our goals of flexibility and applicability to realistic
 security concerns.
 
-%turn into related work 
 \section{Related Work}
+
+\paragraph{CompCert C}
+
+Tagged C is built on top of CompCert C, the C semantics formalized along with the CompCert verified compiler.
+Our interpeter is likewise built on top of the CompCert C reference interpreter \cite{Leroy09:CompCert}.
+We chose CompCert C as a base because it is a widely used and well-supported C semantics, with a working
+interpreter and a full formalization. Being written in Coq, it is ideal for future proof work.
 
 \paragraph{Reference Monitors}
 
@@ -1009,7 +1016,8 @@ on the left hand of the assignment matches the location tag on all of the bytes 
 [Not sure how important this is.]
 There are two other expressions that load from memory, and which therefore invoke
 this same rule, {\it assignop} and {\it postincr}. Note that the C spec has the order
-of evaluation for {\it assignop} ``unsequenced''; I follow CompCert in evaluating both the left
+of evaluation for {\it assignop} ``unsequenced''; we follow CompCert \cite{Leroy09:CompCert}
+in evaluating both the left
 and right completely before performing the load. Intuitively, assignment-with-an-operator is
 classed along with the standard assignment in the spec, so it is appropriate that it be ordered
 in the same way.
@@ -1092,7 +1100,7 @@ we need to check the color of the object that it points to.
 \settag{\vt}{N}
 \end{aligned}\]
 \end{minipage}
-\begin{minipage}{0.65[\textwidth}
+\begin{minipage}{0.65\textwidth}
 \[\begin{aligned}
 \truledef{\ipcastt}
 \assert{\exists t . \forall \lt \in \overline{\lt} . \lt = t \land t \not = N}
@@ -1130,7 +1138,359 @@ rule.
 \subsection{Secure Information Flow}
 \label{sec:SIF}
 
-To motivate our next policy, let's consider an erroneous piece of code:
+Memory safety and compartmentalization are both aimed at preventing or mitigating
+memory errors. But programs can be memory safe and still do insecure things! Consider the
+following code, in which we have some error-handling code that writes to a log.
+
+\begin{verbatim}
+int checked_div(int a, int b) {
+  if (a % b == 0) {
+    return a / b;
+  } else {
+    fprintf(log, "%d should divide %d but doesn't\n", b, a);
+    return 0;
+  }
+}
+
+void main(int factor) {
+  ...
+  int key = read_and_parse(keyfile);
+  
+  int dividend = checked_div(key, factor);
+  if (!dividend) {
+    ...
+  } else {
+    ...
+  }
+}
+\end{verbatim}
+
+The {\tt checked\_div} function sometimes writes its arguments to a log,
+which is reasonable enough, except when it's called with a key as an argument!
+Suddenly we have keys being written to an unexpected and probably unprotected file.
+
+This is an instance of problematic information-flow. The solution is to implement
+a {\em secure information flow} (SIF) policy in Tagged C. SIF is a variant of
+{\em information flow control} (IFC) described in the venerable Denning and Denning
+\cite{Denning77:SecureInformationFlow}. At its simplest, if we classify inputs and outputs to
+the program into secure (``high'') and public (``low'') classifications, then the
+high inputs do not influence the low outputs. This generalizes to an arbitrary set
+of security classes, but out first example is concerned with just two: the value
+returned from {\tt read\_and\_parse} and the output to the log.
+In our treatment of this example, we will describe a policy tailored to this particular
+set of security classes.
+
+\paragraph*{SIF Example Policy 1}
+
+Let's assume that {\tt read\_and\_parse} is an {\em external} function---that is, we will not
+model its internal behavior, so we know nothing about the value it returns. We can therefore
+treat that value as an input, and track its influence through the system.
+
+For this initial, simplified policy, we will assume that it is the only input that we care about,
+so we have three possible tags: the default tag
+\(\N\) represents values that are not tainted by the sensitive input, the tag
+\(\vtaint{}\) represents values that have been influenced by {\tt read\_and\_parse}, and the tag
+\(\pctaint{\overline{L}}\) carries a set of labels representing that
+the current control-flow of the program is tainted (we will discuss this in detail
+below.)
+
+Initially, the PC Tag is \(\pctaint{\emptyset}\), and all values and memory locations are
+tagged \(\N\). The taint tags are introduced at the external call to {\tt read\_and\_parse}.
+At the same time, all external calls must check that they aren't leaking a tainted value!
+
+\begin{minipage}{0.25\textwidth}
+{ \color{blue}
+  \begin{align*}
+    \tau ::= & \N \\
+    & \vtaint{} \\
+    & \pctaint{\overline{L}} \\
+\end{align*} }
+\end{minipage}
+\begin{minipage}{0.74\textwidth}
+\[\begin{aligned}
+\truledef{\extcallt}
+\assert{\forall \vt \in \overline{\vt} . \vt = \N \land \PCT = \N}
+\settag{\PCT'}{\PCT}
+\settag{\vt'}{\caseof{f}}
+\caseentry{read\_and\_parse}{\vtaint{}} \\
+\caseentry{\_}{\vt} \\
+\end{aligned}\]
+\end{minipage}
+
+When two values are combined with a binary operation, the resulting value is tainted
+if either of them was. We define this as the {\em join} or {\em least-upper-bound}
+operator, \(\sqcup\).
+
+\begin{minipage}[t]{.49\textwidth}
+\[t_1 \sqcup t_2 \triangleq
+\begin{cases}
+  \vtaint{} & \textnormal{if } t_1 = \vtaint{} \\
+  \vtaint{} & \textnormal{if } t_2 = \vtaint{} \\
+  \N & \textnormal{otherwise} \\
+\end{cases}\]
+\end{minipage}
+\begin{minipage}[t]{.49\textwidth}
+  \[\begin{aligned}
+  \truledef{\binopt}
+  \settag{\vt'}{
+    \vt_1 \sqcup \vt_2
+  }
+  \end{aligned}\]
+\end{minipage}
+
+The policy needs to failstop if a tainted value becomes visible to the outside world.
+That can happen when the value is passed as an argument to an external function, as we
+saw above, or when it is stored to volatile memory (typically representing a file or external
+device that might be read or might transfer. [TODO: need to introduce volatile memory earlier.]
+%
+\[\begin{aligned}
+\truledef{\volstoret}
+\assert{\PCT \sqcup \pt \sqcup \vt_2 = \N}
+\settag{\PCT'}{\PCT}
+\settag{\vt'}{\PCT \sqcup \pt \sqcup \vt_2}
+\settag{\overline{\lt'}}{\overline{\lt}}
+\end{aligned}\]
+
+Now things become trickier, because the program's control-flow itself can be tainted.
+This can occur in any of our semantics' steps that can produce different statements and continuations
+depending on the tained value. At that point, any change to the machine state constitutes
+an information flow. This is termed an {\em implicit flow}.
+
+To be more specific, consider a statement that contains an expression, \(\stmt(\expr)\),
+such that when filled in with a tainted value:
+%
+\[\sstate{\PCT}{\mem}{\stmt\val{v_1}{\mathit{taint} ~ \sigma}}{\cont} \longrightarrow
+\sstate{\PCT_1}{\mem_1}{\stmt_1}{\cont_1}\]
+%
+while
+%
+\[\sstate{\PCT}{\mem}{\stmt\val{v_1}{\mathit{taint} ~ \sigma}}{\cont} \longrightarrow
+\sstate{\PCT_2}{\mem_2}{\stmt_2}{\cont_2}\]
+%
+and where \(\stmt_1 \not = \stmt_2\) or \(\cont_1 \not = \cont_2\). Taking either step
+should taint the program state itself! We represent this as a taint on the PC Tag.
+When the PC Tag is tainted, all stores to memory and all updates to environments must
+also be tainted until all branches eventually rejoin.
+We term the point at which it is safe to remove taint a {\it join point}.
+In terms of the program's control-flow graph, the
+join point of a branch is its immediate post-dominator.
+
+In many simple programs, the join point of a conditional or loop is obvious:
+the point at which the chosen branch is complete, or the loop has ended.
+Such a simple example can be seen in \cref{fig:ifthenelse}; {\tt public1} must be
+tagged with the taint tag of {\tt secret}, while it is safe to tag {\tt public2}
+\(\N\), because that is after the join point, {\tt J}. The same goes for \cref{fig:while},
+because we are in a {\em termination-insensitive} setting \cite{}. This means that we
+consider only terminating runs. So, we can guarantee that the post-dominator \(J\)
+of the while loop is reached. [TODO: explain this more.]
+
+But in the presence of unrestricted go-to statements, a join point may not be
+local---and sometimes may not exist within the function, assuming that we have not
+consolidated return points. Consider \cref{fig:forbreak}, which
+uses go-to statements to create an approximation of an if-statement whose join-point
+is far removed from the for-loop. The label {\tt J} now has nothing to do with the
+semantics of any particular statement.
+
+Luckily this can still be determined statically from a function's full
+control-flow graph. So, to implement the policy, we must first transform our program
+by adding labels at the join point of each conditional.
+Every statement that branches carries an optional label indicating its corresponding
+join point. If it doesn't have such
+a label, that indicates that there is no join point within the function---once the PC Tag is tainted,
+it must remain so until a return.
+
+\begin{figure}
+  \begin{subfigure}{0.5\textwidth}
+\begin{verbatim}
+int f(bool secret) {
+    int public1, public2;
+
+S:  if (secret) {
+b1:     public1 = 1;
+    } else {
+b2:     public1 = 0;
+    }
+
+J:  public2 = 42;
+
+    return public2;
+}
+\end{verbatim}
+  \end{subfigure}
+  \begin{subfigure}{0.5\textwidth}
+    \begin{tikzpicture}
+      [ initial text={}, initial distance=4em,
+        accepting/.style=accepting by arrow,
+        accepting distance=4em
+      ]
+      \node[state,initial]    (S)                        {$S$};
+      \node[state]            (b_1) [above right=of S]   {$b_1$};
+      \node[state]            (b_2) [below right=of S]   {$b_2$};
+      \node[state,accepting]  (J)   [below right=of b_1] {$J$};
+
+      \path[->] (S)   edge              node  {}  (b_1)
+                      edge              node  {}  (b_2)
+                (b_1) edge              node  {}  (J)
+                (b_2) edge              node  {}  (J);
+    \end{tikzpicture}
+  \end{subfigure}
+  
+  \caption{Leaking via if statements}
+  \label{fig:ifthenelse}
+\end{figure}
+
+\begin{figure}
+  \begin{subfigure}{0.5\textwidth}
+\begin{verbatim}
+int f(bool secret) {
+    int public1=1;
+    int public2;
+
+S:  while (secret) {
+b1:     public1 = 1;
+        secret = false;
+    }
+
+J:  public2 = 42;
+
+    return public2;
+}
+\end{verbatim}
+  \end{subfigure}
+  \begin{subfigure}{0.5\textwidth}
+    \begin{tikzpicture}
+      [ initial text={}, initial distance=4em,
+        accepting/.style=accepting by arrow,
+        accepting distance=4em
+      ]
+      \node[state,initial]    (S)                        {$S$};
+      \node[state]            (b_1) [above right=of S]   {$b_1$};
+      \node[state,accepting]  (J)   [below right=of b_1] {$J$};
+
+      \path[->] (S)   edge               node  {}  (b_1)
+                      edge               node  {}  (J)
+                (b_1) edge [bend right] node  {}  (S);
+    \end{tikzpicture}
+  \end{subfigure}
+  
+  \caption{Leaking via while statements}
+  \label{fig:while}
+\end{figure}
+
+\begin{figure}
+  \begin{subfigure}{0.25\textwidth}
+\begin{verbatim}
+int f(bool secret) {
+    int public1, public2;
+
+    while (secret) {
+        goto b1;
+    }
+
+b2: public1 = 1;
+    goto J;
+
+b1: public1 = 1;
+
+J:  public2 = 42;
+    return public2;
+}
+\end{verbatim}
+  \end{subfigure}
+  \begin{subfigure}{0.74\textwidth}
+    \begin{tikzpicture}
+      [ initial text={}, initial distance=3em,
+        accepting/.style=accepting by arrow,
+        accepting distance=3em
+      ]
+      \node[state,initial]    (S)                              {$S$};
+      \node[state]            (inside) [above right=of S]      {};
+      \node[state]            (b_2)    [below right=of inside] {$b_2$};
+      \node[state]            (b_1)    [right=of b_2]          {$b_1$};
+      \node[state,accepting]  (J)      [right=of b_1]          {$J$};
+
+      \path[->] (S)   edge              node  {}  (inside)
+                      edge              node  {}  (b_2)
+                (inside) edge [bend left] node {} (b_1)
+                (b_1) edge              node  {}  (J)
+                (b_2) edge [bend right] node  {}  (J);
+    \end{tikzpicture}
+  \end{subfigure}
+  
+  \caption{Cheating with go-tos}
+  \label{fig:forbreak}
+\end{figure}
+\begin{figure}
+  \begin{subfigure}{0.5\textwidth}
+    \begin{tikzpicture}
+      [ initial text={}, initial distance=4em,
+        accepting/.style=accepting by arrow,
+        accepting distance=3em
+      ]
+      \node[state,initial]    (do)                             {do};
+      \node[state,accepting]  (S) [right=of do]                {\(S\):test};
+
+      \path[->] (do)   edge              node  {}  (S)
+                (S)    edge [bend left]  node  {}  (do);
+    \end{tikzpicture}
+    \subcaption{Do-while}
+  \end{subfigure}
+  \begin{subfigure}{0.5\textwidth}
+    \begin{tikzpicture}
+      [ initial text={}, initial distance=4em,
+        accepting/.style=accepting by arrow,
+        accepting distance=4em
+      ]
+      \node[state,initial]    (init)                             {init};
+      \node[state,accepting]  (S)    [right=of init]             {\(S\):test};
+      \node[state]            (do)   [above=of S]                {do};
+      \node[state]            (post) [left=of do]                {post};
+      
+      \path[->] (init)   edge              node  {}  (S)
+                (S)      edge              node  {}  (do)
+                (do)     edge              node  {}  (post)
+                (post)   edge              node  {}  (S);
+    \end{tikzpicture}
+    \subcaption{For}
+  \end{subfigure}
+  \begin{subfigure}{\textwidth}
+    \center
+    \begin{tikzpicture}
+      [ initial text={}, initial distance=4em, initial above,
+        accepting/.style=accepting by arrow,
+        accepting distance=4em
+      ]
+      \node[state,initial]    (switch)                           {\(S\):switch};
+      \node[state]            (case1)    [below left=of switch]  {};
+      \node[state]            (case2)    [right=of case1]        {};
+      \node[state]            (case3)    [right=of case2]        {};
+      \node[state]            (default)  [right=of case3]        {def};
+      \node                   (after)    [right=of default]      {};
+
+      \path[->] (switch)  edge              node  {}  (case1)
+                          edge              node  {}  (case2)
+                          edge              node  {}  (case3)
+                          edge              node  {}  (default)
+                (default) edge              node  {}  (after)
+                (case1)   edge [bend right] node  {}  (after)
+                (case2)   edge [bend right] node  {}  (after)
+                (case3)   edge [bend right] node  {}  (after);
+
+      \path[dotted,->] (case1) edge              node  {}  (case2)
+                (case2) edge              node  {}  (case3)
+                (case3) edge              node  {}  (default);
+                         
+    \end{tikzpicture}
+    \subcaption{Switch}
+  \end{subfigure}
+  
+  \caption{Remaining Branch Statements}
+  \label{fig:rest}
+\end{figure}
+
+\paragraph*{Intransitive SIF}
+
+Our second example involves information from outside of the system ending up somewhere it isn't supposed to.
 
 \begin{verbatim}
 void sanitize(src, dst);
@@ -1168,19 +1528,17 @@ used the unsanitized string! This creates the opportunity for an SQL injection a
 to this function could (presumably at the behest of an outside user) call it with {\tt field} of
 3 and {\tt name} of ``Bobby; drop table;''.
 
-It would be good to be able to prevent this situation!
-Doing so requires a form of {\em secure information flow} (SIF), a variant of
-{\em information flow control} (IFC), as described in the venerable Denning and Denning
-\cite{Denning77:SecureInformationFlow}.
-Specifically, this is an {\it intransitive} SIF setting: we wish to allow {\tt name} to influence
-the result of {\tt sanitize}, naturally, and the result of {\tt sanitize} to influence the
-value passed to {\tt sql\_query}, but we do not wish for {\tt name} to influence {\tt sql\_query}
-directly.
+In the second example, we particularly want to implement an {\it intransitive} SIF policy:
+we wish to allow {\tt name} to influence the result of {\tt sanitize}, naturally, and the result
+of {\tt sanitize} to influence the value passed to {\tt sql\_query}, but we do not wish for
+{\tt name} to influence {\tt sql\_query} directly.
 
-SIF is specified by a set of flow rules between what we will term {\em sources} and {\em sinks}.
+\paragraph*{Tracking Data Sources and Sinks}
+
+The core of our SIF policies is that we identify parts of the state as {\em sources} and as {\em sinks}.
 A source \(\sigma\) can be an argument of a function, its return value, or a global.
-A sink \(\psi\) can additionally be the set of heap objects allocated by a given function.
-We write these as follows:
+A sink \(\psi\) can be any of these, plus the set of heap objects allocated by a given function.
+We write them as follows:
 
 \begin{minipage}{0.5\textwidth}
   \[\begin{aligned}
@@ -1198,105 +1556,115 @@ We write these as follows:
   \end{aligned}\]
 \end{minipage}
 
-In classic SIF theory, we specify an {\em information flow policy} (IFPol)---not to be confused with a
-tag policy---as a relation \(\cdot \rightsquigarrow \cdot \in \sigma \times \psi\). However,
-manually defining such a policy is challenging, especially in an intransitive setting.
-We envision the IFPol being initially stated in negative terms, with the ``no-flow'' relation
-\(\not \rightsquigarrow\). That is, we will assume by default that for any source \(\sigma\)
-and any sink \(\psi\), \(\sigma \rightsquigarrow \psi\), unless the user has explicitly
-declared the contrary.
-
-So, in the above example, the user would declare that \(\mathtt{name} \not \rightsquigarrow \mathtt{sql\_query}\).
-But, in the case of \(\mathtt{sanitize}\), we want it to be the case that \(\mathtt{name}\) can flow to
-\(\mathtt{sql\_query}\) only via \(\mathtt{sanitize}\). We therefore need to allow the user to declare
-a {\em declassification} rule. In general we will write \(\sigma / \sigma'\) to indicate that \(\sigma'\)
-supersedes \(\sigma\): if a value that has been influenced by \(\sigma\) influences \(\sigma'\), we
-can safely ignore its history with \(\sigma\). We may write \(* / \sigma\) to say that \(\sigma\)
-declassifies anything.
-
-For example, suppose that in the following code, we want to enforce a no-flow rule between
-the argument {\tt x} of {\tt f} and the global variable {\tt z}
-(\(\mathtt{f.x} \not \rightsquigarrow \mathtt{z}\)), and a declassification rule
-\(* / \mathtt{g.a}\).
-
-\begin{verbatim}
-  int z;
-
-  int g(int a);
-
-  void f(int x, int y) {
-    z = x;                    // violation
-    z = x + y;                // violation
-    if(x) z = 1; else z = 0;  // violation
-    z = g(x);                 // violation, unless f.x / g.a
-  }
-\end{verbatim}
-
-The first three lines of {\tt f} violate the no-flow relation by storing values derived from
-{\tt x} into {\tt z}. The third line is especially interesting: although {\tt x} is not stored
-directly, the value that is stored is conditioned upon it, and can be used to deduce information
-about the original value. This is termed an {\em implicit flow}. Finally, in the last line,
-the value of {\tt g(x)} depends on {\tt x}, which is a violation unless it is subject to a
-declassification rule.
-
-We can therefore define an IFPol as a set of rules of each kind:
-
-\[I \subseteq \{\sigma \not \rightsquigarrow \psi \mid \sigma \not \eq \psi\} \cup
-\{\sigma / \sigma' \mid \sigma \not \eq \sigma'\}\]
-
-We do not need to distinguish between rules that notionally represent ``integrity'' versus ``confidentiality''
-concerns. The SQL injection example is an instance of integrity, ensuring that an input cannot influence data
-in an undesired way, but the same concept can be used to prevent data from influencing the program's output
-inappropriately.
-
-\paragraph{SIF, formally}
-
-We can characterize the protection offered by a SIF policy in terms of a {\em non-interference}
-property along the lines of Bay and Askarov \cite{}. We annotate our transitions with events \(\alpha\),
-each representing the transmission of a value through a source or sink---possibly several. We write the
-projection of data relevant to a particular source \(\sigma\) or sink \(\psi\) as \(\pi_\sigma(\alpha)\)
-or \(\pi_\psi(\alpha)\).
-
-\[\begin{aligned}
-\alpha ::= & \\
-& \\
-\end{aligned}\]
-
-[TODO: add the relevant events to their transitions in the semantics, and list them here.]
-
-Now, we define the knowledge that an observer monitoring a particular sink can extrapolate about the
-state of the system as a whole, as a set of states that are consistent with the events it observes.
-Given some initial state \(S\), this is precisely the set of other initial states that might
-produce the same trace (or an extension thereof) and that are equivalent.
-
-\[\mathbf{K}(S,\overline{\alpha},\sigma,\psi) \triangleq
-\{S' \mid S \sim_\sigma S' \land S' \hookrightarrow_{\psi} \overline{\alpha} \cdot \alpha\}\]
-
-Then, absent any declassification rules, we can define non-interference as holding between
-\(\sigma\) and \(\psi\) if, for any states \(S_1\) and \(S_2\) such that
-\(S_1 \xrightarrow{\overline{\alpha}\cdot \alpha} S_2\),
-\(\mathbf{K}(S_2,\overline{\alpha}\cdot \alpha,\sigma,\psi) \supseteq
-\mathbf{K}(S_1,\overline{\alpha},\sigma,\psi)\). That is, every world that was possible before
-\(\alpha\) remains possible after.
-
-In the presence of declassification, we add an exception for the case where \(\alpha\)
-reflects an event that should indeed allow an observer to gain some information. We extend
-the above definition to talk about all of \(I\).
-
-\[NI_I \triangleq \forall S_1, S_2, \overline{\alpha}, \alpha .
-\begin{cases}
-\mathbf{K}(S_2,\overline{\alpha}\cdot \alpha,\sigma,\psi) \supseteq
-\mathbf{K}(S_1,\overline{\alpha},\sigma,\psi) &
-\textnormal{if } \sigma \not \rightsquigarrow \psi \in I \\
-\mathbf{K}(S_2,\overline{\alpha}\cdot \alpha,\sigma,\psi) \supseteq
-\mathbf{K}(S_1,\overline{\alpha},\sigma \sqcup \sigma',\psi &
-\textnormal{if } \sigma / \sigma' \in I \land \sigma' \rightsquigarrow \psi \in I \\
-\end{cases}\]
-
-\paragraph{Tagging SIF}
-
 We track the influence of a particular source, or its ``taint,'' through the system in the form
-of tags on values. A value that is tagged \(\mathit{vtaint} ~ \overline{\sigma}\) has been influnced
+of tags on values. Sinks that are in memory have their memory locations tagged accordingly. And
+the PC Tag at all times tracks a set of sources that are implicitly influencing the state, described
+further below.
+%
+\begin{align*}
+  \tau ::= & \mathit{vtaint} ~ \overline{\sigma} \\
+  & \mathit{sink} ~ \psi \\
+  & \mathit{pctaint} ~ \overline{(L,\sigma)} \\
+\end{align*}
+%
+
+
+%In classic SIF theory, we specify an {\em information flow policy} (IFPol)---not to be confused with a
+%tag policy---as a relation \(\cdot \rightsquigarrow \cdot \in \sigma \times \psi\). However,
+%manually defining such a policy is challenging, especially in an intransitive setting.
+%We envision the IFPol being initially stated in negative terms, with the ``no-flow'' relation
+%\(\not \rightsquigarrow\). That is, we will assume by default that for any source \(\sigma\)
+%and any sink \(\psi\), \(\sigma \rightsquigarrow \psi\), unless the user has explicitly
+%declared the contrary.
+
+%So, in the above example, the user would declare that \(\mathtt{name} \not \rightsquigarrow \mathtt{sql\_query}\).
+%But, in the case of \(\mathtt{sanitize}\), we want it to be the case that \(\mathtt{name}\) can flow to
+%\(\mathtt{sql\_query}\) only via \(\mathtt{sanitize}\). We therefore need to allow the user to declare
+%a {\em declassification} rule. In general we will write \(\sigma / \sigma'\) to indicate that \(\sigma'\)
+%supersedes \(\sigma\): if a value that has been influenced by \(\sigma\) influences \(\sigma'\), we
+%can safely ignore its history with \(\sigma\). We may write \(* / \sigma\) to say that \(\sigma\)
+%declassifies anything.
+
+%For example, suppose that in the following code, we want to enforce a no-flow rule between
+%the argument {\tt x} of {\tt f} and the global variable {\tt z}
+%(\(\mathtt{f.x} \not \rightsquigarrow \mathtt{z}\)), and a declassification rule
+%\(* / \mathtt{g.a}\).
+
+%\begin{verbatim}
+%  int z;
+%
+%  int g(int a);
+%
+%  void f(int x, int y) {
+%    z = x;                    // violation
+%    z = x + y;                // violation
+%    if(x) z = 1; else z = 0;  // violation
+%    z = g(x);                 // violation, unless f.x / g.a
+%  }
+%\end{verbatim}
+
+%The first three lines of {\tt f} violate the no-flow relation by storing values derived from
+%{\tt x} into {\tt z}. The third line is especially interesting: although {\tt x} is not stored
+%directly, the value that is stored is conditioned upon it, and can be used to deduce information
+%about the original value. This is termed an {\em implicit flow}. Finally, in the last line,
+%the value of {\tt g(x)} depends on {\tt x}, which is a violation unless it is subject to a
+%declassification rule.
+
+%We can therefore define an IFPol as a set of rules of each kind:
+
+%\[I \subseteq \{\sigma \not \rightsquigarrow \psi \mid \sigma \not \eq \psi\} \cup
+%\{\sigma / \sigma' \mid \sigma \not \eq \sigma'\}\]
+
+%We do not need to distinguish between rules that notionally represent ``integrity'' versus ``confidentiality''
+%concerns. The SQL injection example is an instance of integrity, ensuring that an input cannot influence data
+%in an undesired way, but the same concept can be used to prevent data from influencing the program's output
+%inappropriately.
+
+%\paragraph{SIF, formally}
+
+%We can characterize the protection offered by a SIF policy in terms of a {\em non-interference}
+%property along the lines of Bay and Askarov \cite{}. We annotate our transitions with events \(\alpha\),
+%each representing the transmission of a value through a source or sink---possibly several. We write the
+%projection of data relevant to a particular source \(\sigma\) or sink \(\psi\) as \(\pi_\sigma(\alpha)\)
+%or \(\pi_\psi(\alpha)\).
+
+%\[\begin{aligned}
+%\alpha ::= & \\
+%& \\
+%\end{aligned}\]
+
+%[TODO: add the relevant events to their transitions in the semantics, and list them here.]
+
+%Now, we define the knowledge that an observer monitoring a particular sink can extrapolate about the
+%state of the system as a whole, as a set of states that are consistent with the events it observes.
+%Given some initial state \(S\), this is precisely the set of other initial states that might
+%produce the same trace (or an extension thereof) and that are equivalent.
+
+%\[\mathbf{K}(S,\overline{\alpha},\sigma,\psi) \triangleq
+%\{S' \mid S \sim_\sigma S' \land S' \hookrightarrow_{\psi} \overline{\alpha} \cdot \alpha\}\]
+
+%Then, absent any declassification rules, we can define non-interference as holding between
+%\(\sigma\) and \(\psi\) if, for any states \(S_1\) and \(S_2\) such that
+%\(S_1 \xrightarrow{\overline{\alpha}\cdot \alpha} S_2\),
+%\(\mathbf{K}(S_2,\overline{\alpha}\cdot \alpha,\sigma,\psi) \supseteq
+%\mathbf{K}(S_1,\overline{\alpha},\sigma,\psi)\). That is, every world that was possible before
+%\(\alpha\) remains possible after.
+
+%In the presence of declassification, we add an exception for the case where \(\alpha\)
+%reflects an event that should indeed allow an observer to gain some information. We extend
+%the above definition to talk about all of \(I\).
+
+%\[NI_I \triangleq \forall S_1, S_2, \overline{\alpha}, \alpha .
+%\begin{cases}
+%\mathbf{K}(S_2,\overline{\alpha}\cdot \alpha,\sigma,\psi) \supseteq
+%\mathbf{K}(S_1,\overline{\alpha},\sigma,\psi) &
+%\textnormal{if } \sigma \not \rightsquigarrow \psi \in I \\
+%\mathbf{K}(S_2,\overline{\alpha}\cdot \alpha,\sigma,\psi) \supseteq
+%\mathbf{K}(S_1,\overline{\alpha},\sigma \sqcup \sigma',\psi &
+%\textnormal{if } \sigma / \sigma' \in I \land \sigma' \rightsquigarrow \psi \in I \\
+%\end{cases}\]
+
+A value that is tagged \(\mathit{vtaint} ~ \overline{\sigma}\) has been influnced
 by all of the sources in \(\overline{\sigma}\). We also define a set of tags that indicate that a
 particular function argument or the memory location of an object represents a sink that is the
 target of one or more no-flow rules. If a sink \(\psi\) is tagged
@@ -1305,11 +1673,6 @@ target of one or more no-flow rules. If a sink \(\psi\) is tagged
 information: when the PC Tag is tainted, it must keep a record of the scope of the taint, in the form
 of a label. We will explain below how this scope is computed.
 %
-\begin{align*}
-  T ::= & \mathit{vtaint} ~ \overline{\sigma} \\
-  & \mathit{forbid} ~ \overline{\sigma} \\
-  & \mathit{pctaint} ~ \overline{(L,\sigma)} \\
-\end{align*}
 %
 We define four important operations on tags: {\em join} (\(t_1 \sqcup t_2\)), {\em bounded join}
 (\(t_1 [L \rightarrowtail t_2]\)), {\em minus} (\(t_1 - t_2\)), and {\em check} (\(t_1 \models t_2\)),
@@ -1463,178 +1826,6 @@ Loads and stores:
 \end{aligned}\]
 \end{minipage}
 
-\paragraph{Implicit Flows}
-
-Things become trickier when the program's control-flow itself can be tainted. This can occur in
-any of our semantics' steps that can produce different statements and continuations
-depending on the tained value. At that point, any change to the machine state constitutes
-an information flow.
-
-To be more specific, consider a statement that contains an expression, \(\stmt(\expr)\),
-such that when filled in with a tainted value:
-%
-\[\sstate{\PCT}{\mem}{\stmt\val{v_1}{\mathit{taint} ~ \sigma}}{\cont} \longrightarrow
-\sstate{\PCT_1}{\mem_1}{\stmt_1}{\cont_1}\]
-%
-while
-%
-\[\sstate{\PCT}{\mem}{\stmt\val{v_1}{\mathit{taint} ~ \sigma}}{\cont} \longrightarrow
-\sstate{\PCT_2}{\mem_2}{\stmt_2}{\cont_2}\]
-%
-and where \(\stmt_1 \not = \stmt_2\) or \(\cont_1 \not = \cont_2\). Taking either step
-should taint the program state itself! We represent this as a taint on the PC Tag.
-When the PC Tag is tainted, all stores to memory and all updates to environments must
-also be tainted until all branches eventually rejoin.
-We term the point at which it is safe to remove taint a {\it join point}.
-In terms of the program's control-flow graph, the
-join point of a branch is its immediate post-dominator.
-
-In many simple programs, the join point of a conditional or loop is obvious:
-the point at which the chosen branch is complete, or the loop has ended.
-Such a simple example can be seen in \cref{fig:ifthenelse}; {\tt public1} must be
-tagged with the taint tag of {\tt secret}, while it is safe to tag {\tt public2}
-\(\N\), because that is after the join point, {\tt J}. The same goes for \cref{fig:while},
-because we are in a {\em termination-insensitive} setting \cite{}. This means that we
-consider only terminating runs. So, we can guarantee that the post-dominator \(J\)
-of the while loop is reached.
-
-But in the presence of unrestricted go-to statements, a join point may not be
-local---and sometimes may not exist within the function, assuming that we have not
-consolidated return points. Consider \cref{fig:forbreak}, which
-uses go-to statements to create an approximation of an if-statement whose join-point
-is far removed from the for-loop. The label {\tt J} now has nothing to do with the
-semantics of any particular statement.
-
-Luckily this can still be determined statically from a function's full
-control-flow graph. So, to implement the policy, we must first transform our program
-by adding labels at the join point of each conditional.
-Every statement that branches carries an optional label indicating its corresponding
-join point. If it doesn't have such
-a label, that indicates that there is no join point within the function---once the PC Tag is tainted,
-it must remain so until a return.
-
-\begin{figure}
-  \begin{subfigure}{0.5\textwidth}
-\begin{verbatim}
-int f(bool secret) {
-    int public1, public2;
-
-S:  if (secret) {
-b1:     public1 = 1;
-    } else {
-b2:     public1 = 0;
-    }
-
-J:  public2 = 42;
-
-    return public2;
-}
-\end{verbatim}
-  \end{subfigure}
-  \begin{subfigure}{0.5\textwidth}
-    \begin{tikzpicture}
-      [ initial text={}, initial distance=4em,
-        accepting/.style=accepting by arrow,
-        accepting distance=4em
-      ]
-      \node[state,initial]    (S)                        {$S$};
-      \node[state]            (b_1) [above right=of S]   {$b_1$};
-      \node[state]            (b_2) [below right=of S]   {$b_2$};
-      \node[state,accepting]  (J)   [below right=of b_1] {$J$};
-
-      \path[->] (S)   edge              node  {}  (b_1)
-                      edge              node  {}  (b_2)
-                (b_1) edge              node  {}  (J)
-                (b_2) edge              node  {}  (J);
-    \end{tikzpicture}
-  \end{subfigure}
-  
-  \caption{Leaking via if statements}
-  \label{fig:ifthenelse}
-\end{figure}
-
-\begin{figure}
-  \begin{subfigure}{0.5\textwidth}
-\begin{verbatim}
-int f(bool secret) {
-    int public1=1;
-    int public2;
-
-S:  while (secret) {
-b1:     public1 = 1;
-        secret = false;
-    }
-
-J:  public2 = 42;
-
-    return public2;
-}
-\end{verbatim}
-  \end{subfigure}
-  \begin{subfigure}{0.5\textwidth}
-    \begin{tikzpicture}
-      [ initial text={}, initial distance=4em,
-        accepting/.style=accepting by arrow,
-        accepting distance=4em
-      ]
-      \node[state,initial]    (S)                        {$S$};
-      \node[state]            (b_1) [above right=of S]   {$b_1$};
-      \node[state,accepting]  (J)   [below right=of b_1] {$J$};
-
-      \path[->] (S)   edge               node  {}  (b_1)
-                      edge               node  {}  (J)
-                (b_1) edge [bend right] node  {}  (S);
-    \end{tikzpicture}
-  \end{subfigure}
-  
-  \caption{Leaking via while statements}
-  \label{fig:while}
-\end{figure}
-
-\begin{figure}
-  \begin{subfigure}{0.25\textwidth}
-\begin{verbatim}
-int f(bool secret) {
-    int public1, public2;
-
-    while (secret) {
-        goto b1;
-    }
-
-b2: public1 = 1;
-    goto J;
-
-b1: public1 = 1;
-
-J:  public2 = 42;
-    return public2;
-}
-\end{verbatim}
-  \end{subfigure}
-  \begin{subfigure}{0.74\textwidth}
-    \begin{tikzpicture}
-      [ initial text={}, initial distance=3em,
-        accepting/.style=accepting by arrow,
-        accepting distance=3em
-      ]
-      \node[state,initial]    (S)                              {$S$};
-      \node[state]            (inside) [above right=of S]      {};
-      \node[state]            (b_2)    [below right=of inside] {$b_2$};
-      \node[state]            (b_1)    [right=of b_2]          {$b_1$};
-      \node[state,accepting]  (J)      [right=of b_1]          {$J$};
-
-      \path[->] (S)   edge              node  {}  (inside)
-                      edge              node  {}  (b_2)
-                (inside) edge [bend left] node {} (b_1)
-                (b_1) edge              node  {}  (J)
-                (b_2) edge [bend right] node  {}  (J);
-    \end{tikzpicture}
-  \end{subfigure}
-  
-  \caption{Cheating with go-tos}
-  \label{fig:forbreak}
-\end{figure}
-
 \begin{figure}
   \ifstepb
   
@@ -1676,74 +1867,6 @@ points. Rather than give their semantics in full, it suffices to identify which
 transitions contain \(\mathbf{SplitT}\) control points. In \cref{fig:rest}, these
 are the transitions from the state marked \(S\). Their semantics are given in full
 in the appendix.
-
-\begin{figure}
-  \begin{subfigure}{0.5\textwidth}
-    \begin{tikzpicture}
-      [ initial text={}, initial distance=4em,
-        accepting/.style=accepting by arrow,
-        accepting distance=3em
-      ]
-      \node[state,initial]    (do)                             {do};
-      \node[state,accepting]  (S) [right=of do]                {\(S\):test};
-
-      \path[->] (do)   edge              node  {}  (S)
-                (S)    edge [bend left]  node  {}  (do);
-    \end{tikzpicture}
-    \subcaption{Do-while}
-  \end{subfigure}
-  \begin{subfigure}{0.5\textwidth}
-    \begin{tikzpicture}
-      [ initial text={}, initial distance=4em,
-        accepting/.style=accepting by arrow,
-        accepting distance=4em
-      ]
-      \node[state,initial]    (init)                             {init};
-      \node[state,accepting]  (S)    [right=of init]             {\(S\):test};
-      \node[state]            (do)   [above=of S]                {do};
-      \node[state]            (post) [left=of do]                {post};
-      
-      \path[->] (init)   edge              node  {}  (S)
-                (S)      edge              node  {}  (do)
-                (do)     edge              node  {}  (post)
-                (post)   edge              node  {}  (S);
-    \end{tikzpicture}
-    \subcaption{For}
-  \end{subfigure}
-  \begin{subfigure}{\textwidth}
-    \center
-    \begin{tikzpicture}
-      [ initial text={}, initial distance=4em, initial above,
-        accepting/.style=accepting by arrow,
-        accepting distance=4em
-      ]
-      \node[state,initial]    (switch)                           {\(S\):switch};
-      \node[state]            (case1)    [below left=of switch]  {};
-      \node[state]            (case2)    [right=of case1]        {};
-      \node[state]            (case3)    [right=of case2]        {};
-      \node[state]            (default)  [right=of case3]        {def};
-      \node                   (after)    [right=of default]      {};
-
-      \path[->] (switch)  edge              node  {}  (case1)
-                          edge              node  {}  (case2)
-                          edge              node  {}  (case3)
-                          edge              node  {}  (default)
-                (default) edge              node  {}  (after)
-                (case1)   edge [bend right] node  {}  (after)
-                (case2)   edge [bend right] node  {}  (after)
-                (case3)   edge [bend right] node  {}  (after);
-
-      \path[dotted,->] (case1) edge              node  {}  (case2)
-                (case2) edge              node  {}  (case3)
-                (case3) edge              node  {}  (default);
-                         
-    \end{tikzpicture}
-    \subcaption{Switch}
-  \end{subfigure}
-  
-  \caption{Remaining Branch Statements}
-  \label{fig:rest}
-\end{figure}
 
 \paragraph*{Realizing IFC}
 
