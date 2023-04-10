@@ -6,9 +6,15 @@
 \newcommand{\lts}{\overline{\color{blue} \lt}}
 \newcommand{\nt}{\mathit{\color{blue} nt}}
 \newcommand{\PCT}{\mathcal{\color{blue} P}}
+
+%%% Policy Specific Tags %%%
 \newcommand{\N}{{\color{blue} N}}
+%% Memory Safety %%
 \newcommand{\tagz}{{\color{blue} 0}}
 \newcommand{\tagone}{{\color{blue} 1}}
+%% SIF %%
+\newcommand{\vtaint}[1]{\mathit{\color{blue} vtaint ~ #1}}
+\newcommand{\pctaint}[1]{\mathit{\color{blue} pc ~ #1}}
 
 \newcommand{\trule}[2]{{\color{blue} #1 \leftarrow #2}}
 
@@ -36,6 +42,16 @@
 \newcommand{\storetres}{\PCT',\vt',\overline{\lt}'}
 \newcommand{\storet}{\storetname(\storetargs)}
 
+\newcommand{\volloadtname}{\mathbf{VolLoadT}}
+\newcommand{\volloadtargs}{\PCT, \pt, \vt, \overline{\lt}}
+\newcommand{\volloadtres}{\vt'}
+\newcommand{\volloadt}{\volloadtname(\volloadtargs)}
+
+\newcommand{\volstoretname}{\mathbf{VolStoreT}}
+\newcommand{\volstoretargs}{\PCT, \pt, \vt_1, \vt_2, \overline{\lt}}
+\newcommand{\volstoretres}{\PCT',\vt',\overline{\lt}'}
+\newcommand{\volstoret}{\volstoretname(\volstoretargs)}
+
 \newcommand{\consttname}{\mathbf{ConstT}}
 \newcommand{\consttres}{\vt}
 \newcommand{\constt}{\consttname}
@@ -61,6 +77,12 @@
 \newcommand{\localtargstyped}{\PCT, id \in ident, s \in \mathbb{N}}
 \newcommand{\localtres}{\pt,\vt,\overline{\lt}}
 \newcommand{\localt}{\localtname(\localtargs)}
+
+\newcommand{\dealloctname}{\mathbf{DeallocT}}
+\newcommand{\dealloctargs}{\PCT, id, s}
+\newcommand{\dealloctargstyped}{\PCT, id \in ident, s \in \mathbb{N}}
+\newcommand{\dealloctres}{\vt,\overline{\lt}}
+\newcommand{\dealloct}{\dealloctname(\dealloctargs)}
 
 \newcommand{\vartname}{\mathbf{VarT}}
 \newcommand{\vartargs}{\PCT, \vt}
@@ -122,6 +144,11 @@
 \newcommand{\rettargs}{\PCT_{CLE}, \PCT_{CLR}, \vt}
 \newcommand{\rettres}{\PCT',\vt'}
 \newcommand{\rett}{\rettname(\rettargs)}
+
+\newcommand{\extcalltname}{\mathbf{ExtCallT}}
+\newcommand{\extcalltargs}{\PCT, f, f', \overline{\vt}}
+\newcommand{\extcalltres}{\PCT', \vt'}
+\newcommand{\extcallt}{\extcalltname(\extcalltargs)}
 
 %%%%%%%%%%%%%%%%%
 

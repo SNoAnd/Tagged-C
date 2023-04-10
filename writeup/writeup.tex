@@ -901,16 +901,6 @@ Since we don't want to share {\tt log}, we will need to label it as well.
 
 \paragraph{Memory Shared by Capability}
 
-Assuming that we know {\em which} objects should be shared, we can implement a hybrid
-system in which shared objects follow rules resembling standard fine-grained memory
-safety, while objects that are not intended to be shared default to coarse-grained
-protection.
-
-For example, suppose we have a function {\tt foo\_factory} that allocates an object,
-initializes it, and then returns its pointer. We want its caller to be able to use that pointer,
-but by default, we don't want an outside function accessing the other internal data of
-the compartment.
-
 %\paragraph{Avoiding Confused Deputies}
 %
 %[TODO: need a solid example of this]
