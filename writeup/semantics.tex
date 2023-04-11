@@ -1,3 +1,237 @@
+% step_do_1
+\newcommand{\dostepa}
+{\judgment{}
+  {\(\defsstate{\expr;} \longrightarrow
+    \estate{\PCT}{\mem}{\expr}{\kdo{\cont}}\)}
+}
+
+% step_do_2
+\newcommand{\dostepb}
+{\judgment{}
+  {\(\estate{\PCT}{\mem}{\val{v}{\vt}}{\kdo{\cont}} \longrightarrow
+    \defsstate{\sskip}\)}
+}
+
+% step_seq
+\newcommand{\seqstep}
+{\judgment{}
+  {\(\defsstate{\stmt_1;\stmt_2} \longrightarrow
+    \sstate{\PCT}{\mem}{\stmt_1;}{\kseq{\stmt_2}{\cont}}\)}
+}
+
+% step_skip_seq
+\newcommand{\seqskipstep}
+{\judgment{}
+  {\(\sstate{\PCT}{\mem}{\sskip}{\kseq{\stmt}{\cont}} \longrightarrow
+    \defsstate{\stmt}\)}
+}
+
+% step_continue_seq
+\newcommand{\seqcontinuestep}
+{\judgment{}
+  {\(\sstate{\PCT}{\mem}{\scontinue}{\kseq{\stmt}{\cont}} \longrightarrow
+    \sstate{\PCT}{\mem}{\scontinue}{\cont}\)}}
+
+% step_break_seq
+\newcommand{\seqbreakstep}
+{\judgment{}
+  {\(\sstate{\PCT}{\mem}{\sbreak}{\kseq{\stmt}{\cont}} \longrightarrow
+    \sstate{\PCT}{\mem}{\sbreak}{\cont}\)}}
+
+% step_ifthenelse_1
+\newcommand{\ifstepa}
+{\judgment{\(\stmt=\sifthenelse{\expr}{\stmt_1}{\stmt_2}{L}\)}
+  {\(\defsstate{\stmt} \longrightarrow
+    \estate{\PCT}{\mem}{\expr}{\kif{\stmt_1}{\stmt_2}{L}{\cont}}\)}
+}
+
+% step_ifthenelse_2
+\newcommand{\ifstepb}
+{\judgmenttwo
+  {\(\stmt' =
+    \begin{cases}
+      \stmt_1 & \textnormal{if } \mathit{boolof}(v) = \mathbf{t} \\
+      \stmt_2 & \textnormal{if } \mathit{boolof}(v) = \mathbf{f} \\
+    \end{cases}\)}
+  {\(\trule{\splittres}{\splitt}\)}
+  {\(\estate{\PCT}{\mem}{\val{v}{\vt}}{\kif{\stmt_1}{\stmt_2}{L}{\cont}}
+    \longrightarrow
+    \sstate{\PCT'}{\mem}{\stmt'}{\cont}\)}
+}
+
+% step_ifthen_else_2_fail
+
+% step_while
+\newcommand{\whilestep}
+{\judgment{\(\stmt=\swhile{\expr}{\stmt'}{L}\)}
+  {\(\defsstate{\stmt} \longrightarrow
+    \estate{\PCT}{\mem}{\expr}{\kwhiletest{\expr}{\stmt'}{L}{\cont}}\)}
+}
+
+% step_while_false
+\newcommand{\whilefalsestep}
+{\judgmenttwo
+  {\(\mathit{boolof}(v) = \mathbf{f}\)}
+  {\(\cont = \kwhiletest{\expr}{\stmt}{L}{\cont'}\)}
+  {\(\estate{\PCT}{\mem}{\val{v}{\vt}}{\cont}
+    \longrightarrow
+    \sstate{\PCT'}{\mem}{\sskip}{\cont'}\)}
+}
+
+% step_while_true
+\newcommand{\whiletruestep}
+{\judgmentthree
+  {\(\mathit{boolof}(v) = \mathbf{t}\)}
+  {\(\cont_1 = \kwhiletest{\expr}{\stmt}{L}{\cont}\)}
+  {\(\cont_2 = \kwhileloop{\expr}{\stmt}{L}{\cont}\)}
+  {\(\estate{\PCT}{\mem}{\val{v}{\vt}}{\cont_1}
+    \longrightarrow
+    \sstate{\PCT'}{\mem}{\stmt}{\cont_2}\)}
+}
+
+% step_skip_or_continue_while
+\newcommand{\whileskipcontinuestep}
+{\judgmenttwo{\(\stmt = \sskip \lor \stmt = \scontinue\)}
+  {\(\cont = \kwhileloop{\expr}{\stmt}{L}{\cont'}\)}
+  {\(\defsstate{\stmt} \longrightarrow
+    \sstate{\PCT}{\mem}{\swhile{\expr}{\stmt}{L}}{\cont'}\)}}
+
+% step_break_while
+\newcommand{\whilebreakstep}
+{\judgment{\(\cont = \kwhileloop{\expr}{\stmt}{L}{\cont'}\)}
+  {\(\sstate{\PCT}{\mem}{\sbreak}{\cont} \longrightarrow
+    \sstate{\PCT}{\mem}{\sskip}{\cont'}\)}}
+
+% step_dowhile
+\newcommand{\dowhilestep}
+{\judgmenttwo{\(\stmt = \sdowhile{\expr}{\stmt}{L}\)}
+  {\(\cont' = \kdowhileloop{\expr}{\stmt}{L}{\cont}\)}
+  {\(\defsstate{\stmt} \longrightarrow
+    \sstate{\PCT}{\mem}{\stmt}{\cont'}\)}
+}
+
+% step_skip_or_continue_dowhile
+\newcommand{\dowhileskipcontinuestep}
+{\judgmenttwo
+  {\(\cont_1 = \kdowhileloop{\expr}{\stmt}{L}{\cont'}\)}
+  {\(\cont_2 = \kdowhiletest{\expr}{\stmt}{L}{\cont}\)}
+  {\(\sstate{\PCT}{\mem}{\stmt' = \sskip \lor \stmt' = \scontinue}{\cont_1} \longrightarrow
+    \estate{\PCT}{\mem}{\expr}{\cont_2}\)}}
+
+% step_dowhile_false
+\newcommand{\dowhilefalsestep}
+{\judgmenttwo
+  {\(\mathit{boolof}(v) = \mathbf{f}\)}
+  {\(\cont = \kdowhiletest{\expr}{\stmt}{L}{\cont'}\)}
+  {\(\estate{\PCT}{\mem}{\val{v}{\vt}}{\cont}
+    \longrightarrow
+    \sstate{\PCT'}{\mem}{\sskip}{\cont'}\)}
+}
+
+% step_dowhile_true
+\newcommand{\dowhiletruestep}
+{\judgmenttwo
+  {\(\mathit{boolof}(v) = \mathbf{t}\)}
+  {\(\cont = \kdowhiletest{\expr}{\stmt}{L}{\cont'}\)}
+  {\(\estate{\PCT}{\mem}{\val{v}{\vt}}{\cont}
+    \longrightarrow
+    \sstate{\PCT'}{\mem}{\sdowhile{\expr}{\stmt}{L}}{\cont'}\)}
+}
+
+% step_break_dowhile
+\newcommand{\dowhilebreakstep}
+{\judgment{\(\cont = \kdowhileloop{\expr}{\stmt}{L}{\cont'}\)}
+  {\(\sstate{\PCT}{\mem}{\sbreak}{\cont} \longrightarrow
+    \sstate{\PCT}{\mem}{\sskip}{\cont'}\)}}
+
+% step_for_start
+\newcommand{\forinitstep}
+{\judgmenttwo
+  {\(\stmt = \sfor{\stmt_1}{\expr}{\stmt_2}{\stmt_3}{L}\)}
+  {\(\stmt_1 \not = \sskip\)}
+  {\(\defsstate{\stmt} \longrightarrow
+  \sstate{\PCT}{\mem}{\stmt_1}{\kseq{\sfor{\sskip}{\expr}{\stmt_2}{\stmt_3}{L}}{\cont}}\)}
+}
+
+% step_for
+\newcommand{\forstep}
+{\judgment{\(\stmt = \sfor{\sskip}{\expr}{\stmt_2}{\stmt_3}{L}\)}
+  {\(\defsstate{\stmt} \longrightarrow
+  \estate{\PCT}{\mem}{\expr}{\kfor{\stmt}{\cont}}\)}
+}
+
+% step_for_false
+\newcommand{\forfalsestep}
+{\judgment{\(\mathit{boolof}(v) = \mathbf{f}\)}
+  {\(\estate{\PCT}{\mem}{\val{v}{\vt}}{\kfor{\stmt}{\cont}} \longrightarrow
+    \sstate{\PCT}{\mem}{\sskip}{\cont}\)}
+}
+
+% step_for_true
+\newcommand{\fortruestep}
+{\judgmenttwo{\(\stmt = \sfor{\sskip}{\expr}{\stmt_2}{\stmt_3}{L}\)}
+             {\(\mathit{boolof}(v) = \mathbf{t}\)}
+  {\(\estate{\PCT}{\mem}{\val{v}{\vt}}{\kfor{\stmt}{\cont}} \longrightarrow
+      \sstate{\PCT}{\mem}{\stmt_3}{\kfor{\stmt}{\cont}}\)}
+}
+
+% step_skip_or_continue
+\newcommand{\forskiporcontinuestep}
+{\judgmenttwo{\(\stmt = \sfor{\sskip}{\expr}{\stmt_1}{\stmt_2}{L}\)}
+  {\(\stmt = \sskip \lor \stmt = \scontinue\)}
+  {\(\sstate{\PCT}{\mem}{\stmt}{\kfor{\stmt}{\cont}}
+    \longrightarrow
+    \sstate{\PCT}{\mem}{\stmt_1}{\kforpost{\sfor{\sskip}{\expr}{\stmt_1}{\stmt_2}{L}}{\cont}}\)}
+}
+
+% step_break_for3
+\newcommand{\forbreakstep}
+{\judgment{\(\stmt = \sfor{\sskip}{\expr}{\stmt_1}{\stmt_2}{L}\)}
+  {\(\sstate{\PCT}{\mem}{\sbreak}{\kfor{\stmt}{\cont}}
+    \longrightarrow
+    \sstate{\PCT}{\mem}{\sskip}{\cont}\)}
+}
+
+% step_skip_for4
+\newcommand{\forskippoststep}
+{\judgment{\(\stmt = \sfor{\sskip}{\expr}{\stmt_1}{\stmt_2}{L}\)}
+  {\(\sstate{\PCT}{\mem}{\sskip}{\kforpost{\stmt}{\cont}}
+    \longrightarrow
+    \defsstate{\stmt}\)}
+}
+
+% step_return_0
+
+% step_return_1
+
+
+% step_return_2
+
+% step_skip_call
+
+% step_switch
+
+% step_expr_switch
+
+% step_skip_break_switch
+
+% step_continue_switch
+
+% step_label
+\newcommand{\labelstep}
+{\judgment
+  {\(\labeltres \leftarrow \labelt\)}
+  {\(\sstate{\PCT}{\mem}
+    {L: \stmt}{\cont} \longrightarrow
+    \sstate{\PCT'}{\mem}{\genv}{\lenv'}{\stmt}{\cont}\)}}
+
+% step_goto
+
+% step_internal_function
+
+% step_external_function
+
+% specific external function
 \newcommand{\mallocstep}
 {\judgmenttwobrlong
     {\(\trule{\malloctres}{\malloct}\)}
@@ -8,6 +242,30 @@
       \estate{\PCT'}{\mem''}
              {\ctx{\val{p}{\pt}}}{\cont}\)}}
 
+% step_returnstate
+\newcommand{\returnstep}
+{\judgmenttwo{\(\cont = \mathit{Kcall} ~ \lenv' ~ \mathit{ctx} ~ \cont'\)}
+  {\(\PCT'',\vt' \leftarrow \rett\)}
+  {\(\rstate{\PCT}{\mem}{\genv}{\lenv}{\val{v}{\vt}}{\cont} \longrightarrow
+    \estate{\PCT'}{\mem}{\mathit{ctx}[\val{v}{\vt'}]}{\cont'}\)}}
+
+% step_lred + red_var_local
+\newcommand{\varstep}
+{\judgmenttwo{\(\lenv[id] = (l,\_,\pt,ty)\)}
+  {\(\trule{\vartres}{\vart}\)}
+  {\(\defestate{\ctx{\var{id}}}
+    \longrightarrow
+    \defestate{\ctx{\loc{l}{\pt}}}\)}}
+
+% step_lred + red_var_global
+
+% step_lred + red_deref
+
+% step_lred + red_field_struct
+
+% step_lred + red_field_union
+
+% step_rred + red_rval_of
 \newcommand{\valofstep}
 {\judgmenttwo{\(\mem[l]_{|ty|} = v@\vt@\overline{\lt}\)}
             {\(\trule{\loadtres}{\loadt}\)}
@@ -17,6 +275,52 @@
               \estate{\PCT}{\mem}
                      {\ctx{\val{v}{\vt'}}}{\cont}\)}}
 
+% step_rred + red_addrof
+
+% step_rred + red_unop
+\newcommand{\unopstep}
+{\judgmenttwo{\(\left\langle \odot \right\rangle v = v'\)}
+            {\(\vt' = \unopt{\PCT}{\vt}\)}
+            {\(\defestate{\ctx{\unop{\odot}{\val{v}{\vt}}}}
+              \longrightarrow
+              \defestate{\ctx{\val{v'}{\vt'}}}\)}}
+
+% step_rred + red_binop
+\newcommand{\binopstep}
+{\judgmenttwo{\(v_1 \left\langle \oplus \right\rangle v_2 = v'\)}
+            {\(\vt' = \binopt{\PCT}{\vt_1}{\vt_2}\)}
+            {\(\defestate{\ctx{\binop{\oplus}{\val{v_1}{\vt_1}}{\val{v_2}{\vt_2}}}}
+              \longrightarrow
+              \defestate{\ctx{\val{v'}{\vt'}}}\)}}
+
+% step_rred + red_cast
+
+% step_rred + red_seqand_true
+
+% step_rred + red_seqand_false
+
+% step_rred + red_seqor_true
+
+% step_rred + red_seqor_false
+
+% step_rred + red_condition
+
+% step_rred + red_sizeof
+
+% step_rred + red_alignof
+
+% step_rred + red_assign
+\newcommand{\assignstep}
+{\judgmenttwobrlong{\(\mem[l]_{|ty|} = v_1@\vt_1@\overline{\lt}\)}
+                  {\(\mem' = \mem[l \mapsto v_2@\vt' @\overline{\lt}']\)}
+                  {\(\trule{\storetres}{\storet}\)}
+                  {\(\defestate
+                    {\ctx{\assign{\loc{l}{\pt}}{\val{v_2}{\vt_2}}}}
+                    \longrightarrow
+                    \estate{\PCT'}{\mem'}
+                           {\ctx{\val{v_2}{\vt_2}}}{\cont}\)}}
+
+% step_rred + red_assignop
 \newcommand{\assignopstep}
 {\judgmenttwobr{\(\mem[l]_{|ty|} = v_1@\vt @\overline{\lt}\)}
   {\(\oplus \in \{+,-,*,/,\%,<<,>>,\&,^\wedge,|\}\)}
@@ -32,6 +336,7 @@
     \defestate
         {\ctx{\expr}}\)}}
 
+% step_rred + red_postincr
 \newcommand{\postincstep}
 {\judgmentthreebrtwo{\(\mem[l] = v@\vt @\overline{\lt}\)}
                {\(\oplus \in \{+,-\}\)}
@@ -46,212 +351,13 @@
                  \defestate
                      {\ctx{\expr}}\)}}
 
-\newcommand{\assignstep}
-{\judgmenttwobrlong{\(\mem[l]_{|ty|} = v_1@\vt_1@\overline{\lt}\)}
-                  {\(\mem' = \mem[l \mapsto v_2@\vt' @\overline{\lt}']\)}
-                  {\(\trule{\storetres}{\storet}\)}
-                  {\(\defestate
-                    {\ctx{\assign{\loc{l}{\pt}}{\val{v_2}{\vt_2}}}}
-                    \longrightarrow
-                    \estate{\PCT'}{\mem'}
-                           {\ctx{\val{v_2}{\vt_2}}}{\cont}\)}}
+% step_rred + red_comma
 
-\newcommand{\varstep}
-{\judgmenttwo{\(\lenv[id] = (l,\_,\pt,ty)\)}
-  {\(\trule{\vartres}{\vart}\)}
-  {\(\defestate{\ctx{\var{id}}}
-    \longrightarrow
-    \defestate{\ctx{\loc{l}{\pt}}}\)}}
+% step_rred + red_paren
 
-\newcommand{\unopstep}
-{\judgmenttwo{\(\left\langle \odot \right\rangle v = v'\)}
-            {\(\vt' = \unopt{\PCT}{\vt}\)}
-            {\(\defestate{\ctx{\unop{\odot}{\val{v}{\vt}}}}
-              \longrightarrow
-              \defestate{\ctx{\val{v'}{\vt'}}}\)}}
+% step_rred + red_builtin
 
-\newcommand{\binopstep}
-{\judgmenttwo{\(v_1 \left\langle \oplus \right\rangle v_2 = v'\)}
-            {\(\vt' = \binopt{\PCT}{\vt_1}{\vt_2}\)}
-            {\(\defestate{\ctx{\binop{\oplus}{\val{v_1}{\vt_1}}{\val{v_2}{\vt_2}}}}
-              \longrightarrow
-              \defestate{\ctx{\val{v'}{\vt'}}}\)}}
-
-\newcommand{\dostepa}
-{\judgment{}
-  {\(\defsstate{\expr;} \longrightarrow
-    \estate{\PCT}{\mem}{\expr}{\kdo{\cont}}\)}
-}
-
-\newcommand{\dostepb}
-{\judgment{}
-  {\(\estate{\PCT}{\mem}{\val{v}{\vt}}{\kdo{\cont}} \longrightarrow
-    \defsstate{\sskip}\)}
-}
-
-\newcommand{\seqstep}
-{\judgment{}
-  {\(\defsstate{\stmt_1;\stmt_2} \longrightarrow
-    \sstate{\PCT}{\mem}{\stmt_1;}{\kseq{\stmt_2}{\cont}}\)}
-}
-
-\newcommand{\seqskipstep}
-{\judgment{}
-  {\(\sstate{\PCT}{\mem}{\sskip}{\kseq{\stmt}{\cont}} \longrightarrow
-    \defsstate{\stmt}\)}
-}
-
-\newcommand{\seqcontinuestep}
-{\judgment{}
-  {\(\sstate{\PCT}{\mem}{\scontinue}{\kseq{\stmt}{\cont}} \longrightarrow
-    \sstate{\PCT}{\mem}{\scontinue}{\cont}\)}}
-
-\newcommand{\seqbreakstep}
-{\judgment{}
-  {\(\sstate{\PCT}{\mem}{\sbreak}{\kseq{\stmt}{\cont}} \longrightarrow
-    \sstate{\PCT}{\mem}{\sbreak}{\cont}\)}}
-
-\newcommand{\ifstepa}
-{\judgment{\(\stmt=\sifthenelse{\expr}{\stmt_1}{\stmt_2}{L}\)}
-  {\(\defsstate{\stmt} \longrightarrow
-    \estate{\PCT}{\mem}{\expr}{\kif{\stmt_1}{\stmt_2}{L}{\cont}}\)}
-}
-
-\newcommand{\ifstepb}
-{\judgmenttwo
-  {\(\stmt' =
-    \begin{cases}
-      \stmt_1 & \textnormal{if } \mathit{boolof}(v) = \mathbf{t} \\
-      \stmt_2 & \textnormal{if } \mathit{boolof}(v) = \mathbf{f} \\
-    \end{cases}\)}
-  {\(\trule{\splittres}{\splitt}\)}
-  {\(\estate{\PCT}{\mem}{\val{v}{\vt}}{\kif{\stmt_1}{\stmt_2}{L}{\cont}}
-    \longrightarrow
-    \sstate{\PCT'}{\mem}{\stmt'}{\cont}\)}
-}
-
-\newcommand{\whilestep}
-{\judgment{\(\stmt=\swhile{\expr}{\stmt'}{L}\)}
-  {\(\defsstate{\stmt} \longrightarrow
-    \estate{\PCT}{\mem}{\expr}{\kwhiletest{\expr}{\stmt'}{L}{\cont}}\)}
-}
-
-\newcommand{\whiletruestep}
-{\judgmentthree
-  {\(\mathit{boolof}(v) = \mathbf{t}\)}
-  {\(\cont_1 = \kwhiletest{\expr}{\stmt}{L}{\cont}\)}
-  {\(\cont_2 = \kwhileloop{\expr}{\stmt}{L}{\cont}\)}
-  {\(\estate{\PCT}{\mem}{\val{v}{\vt}}{\cont_1}
-    \longrightarrow
-    \sstate{\PCT'}{\mem}{\stmt}{\cont_2}\)}
-}
-
-\newcommand{\whilefalsestep}
-{\judgmenttwo
-  {\(\mathit{boolof}(v) = \mathbf{f}\)}
-  {\(\cont = \kwhiletest{\expr}{\stmt}{L}{\cont'}\)}
-  {\(\estate{\PCT}{\mem}{\val{v}{\vt}}{\cont}
-    \longrightarrow
-    \sstate{\PCT'}{\mem}{\sskip}{\cont'}\)}
-}
-
-\newcommand{\whileskipcontinuestep}
-{\judgmenttwo{\(\stmt = \sskip \lor \stmt = \scontinue\)}
-  {\(\cont = \kwhileloop{\expr}{\stmt}{L}{\cont'}\)}
-  {\(\defsstate{\stmt} \longrightarrow
-    \sstate{\PCT}{\mem}{\swhile{\expr}{\stmt}{L}}{\cont'}\)}}
-
-\newcommand{\whilebreakstep}
-{\judgment{\(\cont = \kwhileloop{\expr}{\stmt}{L}{\cont'}\)}
-  {\(\sstate{\PCT}{\mem}{\sbreak}{\cont} \longrightarrow
-    \sstate{\PCT}{\mem}{\sskip}{\cont'}\)}}
-
-\newcommand{\dowhilestep}
-{\judgmenttwo{\(\stmt = \sdowhile{\expr}{\stmt}{L}\)}
-  {\(\cont' = \kdowhileloop{\expr}{\stmt}{L}{\cont}\)}
-  {\(\defsstate{\stmt} \longrightarrow
-    \sstate{\PCT}{\mem}{\stmt}{\cont'}\)}
-}
-
-\newcommand{\dowhileskipcontinuestep}
-{\judgmenttwo
-  {\(\cont_1 = \kdowhileloop{\expr}{\stmt}{L}{\cont'}\)}
-  {\(\cont_2 = \kdowhiletest{\expr}{\stmt}{L}{\cont}\)}
-  {\(\sstate{\PCT}{\mem}{\stmt' = \sskip \lor \stmt' = \scontinue}{\cont_1} \longrightarrow
-    \estate{\PCT}{\mem}{\expr}{\cont_2}\)}}
-
-\newcommand{\dowhiletruestep}
-{\judgmenttwo
-  {\(\mathit{boolof}(v) = \mathbf{t}\)}
-  {\(\cont = \kdowhiletest{\expr}{\stmt}{L}{\cont'}\)}
-  {\(\estate{\PCT}{\mem}{\val{v}{\vt}}{\cont}
-    \longrightarrow
-    \sstate{\PCT'}{\mem}{\sdowhile{\expr}{\stmt}{L}}{\cont'}\)}
-}
-
-\newcommand{\dowhilefalsestep}
-{\judgmenttwo
-  {\(\mathit{boolof}(v) = \mathbf{f}\)}
-  {\(\cont = \kdowhiletest{\expr}{\stmt}{L}{\cont'}\)}
-  {\(\estate{\PCT}{\mem}{\val{v}{\vt}}{\cont}
-    \longrightarrow
-    \sstate{\PCT'}{\mem}{\sskip}{\cont'}\)}
-}
-
-\newcommand{\dowhilebreakstep}
-{\judgment{\(\cont = \kdowhileloop{\expr}{\stmt}{L}{\cont'}\)}
-  {\(\sstate{\PCT}{\mem}{\sbreak}{\cont} \longrightarrow
-    \sstate{\PCT}{\mem}{\sskip}{\cont'}\)}}
-
-\newcommand{\forinitstep}
-{\judgmenttwo
-  {\(\stmt = \sfor{\stmt_1}{\expr}{\stmt_2}{\stmt_3}{L}\)}
-  {\(\stmt_1 \not = \sskip\)}
-  {\(\defsstate{\stmt} \longrightarrow
-  \sstate{\PCT}{\mem}{\stmt_1}{\kseq{\sfor{\sskip}{\expr}{\stmt_2}{\stmt_3}{L}}{\cont}}\)}
-}
-
-\newcommand{\forstep}
-{\judgment{\(\stmt = \sfor{\sskip}{\expr}{\stmt_2}{\stmt_3}{L}\)}
-  {\(\defsstate{\stmt} \longrightarrow
-  \estate{\PCT}{\mem}{\expr}{\kfor{\stmt}{\cont}}\)}
-}
-
-\newcommand{\forfalsestep}
-{\judgment{\(\mathit{boolof}(v) = \mathbf{f}\)}
-  {\(\estate{\PCT}{\mem}{\val{v}{\vt}}{\kfor{\stmt}{\cont}} \longrightarrow
-    \sstate{\PCT}{\mem}{\sskip}{\cont}\)}
-}
-
-\newcommand{\fortruestep}
-{\judgmenttwo{\(\stmt = \sfor{\sskip}{\expr}{\stmt_2}{\stmt_3}{L}\)}
-             {\(\mathit{boolof}(v) = \mathbf{t}\)}
-  {\(\estate{\PCT}{\mem}{\val{v}{\vt}}{\kfor{\stmt}{\cont}} \longrightarrow
-      \sstate{\PCT}{\mem}{\stmt_3}{\kfor{\stmt}{\cont}}\)}
-}
-
-\newcommand{\forskiporcontinuestep}
-{\judgmenttwo{\(\stmt = \sfor{\sskip}{\expr}{\stmt_1}{\stmt_2}{L}\)}
-  {\(\stmt = \sskip \lor \stmt = \scontinue\)}
-  {\(\sstate{\PCT}{\mem}{\stmt}{\kfor{\stmt}{\cont}}
-    \longrightarrow
-    \sstate{\PCT}{\mem}{\stmt_1}{\kforpost{\sfor{\sskip}{\expr}{\stmt_1}{\stmt_2}{L}}{\cont}}\)}
-}
-
-\newcommand{\forbreakstep}
-{\judgment{\(\stmt = \sfor{\sskip}{\expr}{\stmt_1}{\stmt_2}{L}\)}
-  {\(\sstate{\PCT}{\mem}{\sbreak}{\kfor{\stmt}{\cont}}
-    \longrightarrow
-    \sstate{\PCT}{\mem}{\sskip}{\cont}\)}
-}
-  
-\newcommand{\forskippoststep}
-{\judgment{\(\stmt = \sfor{\sskip}{\expr}{\stmt_1}{\stmt_2}{L}\)}
-  {\(\sstate{\PCT}{\mem}{\sskip}{\kforpost{\stmt}{\cont}}
-    \longrightarrow
-    \defsstate{\stmt}\)}
-}
-
+% step_callred
 \newcommand{\callexprstep}
 {\judgment{}
   {\(\estate{\PCT}{\mem}{\ctx{\call{f'}{\overline{v @ \vt}}}}{ty}{\cont}
@@ -259,6 +365,7 @@
     \cstate{f'}{\PCT}{\mem}{\genv}{\lenv}{v @ \vt}{\kcall{f}{\ctx}{\cont}}\)}
 }
 
+% 
 \newcommand{\retvalstep}
 {\judgment{\(\mathit{pop} ~ \cont = \kcall{f'}{\ctx}{\cont'}\)}
   {\(\sstate{\PCT}{\mem}{\sreturn ~ \val{v}{\vt}}{\cont}
@@ -272,16 +379,3 @@
     (x,v@\vt) \leftarrow \mathit{zip}(xs,args), \vt' \leftarrow \argt \rrbracket\)}
   {\(\cstate{f}{\PCT}{\mem}{\genv}{\lenv}{args}{\cont} \longrightarrow
     \sstate{\PCT}{\mem}{\genv}{\lenv'}{\stmt}{\cont}\)}}
-
-\newcommand{\returnstep}
-{\judgmenttwo{\(\cont = \mathit{Kcall} ~ \lenv' ~ \mathit{ctx} ~ \cont'\)}
-  {\(\PCT'',\vt' \leftarrow \rett\)}
-  {\(\rstate{\PCT}{\mem}{\genv}{\lenv}{\val{v}{\vt}}{\cont} \longrightarrow
-    \estate{\PCT'}{\mem}{\mathit{ctx}[\val{v}{\vt'}]}{\cont'}\)}}
-
-\newcommand{\labelstep}
-{\judgment
-  {\(\labeltres \leftarrow \labelt\)}
-  {\(\sstate{\PCT}{\mem}
-    {L: \stmt}{\cont} \longrightarrow
-    \sstate{\PCT'}{\mem}{\genv}{\lenv'}{\stmt}{\cont}\)}}
