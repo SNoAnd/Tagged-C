@@ -11,7 +11,7 @@
   {\(\estate{\PCT}{\mem}{\val{v}{\vt}}{\kdo{\cont}} \longrightarrow
     \defsstate{\sskip}\)}
 }
-
+`
 % step_seq
 \newcommand{\seqstep}
 {\judgment{}
@@ -36,18 +36,7 @@
 \newcommand{\seqbreakstep}
 {\judgment{}
   {\(\sstate{\PCT}{\mem}{\sbreak}{\kseq{\stmt}{\cont}} \longrightarrow
-    \sstate{\PCT}{\mem}{\sbreak}{\cont}\)}}
-
-\newcommand{\sequencing}
-{
-  \dostepa
-  \dostepb
-  \seqstep
-  \seqskipstep
-  \seqcontinuestep
-  \seqbreakstep
-  \retvalstep
-  \labelstep
+    \sstate{\PCT}{\mem}{\sbreak}{\cont}\)}
 }
 
 % step_ifthenelse_1
@@ -247,7 +236,6 @@
   \dowhile
   \forloop
 }
-
 
 % step_return_0
 \newcommand{\retnovalstep}
@@ -476,4 +464,16 @@
   {\(\estate{\PCT}{\mem}{\ctx{\call{f'}{\overline{v @ \vt}}}}{ty}{\cont}
     \longrightarrow
     \cstate{f'}{\PCT}{\mem}{\lenv}{v @ \vt}{\kcall{f}{\ctx}{\cont}}\)}
+}
+
+\newcommand{\sequencing}
+{
+  \dostepa
+  \dostepb
+  \seqstep
+  \seqskipstep
+  \seqcontinuestep
+  \seqbreakstep
+  \retvalstep
+  \labelstep
 }
