@@ -861,31 +861,6 @@ Inductive sstep: state -> trace -> state -> Prop :=
 | step_returnstate: forall v f PCT e C ty k m,
     sstep (Returnstate PCT v (Kcall f e C ty k) m)
           E0 (ExprState f PCT (C (Eval v ty)) k e m)
-
-| step_skip_tag_continuation: forall f PCT PCT' rule k e m,
-    rule PCT = Some PCT' ->
-    sstep (State f PCT Sskip (Ktag rule k) e m)
-          E0 (State f PCT' Sskip k e m)
-| step_skip_tag_continuation_fail: forall f PCT rule k e m,
-    rule PCT = None ->
-    sstep (State f PCT Sskip (Ktag rule k) e m)
-          E0 Failstop
-| step_continue_tag_continuation: forall f PCT PCT' rule k e m,
-    rule PCT = Some PCT' ->
-    sstep (State f PCT Scontinue (Ktag rule k) e m)
-          E0 (State f PCT' Scontinue k e m)
-| step_continue_tag_continuation_fail: forall f PCT rule k e m,
-    rule PCT = None ->
-    sstep (State f PCT Scontinue (Ktag rule k) e m)
-          E0 Failstop
-| step_break_tag_continuation: forall f PCT PCT' rule k e m,
-    rule PCT = Some PCT' ->
-    sstep (State f PCT Sbreak (Ktag rule k) e m)
-          E0 (State f PCT' Scontinue k e m)
-| step_break_tag_continuation_fail: forall f PCT rule k e m,
-    rule PCT = None ->
-    sstep (State f PCT Sbreak (Ktag rule k) e m)
-          E0 Failstop          
 .
 
 Definition step (S: state) (t: trace) (S': state) : Prop :=

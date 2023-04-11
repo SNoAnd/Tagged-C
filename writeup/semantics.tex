@@ -38,6 +38,18 @@
   {\(\sstate{\PCT}{\mem}{\sbreak}{\kseq{\stmt}{\cont}} \longrightarrow
     \sstate{\PCT}{\mem}{\sbreak}{\cont}\)}}
 
+\newcommand{\sequencing}
+{
+  \dostepa
+  \dostepb
+  \seqstep
+  \seqskipstep
+  \seqcontinuestep
+  \seqbreakstep
+  \retvalstep
+  \labelstep
+}
+
 % step_ifthenelse_1
 \newcommand{\ifstepa}
 {\judgment{\(\stmt=\sifthenelse{\expr}{\stmt_1}{\stmt_2}{L}\)}
@@ -102,6 +114,15 @@
   {\(\sstate{\PCT}{\mem}{\sbreak}{\cont} \longrightarrow
     \sstate{\PCT}{\mem}{\sskip}{\cont'}\)}}
 
+\newcommand{\while}
+{
+  \whilestep
+  \whiletruestep
+  \whilefalsestep
+  \whileskipcontinuestep
+  \whilebreakstep
+}
+
 % step_dowhile
 \newcommand{\dowhilestep}
 {\judgmenttwo{\(\stmt = \sdowhile{\expr}{\stmt}{L}\)}
@@ -143,6 +164,15 @@
 {\judgment{\(\cont = \kdowhileloop{\expr}{\stmt}{L}{\cont'}\)}
   {\(\sstate{\PCT}{\mem}{\sbreak}{\cont} \longrightarrow
     \sstate{\PCT}{\mem}{\sskip}{\cont'}\)}}
+
+\newcommand{\dowhile}
+{
+  \dowhilestep
+  \dowhileskipcontinuestep
+  \dowhilefalsestep
+  \dowhiletruestep
+  \dowhilebreakstep
+}
 
 % step_for_start
 \newcommand{\forinitstep}
@@ -200,22 +230,98 @@
     \defsstate{\stmt}\)}
 }
 
+\newcommand{\forloop}
+{
+  \forinitstep
+  \forstep
+  \forfalsestep
+  \fortruestep
+  \forskiporcontinuestep
+  \forbreakstep
+  \forskippoststep
+}
+
+\newcommand{\loops}
+{
+  \while
+  \dowhile
+  \forloop
+}
+
+
 % step_return_0
+\newcommand{\retnovalstep}
+{\judgment{\(\mathit{dealloc} ~ \mem ~ \PCT = (\PCT',\mem')\)}
+  {\(\sstate{\PCT}{\mem}{\sreturn{}}{\cont}
+    \longrightarrow
+    \rstate{\PCT'}{\mem'}{\val{\vundef}{\deftag}}{\cont}\)}
+}
 
 % step_return_1
-
+\newcommand{\retexprstep}
+{\judgment{}
+  {\(\sstate{\PCT}{\mem}{\sreturn{\expr}}{\cont}
+    \longrightarrow
+    \estate{\PCT}{\mem}{\expr}{\kreturn{\cont}}\)}
+}
 
 % step_return_2
+\newcommand{\retvalstep}
+{\judgment{\(\mathit{dealloc} ~ \mem ~ \PCT = (\PCT',\mem')\)}
+  {\(\estate{\PCT}{\mem}{\val{v}{\vt}}{\kreturn{\cont}}
+    \longrightarrow
+    \rstate{\PCT}{\mem}{\val{v}{\vt}}{\cont}\)}
+}
 
 % step_skip_call
-
+\newcommand{\skipreturnstep}
+{\judgment{}
+  {\(\sstate{\PCT}{\mem}{\sskip}{\kcall{\cont}}
+    \longrightarrow
+    \rstate{\PCT}{\mem}{\val{\vundef}{\deftag}}{\cont}\)}
+}
+  
 % step_switch
+\newcommand{\switchstep}
+{\judgment{}
+  {\(\sstate{\PCT}{\mem}{\sswitch{\expr}{\overline{(L,\stmt)}}}{\cont}
+    \longrightarrow
+    \estate{\PCT}{\mem}{\expr}{\kswitcha{\overline{(L,\stmt)}}{\cont}}}
+}
 
 % step_expr_switch
-
+\newcommand{\switchvalstep}
+{\judgment{\mathit{select} ~ v ~ \overline{(L,\stmt)} = \stmt}
+  {\(\estate{\PCT}{\mem}{\val{v}{\vt}}{\kswitcha{\overline{(L,\stmt)}}{\cont}}
+    \longrightarrow
+    \sstate{\PCT}{\mem}{\stmt}{\kswitchb{\cont}}\)}
+}
+  
 % step_skip_break_switch
+\newcommand{\switchskiporbreakstep}
+{\judgment{\stmt = \sbreak \lor \stmt = \sskip}
+  {\(\sstate{\PCT}{\mem}{\stmt}{\kswitchb{\cont}}
+    \longrightarrow
+    \sstate{\PCT}{\mem}{\skip}{\cont}\)}
+}
 
 % step_continue_switch
+\newcommand{\switchcontinuestep}
+{\judgment{}
+  {\(\sstate{\PCT}{\mem}{\scontinue}{\kswitchb{\cont}}
+    \longrightarrow
+    \sstate{\PCT}{\mem}{\scontinue}{\cont}\)}
+}
+
+\newcommand{\conditionals}
+{
+  \ifstepa
+  \ifstepb
+  \switchstep
+  \switchvalstep
+  \switchskiporbreakstep
+  \switchcontinuestep
+}
 
 % step_label
 \newcommand{\labelstep}
@@ -223,11 +329,18 @@
   {\(\labeltres \leftarrow \labelt\)}
   {\(\sstate{\PCT}{\mem}
     {L: \stmt}{\cont} \longrightarrow
-    \sstate{\PCT'}{\mem}{\genv}{\lenv'}{\stmt}{\cont}\)}}
+    \sstate{\PCT'}{\mem}{\genv}{\lenv'}{\stmt}{\cont}\)}
+}
 
 % step_goto
 
 % step_internal_function
+\newcommand{\callstep}
+{\judgmentbr{\(\mathit{def}(f) = \mathit{internal}(xs, \stmt)\)}
+  {\(\lenv' = \lenv \llbracket x \mapsto v@\vt' \mid
+    (x,v@\vt) \leftarrow \mathit{zip}(xs,args), \vt' \leftarrow \argt \rrbracket\)}
+  {\(\cstate{\PCT}{\mem}{f}{args}{\cont} \longrightarrow
+    \sstate{\PCT}{\mem}{\genv}{\lenv'}{\stmt}{\cont}\)}}
 
 % step_external_function
 
@@ -246,7 +359,7 @@
 \newcommand{\returnstep}
 {\judgmenttwo{\(\cont = \mathit{Kcall} ~ \lenv' ~ \mathit{ctx} ~ \cont'\)}
   {\(\PCT'',\vt' \leftarrow \rett\)}
-  {\(\rstate{\PCT}{\mem}{\genv}{\lenv}{\val{v}{\vt}}{\cont} \longrightarrow
+  {\(\rstate{\PCT}{\mem}{\val{v}{\vt}}{\cont} \longrightarrow
     \estate{\PCT'}{\mem}{\mathit{ctx}[\val{v}{\vt'}]}{\cont'}\)}}
 
 % step_lred + red_var_local
@@ -362,20 +475,5 @@
 {\judgment{}
   {\(\estate{\PCT}{\mem}{\ctx{\call{f'}{\overline{v @ \vt}}}}{ty}{\cont}
     \longrightarrow
-    \cstate{f'}{\PCT}{\mem}{\genv}{\lenv}{v @ \vt}{\kcall{f}{\ctx}{\cont}}\)}
+    \cstate{f'}{\PCT}{\mem}{\lenv}{v @ \vt}{\kcall{f}{\ctx}{\cont}}\)}
 }
-
-% 
-\newcommand{\retvalstep}
-{\judgment{\(\mathit{pop} ~ \cont = \kcall{f'}{\ctx}{\cont'}\)}
-  {\(\sstate{\PCT}{\mem}{\sreturn ~ \val{v}{\vt}}{\cont}
-    \longrightarrow
-    \rstate{f'}{\PCT}{\mem}{\genv}{\val{v}{\vt}}{\ctx}{\cont}\)}
-}
-
-\newcommand{\callstep}
-{\judgmentbr{\(\mathit{def}(f) = (xs, \stmt)\)}
-  {\(\lenv' = \lenv \llbracket x \mapsto v@\vt' \mid
-    (x,v@\vt) \leftarrow \mathit{zip}(xs,args), \vt' \leftarrow \argt \rrbracket\)}
-  {\(\cstate{f}{\PCT}{\mem}{\genv}{\lenv}{args}{\cont} \longrightarrow
-    \sstate{\PCT}{\mem}{\genv}{\lenv'}{\stmt}{\cont}\)}}

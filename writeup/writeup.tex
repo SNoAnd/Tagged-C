@@ -1985,46 +1985,15 @@ The parameter \(b\) marks the start of the global region.
 
 \subsection{Sequencing rules}
 
-\dostepa
-\dostepb
-\seqstep
-\seqskipstep
-\seqcontinuestep
-\seqbreakstep
-\retvalstep
-\labelstep
+\sequencing
 
 \subsection{Conditional rules}
 
-\ifstepa
-\ifstepb
-
-TODO: switch
+\conditionals
 
 \subsection{Loop rules}
 
-%% While %%
-\whilestep
-\whiletruestep
-\whilefalsestep
-\whileskipcontinuestep
-\whilebreakstep
-
-%% Do-while %%
-\dowhilestep
-\dowhileskipcontinuestep
-\dowhilefalsestep
-\dowhiletruestep
-\dowhilebreakstep
-
-%% For %%
-\forinitstep
-\forstep
-\forfalsestep
-\fortruestep
-\forskiporcontinuestep
-\forbreakstep
-\forskippoststep
+\loops
 
 \subsection{Expression Rules}
 
@@ -2052,76 +2021,5 @@ TODO: switch
 
 \callstep
 \returnstep
-
-\subsection{Memory safety (old)}
-
-Memory safety policies operate on under a ``lock and key'' model, in which objects in memory
-are tagged with a unique identifier (the ``lock'') and may only be accessed via a pointer tagged
-with the same identifier (the ``key.'') For a simple example, consider the following code:
-%
-\vspace{\abovedisplayskip}
-\begin{verbatim}
-void main() {
-  int a[10];
-  int b[10];
-  a[10] = 42;    
-}
-\end{verbatim}
-\vspace{\belowdisplayskip}
-%
-In a typical stack allocator---such as the one used by my interpreter---{\tt a} and {\tt b} will
-be allocated next to one another on the stack, like this:
-
-\includegraphics[width=.5\textwidth]{example.png}
-
-To prevent the expression {\tt a[10] = 42} from overwriting {\tt b[0]}, we give {\tt a} and {\tt b}
-unique {\it color tags} when they are allocated. In this case, we'll tag {\tt a} with \(\mathit{dyn ~ 0}\),
-indicating that it's the first dynamically allocated object, and {\tt b} with \(\mathit{dyn ~ 1}\).
-Then, when we evaluate the left-hand expression {\tt a} into its memory location \(l\), we tag
-\(l\) with \(\mathit{dyn ~ 0}\). When we take the offset \(l + 10\), we keep that tag. And when we
-perform the assignment, we check that the location tag at \(l\) matches. It doesn't, so we failstop.
-
-The same principle applies for this code:
-
-\vspace{\abovedisplayskip}
-\begin{verbatim}
-void main() {
-  int* a = malloc(10 * sizeof(int));
-  int* b = malloc(10 * sizeof(int));
-  *(a + (b - a)) = 42;
-}
-\end{verbatim}
-\vspace{\belowdisplayskip}
-
-In this case, {\tt a} and {\tt b} could be allocated anywhere in the heap, and in Tagged C
-the expression {\tt *(a + (b - a)) = 42} will always write to {\tt *b}. While this might be intentional
-on the part of the programmer, it is also undefined behavior in the C standard, and in some
-(but not all; see below) formal C semantics. Likewise, if {\tt a} and {\tt b} are next to each other
-or in some other predictable arrangement, arithmetic like our first example can apply.
-The memory safety policy works just the same in this scenario, with the tags being attached
-by the call to malloc, once again using the \(\mathit{dyn}\) label in a global count of allocated blocks.
-Meanwhile, values that are not derived from valid pointers at all are tagged \(\N\), and can never
-be read or written through, to avoid pointer forging, like this:
-
-\vspace{\abovedisplayskip}
-\begin{verbatim}
-void main() {
-  int* a = malloc(10 * sizeof(int));
-  // We happen to know that a will be at address 1000
-  *1000 = 42;
-}
-\end{verbatim}
-\vspace{\belowdisplayskip}
-
-Both stack and heap allocations use the \(\mathit{dyn}\) label and have a color that can grow arbitrarily
-high. This is because over a program's execution, it might allocate an unbounded number of heap- or
-stack-allocated objects, and each needs a unique identifier. Existing work has shown that in practice,
-tag colors can be ``garbage collected'' and reused, but in Tagged C we assume them to be infinite and unique.
-
-Lastly, we have global variables. While ``global safety'' is not as prominent a topic as heap or
-stack safety, overrunning a global buffer is still a problem. It is also easy to forge a pointer to a global,
-and when this happens it can undermine assumptions about the behavior of linked libraries whose globals
-are not exported. Globals do not need dynamic colors, but can use their identifiers as tags, of the form
-\(\mathit{glob} ~ id\).
 
 \end{document}
