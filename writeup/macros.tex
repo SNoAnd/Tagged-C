@@ -6,6 +6,7 @@
 \newcommand{\lts}{\overline{\color{blue} \lt}}
 \newcommand{\nt}{\mathit{\color{blue} nt}}
 \newcommand{\PCT}{\mathcal{\color{blue} P}}
+\newcommand{\CT}{\mathcal{\color{blue} C}}
 
 %%% Policy Specific Tags %%%
 \newcommand{\N}{{\color{blue} N}}
@@ -123,7 +124,17 @@
 \newcommand{\splittargs}{\PCT, \vt, \optional{\(L\)}}
 \newcommand{\splittres}{\PCT'}
 \newcommand{\splitt}{\splittname(\splittargs)}
-           
+
+\newcommand{\exprsplittname}{\mathbf{ExprSplitT}}
+\newcommand{\exprsplittargs}{\PCT, \vt}
+\newcommand{\exprsplittres}{\PCT', \vt'}
+\newcommand{\exprsplitt}{\splittname(\splittargs)}
+
+\newcommand{\exprjointname}{\mathbf{ExprJoinT}}
+\newcommand{\exprjointargs}{\PCT, \vt}
+\newcommand{\exprjointres}{\PCT', \vt'}
+\newcommand{\exprjoint}{\exprjointname(\exprjointargs)}
+
 \newcommand{\labeltname}{\mathbf{LabelT}}
 \newcommand{\labeltargs}{\PCT, L}
 \newcommand{\labeltres}{\PCT'}
@@ -169,13 +180,14 @@
 \newcommand{\kswitcha}[2]{\mathit{Kswitch1} ~ #1 ~ #2}
 \newcommand{\kswitchb}[1]{\mathit{Kswitch2} ~ #1}
 
-\newcommand{\ctx}[1]{ctx \left[#1\right]}
+\newcommand{\ctx}[2]{ctx \left[#1\right]@#2}
 
 \newcommand{\sstate}[4]{\mathcal{S}\left(#2 \mid #3 \gg #4 @ #1\right)}
 \newcommand{\estate}[4]{\mathcal{E}\left(#2 \mid #3 \gg #4 @ #1\right)}
 \newcommand{\cstate}[5]{\mathcal{C}\left(#2 \mid #3(#4) \gg #5 @ #1\right)}
-\newcommand{\rstate}[5]{\mathcal{R}\left(#2 \mid #3 \gg #4 @ #1\right)}
+\newcommand{\rstate}[4]{\mathcal{R}\left(#2 \mid #3 \gg #4 @ #1\right)}
 \newcommand{\fstate}[1]{\mathcal{F}\left(#1\right)}
+\newcommand{\sstatefun}[5]{\mathcal{S}\left(#1, #3 \mid #4 \gg #5 @ #2\right)}
 
 \newcommand{\mem}{m}
 \newcommand{\genv}{\mathit{ge}}
@@ -212,7 +224,7 @@
 \newcommand{\builtin}[2]{\mathit{Ebuiltin} ~ #1(#2)}
 \newcommand{\loc}[2]{\mathit{Eloc} ~ #1@#2}
 \newcommand{\floc}[2]{\mathit{Efloc} ~ #1@#2}
-\newcommand{\paren}[2]{\mathit{Eparen} ~ #1 ~ #2}
+\newcommand{\paren}[3]{\mathit{Eparen} ~ #1 ~ #2 ~ #3}
 \newcommand{\failstop}{\mathit{Efailstop}}
 
 \newcommand{\sskip}{\mathtt{Sskip}}
