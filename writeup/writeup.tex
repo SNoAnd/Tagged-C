@@ -325,19 +325,23 @@ policy that we explore in this paper, but it may not be complete.
 \label{sec:semantics}
 
 Tagged C uses a small-step reduction semantics, given in full in the appendix. We will introduce
-a limited set of step rules as they become relevant.
+a limited number of step rules as they become relevant.
 
 Values are ranged over by \(v\), variable identifiers by \(x\), and function identifiers by \(f\).
 Tags use a number of metavariables: \(t\) ranges over all tags, while we will use
 \(\vt\) to refer to the tags associated with values, \(\pt\) for tags on pointer values
 and memory-location expressions, \(\lt\) for tags associated with memory locations themselves,
-\(\nt\) for ``name tags'' automatically derived from identifiers, and \(\PCT\) for the
-global ``program counter tag'' or PC Tag.
+\(\nt\) for ``name tags'' automatically derived from identifiers, \(\PCT\) for the
+global ``program counter tag'' or PC Tag, and \(\CT\) for a local ``context tag'' on nested expressions.
 An {\it atom} is a pair of a value and a tag, \(\val{v}{\vt}\); the @ symbol should be read
 as a pair in general, and is used when the second object in the pair is a tag.
 Expressions are ranged over by \(\expr\) (Figure \ref{fig:syntax}),
 statements by \(\stmt\), and continuations by \(\cont\).
 The continuations are defined in \cref{app:continuations}, and step rules in \cref{app:rules}.
+
+There are two notable syntactical differences in the language, relative to CompCert C:
+conditionals and loops take an optional {\em join point} label, and parenthetical expressions
+an optional ``context tag,'' ranged over by \(\CT\).
 
 Global environments, ranged over by \(\genv\), map identifiers to either function
 or global variable definitions, including the variable's location in memory. Local environments,
