@@ -124,7 +124,7 @@
 {\judgmenttwo
   {\(\mathit{boolof}(v) = \mathbf{f}\)}
   {\(\cont = \kdowhiletest{\expr}{\stmt}{L}{\cont'}\)}
-  {\(\estate{\PCT}{\mem}{\val{v}{\vt}}{\cont}
+  {\(\sstate{\PCT}{\mem}{\val{v}{\vt}}{\cont}
     \longrightarrow
     \sstate{\PCT'}{\mem}{\sskip}{\cont'}\)}
 }
@@ -134,7 +134,7 @@
 {\judgmenttwo
   {\(\mathit{boolof}(v) = \mathbf{t}\)}
   {\(\cont = \kdowhiletest{\expr}{\stmt}{L}{\cont'}\)}
-  {\(\estate{\PCT}{\mem}{\val{v}{\vt}}{\cont}
+  {\(\sstate{\PCT}{\mem}{\val{v}{\vt}}{\cont}
     \longrightarrow
     \sstate{\PCT'}{\mem}{\sdowhile{\expr}{\stmt}{L}}{\cont'}\)}
 }
@@ -409,15 +409,15 @@
 % step_rred + red_seqand_true
 \newcommand{\seqandtruestep}
 {\judgmenttwo{\(\mathit{boolof}(v) = \mathbf{t}\)}
-  {\(\CT', \vt' \leftarrow \exprsplitt{\CT}{\vt}\)}
-  {\(\defestate{\ctx{\seqand{\val{v}{\vt}}{\expr}}{\CT}}
+  {\(\gentag', \vt' \leftarrow \exprsplitt{\gentag}{\vt}\)}
+  {\(\defestate{\ctx{\seqand{\val{v}{\vt}}{\expr}}{\gentag}}
   \longrightarrow
   \estate{\PCT'}{\mem}{\ctx{\val{\eparen{\expr}{\mathit{Tbool}}{\vt'}}}{}{\cont}}\)}}
 
 % step_rred + red_seqand_false
 \newcommand{\seqandfalsestep}
 {\judgmentthree{\(\mathit{boolof}(v) = \mathbf{f}\)}
-  {\(\CT', \vt' \leftarrow \exprsplitt(\CT, \vt)\)}
+  {\(\gentag', \vt' \leftarrow \exprsplitt(\gentag, \vt)\)}
   {\(\defestate{\ctx{\seqand{\val{v}{\vt}}{\expr}}}
     \longrightarrow
     \defestate{\ctx{\val{0}{\vt'}}}\)}}
@@ -425,7 +425,7 @@
 % step_rred + red_seqor_true
 \newcommand{\seqortruestep}
 {\judgmentthree{\(\mathit{boolof}(v) = \mathbf{t}\)}
-  {\(\CT', \vt' \leftarrow \exprsplitt(\CT, \vt)\)}
+  {\(\gentag', \vt' \leftarrow \exprsplitt(\gentag, \vt)\)}
   {\(\defestate{\ctx{\seqand{\val{v}{\vt}}{\expr}}}
     \longrightarrow
     \defestate{\ctx{\val{1}{\vt'}}}\)}}
@@ -433,8 +433,8 @@
 % step_rred + red_seqor_false
 \newcommand{\seqorfalsestep}
 {\judgmenttwo{\(\mathit{boolof}(v) = \mathbf{f}\)}
-  {\(\CT', \vt' \leftarrow \exprsplitt{\CT}{\vt}\)}
-  {\(\defestate{\ctx{\seqand{\val{v}{\vt}}{\expr}}{\CT}}
+  {\(\gentag', \vt' \leftarrow \exprsplitt{\gentag}{\vt}\)}
+  {\(\defestate{\ctx{\seqand{\val{v}{\vt}}{\expr}}{\gentag}}
   \longrightarrow
   \estate{\PCT'}{\mem}{\ctx{\val{\eparen{\expr}{\mathit{Tbool}}{\vt'}}}{}{\cont}}\)}}
 
@@ -445,10 +445,10 @@
       \expr_1 & \textnormal{if } \mathit{boolof}(v) = \mathbf{t} \\
       \expr_2 & \textnormal{if } \mathit{boolof}(v) = \mathbf{f} \\
     \end{cases}\)}
-  {\(\CT' \leftarrow \exprsplitt\)}
-  {\(\defestate{\ctx{\condition{\val{v}{\vt}}{\expr_1}{\expr_2}}{\CT}}
+  {\(\gentag' \leftarrow \exprsplitt\)}
+  {\(\defestate{\ctx{\condition{\val{v}{\vt}}{\expr_1}{\expr_2}}{\gentag}}
     \longrightarrow
-  \defestate{\ctx{\paren{\expr'}{\CT'}}}{\CT}\)}}
+  \defestate{\ctx{\paren{\expr'}{\gentag'}}}{\gentag}\)}}
 
 % step_rred + red_sizeof
 
@@ -506,7 +506,7 @@
 % step_rred + red_paren
 \newcommand{\parenstep}
 {\judgmenttwo
-  {\(\defestate{\paren{\val{v}{\vt}}{\CT}}\)}
+  {\(\defestate{\paren{\val{v}{\vt}}{\gentag}}\)}
   {\(\vt' \leftarrow \exprjoint\)}
   {\(\defestate{\val{v}{\vt'}}\)}}
 
