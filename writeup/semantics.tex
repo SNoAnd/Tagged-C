@@ -311,8 +311,9 @@
 
 % step_lred + red_var_local
 \newcommand{\varstep}
-{\judgmenttwo{\(\lenv[id] = (l,\_,\pt,ty)\)}
+{\judgmentthree{\(\lenv[id] = (l,\_,\pt,ty)\)}
   {\(\trule{\vartres}{\vart}\)}
+  {\(\mathit{context} ~ \PCT ~ \gentag ~ k ~ \ctx{\expr}\)}
   {\(\defestate{\ctx{\var{id}}}
     \longrightarrow
     \defestate{\ctx{\loc{l}{\pt}}}\)}}

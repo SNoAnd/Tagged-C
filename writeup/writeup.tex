@@ -1977,7 +1977,6 @@ PC Tag when they're constructed.
 
 \subsection{Expression Rules}
 
-\mallocstep
 \valofstep
 \assignopstep
 \postincstep
@@ -1985,7 +1984,6 @@ PC Tag when they're constructed.
 \varstep
 \unopstep
 \binopstep
-\callexprstep
 \conditionstep
 
 \subsection{Call and Return Rules}
@@ -2000,6 +1998,8 @@ PC Tag when they're constructed.
   & \textnormal{and } \lenv' = \lenv[id \mapsto (\mathit{p, p+|ty|,ty,\pt})]) \\
 \end{cases}\]
 
+\mallocstep
+\callexprstep
 \callstep
 \returnstep
 
