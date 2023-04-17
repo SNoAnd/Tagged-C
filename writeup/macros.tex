@@ -1,12 +1,12 @@
 \newcommand{\tagcolor}{C}
 
+\newcommand{\gentag}{\mathit{\color{blue} t}}
 \newcommand{\vt}{\mathit{\color{blue} vt}}
 \newcommand{\pt}{\mathit{\color{blue} pt}}
 \newcommand{\lt}{\mathit{\color{blue} lt}}
 \newcommand{\lts}{\overline{\color{blue} \lt}}
 \newcommand{\nt}{\mathit{\color{blue} nt}}
 \newcommand{\PCT}{\mathcal{\color{blue} P}}
-\newcommand{\CT}{\mathcal{\color{blue} C}}
 
 %%% Policy Specific Tags %%%
 \newcommand{\N}{{\color{blue} N}}
@@ -16,6 +16,7 @@
 %% SIF %%
 \newcommand{\vtaint}[1]{\mathit{\color{blue} vtaint ~ #1}}
 \newcommand{\pctaint}[1]{\mathit{\color{blue} pc ~ #1}}
+\newcommand{\vol}{\mathit{\color{blue} vol}}
 
 \newcommand{\trule}[2]{{\color{blue} #1 \leftarrow #2}}
 
@@ -128,10 +129,10 @@
 \newcommand{\exprsplittname}{\mathbf{ExprSplitT}}
 \newcommand{\exprsplittargs}{\PCT, \vt}
 \newcommand{\exprsplittres}{\PCT', \vt'}
-\newcommand{\exprsplitt}{\splittname(\splittargs)}
+\newcommand{\exprsplitt}{\exprsplittname(\exprsplittargs)}
 
 \newcommand{\exprjointname}{\mathbf{ExprJoinT}}
-\newcommand{\exprjointargs}{\PCT, \vt}
+\newcommand{\exprjointargs}{\PCT, \gentag, \vt}
 \newcommand{\exprjointres}{\PCT', \vt'}
 \newcommand{\exprjoint}{\exprjointname(\exprjointargs)}
 
@@ -180,7 +181,9 @@
 \newcommand{\kswitcha}[2]{\mathit{Kswitch1} ~ #1 ~ #2}
 \newcommand{\kswitchb}[1]{\mathit{Kswitch2} ~ #1}
 
-\newcommand{\ctx}[2]{ctx \left[#1\right]@#2}
+\newcommand{\ctx}[1]{C \!\left[#1\right]}
+\newcommand{\rh}{\textnormal{\sc rh}}
+\newcommand{\lh}{\textnormal{\sc lh}}
 
 \newcommand{\sstate}[4]{\mathcal{S}\left(#2 \mid #3 \gg #4 @ #1\right)}
 \newcommand{\estate}[4]{\mathcal{E}\left(#2 \mid #3 \gg #4 @ #1\right)}

@@ -181,3 +181,20 @@ title ={Apache HTTP Server Project},
 url ={https://httpd.apache.org/},
 lastaccessed ={April 11, 2023},
 }
+
+@InProceedings{Askarov08:TINILeaks,
+author="Askarov, Aslan
+and Hunt, Sebastian
+and Sabelfeld, Andrei
+and Sands, David",
+editor="Jajodia, Sushil
+and Lopez, Javier",
+title="Termination-Insensitive Noninterference Leaks More Than Just a Bit",
+booktitle="Computer Security - ESORICS 2008",
+year="2008",
+publisher="Springer Berlin Heidelberg",
+address="Berlin, Heidelberg",
+pages="333--348",
+abstract="Current tools for analysing information flow in programs build upon ideas going back to Denning's work from the 70's. These systems enforce an imperfect notion of information flow which has become known as termination-insensitive noninterference. Under this version of noninterference, information leaks are permitted if they are transmitted purely by the program's termination behaviour (i.e., whether it terminates or not). This imperfection is the price to pay for having a security condition which is relatively liberal (e.g. allowing while-loops whose termination may depend on the value of a secret) and easy to check. But what is the price exactly? We argue that, in the presence of output, the price is higher than the ``one bit'' often claimed informally in the literature, and effectively such programs can leak all of their secrets. In this paper we develop a definition of termination-insensitive noninterference suitable for reasoning about programs with outputs. We show that the definition generalises ``batch-job'' style definitions from the literature and that it is indeed satisfied by a Denning-style program analysis with output. Although more than a bit of information can be leaked by programs satisfying this condition, we show that the best an attacker can do is a brute-force attack, which means that the attacker cannot reliably (in a technical sense) learn the secret in polynomial time in the size of the secret. If we further assume that secrets are uniformly distributed, we show that the advantage the attacker gains when guessing the secret after observing a polynomial amount of output is negligible in the size of the secret.",
+isbn="978-3-540-88313-5"
+}

@@ -69,11 +69,11 @@ and {\em compartmentalization}.
 % [sec code review paper] https://dl.acm.org/doi/10.1007/978-3-642-36563-8_14 https://people.eecs.berkeley.edu/~daw/papers/coderev-essos13.pdf
 
 % establish C is everywhere and that you care about your car working correctly
-Many facets of modern life rely on new and old C. The orginal C langauge rose to prominence 30 years ago by powering
+Many essential technologies of modern life rely on new and old C code. The C language rose to prominence 30 years ago by powering
 the UNIX, Windows, and OSX operating systems,  as well as major applications like the Oracle database \cite{Munoz:PoweredbyC} . 
 and the Apache web server \cite{apache97:main-site}. Now our cars, smartphones, 
 home appliances (embedded systems like your garage door or tv remote), smart homes and hospitals (Internet of Things, embedded devices), 
-and most of the internet runs the C language family (though it may not be the only language) \cite{Munoz:PoweredbyC}. 
+and most of the internet runs the C language family (though it may not be the only language) \cite{Munoz:PoweredbyC}.
 [The C language family remains a force in active development, in a 2022 more 
 than 35\% of professionals report using it [so dev survey].
 % establish that C has security problems, Csmith paper for why there is no 1 C
@@ -94,10 +94,10 @@ modify, the original programmers are unavailable, and no specification of behavi
 % why static isnt good enough (seans bits probably have this covered)
 % also need to talk about code review here. and why it isnt enough either. 
 
-so it may not be feasible to fix the bugs
+This means that it may not be feasible to fix the bugs
 turned up by a conservative static analysis; a more permissive but unsound one, on the other hand,
-may miss bugs entirely. They may also delibrately use undefined behavior (UB), being used intentionally
-as a low-level idiom, while most static analyses treat all UB as a failure. Where static analysis
+may miss bugs entirely. Worse, most static analyses aim to detect undefined behavior (UB), but
+UBs may be used intentionally in the form of low-level idioms. Where static analysis
 is unsatisfactory we turn to dynamic enforcement.
 
 A tag-based reference monitor is a mechanism for dynamic security enforcement. It associates
@@ -120,8 +120,9 @@ We offer the following contributions:
 \item A full formal semantics for Tagged C, formalized in Coq
 \item Proposed {\em control points} at which the language interfaces with the policy
 \item A Tagged C interpreter, implemented in Coq and extracted to Ocaml
-\item Policies implementing (1) realistic, permissive memory models from the literature (PVI and PNVI),
-  (2) Secure Information Flow (SIF), and (3) compartmentalization
+\item Policies implementing (1) compartmentalization,
+  (2) realistic, permissive memory models from the literature (PVI and PNVI),
+  and (3) Secure Information Flow (SIF)
 \end{itemize}
 
 % restructure to be the paper map. In Section X we do Y, etc
@@ -289,59 +290,31 @@ focused on the manipulation of tags. A control point consists of the name of a {
 and the bindings of its inputs and outputs; a tag rule is a partial function. The names and
 signatures of the tag rules, and their corresponding control points, are listed in \Cref{fig:controlpoints}.
 
+There are two notable syntactical differences in the language, relative to CompCert C:
+conditionals and loops take an optional {\em join point} label, and parenthetical expressions
+an optional ``context tag.''
+
 The choice of control points and their associations with tag rules, as well as the tag rules'
 signatures, are a crucial design element. Our proposed design is sufficient for the three classes of
 policy that we explore in this paper, but it may not be complete.
 
-\begin{table}
-  \begin{tabular}{|l|l|l|l|}
-    \hline
-    Name & Inputs & Outputs & Control Points \\
-    \hline
-    \(\globaltname\) & \(\globaltargstyped\) & \(\globaltres\)    & Program initialization \\
-    \(\localtname\)  & \(\localtargstyped\)  & \(\localtres\)     & Call \\
-    \(\loadtname\)   & \(\loadtargs\)        & \(\loadtres\)      & ValOf, AssignOp, PostIncr \\
-    \(\storetname\)  & \(\storetargs\)       & \(\storetres\)     & Assign \\
-    \(\consttname\)  &                       & \(\consttres\)     & Const, PostIncr \\
-    \(\unoptname\)   & \(\unoptargs\)        & \(\unoptres\)      & UnOp \\
-    \(\binoptname\)  & \(\binoptargs\)       & \(\binoptres\)     & BinOp \\
-    \(\malloctname\) & \(\malloctargs\)      & \(\malloctres\)    & Call to {\tt malloc} \\
-    \(\freetname\)   & \(\freetargs\)        & \(\freetres\)      & Call to {\tt free} \\
-    \(\picasttname\) & \(\picasttargs\)      & \(\picasttres\)    & Cast from pointer to scalar \\
-    \(\ipcasttname\) & \(\ipcasttargs\)      & \(\ipcasttres\)    & Cast from scalar to pointer \\
-    \(\ppcasttname\) & \(\ppcasttargs\)      & \(\ppcasttres\)    & Cast between pointers \\
-    \(\iicasttname\) & \(\iicasttargs\)      & \(\iicasttres\)    & Cast between scalars \\
-    \(\splittname\)  & \(\splittargs\)       & \(\splittres\)     & Split points (\cref{fig:splits})\\
-    \(\labeltname\)   & \(\labeltargs\)        & \(\labeltres\)      & Label \\
-    \(\argtname\)    & \(\argtargs\)         & \(\argtres\)       & Call \\
-    \(\rettname\)    & \(\rettargs\)         & \(\rettres\)       & Return \\
-    \hline
-  \end{tabular}
-
-  \label{fig:controlpoints}
-\end{table}
-
-\paragraph{Formal Semantics}
-\label{sec:semantics}
-
 Tagged C uses a small-step reduction semantics, given in full in the appendix. We will introduce
 a limited number of step rules as they become relevant.
+
+\paragraph{Notations}
+\label{sec:semantics}
 
 Values are ranged over by \(v\), variable identifiers by \(x\), and function identifiers by \(f\).
 Tags use a number of metavariables: \(t\) ranges over all tags, while we will use
 \(\vt\) to refer to the tags associated with values, \(\pt\) for tags on pointer values
 and memory-location expressions, \(\lt\) for tags associated with memory locations themselves,
 \(\nt\) for ``name tags'' automatically derived from identifiers, \(\PCT\) for the
-global ``program counter tag'' or PC Tag, and \(\CT\) for a local ``context tag'' on nested expressions.
+global ``program counter tag'' or PC Tag.
 An {\it atom} is a pair of a value and a tag, \(\val{v}{\vt}\); the @ symbol should be read
 as a pair in general, and is used when the second object in the pair is a tag.
 Expressions are ranged over by \(\expr\) (Figure \ref{fig:syntax}),
 statements by \(\stmt\), and continuations by \(\cont\).
 The continuations are defined in \cref{app:continuations}, and step rules in \cref{app:rules}.
-
-There are two notable syntactical differences in the language, relative to CompCert C:
-conditionals and loops take an optional {\em join point} label, and parenthetical expressions
-an optional ``context tag,'' ranged over by \(\CT\).
 
 Global environments, ranged over by \(\genv\), map identifiers to either function
 or global variable definitions, including the variable's location in memory. Local environments,
@@ -383,7 +356,33 @@ context in the continuation all with the caller's continuation.
 
 \section{Tags and Policies}
 
-[TODO: consider moving control point discussion here]
+\begin{table}
+  \begin{tabular}{|l|l|l|l|}
+    \hline
+    Name & Inputs & Outputs & Control Points \\
+    \hline
+    \(\globaltname\) & \(\globaltargstyped\) & \(\globaltres\)    & Program initialization \\
+    \(\localtname\)  & \(\localtargstyped\)  & \(\localtres\)     & Call \\
+    \(\loadtname\)   & \(\loadtargs\)        & \(\loadtres\)      & ValOf, AssignOp, PostIncr \\
+    \(\storetname\)  & \(\storetargs\)       & \(\storetres\)     & Assign \\
+    \(\consttname\)  &                       & \(\consttres\)     & Const, PostIncr \\
+    \(\unoptname\)   & \(\unoptargs\)        & \(\unoptres\)      & UnOp \\
+    \(\binoptname\)  & \(\binoptargs\)       & \(\binoptres\)     & BinOp \\
+    \(\malloctname\) & \(\malloctargs\)      & \(\malloctres\)    & Call to {\tt malloc} \\
+    \(\freetname\)   & \(\freetargs\)        & \(\freetres\)      & Call to {\tt free} \\
+    \(\picasttname\) & \(\picasttargs\)      & \(\picasttres\)    & Cast from pointer to scalar \\
+    \(\ipcasttname\) & \(\ipcasttargs\)      & \(\ipcasttres\)    & Cast from scalar to pointer \\
+    \(\ppcasttname\) & \(\ppcasttargs\)      & \(\ppcasttres\)    & Cast between pointers \\
+    \(\iicasttname\) & \(\iicasttargs\)      & \(\iicasttres\)    & Cast between scalars \\
+    \(\splittname\)  & \(\splittargs\)       & \(\splittres\)     & Split points (\cref{fig:splits})\\
+    \(\labeltname\)   & \(\labeltargs\)        & \(\labeltres\)      & Label \\
+    \(\argtname\)    & \(\argtargs\)         & \(\argtres\)       & Call \\
+    \(\rettname\)    & \(\rettargs\)         & \(\rettres\)       & Return \\
+    \hline
+  \end{tabular}
+
+  \label{fig:controlpoints}
+\end{table}
 
 Tagged C can enforce a wide range of policies, as follows.
 A policy consists of a tag type \(\tau\), a default tag inhabiting that type, and an instantiation
@@ -464,8 +463,8 @@ from address 1000, and the stack growing downward from address 2000. Our set of 
          \node {\memory{\(1096\)}{\(\vundef\)}{\(\N\)}{\(\N\)}}; \\
        };
          
-  \node         (pctag)  [node distance=1.2em, above=of a]        {\(\PCT=\tagz\)};
-  \node         (expr)   [node distance=0.1em, above=of a]        {\(\expr=\mathit{malloc}(1 @ t)\)};
+       \node (state) [node distance=1.2em, above=of a, anchor=west]
+             {\(\sstate{\PCT=\tagz}{\mem}{\expr=\mathit{malloc}(1 @ t)}{}\)};
   
 \end{tikzpicture}
 
@@ -483,9 +482,10 @@ the size argument and returns these three updated tags.
 %         \node {\memory{\(1008\)}{\(\vundef\)}{\(\N\)}{\(\N\)}}; \\
        };
   
-  \node         (pctag)  [node distance=1.2em, above=of a]        {\(\PCT=\tagz\)};
-  \node         (expr)   [node distance=0.1em, above=of a]      {\(\expr=p @ \pt\)};
+  \node (state) [node distance=1.2em, above=of a]
+        {\(\sstate{\PCT'=\tagone}{\mem}{\expr=p @ \pt}{}\)};
 
+  
   \node[matrix, ampersand replacement=\&, right = of mem] (tr)
        {
          \& \node[anchor=center] {\(\malloct\)}; \\
@@ -502,10 +502,10 @@ the size argument and returns these three updated tags.
   (ltsret) edge (ltsout);
 
   \draw[->]
-  (pctout.north) |- (pctag.east);
+  (pctout.north) |- (state.east);
 
   \draw[->]
-  (ptout.west) |- (expr.east);
+  (ptout.west) -- (state.south);
 
   \draw[->]
   (vtout.west) -- (a.east);
@@ -517,7 +517,7 @@ the size argument and returns these three updated tags.
 In this case, we tag the pointer and the memory region with the current count, and then
 increment the count. Once the pointer is stored in {\tt x}, our memory is:
 
-We do the same for allocating {\tt y}, to get:
+We do the same for allocating {\tt y}, to get the memory:
 
 \begin{tikzpicture}[]
   \node[matrix, ampersand replacement=\&, column sep=-0.6em]  (mem)
@@ -528,10 +528,7 @@ We do the same for allocating {\tt y}, to get:
          \node[anchor=north] {\(~ ~\dots ~ ~\)}; \&
          \node {\memory{\(1092\)}{\(1004\)}{\(\tagone\)}{\(\N\)}}; \&
          \node {\memory{\(1096\)}{\(1000\)}{\(\tagz\)}{\(\N\)}}; \\
-       };
-         
-  \node         (pctag)  [node distance=1.2em, above=of a]        {\(\PCT={\color{blue} 2}\)};
-  \node         (expr)   [node distance=0.1em, above=of a]        {\(\expr=\mathit{malloc}(1 @ t)\)};
+       };       
 \end{tikzpicture}
 
 Next, the program stores a 0 to address 1000. The constant 0
@@ -628,7 +625,8 @@ target. This will serve to outline the basic structure of the compilation scheme
 % notes ended up below, in the coarse grained section
 In a perfect world, all C programs would be memory safe. But it is unfortunately common
 for a codebase to contain undefined behavior that will not be fixed, including memory undefined
-behavior. This may occur because developers intentionally use low-level idioms that are UB \cite{DeFacto}.
+behavior. This may occur because developers intentionally use low-level idioms that are UB
+\cite{DeFacto}.
 Or the cost and potential risk of regressions may make it undesirable to fix bugs in older code,
 as opposed to code under active development that is held to a higher standard \cite{Bessey10:Coverity}.
 
@@ -1087,12 +1085,12 @@ model its internal behavior, so we know nothing about the value it returns. We c
 treat that value as an input, and track its influence through the system.
 
 For this initial, simplified policy, we will assume that it is the only input that we care about,
-so we have three possible tags: the default tag
-\(\N\) represents values that are not tainted by the sensitive input, the tag
-\(\vtaint{}\) represents values that have been influenced by {\tt read\_and\_parse}, and the tag
-\(\pctaint{\overline{L}}\) carries a set of labels representing that
-the current control-flow of the program is tainted (we will discuss this in detail
-below.)
+so we have four classes of tags. The default tag \(\N\) represents values that are not tainted
+by the sensitive input, the tag \(\vtaint{}\) represents values that have been influenced by
+{\tt read\_and\_parse}, and the tag \(\pctaint{\overline{L}}\) carries a set of labels
+representing that the current control-flow of the program is tainted (we will discuss this in detail
+below.) Lastly, the tag \(\vol\) marks the memory locations of {\em volatile} global variables.
+Volatile variables represent 
 
 Initially, the PC Tag is \(\pctaint{\emptyset}\), and all values and memory locations are
 tagged \(\N\). The taint tags are introduced at the external call to {\tt read\_and\_parse}.
@@ -1104,6 +1102,7 @@ At the same time, all external calls must check that they aren't leaking a taint
     \tau ::= & \N \\
     & \vtaint{} \\
     & \pctaint{\overline{L}} \\
+    & \vol \\
 \end{align*} }
 \end{minipage}
 \begin{minipage}{0.74\textwidth}
@@ -1119,7 +1118,10 @@ At the same time, all external calls must check that they aren't leaking a taint
 
 When two values are combined with a binary operation, the resulting value is tainted
 if either of them was. We define this as the {\em join} or {\em least-upper-bound}
-operator, \(\sqcup\).
+operator, \(\sqcup\). We will then compare tags according to a partial order, the
+{\em no-higher-than} operator, \(\sqsubseteq\). In this case, \(a \sqsubseteq b\)
+means that \(a\) does not have higher privilege than \(b\), and so information is
+allowed to flow between.
 
 \begin{minipage}[t]{.49\textwidth}
 \[t_1 \sqcup t_2 \triangleq
@@ -1130,6 +1132,19 @@ operator, \(\sqcup\).
 \end{cases}\]
 \end{minipage}
 \begin{minipage}[t]{.49\textwidth}
+\[t_1 \sqsubseteq t_2 \triangleq
+\begin{cases}
+  \mathbf{false} & \textnormal{if } t_1 = \vtaint{} \textnormal{ and } t_2 = \vol \\
+  \mathbf{true} & \textnormal{otherwise} \\
+\end{cases}\]
+\end{minipage}
+
+The policy needs to failstop if a tainted value becomes visible to the outside world.
+That can happen when the value is passed as an argument to an external function, as we
+saw above, or when it is stored to volatile memory (typically representing a file or external
+device that might be read or might transfer.
+
+\begin{minipage}{0.49\textwidth}
   \[\begin{aligned}
   \truledef{\binopt}
   \settag{\vt'}{
@@ -1137,40 +1152,69 @@ operator, \(\sqcup\).
   }
   \end{aligned}\]
 \end{minipage}
-
-The policy needs to failstop if a tainted value becomes visible to the outside world.
-That can happen when the value is passed as an argument to an external function, as we
-saw above, or when it is stored to volatile memory (typically representing a file or external
-device that might be read or might transfer. [TODO: need to introduce volatile memory earlier.]
-%
-\[\begin{aligned}
-\truledef{\volstoret}
-\assert{\PCT \sqcup \pt \sqcup \vt_2 = \N}
-\settag{\PCT'}{\PCT}
-\settag{\vt'}{\PCT \sqcup \pt \sqcup \vt_2}
-\settag{\overline{\lt'}}{\overline{\lt}}
-\end{aligned}\]
+\begin{minipage}{0.49\textwidth}
+  \[\begin{aligned}
+  \truledef{\storet}
+  \assert{\PCT \sqcup \pt \sqcup \vt_2 \sqsubseteq }
+  \settag{\PCT'}{\PCT}
+  \settag{\vt'}{\PCT \sqcup \pt \sqcup \vt_2}
+  \settag{\overline{\lt'}}{\overline{\lt}}
+  \end{aligned}\]
+\end{minipage}
 
 Now things become trickier, because the program's control-flow itself can be tainted.
 This can occur in any of our semantics' steps that can produce different statements and continuations
 depending on the tained value. At that point, any change to the machine state constitutes
 an information flow. This is termed an {\em implicit flow}.
 
-To be more specific, consider a statement that contains an expression, \(\stmt(\expr)\),
-such that when filled in with a tainted value:
-%
-\[\sstate{\PCT}{\mem}{\stmt\val{v_1}{\mathit{taint} ~ \sigma}}{\cont} \longrightarrow
-\sstate{\PCT_1}{\mem_1}{\stmt_1}{\cont_1}\]
-%
-while
-%
-\[\sstate{\PCT}{\mem}{\stmt\val{v_1}{\mathit{taint} ~ \sigma}}{\cont} \longrightarrow
-\sstate{\PCT_2}{\mem_2}{\stmt_2}{\cont_2}\]
-%
-and where \(\stmt_1 \not = \stmt_2\) or \(\cont_1 \not = \cont_2\). Taking either step
-should taint the program state itself! We represent this as a taint on the PC Tag.
+Take, for example, the expression {\tt x = y ? (z=0) : (z=1);} where {\tt y} is
+tainted and {\tt z} is volatile. If {\tt y} is non-zero, then {\tt z} will be assigned 0,
+thus leaking one bit of information about the contents of {\tt y}. So, we need to remember
+while inside of whichever branch we take that the state depends on {\tt y}
+and restrict external writes accordingly.
+
+\Cref{app:context} discusses the building of expression contexts. For our purposes here,
+it is crucial to understand that when we construct a parenthetical expression, we can
+set the PC Tag locally within that context, so that our rules have different behavior.
+In this case, when we step from the condition expression to a parenthetical, we will
+mark it with a PC Tag that reflects the heightened security of its contents.
+
+\begin{minipage}[t]{0.59\textwidth}
+\[\begin{aligned}
+& \condition{(\val{1}{\vtaint})}{(\assign{(\var{x})}{(\val{0}{\N})})}{(\stmt_2)} \\
+& \longrightarrow \paren{(\assign{(\var{x})}{\val{0}{\N}})}{\type}{\gentag} \\
+& \longrightarrow \paren{(\assign{(\loc{4000}{\N})}{(\val{0}{\N}}))}{\type}{\gentag} \\
+& \longrightarrow \paren{(\val{0}{\N})}{\type}{\gentag} \\
+\end{aligned}\]
+\end{minipage}
+\begin{minipage}[t]{0.4\textwidth}
+\[\begin{aligned}
+\truledef{\exprsplitt}
+\settag{\gentag}{\PCT \sqcup \vt}
+\end{aligned}\]
+
+\memory{\(4000\)}{\(0\)}{\bf \color{red} fail}{\(\vol\)} \hspace{-3em} \(\leftarrow \storetname(\gentag, \N, \N, \left[\vol\right])\)
+\end{minipage}
+
+On the other hand, if {\tt z} is not volatile, then we end up with a value in our
+parentheses, and we will remove the parentheses and carry on with execution.
+We need to transfer the taint information from the context onto the value, and in
+some cases we might want to merge it with the global PC Tag. We do this with
+the \(\exprjointname\) tag rule.
+
+\[\begin{aligned}
+\truledef{\exprjoint}
+\settag{\PCT'}{\PCT}
+\settag{\vt'}{\gentag}
+\end{aligned}\]
+
+This principle applies to other expressions with control flow, namely {\em and} and {\em or}
+expressions that shortcut.
+
+Implicit flows become much more complex outside of expressions, when we have more
+complex control flow. This time the taint is carried on the PC Tag itself.
 When the PC Tag is tainted, all stores to memory and all updates to environments must
-also be tainted until all branches eventually rejoin.
+also be tainted until all branches eventually rejoin, which might be at any point.
 We term the point at which it is safe to remove taint a {\it join point}.
 In terms of the program's control-flow graph, the
 join point of a branch is its immediate post-dominator.
@@ -1180,9 +1224,11 @@ the point at which the chosen branch is complete, or the loop has ended.
 Such a simple example can be seen in \cref{fig:ifthenelse}; {\tt public1} must be
 tagged with the taint tag of {\tt secret}, while it is safe to tag {\tt public2}
 \(\N\), because that is after the join point, {\tt J}. The same goes for \cref{fig:while},
-because we are in a {\em termination-insensitive} setting \cite{}. This means that we
-consider only terminating runs. So, we can guarantee that the post-dominator \(J\)
-of the while loop is reached. [TODO: explain this more.]
+if we are in a {\em termination-insensitive} setting \cite{Askarov08:TINILeaks}.
+In termination-insensitive noninterference, we allow for the possibility that
+an observer could glean information by the termination or non-termination of
+the program. So, it is safe to assume that the post-dominator \(J\)
+of the while loop is reached.
 
 But in the presence of unrestricted go-to statements, a join point may not be
 local---and sometimes may not exist within the function, assuming that we have not
@@ -1195,9 +1241,8 @@ Luckily this can still be determined statically from a function's full
 control-flow graph. So, to implement the policy, we must first transform our program
 by adding labels at the join point of each conditional.
 Every statement that branches carries an optional label indicating its corresponding
-join point. If it doesn't have such
-a label, that indicates that there is no join point within the function---once the PC Tag is tainted,
-it must remain so until a return.
+join point, if it has one---a function with multiple returns might not, in which case
+once the PC Tag is tainted, it must remain so until a return.
 
 \begin{figure}
   \begin{subfigure}{0.5\textwidth}
@@ -1428,15 +1473,16 @@ used the unsanitized string! This creates the opportunity for an SQL injection a
 to this function could (presumably at the behest of an outside user) call it with {\tt field} of
 3 and {\tt name} of ``Bobby; drop table;''.
 
-In the second example, we particularly want to implement an {\it intransitive} SIF policy:
+In this example, we particularly want to implement an {\it intransitive} SIF policy:
 we wish to allow {\tt name} to influence the result of {\tt sanitize}, naturally, and the result
 of {\tt sanitize} to influence the value passed to {\tt sql\_query}, but we do not wish for
 {\tt name} to influence {\tt sql\_query} directly.
 
-\paragraph*{Tracking Data Sources and Sinks}
+\paragraph*{Data Sources and Sinks}
 
-The core of our SIF policies is that we identify parts of the state as {\em sources} and as {\em sinks}.
-A source \(\sigma\) can be an argument of a function, its return value, or a global.
+We generalize our SIF policy by identifying parts of the state as
+{\em sources} and as {\em sinks}.
+A source \(\sigma\) can be an argument of a function, its return value (as before), or a global.
 A sink \(\psi\) can be any of these, plus the set of heap objects allocated by a given function.
 We write them as follows:
 
@@ -1445,6 +1491,7 @@ We write them as follows:
   \sigma ::= & x & \textnormal{Global} \\
   & f(x) & \textnormal{Argument {\tt x} of {\tt f}} \\
   & f.ret & \textnormal{Return value of {\tt f}} \\
+  & \mathit{vol} & \textnormal{Volatile memory} \\
   \end{aligned}\]
 \end{minipage}
 \begin{minipage}{0.5\textwidth}
@@ -1453,19 +1500,21 @@ We write them as follows:
   & f(x) & \textnormal{Argument {\tt x} of {\tt f}} \\
   & f.ret & \textnormal{Return value of {\tt f}} \\
   & f.m & \textnormal{Memory owned by {\tt f}} \\
+  & \mathit{vol} & \textnormal{Volatile memory} \\
   \end{aligned}\]
 \end{minipage}
 
-We track the influence of a particular source, or its ``taint,'' through the system in the form
+We track the influence of a particular source through the system in the form
 of tags on values. Sinks that are in memory have their memory locations tagged accordingly. And
 the PC Tag at all times tracks a set of sources that are implicitly influencing the state, described
 further below.
 %
-\begin{align*}
-  \tau ::= & \mathit{vtaint} ~ \overline{\sigma} \\
+\[  \color{blue}
+\begin{aligned}
+  \tau ::= & \vtaint{\overline{\sigma}} \\
   & \mathit{sink} ~ \psi \\
   & \mathit{pctaint} ~ \overline{(L,\sigma)} \\
-\end{align*}
+\end{aligned}\]
 %
 
 
@@ -1564,18 +1613,15 @@ further below.
 %\textnormal{if } \sigma / \sigma' \in I \land \sigma' \rightsquigarrow \psi \in I \\
 %\end{cases}\]
 
-A value that is tagged \(\mathit{vtaint} ~ \overline{\sigma}\) has been influnced
-by all of the sources in \(\overline{\sigma}\). We also define a set of tags that indicate that a
-particular function argument or the memory location of an object represents a sink that is the
-target of one or more no-flow rules. If a sink \(\psi\) is tagged
-\(\mathit{forbid} ~ \overline{\sigma}\), then for all \(\sigma \in \overline{\sigma}\),
-\(\sigma \not \rightsquigarrow \psi\) must be in our IFPol. Finally, the PC Tag must carry additional
-information: when the PC Tag is tainted, it must keep a record of the scope of the taint, in the form
-of a label. We will explain below how this scope is computed.
+A value that is tagged \(\vtaint{\overline{\sigma}}\) has been influnced
+by all of the sources in \(\overline{\sigma}\). A location tagged \(\sink{\psi}\)
+belongs to \(\psi\). And as before, the PC Tag must carry a set of taints and
+the labels of their associated join points.
 %
-%
-We define four important operations on tags: {\em join} (\(t_1 \sqcup t_2\)), {\em bounded join}
-(\(t_1 [L \rightarrowtail t_2]\)), {\em minus} (\(t_1 - t_2\)), and {\em check} (\(t_1 \models t_2\)),
+We define the join and no-higher-than operations in this new setting, and to them
+we add {\em minus} (\(t_1 - t_2\))
+{\em join} (\(t_1 \sqcup t_2\)), {\em bounded join}
+(\(t_1 [L \rightarrowtail t_2]\)), , and {\em check} (\(t_1 \models t_2\)),
 all partial functions.
 %
 \[t_1 \sqcup t_2 \triangleq
@@ -1632,13 +1678,6 @@ The return-state rule executes after the call returns, inserting the result into
 context saved in the continuation. The program counter on return and the result's tag are
 set by the \(\mathbf{rettname}\) tag rule. Both are given in \cref{fig:callretsteps}.
 
-\begin{figure}
-  \callstep
-  \returnstep
-  \caption{Call and Return Steps}
-  \label{fig:callretsteps}
-\end{figure}
-  
 \begin{minipage}[t]{.49\textwidth}
   \[\begin{aligned}
   \truledef{\argt}
@@ -1725,20 +1764,6 @@ Loads and stores:
 \settag{\overline{\lt'}}{\overline{\lt}}
 \end{aligned}\]
 \end{minipage}
-
-\begin{figure}
-  \ifstepb
-  
-  \whiletruestep
-  \whilefalsestep
-  \whileskipcontinuestep
-  \whilebreakstep
-
-  \labelstep
-
-  \caption{Selected Conditional Steps}
-  \label{fig:conditionals}
-\end{figure}
 
 
 When we step into a conditional or loop, we record its join point on the PC Tag, associated with the sources
@@ -1890,7 +1915,7 @@ The parameter \(b\) marks the start of the global region.
   & \textnormal{where } (\mem,\genv) = \mathit{globals} ~ xs' ~ (b + |ty|) \\
 \end{cases}\]
 
-\section{Step rules}
+\section{Step Rules}
 \label{app:rules}
 
 \subsection{Sequencing rules}
@@ -1905,6 +1930,51 @@ The parameter \(b\) marks the start of the global region.
 
 \loops
 
+\subsection{Contexts}
+\label{app:contexts}
+
+Our expression semantics are contextual. A context \(\mathit{ctx}\) is a function from an
+expression to an expression and a tag. We identify a valid context using the \(\mathit{context}\)
+relation over a ``kind'' (left-hand or right-hand, \(\lh\) or \(\rh\)),
+two tags, and an expression. The first tag is that of the outermost context (ultimately,
+the PC Tag of the state), while the second is that of the innermost, which changes when
+we enter an parenthetical with an optional tag.
+
+\[\begin{aligned}
+\mathit{context} & ~ \PCT ~ \gentag ~ k ~ \ctx{\expr} ::= \\
+| & \mathit{context} ~ \PCT ~ \gentag ~ k ~ \lambda \expr.\expr & \\ % ctx_top
+| & \mathit{context} ~ \PCT ~ \gentag ~ \lh ~ \lambda \expr.\deref{\ctx{\expr}} &
+\textnormal{where } \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \ctx{\expr} \\ % ctx_deref
+| & \mathit{context} ~ \PCT ~ \gentag ~ \lh ~ \lambda \expr.\field{\ctx{\expr}}{id} &
+\textnormal{where } \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \ctx{\expr} \\ % ctx_field
+| & \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \lambda \expr.\valof{\ctx{\expr}} &
+\textnormal{where } \mathit{context} ~ \PCT ~ \gentag ~ \lh ~ \ctx{\expr} \\ % ctx_rvalof
+| & \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \lambda \expr.\addrof{\ctx{\expr}} & \textnormal{where } \mathit{context} ~ \PCT ~ \gentag ~ \lh ~ \ctx{\expr} \\ % ctx_addrof
+| & \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \lambda \expr.\unop{\odot}{\ctx{\expr}} & \textnormal{where } \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \ctx{\expr} \\ % ctx_unop
+| & \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \lambda \expr.\binop{\oplus}{\ctx{\expr_1}}{\expr_2} & \textnormal{where } \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \ctx{\expr_1} \\ % ctx_binop_left
+| & \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \lambda \expr.\binop{\oplus}{\expr_1}{\ctx{\expr_2}} & \textnormal{where } \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \ctx{\expr_2} \\ % ctx_binop_right
+| & \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \lambda \expr.\cast{\ctx{\expr}}{\type} & \textnormal{where } \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \ctx{\expr} \\ % ctx_cast
+| & \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \lambda \expr.\seqand{\ctx{\expr_1}}{\expr_2} & \textnormal{where } \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \ctx{\expr_1} \\ % ctx_seqand
+| & \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \lambda \expr.\seqor{\ctx{\expr_1}}{\expr_2} & \textnormal{where } \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \ctx{\expr_1} \\ % ctx_seqor
+| & \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \lambda \expr.\condition{\ctx{\expr_1}}{\expr_2}{\expr_3} & \textnormal{where } \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \ctx{\expr_1} \\ % ctx_condition
+| & \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \lambda \expr.\assign{\ctx{\expr_1}}{\expr_2} & \textnormal{where } \mathit{context} ~ \PCT ~ \gentag ~ \lh ~ \ctx{\expr_1} \\ % ctx_assign_left
+| & \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \lambda \expr.\assign{\expr_1}{\ctx{\expr_2}} & \textnormal{where } \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \ctx{\expr_2} \\ % ctx_assign_right
+| & \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \lambda \expr.\assignop{\oplus}{\ctx{\expr_1}}{\expr_2} & \textnormal{where } \mathit{context} ~ \PCT ~ \gentag ~ \lh ~ \ctx{\expr_1} \\ % ctx_assignop_left
+| & \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \lambda \expr.\assignop{\oplus}{\expr_1}{\ctx{\expr_2}} & \textnormal{where } \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \ctx{\expr_2} \\ % ctx_assignop_right
+| & \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \lambda \expr.\postinc{\oplus}{\ctx{\expr}} & \textnormal{where } \mathit{context} ~ \PCT ~ \gentag ~ \lh ~ \ctx{\expr} \\ % ctx_postinc
+| & \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \lambda \expr.\call{\ctx{\expr_1}}{\overline{\expr_2}} & \textnormal{where } \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \ctx{\expr_1} \\ % ctx_call_left
+| & \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \lambda \expr.\call{\expr_1}{\ctx{\overline{\expr_2}}} & \textnormal{where } \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \ctx{\expr} \textnormal{ for } \expr \in \overline{\expr_2} \\ % ctx_call_right
+% skipped builtins
+| & \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \lambda \expr.\comma{\ctx{\expr_1}}{\expr_2} & \textnormal{where } \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \ctx{\expr_1} \\ % ctx_comma
+| & \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \lambda \expr.\paren{\ctx{\expr}}{\type}{} & \textnormal{where } \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \ctx{\expr} \\ % ctx_paren
+| & \mathit{context} ~ \PCT ~ \gentag' ~ \rh ~ \lambda \expr.\paren{\ctx{\expr}}{\type}{\gentag} & \textnormal{where } \mathit{context} ~ \gentag ~ \gentag' ~ \rh ~ \ctx{\expr} \\ % ctx_paren
+\end{aligned}\]
+
+This means that in a tagged parenthetical, the tag entirely supersedes the current PC Tag. This means that
+any information from the PC Tag must carry over onto the tag on the parenthetical. For this reason,
+parentheticals only have tags as an intermediate form, to make sure that they capture the current
+PC Tag when they're constructed.
+
 \subsection{Expression Rules}
 
 \mallocstep
@@ -1916,8 +1986,7 @@ The parameter \(b\) marks the start of the global region.
 \unopstep
 \binopstep
 \callexprstep
-
-\conditional
+\conditionstep
 
 \subsection{Call and Return Rules}
 

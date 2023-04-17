@@ -514,9 +514,9 @@
 % step_callred
 \newcommand{\callexprstep}
 {\judgment{}
-  {\(\estate{\PCT}{\mem}{\ctx{\call{f'}{\overline{v @ \vt}}}}{ty}{\cont}
+  {\(\estate{\PCT}{\mem}{\ctx{\call{f'}{\overline{v @ \vt}}}{ty}}{\cont}
     \longrightarrow
-    \cstate{f'}{\PCT}{\mem}{\lenv}{v @ \vt}{\kcall{f}{\ctx}{\cont}}\)}}
+    \cstate{f'}{\PCT}{\mem}{\lenv}{v @ \vt}{\kcall{f}{\ctx{}}{\cont}}\)}}
 
 \newcommand{\sequencing}
 {
