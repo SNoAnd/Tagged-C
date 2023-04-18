@@ -8,6 +8,8 @@
 \newcommand{\nt}{\mathit{\color{blue} nt}}
 \newcommand{\PCT}{\mathcal{\color{blue} P}}
 
+\newcommand{\deftag}{\mathit{\color{blue} def}}
+
 %%% Policy Specific Tags %%%
 \newcommand{\N}{{\color{blue} N}}
 %% Memory Safety %%
@@ -44,16 +46,6 @@
 \newcommand{\storetargs}{\PCT, \pt, \vt_1, \vt_2, \overline{\lt}}
 \newcommand{\storetres}{\PCT',\vt',\overline{\lt}'}
 \newcommand{\storet}{\storetname(\storetargs)}
-
-\newcommand{\volloadtname}{\mathbf{VolLoadT}}
-\newcommand{\volloadtargs}{\PCT, \pt, \vt, \overline{\lt}}
-\newcommand{\volloadtres}{\vt'}
-\newcommand{\volloadt}{\volloadtname(\volloadtargs)}
-
-\newcommand{\volstoretname}{\mathbf{VolStoreT}}
-\newcommand{\volstoretargs}{\PCT, \pt, \vt_1, \vt_2, \overline{\lt}}
-\newcommand{\volstoretres}{\PCT',\vt',\overline{\lt}'}
-\newcommand{\volstoret}{\volstoretname(\volstoretargs)}
 
 \newcommand{\consttname}{\mathbf{ConstT}}
 \newcommand{\consttres}{\vt}
@@ -104,23 +96,23 @@
 
 \newcommand{\picasttname}{\mathbf{PICastT}}
 \newcommand{\picasttargs}{\PCT, \pt, \optional{\(\vt, \overline{\lt}\)}}
-\newcommand{\picasttres}{\PCT',\vt}
+\newcommand{\picasttres}{\vt}
 \newcommand{\picastt}{\picasttname(\picasttargs)}
 
 \newcommand{\ipcasttname}{\mathbf{IPCastT}}
 \newcommand{\ipcasttargs}{\PCT, \vt_1, \optional{\(\vt_2, \overline{\lt}\)}}
-\newcommand{\ipcasttres}{\PCT',\pt}
+\newcommand{\ipcasttres}{\pt}
 \newcommand{\ipcastt}{\ipcasttname(\ipcasttargs)}
 
 \newcommand{\ppcasttname}{\mathbf{PPCastT}}
 \newcommand{\ppcasttargs}{\PCT, \pt, \optional{\(\vt, \overline{\lt}\)}}
-\newcommand{\ppcasttres}{\PCT',\pt'}
-\newcommand{\ppcastt}{\picasttname(\picasttargs)}
+\newcommand{\ppcasttres}{\pt'}
+\newcommand{\ppcastt}{\ppcasttname(\ppcasttargs)}
 
 \newcommand{\iicasttname}{\mathbf{IICastT}}
 \newcommand{\iicasttargs}{\PCT, \vt_1}
-\newcommand{\iicasttres}{\PCT',\pt}
-\newcommand{\iicastt}{\ipcasttname(\ipcasttargs)}
+\newcommand{\iicasttres}{\pt}
+\newcommand{\iicastt}{\iicasttname(\iicasttargs)}
 
 \newcommand{\splittname}{\mathbf{SplitT}}
 \newcommand{\splittargs}{\PCT, \vt, \optional{\(L\)}}
@@ -129,7 +121,7 @@
 
 \newcommand{\exprsplittname}{\mathbf{ExprSplitT}}
 \newcommand{\exprsplittargs}{\PCT, \vt}
-\newcommand{\exprsplittres}{\PCT', \vt'}
+\newcommand{\exprsplittres}{\PCT'}
 \newcommand{\exprsplitt}{\exprsplittname(\exprsplittargs)}
 
 \newcommand{\exprjointname}{\mathbf{ExprJoinT}}
@@ -163,6 +155,11 @@
 \newcommand{\extcalltres}{\PCT', \vt'}
 \newcommand{\extcallt}{\extcalltname(\extcalltargs)}
 
+\newcommand{\fieldtname}{\mathbf{FieldT}}
+\newcommand{\fieldtargs}{\pt, id}
+\newcommand{\fieldtres}{\pt'}
+\newcommand{\fieldt}{\fieldtname(\fieldtargs)}
+
 %%%%%%%%%%%%%%%%%
 
 %%% Continuations, States, Values %%%
@@ -170,28 +167,28 @@
 \newcommand{\kemp}{\mathit{Kemp}}
 \newcommand{\kdo}[1]{\mathit{Kdo};~ #1}
 \newcommand{\kseq}[2]{\mathit{Kseq} ~ #1; ~ #2}
-\newcommand{\kif}[4]{\mathit{Kif}[#1 \mid #2] ~ \mathit{join} ~ #3; ~ #4}
-\newcommand{\kwhiletest}[4]{\mathit{KwhileTest}(#1) ~ \{ ~ #2 ~ \} ~ \mathit{join} ~ #3; ~ #4}
-\newcommand{\kwhileloop}[4]{\mathit{KwhileLoop}(#1) ~ \{ ~ #2 ~ \} ~ \mathit{join} ~ #3; ~ #4}
-\newcommand{\kdowhiletest}[4]{\mathit{KdoWhileTest}(#1) ~ \{ ~ #2 ~ \} ~ \mathit{join} ~ #3; ~ #4}
-\newcommand{\kdowhileloop}[4]{\mathit{KdoWhileLoop}(#1) ~ \{ ~ #2 ~ \} ~ \mathit{join} ~ #3; ~ #4}
-\newcommand{\kfor}[2]{\mathit{Kfor} ~ #1; ~ #2}
-\newcommand{\kforpost}[2]{\mathit{KforPost} ~ #1; ~ #2}
-\newcommand{\kcall}[3]{\mathit{Kcall} ~ #1 ~ #2 ~ #3}
-\newcommand{\kreturn}[1]{\mathit{Kreturn} ~ #1}
-\newcommand{\kswitcha}[2]{\mathit{Kswitch1} ~ #1 ~ #2}
-\newcommand{\kswitchb}[1]{\mathit{Kswitch2} ~ #1}
+\newcommand{\kif}[4]{\mathit{Kif} ~ #1 ~ #2 ~ #3; ~ #4}
+\newcommand{\kwhiletest}[4]{\mathit{KwhileTest} ~ #1 ~ #2 ~ #3; ~ #4}
+\newcommand{\kwhileloop}[4]{\mathit{KwhileLoop} ~ #1 ~ #2 ~ #3; ~ #4}
+\newcommand{\kdowhiletest}[4]{\mathit{KdoWhileTest} ~ #1 ~ #2 ~ #3; ~ #4}
+\newcommand{\kdowhileloop}[4]{\mathit{KdoWhileLoop} ~ #1 ~ #2 ~ #3; ~ #4}
+\newcommand{\kfor}[5]{\mathit{Kfor} ~ (#1,#2) ~ #3 ~ #4 ; ~ #5}
+\newcommand{\kforpost}[5]{\mathit{KforPost} ~ (#1,#2) ~ #3 ~ #4 ; ~ #5}
+\newcommand{\kcall}[3]{\mathit{Kcall} ~ #1 ~ #2; ~ #3}
+\newcommand{\kreturn}[1]{\mathit{Kreturn}; ~ #1}
+\newcommand{\kswitcha}[3]{\mathit{Kswitch1} ~ #1 ~ #2; ~ #3}
+\newcommand{\kswitchb}[1]{\mathit{Kswitch2}; ~ #1}
 
 \newcommand{\ctx}[1]{C \!\left[#1\right]}
 \newcommand{\rh}{\textnormal{\sc rh}}
 \newcommand{\lh}{\textnormal{\sc lh}}
 
-\newcommand{\sstate}[4]{\mathcal{S}\left(#2 \mid #3 \gg #4 @ #1\right)}
-\newcommand{\estate}[4]{\mathcal{E}\left(#2 \mid #3 \gg #4 @ #1\right)}
-\newcommand{\cstate}[5]{\mathcal{C}\left(#2 \mid #3(#4) \gg #5 @ #1\right)}
-\newcommand{\rstate}[4]{\mathcal{R}\left(#2 \mid #3 \gg #4 @ #1\right)}
+\newcommand{\sstate}[4]{\mathcal{S}\left(#2 \mid #3 \gg #4 {\color{blue} @ #1}\right)}
+\newcommand{\estate}[4]{\mathcal{E}\left(#2 \mid #3 \gg #4 {\color{blue} @ #1}\right)}
+\newcommand{\cstate}[5]{\mathcal{C}\left(#2 \mid #3(#4) \gg #5 {\color{blue} @ #1}\right)}
+\newcommand{\rstate}[4]{\mathcal{R}\left(#2 \mid #3 \gg #4 {\color{blue} @ #1}\right)}
 \newcommand{\fstate}[1]{\mathcal{F}\left(#1\right)}
-\newcommand{\sstatefun}[5]{\mathcal{S}\left(#1, #3 \mid #4 \gg #5 @ #2\right)}
+\newcommand{\sstatefun}[5]{\mathcal{S}\left(#1, #3 \mid #4 \gg #5 {\color{blue} @ #2}\right)}
 
 \newcommand{\mem}{m}
 \newcommand{\genv}{\mathit{ge}}
@@ -241,7 +238,7 @@
 \newcommand{\sbreak}{\mathtt{Sbreak}}
 \newcommand{\scontinue}{\mathtt{Scontinue}}
 \newcommand{\sreturn}[1]{\mathtt{Sreturn} ~ #1}
-\newcommand{\sswitch}[2]{\mathtt{Sswitch} ~ #1 ~ \{ ~ #2 ~ \}}
+\newcommand{\sswitch}[3]{\mathtt{Sswitch} ~ #1 ~ \{ ~ #2 ~ \} ~ \mathtt{join} ~ #3}
 \newcommand{\slabel}[2]{\mathtt{Slabel} ~ #1: ~ #2}
 \newcommand{\sgoto}[1]{\mathtt{Sgoto} ~ #1}
 

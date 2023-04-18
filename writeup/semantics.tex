@@ -1,7 +1,7 @@
 % step_do_1
 \newcommand{\dostepa}
 {\judgment{}
-  {\(\defsstate{\expr;} \longrightarrow
+  {\(\defsstate{\sdo{\expr}} \longrightarrow
     \estate{\PCT}{\mem}{\expr}{\kdo{\cont}}\)}
 }
 
@@ -15,8 +15,8 @@
 % step_seq
 \newcommand{\seqstep}
 {\judgment{}
-  {\(\defsstate{\stmt_1;\stmt_2} \longrightarrow
-    \sstate{\PCT}{\mem}{\stmt_1;}{\kseq{\stmt_2}{\cont}}\)}
+  {\(\defsstate{\sseq{\stmt_1}{\stmt_2}} \longrightarrow
+    \sstate{\PCT}{\mem}{\stmt_1}{\kseq{\stmt_2}{\cont}}\)}
 }
 
 % step_skip_seq
@@ -71,9 +71,10 @@
 
 % step_while_false
 \newcommand{\whilefalsestep}
-{\judgmenttwo
+{\judgmentthree
   {\(\mathit{boolof}(v) = \mathbf{f}\)}
   {\(\cont = \kwhiletest{\expr}{\stmt}{L}{\cont'}\)}
+  {\(\color{blue} \splittres \leftarrow \splitt \)}
   {\(\estate{\PCT}{\mem}{\val{v}{\vt}}{\cont}
     \longrightarrow
     \sstate{\PCT'}{\mem}{\sskip}{\cont'}\)}
@@ -81,10 +82,11 @@
 
 % step_while_true
 \newcommand{\whiletruestep}
-{\judgmentthree
+{\judgmenttwobr
   {\(\mathit{boolof}(v) = \mathbf{t}\)}
   {\(\cont_1 = \kwhiletest{\expr}{\stmt}{L}{\cont}\)}
   {\(\cont_2 = \kwhileloop{\expr}{\stmt}{L}{\cont}\)}
+  {\(\color{blue} \splittres \leftarrow \splitt \)}  
   {\(\estate{\PCT}{\mem}{\val{v}{\vt}}{\cont_1}
     \longrightarrow
     \sstate{\PCT'}{\mem}{\stmt}{\cont_2}\)}
@@ -105,10 +107,10 @@
 
 % step_dowhile
 \newcommand{\dowhilestep}
-{\judgmenttwo{\(\stmt = \sdowhile{\expr}{\stmt}{L}\)}
-  {\(\cont' = \kdowhileloop{\expr}{\stmt}{L}{\cont}\)}
+{\judgmenttwo{\(\stmt = \sdowhile{\expr}{\stmt'}{L}\)}
+  {\(\cont' = \kdowhileloop{\expr}{\stmt'}{L}{\cont}\)}
   {\(\defsstate{\stmt} \longrightarrow
-    \sstate{\PCT}{\mem}{\stmt}{\cont'}\)}
+    \sstate{\PCT}{\mem}{\stmt'}{\cont'}\)}
 }
 
 % step_skip_or_continue_dowhile
@@ -121,9 +123,10 @@
 
 % step_dowhile_false
 \newcommand{\dowhilefalsestep}
-{\judgmenttwo
+{\judgmentthree
   {\(\mathit{boolof}(v) = \mathbf{f}\)}
   {\(\cont = \kdowhiletest{\expr}{\stmt}{L}{\cont'}\)}
+  {\(\color{blue} \splittres \leftarrow \splitt\)}
   {\(\sstate{\PCT}{\mem}{\val{v}{\vt}}{\cont}
     \longrightarrow
     \sstate{\PCT'}{\mem}{\sskip}{\cont'}\)}
@@ -131,9 +134,10 @@
 
 % step_dowhile_true
 \newcommand{\dowhiletruestep}
-{\judgmenttwo
+{\judgmentthree
   {\(\mathit{boolof}(v) = \mathbf{t}\)}
   {\(\cont = \kdowhiletest{\expr}{\stmt}{L}{\cont'}\)}
+  {\(\color{blue} \splittres \leftarrow \splitt\)}
   {\(\sstate{\PCT}{\mem}{\val{v}{\vt}}{\cont}
     \longrightarrow
     \sstate{\PCT'}{\mem}{\sdowhile{\expr}{\stmt}{L}}{\cont'}\)}
@@ -158,47 +162,49 @@
 \newcommand{\forstep}
 {\judgment{\(\stmt = \sfor{\sskip}{\expr}{\stmt_2}{\stmt_3}{L}\)}
   {\(\defsstate{\stmt} \longrightarrow
-  \estate{\PCT}{\mem}{\expr}{\kfor{\stmt}{\cont}}\)}
+  \estate{\PCT}{\mem}{\expr}{\kfor{\expr}{\stmt_2}{\stmt_3}{L}{\cont}}\)}
 }
 
 % step_for_false
 \newcommand{\forfalsestep}
-{\judgment{\(\mathit{boolof}(v) = \mathbf{f}\)}
-  {\(\estate{\PCT}{\mem}{\val{v}{\vt}}{\kfor{\stmt}{\cont}} \longrightarrow
+{\judgmenttwo{\(\mathit{boolof}(v) = \mathbf{f}\)}
+  {\(\color{blue} \splittres \leftarrow \splitt\)}
+  {\(\estate{\PCT}{\mem}{\val{v}{\vt}}{\kfor{\expr}{\stmt_2}{\stmt_3}{L}{\cont}} \longrightarrow
     \sstate{\PCT}{\mem}{\sskip}{\cont}\)}
 }
 
 % step_for_true
 \newcommand{\fortruestep}
-{\judgmenttwo{\(\stmt = \sfor{\sskip}{\expr}{\stmt_2}{\stmt_3}{L}\)}
-             {\(\mathit{boolof}(v) = \mathbf{t}\)}
-  {\(\estate{\PCT}{\mem}{\val{v}{\vt}}{\kfor{\stmt}{\cont}} \longrightarrow
-      \sstate{\PCT}{\mem}{\stmt_3}{\kfor{\stmt}{\cont}}\)}
+{\judgmentthree{\(\cont = \kfor{\expr}{\stmt_2}{\stmt_3}{L}{\cont'}\)}
+  {\(\mathit{boolof}(v) = \mathbf{t}\)}
+  {\(\color{blue} \splittres \leftarrow \splitt\)}
+  {\(\estate{\PCT}{\mem}{\val{v}{\vt}}{\cont} \longrightarrow
+      \sstate{\PCT}{\mem}{\stmt_3}{\cont}\)}
 }
 
 % step_skip_or_continue
 \newcommand{\forskiporcontinuestep}
-{\judgmenttwo{\(\stmt = \sfor{\sskip}{\expr}{\stmt_1}{\stmt_2}{L}\)}
+{\judgmenttwo{\(\cont = \kfor{\expr}{\stmt_2}{\stmt_3}{L}\)}
   {\(\stmt = \sskip \lor \stmt = \scontinue\)}
-  {\(\sstate{\PCT}{\mem}{\stmt}{\kfor{\stmt}{\cont}}
+  {\(\sstate{\PCT}{\mem}{\stmt}{\cont}
     \longrightarrow
-    \sstate{\PCT}{\mem}{\stmt_1}{\kforpost{\sfor{\sskip}{\expr}{\stmt_1}{\stmt_2}{L}}{\cont}}\)}
+    \sstate{\PCT}{\mem}{\sfor{\sskip}{\expr}{\stmt_2}{\stmt_3}{L}}{\kforpost{\expr}{\stmt_2}{\stmt_3}{L}{\cont}}\)}
 }
 
 % step_break_for3
 \newcommand{\forbreakstep}
-{\judgment{\(\stmt = \sfor{\sskip}{\expr}{\stmt_1}{\stmt_2}{L}\)}
-  {\(\sstate{\PCT}{\mem}{\sbreak}{\kfor{\stmt}{\cont}}
+{\judgment{\(\cont = \kfor{\expr}{\stmt_1}{\stmt_2}{L}{\cont'}\)}
+  {\(\sstate{\PCT}{\mem}{\sbreak}{\cont}
     \longrightarrow
-    \sstate{\PCT}{\mem}{\sskip}{\cont}\)}
+    \sstate{\PCT}{\mem}{\sskip}{\cont'}\)}
 }
 
 % step_skip_for4
 \newcommand{\forskippoststep}
-{\judgment{\(\stmt = \sfor{\sskip}{\expr}{\stmt_1}{\stmt_2}{L}\)}
-  {\(\sstate{\PCT}{\mem}{\sskip}{\kforpost{\stmt}{\cont}}
+{\judgment{\(\cont = \kforpost{\expr}{\stmt_2}{\stmt_3}{L}{\cont'}\)}
+  {\(\defsstate{\sskip}
     \longrightarrow
-    \defsstate{\stmt}\)}
+    \defsstate{\sfor{\sskip}{\expr}{\stmt_2}{\stmt_3}{L}}\)}
 }
 
 % step_return_0
@@ -220,7 +226,7 @@
 % step_return_2
 \newcommand{\retvalstep}
 {\judgment{\(\mathit{dealloc} ~ \mem ~ \PCT = (\PCT',\mem')\)}
-  {\(\estate{\PCT}{\mem}{\val{v}{\vt}}{\kreturn{\cont}}
+  {\(\estate{\PCT}{\mem}{\sreturn{\val{v}{\vt}}}{\kreturn{\cont}}
     \longrightarrow
     \rstate{\PCT}{\mem}{\val{v}{\vt}}{\cont}\)}
 }
@@ -236,17 +242,18 @@
 % step_switch
 \newcommand{\switchstep}
 {\judgment{}
-  {\(\sstate{\PCT}{\mem}{\sswitch{\expr}{\overline{(L,\stmt)}}}{\cont}
+  {\(\sstate{\PCT}{\mem}{\sswitch{\expr}{\overline{(v,\stmt)}}{L}}{\cont}
     \longrightarrow
-    \estate{\PCT}{\mem}{\expr}{\kswitcha{\overline{(L,\stmt)}}{\cont}}\)}
+    \estate{\PCT}{\mem}{\expr}{\kswitcha{\overline{(v,\stmt)}}{L}{\cont}}\)}
 }
 
 % step_expr_switch
 \newcommand{\switchvalstep}
-{\judgment{\(\mathit{select} ~ v ~ \overline{(L,\stmt)} = \stmt\)}
-  {\(\estate{\PCT}{\mem}{\val{v}{\vt}}{\kswitcha{\overline{(L,\stmt)}}{\cont}}
+{\judgmenttwo{\(\mathit{select} ~ v ~ \overline{(v,\stmt)} = \stmt\)}
+  {\(\color{blue} \splittres \leftarrow \splitt\)}
+  {\(\estate{\PCT}{\mem}{\val{v}{\vt}}{\kswitcha{\overline{(v,\stmt)}}{L}{\cont}}
     \longrightarrow
-    \sstate{\PCT}{\mem}{\stmt}{\kswitchb{\cont}}\)}
+    \sstate{\PCT'}{\mem}{\stmt}{\kswitchb{\cont}}\)}
 }
   
 % step_skip_break_switch
@@ -268,10 +275,10 @@
 % step_label
 \newcommand{\labelstep}
 {\judgment
-  {\(\labeltres \leftarrow \labelt\)}
+  {\(\color{blue} \labeltres \leftarrow \labelt\)}
   {\(\sstate{\PCT}{\mem}
-    {L: \stmt}{\cont} \longrightarrow
-    \sstate{\PCT'}{\mem}{\genv}{\lenv'}{\stmt}{\cont}\)}
+    {\slabel{L}{\stmt}}{\cont} \longrightarrow
+    \sstate{\PCT'}{\mem}{\stmt}{\cont}\)}
 }
 
 % step_goto
@@ -309,146 +316,152 @@
   {\(\rstate{\PCT}{\mem}{\val{v}{\vt}}{\cont} \longrightarrow
     \estate{\PCT'}{\mem}{\mathit{ctx}[\val{v}{\vt'}]}{\cont'}\)}}
 
-% step_lred + red_var_local
-\newcommand{\varstep}
-{\judgmentthree{\(\lenv[id] = (l,\_,\pt,ty)\)}
-  {\(\trule{\vartres}{\vart}\)}
-  {\(\mathit{context} ~ \PCT ~ \gentag ~ k ~ \ctx{\expr}\)}
-  {\(\defestate{\ctx{\var{id}}}
-    \longrightarrow
-    \defestate{\ctx{\loc{l}{\pt}}}\)}}
+% lred_var_local
+\newcommand{\varlocalstep}
+{\judgment{\(\lenv[id] = (l,\_,\pt,ty)\)}
+  {\(\var{id}
+    \Rightarrow_\lh
+    \loc{l}{\pt}\)}}
 
-% step_lred + red_var_global
+% lred_var_global
+\newcommand{\varglobalstep}
+{\judgmenttwo{\(\lenv[id] = \bot\)}
+  {\(\genv[id] = (l,\_,\pt,ty)\)}
+  {\(\var{id}
+    \Rightarrow_\lh
+    \loc{l}{\pt}\)}}
 
-% step_lred + red_deref
+% rred_deref
 \newcommand{\derefstep}
 {\judgment{}
-  {\(\defestate{\ctx{\deref{\val{v}{\vt}}}}
-    \longrightarrow
-    \defestate{\ctx{\loc{\mathit{to\_ptr} ~ v}}}\)}}
+  {\((\PCT,\mem,\deref{(\val{v}{\vt})})
+    \Rightarrow_\rh
+    (\PCT,\mem,\loc{(\mathit{to\_ptr} ~ v)}{\vt})\)}}
 
-% step_lred + red_field_struct of red_field_union
+% lred_field_struct or lred_field_union
 \newcommand{\fieldstructstep}
-{\judgment{\(\type = \mathit{TStruct} ~ id \lor \type = \mathit{TUnion} ~ id\}\)}
+{\judgmentthree{\(\type = \mathit{TStruct} ~ id \lor \type = \mathit{TUnion} ~ id\)}
   {\(\mathit{offset} ~ id ~ fld = \delta\)}
-  {\(\defestate{\ctx{\field{\val{p}{\pt}:\type}{fld}}}
-    \longrightarrow
-    \defestate{\ctx{\loc{p+\delta}}}\)}
+  {\(\trule{\fieldtres}{\fieldt}\)}
+  {\(\field{(\val{p}{\pt}:\type)}{fld})
+    \Rightarrow_\lh
+    \loc{(p+\delta)}{\pt'}\)}
 }
 
-% step_rred + red_rval_of
+% rred_rval_of
 \newcommand{\valofstep}
 {\judgmenttwo{\(\mem[l]_{|ty|} = v@\vt@\overline{\lt}\)}
-            {\(\trule{\loadtres}{\loadt}\)}
-            {\(\estate{\PCT}{\mem}
-              {\ctx{\valof{\loc{l}{\pt}}}}{\cont}
-              \longrightarrow
-              \estate{\PCT}{\mem}
-                     {\ctx{\val{v}{\vt'}}}{\cont}\)}}
+  {\(\trule{\loadtres}{\loadt}\)}
+  {\((\PCT, \mem, \valof{(\loc{l}{\pt})}:\type)
+    \Rightarrow_\rh
+    (\PCT, \mem, \val{v}{\vt'})\)}}
 
-% step_rred + red_addrof
+% rred_addrof
 \newcommand{\addrofstep}
 {\judgment{}
-  {\(\defestate{\ctx{\addr{\loc{p}{\pt}}}}
-    \longrightarrow
-  \defestate{\ctx{\val{p}{\pt}}}\)}
-}
+  {\((\PCT,\mem,\addrof{(\loc{p}{\pt})})
+    \Rightarrow_\rh
+    (\PCT,\mem,\val{p}{\pt})\)}}
   
-% step_rred + red_unop
+% rred_unop
 \newcommand{\unopstep}
 {\judgmenttwo{\(\left\langle \odot \right\rangle v = v'\)}
-            {\(\vt' = \unopt{\PCT}{\vt}\)}
-            {\(\defestate{\ctx{\unop{\odot}{\val{v}{\vt}}}}
-              \longrightarrow
-              \defestate{\ctx{\val{v'}{\vt'}}}\)}}
+            {\(\trule{\unoptres}{\unopt}\)}
+            {\((\PCT,\mem,\unop{\odot}{(\val{v}{\vt})})
+              \Rightarrow_\rh
+              (\PCT,\mem, \val{v'}{\vt'})\)}}
 
-% step_rred + red_binop
+% rred_binop
 \newcommand{\binopstep}
-{\judgmenttwo{\(v_1 \left\langle \oplus \right\rangle v_2 = v'\)}
-            {\(\vt' = \binopt{\PCT}{\vt_1}{\vt_2}\)}
-            {\(\defestate{\ctx{\binop{\oplus}{\val{v_1}{\vt_1}}{\val{v_2}{\vt_2}}}}
-              \longrightarrow
-              \defestate{\ctx{\val{v'}{\vt'}}}\)}}
+{\judgmenttwobrlong{\(v_1 \left\langle \oplus \right\rangle v_2 = v'\)}
+  {\(\trule{\binoptres}{\binopt}\)}
+  {\(\expr = \binop{\oplus}{(\val{v_1}{\vt_1})}{(\val{v_2}{\vt_2})}\)}
+  {\((\PCT,\mem,\expr)
+    \Rightarrow_\rh
+    (\PCT,\mem,\val{v'}{\vt'})\)}}
 
-% step_rred + red_cast
+% rred_cast
 \newcommand{\iicaststep}
 {\judgmentthree{\(\neg \mathit{isptr}(\type_1)\)}
   {\(\neg \mathit{isptr}(\type_2)\)}
-  {\(\vt' \leftarrow \iicastt\)}
-  {\(\defestate{\cast{\val{v}{\vt}}{\type_1}}
-    \longrightarrow
-    \defestate{\cast{\val{v}{\vt'}}{\type_2}}\)}}
+  {\(\trule{\iicasttres}{\iicastt}\)}
+  {\((\PCT,\mem,\cast{(\val{v}{\vt}:\type_1)}{\type_2})
+    \Rightarrow_\rh
+    (\PCT,\mem,\val{v}{\vt'}:\type_2)\)}}
   
 % step_rred + red_ipcast
 \newcommand{\ipcaststep}
-{\judgmentthree{\(\neg \mathit{isptr}(\type_1)\)}
-  {\(\mathit{isptr}(\type_2)\)}
-  {\(\vt' \leftarrow \ipcastt\)}
-  {\(\defestate{\cast{\val{v}{\vt}}{\type_1}}
+{\judgmenttwobr{\(\neg \mathit{isptr}(\type_1)\)}
+  {\(\type_2 = \mathit{ptr} ~ \type_2'\)}
+  {\(\mem[v]_{|\type_2'|} = \_@\vt_2@\overline{\lt}\)}
+  {\(\trule{\ipcasttres}{\ipcastt}\)}
+  {\(\defestate{\cast{(\val{v}{\vt_1}:\type_1)}{\type_2}}
     \longrightarrow
-    \defestate{\cast{\val{v}{\vt'}}{\type_2}}\)}}
+    \defestate{\val{v}{\pt}:\type_2}\)}}
 
 % step_rred + red_picast
 \newcommand{\picaststep}
-{\judgmentthree{\(\mathit{isptr}(\type_1)\)}
+{\judgmenttwobr{\(\type_1 = \mathit{ptr} ~ \type_1'\)}
   {\(\neg \mathit{isptr}(\type_2)\)}
-  {\(\vt' \leftarrow \picastt\)}
-  {\(\defestate{\cast{\val{v}{\vt}}{\type_1}}
+  {\(\mem[v]_{|\type_1'|} = \_@\vt@\overline{\lt}\)}
+  {\(\trule{\picasttres}{\picastt}\)}
+  {\(\defestate{\cast{(\val{v}{\pt}:\type_1)}{\type_2}}
     \longrightarrow
-    \defestate{\cast{\val{v}{\vt'}}{\type_2}}\)}}
+    \defestate{\val{v}{\vt'}:\type_2}\)}}
 
 % step_rred + red_ppcast
 \newcommand{\ppcaststep}
-{\judgmentthree{\(\mathit{isptr}(\type_1)\)}
-  {\(\mathit{isptr}(\type_2)\)}
-  {\(\vt' \leftarrow \ppcastt\)}
-  {\(\defestate{\cast{\val{v}{\vt}}{\type_1}}
+{\judgmenttwobr{\(\type_1 = \mathit{ptr} ~ \type_1'\)}
+  {\(\type_2 = \mathit{ptr} ~ \type_2'\)}
+  {\(\mem[v]_{|\type_1'|} = \mem[v]_{|\type_2'|} = \_@\vt@\overline{\lt}\)}
+  {\(\trule{\ppcasttres}{\ppcastt}\)}
+  {\(\defestate{\cast{(\val{v}{\pt}:\type_1)}{\type_2}}
     \longrightarrow
-    \defestate{\cast{\val{v}{\vt'}}{\type_2}}\)}}
+    \defestate{\val{v}{\pt'}:\type_2}\)}}
 
 % step_rred + red_seqand_true
 \newcommand{\seqandtruestep}
 {\judgmenttwo{\(\mathit{boolof}(v) = \mathbf{t}\)}
-  {\(\gentag', \vt' \leftarrow \exprsplitt{\gentag}{\vt}\)}
-  {\(\defestate{\ctx{\seqand{\val{v}{\vt}}{\expr}}{\gentag}}
+  {\(\trule{\exprsplittres}{\exprsplitt}\)}
+  {\(\defestate{\ctx{\seqand{(\val{v}{\vt})}{\expr}}}
   \longrightarrow
-  \estate{\PCT'}{\mem}{\ctx{\val{\eparen{\expr}{\mathit{Tbool}}{\vt'}}}{}{\cont}}\)}}
+  \defestate{\ctx{\paren{\expr}{\mathit{Tbool}}{\PCT'}}}\)}}
 
 % step_rred + red_seqand_false
 \newcommand{\seqandfalsestep}
-{\judgmentthree{\(\mathit{boolof}(v) = \mathbf{f}\)}
-  {\(\gentag', \vt' \leftarrow \exprsplitt(\gentag, \vt)\)}
-  {\(\defestate{\ctx{\seqand{\val{v}{\vt}}{\expr}}}
+{\judgmenttwo{\(\mathit{boolof}(v) = \mathbf{f}\)}
+  {\(\trule{\exprsplittres}{\exprsplitt}\)}
+  {\(\defestate{\ctx{\seqand{(\val{v}{\vt})}{\expr}}}
     \longrightarrow
-    \defestate{\ctx{\val{0}{\vt'}}}\)}}
+    \defestate{\ctx{\paren{(\val{0}{\vt'})}{\mathit{Tbool}}{\PCT'}}}\)}}
 
 % step_rred + red_seqor_true
 \newcommand{\seqortruestep}
-{\judgmentthree{\(\mathit{boolof}(v) = \mathbf{t}\)}
-  {\(\gentag', \vt' \leftarrow \exprsplitt(\gentag, \vt)\)}
-  {\(\defestate{\ctx{\seqand{\val{v}{\vt}}{\expr}}}
+{\judgmenttwo{\(\mathit{boolof}(v) = \mathbf{t}\)}
+  {\(\trule{\exprsplittres}{\exprsplitt}\)}
+  {\(\defestate{\ctx{\seqor{(\val{v}{\vt})}{\expr}}}
     \longrightarrow
-    \defestate{\ctx{\val{1}{\vt'}}}\)}}
+    \defestate{\ctx{\paren{(\val{1}{\vt'})}{\mathit{Tbool}}{\PCT'}}}\)}}
 
 % step_rred + red_seqor_false
 \newcommand{\seqorfalsestep}
 {\judgmenttwo{\(\mathit{boolof}(v) = \mathbf{f}\)}
-  {\(\gentag', \vt' \leftarrow \exprsplitt{\gentag}{\vt}\)}
-  {\(\defestate{\ctx{\seqand{\val{v}{\vt}}{\expr}}{\gentag}}
+  {\(\trule{\exprsplittres}{\exprsplitt}\)}
+  {\(\defestate{\ctx{\seqor{(\val{v}{\vt})}{\expr}}}
   \longrightarrow
-  \estate{\PCT'}{\mem}{\ctx{\val{\eparen{\expr}{\mathit{Tbool}}{\vt'}}}{}{\cont}}\)}}
+  \defestate{\ctx{\paren{\expr}{\mathit{Tbool}}{\PCT'}}}\)}}
 
 % step_rred + red_condition
 \newcommand{\conditionstep}
-{\judgment{\(\expr' =
+{\judgmenttwo{\(\expr' =
     \begin{cases}
       \expr_1 & \textnormal{if } \mathit{boolof}(v) = \mathbf{t} \\
       \expr_2 & \textnormal{if } \mathit{boolof}(v) = \mathbf{f} \\
     \end{cases}\)}
-  {\(\gentag' \leftarrow \exprsplitt\)}
-  {\(\defestate{\ctx{\condition{\val{v}{\vt}}{\expr_1}{\expr_2}}{\gentag}}
+  {\(\trule{\exprsplittres}{\exprsplitt}\)}
+  {\(\defestate{\ctx{\condition{(\val{v}{\vt})}{\expr_1}{\expr_2}}}
     \longrightarrow
-  \defestate{\ctx{\paren{\expr'}{\gentag'}}}{\gentag}\)}}
+  \defestate{\ctx{\paren{\expr'}{}{\PCT'}}}\)}}
 
 % step_rred + red_sizeof
 
@@ -457,37 +470,36 @@
 % step_rred + red_assign
 \newcommand{\assignstep}
 {\judgmenttwobrlong{\(\mem[l]_{|ty|} = v_1@\vt_1@\overline{\lt}\)}
-                  {\(\mem' = \mem[l \mapsto v_2@\vt' @\overline{\lt}']\)}
-                  {\(\trule{\storetres}{\storet}\)}
-                  {\(\defestate
-                    {\ctx{\assign{\loc{l}{\pt}}{\val{v_2}{\vt_2}}}}
-                    \longrightarrow
-                    \estate{\PCT'}{\mem'}
-                           {\ctx{\val{v_2}{\vt_2}}}{\cont}\)}}
+  {\(\mem' = \mem[l \mapsto v_2@\vt' @\overline{\lt}']\)}
+  {\(\trule{\storetres}{\storet}\)}
+  {\(\defestate
+    {\ctx{\assign{(\loc{l}{\pt})}{(\val{v_2}{\vt_2})}}}
+    \longrightarrow
+    \estate{\PCT'}{\mem'}
+           {\ctx{\val{v_2}{\vt_2}}}{\cont}\)}}
 
 % step_rred + red_assignop
 \newcommand{\assignopstep}
 {\judgmenttwobr{\(\mem[l]_{|ty|} = v_1@\vt @\overline{\lt}\)}
   {\(\oplus \in \{+,-,*,/,\%,<<,>>,\&,^\wedge,|\}\)}
   {\(\trule{\loadtres}{\loadt}\)}
-  {\(\expr = \assign{\loc{l}{\pt}}
-    {\binop{\oplus}
-      {\val{v_1}{\vt'}}
-      {\val{v_2}{\vt_2}}}\)}
+  {\(\expr = \assign{(\loc{l}{\pt})}
+    {(\binop{\oplus}
+      {(\val{v_1}{\vt'})}
+      {(\val{v_2}{\vt_2})})}\)}
   {\(\defestate
-    {\ctx{\assignop{\oplus}{\loc{l}{\pt}}
-        {\val{v_2}{\vt_2}}}}
+    {\ctx{\assignop{\oplus}{(\loc{l}{\pt})}
+        {(\val{v_2}{\vt_2})}}}
     \longrightarrow
     \defestate
         {\ctx{\expr}}\)}}
 
 % step_rred + red_postincr
 \newcommand{\postincstep}
-{\judgmentthreebrtwo{\(\mem[l] = v@\vt @\overline{\lt}\)}
+{\judgmenttwobr{\(\mem[l] = v@\vt @\overline{\lt}\)}
   {\(\oplus \in \{+,-\}\)}
   {\(\trule{\loadtres}{\loadt}\)}
-  {\(\trule{\consttres}{\constt}\)}
-  {\(\expr = \comma{\assign{\loc{l}{\pt}}{\binop{\oplus}{\val{v}{\vt'}}{1@\constt}}}
+  {\(\expr = \comma{\assign{\loc{l}{\pt}}{\binop{\oplus}{\val{v}{\vt'}}{1@\deftag}}}
     {\val{v}{\vt'}} \)}
   {\(\defestate
     {\ctx{\postinc{\oplus}
@@ -527,14 +539,15 @@
   \seqskipstep
   \seqcontinuestep
   \seqbreakstep
-  \retvalstep
   \labelstep
 }
 
 \newcommand{\conditionals}
 {
+
   \ifstepa
   \ifstepb
+  \vspace{2\belowdisplayskip}
   \switchstep
   \switchvalstep
   \switchskiporbreakstep
@@ -573,6 +586,34 @@
 \newcommand{\loops}
 {
   \while
+  \vspace{2\belowdisplayskip}
   \dowhile
+  \vspace{2\belowdisplayskip}
   \forloop
+}
+
+\newcommand{\expressions}
+{
+  \varlocalstep
+  \varglobalstep
+  \derefstep
+  \fieldstructstep
+  \valofstep
+  \addrofstep
+  \unopstep
+  \binopstep
+  \iicaststep
+  \picaststep
+  \ipcaststep
+  \ppcaststep
+  \seqandtruestep
+  \seqandfalsestep
+  \seqortruestep
+  \seqorfalsestep
+  \conditionstep
+  \assignstep
+  \assignopstep
+  \postincstep
+  \commastep
+  \parenstep
 }

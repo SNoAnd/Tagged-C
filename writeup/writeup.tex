@@ -1936,55 +1936,57 @@ The parameter \(b\) marks the start of the global region.
 Our expression semantics are contextual. A context \(\mathit{ctx}\) is a function from an
 expression to an expression and a tag. We identify a valid context using the \(\mathit{context}\)
 relation over a ``kind'' (left-hand or right-hand, \(\lh\) or \(\rh\)),
-two tags, and an expression. The first tag is that of the outermost context (ultimately,
-the PC Tag of the state), while the second is that of the innermost, which changes when
-we enter an parenthetical with an optional tag.
+and an expression.
 
 \[\begin{aligned}
-\mathit{context} & ~ \PCT ~ \gentag ~ k ~ \ctx{\expr} ::= \\
-| & \mathit{context} ~ \PCT ~ \gentag ~ k ~ \lambda \expr.\expr & \\ % ctx_top
-| & \mathit{context} ~ \PCT ~ \gentag ~ \lh ~ \lambda \expr.\deref{\ctx{\expr}} &
-\textnormal{where } \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \ctx{\expr} \\ % ctx_deref
-| & \mathit{context} ~ \PCT ~ \gentag ~ \lh ~ \lambda \expr.\field{\ctx{\expr}}{id} &
-\textnormal{where } \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \ctx{\expr} \\ % ctx_field
-| & \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \lambda \expr.\valof{\ctx{\expr}} &
-\textnormal{where } \mathit{context} ~ \PCT ~ \gentag ~ \lh ~ \ctx{\expr} \\ % ctx_rvalof
-| & \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \lambda \expr.\addrof{\ctx{\expr}} & \textnormal{where } \mathit{context} ~ \PCT ~ \gentag ~ \lh ~ \ctx{\expr} \\ % ctx_addrof
-| & \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \lambda \expr.\unop{\odot}{\ctx{\expr}} & \textnormal{where } \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \ctx{\expr} \\ % ctx_unop
-| & \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \lambda \expr.\binop{\oplus}{\ctx{\expr_1}}{\expr_2} & \textnormal{where } \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \ctx{\expr_1} \\ % ctx_binop_left
-| & \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \lambda \expr.\binop{\oplus}{\expr_1}{\ctx{\expr_2}} & \textnormal{where } \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \ctx{\expr_2} \\ % ctx_binop_right
-| & \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \lambda \expr.\cast{\ctx{\expr}}{\type} & \textnormal{where } \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \ctx{\expr} \\ % ctx_cast
-| & \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \lambda \expr.\seqand{\ctx{\expr_1}}{\expr_2} & \textnormal{where } \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \ctx{\expr_1} \\ % ctx_seqand
-| & \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \lambda \expr.\seqor{\ctx{\expr_1}}{\expr_2} & \textnormal{where } \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \ctx{\expr_1} \\ % ctx_seqor
-| & \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \lambda \expr.\condition{\ctx{\expr_1}}{\expr_2}{\expr_3} & \textnormal{where } \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \ctx{\expr_1} \\ % ctx_condition
-| & \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \lambda \expr.\assign{\ctx{\expr_1}}{\expr_2} & \textnormal{where } \mathit{context} ~ \PCT ~ \gentag ~ \lh ~ \ctx{\expr_1} \\ % ctx_assign_left
-| & \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \lambda \expr.\assign{\expr_1}{\ctx{\expr_2}} & \textnormal{where } \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \ctx{\expr_2} \\ % ctx_assign_right
-| & \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \lambda \expr.\assignop{\oplus}{\ctx{\expr_1}}{\expr_2} & \textnormal{where } \mathit{context} ~ \PCT ~ \gentag ~ \lh ~ \ctx{\expr_1} \\ % ctx_assignop_left
-| & \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \lambda \expr.\assignop{\oplus}{\expr_1}{\ctx{\expr_2}} & \textnormal{where } \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \ctx{\expr_2} \\ % ctx_assignop_right
-| & \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \lambda \expr.\postinc{\oplus}{\ctx{\expr}} & \textnormal{where } \mathit{context} ~ \PCT ~ \gentag ~ \lh ~ \ctx{\expr} \\ % ctx_postinc
-| & \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \lambda \expr.\call{\ctx{\expr_1}}{\overline{\expr_2}} & \textnormal{where } \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \ctx{\expr_1} \\ % ctx_call_left
-| & \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \lambda \expr.\call{\expr_1}{\ctx{\overline{\expr_2}}} & \textnormal{where } \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \ctx{\expr} \textnormal{ for } \expr \in \overline{\expr_2} \\ % ctx_call_right
+\mathit{context} & ~ k ~ \ctx{\expr} ::= \\
+| & \mathit{context} ~ k ~ \lambda \expr.\expr & \\ % ctx_top
+| & \mathit{context} ~ \lh ~ \lambda \expr.\deref{\ctx{\expr}} &
+\textnormal{where } \mathit{context} ~  \rh ~ \ctx{\expr} \\ % ctx_deref
+| & \mathit{context} ~ \lh ~ \lambda \expr.\field{\ctx{\expr}}{id} &
+\textnormal{where } \mathit{context} ~  \rh ~ \ctx{\expr} \\ % ctx_field
+| & \mathit{context} ~ \rh ~ \lambda \expr.\valof{\ctx{\expr}} &
+\textnormal{where } \mathit{context} ~  \lh ~ \ctx{\expr} \\ % ctx_rvalof
+| & \mathit{context} ~ \rh ~ \lambda \expr.\addrof{\ctx{\expr}} & \textnormal{where } \mathit{context} ~  \lh ~ \ctx{\expr} \\ % ctx_addrof
+| & \mathit{context} ~ \rh ~ \lambda \expr.\unop{\odot}{\ctx{\expr}} & \textnormal{where } \mathit{context} ~  \rh ~ \ctx{\expr} \\ % ctx_unop
+| & \mathit{context} ~ \rh ~ \lambda \expr.\binop{\oplus}{\ctx{\expr_1}}{\expr_2} & \textnormal{where } \mathit{context} ~  \rh ~ \ctx{\expr_1} \\ % ctx_binop_left
+| & \mathit{context} ~ \rh ~ \lambda \expr.\binop{\oplus}{\expr_1}{\ctx{\expr_2}} & \textnormal{where } \mathit{context} ~  \rh ~ \ctx{\expr_2} \\ % ctx_binop_right
+| & \mathit{context} ~ \rh ~ \lambda \expr.\cast{\ctx{\expr}}{\type} & \textnormal{where } \mathit{context} ~  \rh ~ \ctx{\expr} \\ % ctx_cast
+| & \mathit{context} ~ \rh ~ \lambda \expr.\seqand{\ctx{\expr_1}}{\expr_2} & \textnormal{where } \mathit{context} ~  \rh ~ \ctx{\expr_1} \\ % ctx_seqand
+| & \mathit{context} ~ \rh ~ \lambda \expr.\seqor{\ctx{\expr_1}}{\expr_2} & \textnormal{where } \mathit{context} ~  \rh ~ \ctx{\expr_1} \\ % ctx_seqor
+| & \mathit{context} ~ \rh ~ \lambda \expr.\condition{\ctx{\expr_1}}{\expr_2}{\expr_3} & \textnormal{where } \mathit{context} ~  \rh ~ \ctx{\expr_1} \\ % ctx_condition
+| & \mathit{context} ~ \rh ~ \lambda \expr.\assign{\ctx{\expr_1}}{\expr_2} & \textnormal{where } \mathit{context} ~  \lh ~ \ctx{\expr_1} \\ % ctx_assign_left
+| & \mathit{context} ~ \rh ~ \lambda \expr.\assign{\expr_1}{\ctx{\expr_2}} & \textnormal{where } \mathit{context} ~  \rh ~ \ctx{\expr_2} \\ % ctx_assign_right
+| & \mathit{context} ~ \rh ~ \lambda \expr.\assignop{\oplus}{\ctx{\expr_1}}{\expr_2} & \textnormal{where } \mathit{context} ~ \lh ~ \ctx{\expr_1} \\ % ctx_assignop_left
+| & \mathit{context} ~ \rh ~ \lambda \expr.\assignop{\oplus}{\expr_1}{\ctx{\expr_2}} & \textnormal{where } \mathit{context} ~ \rh ~ \ctx{\expr_2} \\ % ctx_assignop_right
+| & \mathit{context} ~ \rh ~ \lambda \expr.\postinc{\oplus}{\ctx{\expr}} & \textnormal{where } \mathit{context} ~  \lh ~ \ctx{\expr} \\ % ctx_postinc
+| & \mathit{context} ~ \rh ~ \lambda \expr.\call{\ctx{\expr_1}}{\overline{\expr_2}} & \textnormal{where } \mathit{context} ~  \rh ~ \ctx{\expr_1} \\ % ctx_call_left
+| & \mathit{context} ~ \rh ~ \lambda \expr.\call{\expr_1}{\ctx{\overline{\expr_2}}} & \textnormal{where } \mathit{context} ~  \rh ~ \ctx{\expr} \textnormal{ for } \expr \in \overline{\expr_2} \\ % ctx_call_right
 % skipped builtins
-| & \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \lambda \expr.\comma{\ctx{\expr_1}}{\expr_2} & \textnormal{where } \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \ctx{\expr_1} \\ % ctx_comma
-| & \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \lambda \expr.\paren{\ctx{\expr}}{\type}{} & \textnormal{where } \mathit{context} ~ \PCT ~ \gentag ~ \rh ~ \ctx{\expr} \\ % ctx_paren
-| & \mathit{context} ~ \PCT ~ \gentag' ~ \rh ~ \lambda \expr.\paren{\ctx{\expr}}{\type}{\gentag} & \textnormal{where } \mathit{context} ~ \gentag ~ \gentag' ~ \rh ~ \ctx{\expr} \\ % ctx_paren
+| & \mathit{context} ~ \rh ~ \lambda \expr.\comma{\ctx{\expr_1}}{\expr_2} & \textnormal{where } \mathit{context} ~  \rh ~ \ctx{\expr_1} \\ % ctx_comma
+| & \mathit{context} ~ \rh ~ \lambda \expr.\paren{\ctx{\expr}}{\type}{} & \textnormal{where } \mathit{context} ~  \rh ~ \ctx{\expr} \\ % ctx_paren
+| & \mathit{context} ~ \rh ~ \lambda \expr.\paren{\ctx{\expr}}{\type}{\gentag} & \textnormal{where } \mathit{context} ~ \rh ~ \ctx{\expr} \\ % ctx_paren
 \end{aligned}\]
 
-This means that in a tagged parenthetical, the tag entirely supersedes the current PC Tag. This means that
-any information from the PC Tag must carry over onto the tag on the parenthetical. For this reason,
-parentheticals only have tags as an intermediate form, to make sure that they capture the current
-PC Tag when they're constructed.
+Next, we define a notion of expression reduction. A left-hand reduction relates an expression to an expression.
+A right-hand reduction relates a triple of PC Tag, memory, and expression to another such triple.
 
+%triple of a memory, an expression, and a tag
+%might reduces to another such triple as a left-hand, right-hand, or call reduction, written
+%\((\mem, \expr, \PCT) \Rightarrow_k (\mem', \expr', \PCT')\),
+%based on rules given below. These reductions are embedded in states as follows.
+
+\judgmenttwo{\(\mathit{context} ~ \lh ~ \ctx{\expr}\)}
+            {\(\expr \Rightarrow_\lh \expr'\)}
+            {\(\defestate{\ctx{\expr}} \longrightarrow \defestate{\ctx{\expr}}\)}
+
+\judgmenttwo{\(\mathit{context} ~ \rh ~ \ctx{\expr}\)}
+            {\((\PCT, \mem, \expr) \Rightarrow_\rh (\PCT', \mem', \expr')\)}
+            {\(\defestate{\ctx{\expr}} \longrightarrow \estate{\PCT'}{\mem'}{\ctx{\expr}}{\cont}\)}
+            
 \subsection{Expression Rules}
 
-\valofstep
-\assignopstep
-\postincstep
-\assignstep
-\varstep
-\unopstep
-\binopstep
-\conditionstep
+\expressions
 
 \subsection{Call and Return Rules}
 
@@ -2002,5 +2004,7 @@ PC Tag when they're constructed.
 \callexprstep
 \callstep
 \returnstep
+\retvalstep
+\retnovalstep
 
 \end{document}
