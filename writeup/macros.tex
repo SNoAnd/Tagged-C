@@ -68,8 +68,8 @@
 \newcommand{\globalt}{\globaltname(\globaltargs)}
 
 \newcommand{\localtname}{\mathbf{LocalT}}
-\newcommand{\localtargs}{\PCT, id, s}
-\newcommand{\localtargstyped}{\PCT, id \in ident, s \in \mathbb{N}}
+\newcommand{\localtargs}{\PCT, x, s}
+\newcommand{\localtargstyped}{\PCT, x \in ident, s \in \mathbb{N}}
 \newcommand{\localtres}{\pt,\vt,\overline{\lt}}
 \newcommand{\localt}{\localtname(\localtargs)}
 
@@ -125,8 +125,8 @@
 \newcommand{\exprsplitt}{\exprsplittname(\exprsplittargs)}
 
 \newcommand{\exprjointname}{\mathbf{ExprJoinT}}
-\newcommand{\exprjointargs}{\PCT, \gentag, \vt}
-\newcommand{\exprjointres}{\PCT', \vt'}
+\newcommand{\exprjointargs}{\PCT, \PCT', \vt}
+\newcommand{\exprjointres}{\PCT'', \vt'}
 \newcommand{\exprjoint}{\exprjointname(\exprjointargs)}
 
 \newcommand{\labeltname}{\mathbf{LabelT}}
@@ -140,13 +140,13 @@
 \newcommand{\callt}{\calltname(\calltargs)}
 
 \newcommand{\argtname}{\mathbf{ArgT}}
-\newcommand{\argtargs}{\PCT, \vt, f, x}
-\newcommand{\argtargstyped}{\PCT, \vt, f, x \in ident}
-\newcommand{\argtres}{\vt',\lts}
+\newcommand{\argtargs}{\PCT, \vt, f, x, s}
+\newcommand{\argtargstyped}{\PCT, \vt, f, x \in ident, s \in \mathbb{N}}
+\newcommand{\argtres}{\PCT', \pt, \vt',\lts}
 \newcommand{\argt}{\argtname(\argtargs)}
 
 \newcommand{\rettname}{\mathbf{RetT}}
-\newcommand{\rettargs}{\PCT_{CLE}, \PCT_{CLR}, \vt}
+\newcommand{\rettargs}{\PCT_{CLE}, \PCT_{CLR}, \vt, f}
 \newcommand{\rettres}{\PCT',\vt'}
 \newcommand{\rett}{\rettname(\rettargs)}
 
@@ -174,7 +174,7 @@
 \newcommand{\kdowhileloop}[4]{\mathit{KdoWhileLoop} ~ #1 ~ #2 ~ #3; ~ #4}
 \newcommand{\kfor}[5]{\mathit{Kfor} ~ (#1,#2) ~ #3 ~ #4 ; ~ #5}
 \newcommand{\kforpost}[5]{\mathit{KforPost} ~ (#1,#2) ~ #3 ~ #4 ; ~ #5}
-\newcommand{\kcall}[3]{\mathit{Kcall} ~ #1 ~ #2; ~ #3}
+\newcommand{\kcall}[4]{\mathit{Kcall} ~ #1 ~ #2 ~ #3; ~ #4}
 \newcommand{\kreturn}[1]{\mathit{Kreturn}; ~ #1}
 \newcommand{\kswitcha}[3]{\mathit{Kswitch1} ~ #1 ~ #2; ~ #3}
 \newcommand{\kswitchb}[1]{\mathit{Kswitch2}; ~ #1}

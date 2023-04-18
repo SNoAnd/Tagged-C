@@ -739,8 +739,6 @@ And during a load or store, we compare the memory tags to the PC Tag, not the po
 \end{aligned}\]
 \end{minipage}
 
-[TODO: talk about allocating locals here]
-
 \paragraph{Sharing Memory}
 
 The above policy is functional if our compartments only ever communicate by passing
@@ -807,7 +805,11 @@ Since we don't want to share {\tt log}, we will need to label it as well.
 
 \paragraph{Mandatory Access Control}
 
+[TODO]
+
 \paragraph{Memory Shared by Capability}
+
+[TODO]
 
 %\paragraph{Avoiding Confused Deputies}
 %
@@ -1482,7 +1484,8 @@ of {\tt sanitize} to influence the value passed to {\tt sql\_query}, but we do n
 
 We generalize our SIF policy by identifying parts of the state as
 {\em sources} and as {\em sinks}.
-A source \(\sigma\) can be an argument of a function, its return value (as before), or a global.
+A source \(\sigma\) can be an argument of a function, its return value (as before), or a global
+(whether or not that global is volatile.)
 A sink \(\psi\) can be any of these, plus the set of heap objects allocated by a given function.
 We write them as follows:
 
@@ -1491,7 +1494,6 @@ We write them as follows:
   \sigma ::= & x & \textnormal{Global} \\
   & f(x) & \textnormal{Argument {\tt x} of {\tt f}} \\
   & f.ret & \textnormal{Return value of {\tt f}} \\
-  & \mathit{vol} & \textnormal{Volatile memory} \\
   \end{aligned}\]
 \end{minipage}
 \begin{minipage}{0.5\textwidth}
@@ -1500,7 +1502,6 @@ We write them as follows:
   & f(x) & \textnormal{Argument {\tt x} of {\tt f}} \\
   & f.ret & \textnormal{Return value of {\tt f}} \\
   & f.m & \textnormal{Memory owned by {\tt f}} \\
-  & \mathit{vol} & \textnormal{Volatile memory} \\
   \end{aligned}\]
 \end{minipage}
 
@@ -1513,7 +1514,8 @@ further below.
 \begin{aligned}
   \tau ::= & \vtaint{\overline{\sigma}} \\
   & \mathit{sink} ~ \psi \\
-  & \mathit{pctaint} ~ \overline{(L,\sigma)} \\
+  & \pctaint{\overline{(L,\sigma)}} \\
+  & \N \\
 \end{aligned}\]
 %
 
@@ -1615,178 +1617,122 @@ further below.
 
 A value that is tagged \(\vtaint{\overline{\sigma}}\) has been influnced
 by all of the sources in \(\overline{\sigma}\). A location tagged \(\sink{\psi}\)
-belongs to \(\psi\). And as before, the PC Tag must carry a set of taints and
+belongs to \(\psi\). The PC Tag carries a set of taints and
 the labels of their associated join points.
 %
-We define the join and no-higher-than operations in this new setting, and to them
-we add {\em minus} (\(t_1 - t_2\))
-{\em join} (\(t_1 \sqcup t_2\)), {\em bounded join}
-(\(t_1 [L \rightarrowtail t_2]\)), , and {\em check} (\(t_1 \models t_2\)),
-all partial functions.
+We define the join and operation in this new setting, and the {\em minus} operation (\(\gentag_1 - \gentag_2\)).
 %
-\[t_1 \sqcup t_2 \triangleq
+\[\gentag_1 \sqcup \gentag_2 \triangleq
 \begin{cases}
-  \mathit{vtaint} ~ (\overline{\sigma}_1 \cup \overline{\sigma}_2) &
-  \textnormal{if } t_1 = \mathit{vtaint} ~ \overline{\sigma}_1 \textnormal{ and }
-  t_2 = \mathit{vtaint} ~ \overline{\sigma}_2\\
-  \mathit{vtaint} ~ (\overline{\sigma}_2 \cup \{\sigma \mid (L,\sigma) \in \overline{(L,\sigma)}_1\}) &
-  \textnormal{if } t_1 = \mathit{pctaint} ~ \overline{(L,\sigma)}_1 \textnormal{ and }
-  t_2 = \mathit{vtaint} ~ \overline{\sigma}_2\\
-  \mathit{vtaint} ~ (\overline{\sigma}_1 \cup \{\sigma \mid (L,\sigma) \in \overline{(L,\sigma)}_2\}) &
-  \textnormal{if } t_2 = \mathit{pctaint} ~ \overline{(L,\sigma)}_2 \textnormal{ and }
-  t_1 = \mathit{vtaint} ~ \overline{\sigma}_1\\
+  \vtaint{(\overline{\sigma}_1 \cup \overline{\sigma}_2)} &
+  \textnormal{if } \gentag_1 = \vtaint{\overline{\sigma}_1} \textnormal{ and }
+  \gentag_2 = \vtaint{\overline{\sigma}_2}\\
+  \vtaint{(\overline{\sigma}_2 \cup \{\sigma \mid (L,\sigma) \in \overline{(L,\sigma)}_1\})} &
+  \textnormal{if } \gentag_1 = \pctaint{\overline{(L,\sigma)}_1} \textnormal{ and }
+  \gentag_2 = \vtaint{\overline{\sigma}_2}\\
+  \vtaint{(\overline{\sigma}_1 \cup \{\sigma \mid (L,\sigma) \in \overline{(L,\sigma)}_2\})} &
+  \textnormal{if } \gentag_2 = \pctaint{\overline{(L,\sigma)}_2} \textnormal{ and }
+  \gentag_1 = \vtaint{\overline{\sigma}_1}\\
   \bot & \textnormal{otherwise} \\
 \end{cases}\]
 %
-\[L \rightarrowtail t_1 \sqcup t_2 \triangleq
+\[\gentag - \sigma \triangleq
 \begin{cases}
-  \mathit{pctaint} ~ (\overline{\sigma}_1 \cup \overline{\sigma}_2) &
-  \textnormal{if } t_1 = \mathit{vtaint} ~ \overline{\sigma}_1 \textnormal{ and }
-  t_2 = \mathit{vtaint} ~ \overline{\sigma}_2\\
+  \vtaint{\overline{\sigma} - \sigma} &
+  \textnormal{if } \gentag = \vtaint ~ \overline{\sigma} \\
   \bot & \textnormal{otherwise} \\
 \end{cases}\]
-%
-\[t - \sigma \triangleq
+
+And once again we wish to define the ``no-higher-than'' relation. In this case,
+recall that we want to avoid the {\tt name} argument flowing to {\tt sql\_query}.
+So we will define that \(\mathtt{sql\_query(query)}\), as a sink, is strictly
+higher security than \(\mathtt{get\_data(name)}\), and every other combination is fine.
+
+\[\gentag_2 \sqsubseteq \gentag_1 \triangleq
 \begin{cases}
-  \mathit{taint} ~ (\overline{\sigma}' - \sigma) &
-  \textnormal{if } t = \mathit{taint} ~ \overline{\sigma}' \\
-  \bot & \textnormal{otherwise} \\
-\end{cases}\]
-%
-\[t_2 \models t_1 \triangleq
-\begin{cases}
-  \mathbf{t} & \textnormal{if } t_1 = \mathit{taint} ~ \overline{\sigma}_1,
-  t_2 = \mathit{forbid} ~ \overline{\sigma}_2, \textnormal{ and }
-  \overline{\sigma}_1 \cap \overline{\sigma}_2 = \emptyset \\
-  \mathbf{f} & \textnormal{if } t_1 = \mathit{taint} ~ \overline{\sigma}_1,
-  t_2 = \mathit{forbid} ~ \overline{\sigma}_2, \textnormal{ and }
-  \overline{\sigma}_1 \cap \overline{\sigma}_2 \not = \emptyset \\
-  \bot & \textnormal{otherwise} \\
+  \mathbf{f} & \textnormal{if } \gentag_1 = \vtaint{\overline{\sigma}},
+  \gentag_2 = \sink{\mathtt{(sql\_query(query))}}, \textnormal{ and }
+  \mathtt{(get\_data(name))} \in \overline{\sigma} \\
+  \mathbf{t} & \textnormal{otherwise} \\
 \end{cases}\]
 
 \paragraph{Tainting and Checking Arguments and Returns}
 
-Now we can begin to give our policy, given an arbitrary IFPol \(I\).
-
 A function argument or return value can be either a source or a sink.
-So, when they are processed by the {\em call-state} and {\em return-state} rules,
+So, when they are processed by the argument and return rules,
 we must both check that the value being passed or returned is not tainted by a forbidden
-source, and then add the current source to its taint.
-The call-state rule executes at the beginning of a call, moving all of its arguments into
-the local environment, using the \(\mathbf{ArgT}\) tag rule.
-The return-state rule executes after the call returns, inserting the result into the
-context saved in the continuation. The program counter on return and the result's tag are
-set by the \(\mathbf{rettname}\) tag rule. Both are given in \cref{fig:callretsteps}.
+source, and then add the new source to its taint. Recall that we want the first argument to
+the {\tt sanitize} function to ``forget'' the influence of {\tt name}.
 
 \begin{minipage}[t]{.49\textwidth}
   \[\begin{aligned}
   \truledef{\argt}
-  \letin{t := \mathit{forbid} ~ \{\sigma \mid \sigma \not \rightsquigarrow f(x) \in I\}}
-  \assert{t \models \PCT \sqcup \vt}
-  \letin{\vt_1 := \vt - \{\sigma \mid \sigma / f(x) \in I \}}
-  \letin{\vt_2 := \vt_1 \sqcup \mathit{tainted} ~ \{f(x)\}}
+  \assert{\PCT \sqcup \vt \sqsubseteq \sink{(f(x))}}
+  \letin{\vt_1 := \vt - \{\mathtt{santize(src)}\}}
+  \letin{\vt_2 := \vt_1 \sqcup \vtaint{\{f(x)\}}}
   \settag{\vt'}{\vt_2}
+  \settag{\PCT'}{\PCT}
+  \settag{\lts}{\left[\N\right]}
   \end{aligned}\]
 \end{minipage}
 \begin{minipage}[t]{.49\textwidth}            
   \[\begin{aligned}
   \truledef{\rett}
-  \letin{t := \mathit{forbid} ~ \{\sigma \mid \sigma \not \rightsquigarrow f.ret \in I\}}
-  \assert{t \models \PCT \sqcup \vt}
+  \assert{\PCT \sqcup \vt \subseteq \sink{(f.ret)}}
   \letin{\vt_1 := \vt - \{\sigma \mid \sigma / f.ret \in I \}}
   \letin{\vt_2 := \vt_1 \sqcup \mathit{tainted} ~ \{f.ret\}}
   \settag{\vt'}{\vt_2}
+  \settag{\PCT'}{\PCT}
   \end{aligned}\]
 \end{minipage}
 
-Global variables are also possible sources or sinks. In this case, we initialize their
-tags to carry this information.
-\[\begin{aligned}
-\truledef{\globalt}
-\settag{\pt}{\mathit{tainted} ~ \emptyset}
-\settag{\vt}{\mathit{tainted} ~ \{x\}}
-\settag{\overline{\lt}}{\left[\mathit{forbidden} ~ \{\sigma \mid x \not \rightsquigarrow x \in I\}\right]}
-\end{aligned}\]
-
-\paragraph{Introducing Dynamic Sinks}
+\paragraph{Dynamic Sinks and Globals}
 
 One scenario that does not really match the others is when the sink is dynamically allocated
 memory. In this case, we need to tag the memory at allocation-time with the forbidden
-sources.
+sources. Global variables are also possible sources or sinks, so we initialize their
+tags to carry this information.
 
+\begin{minipage}[t]{0.49\textwidth}
 \[\begin{aligned}
 \truledef{\malloct}
-\settag{\pt}{\PCT \sqcup \mathit{tainted} ~ \emptyset}
-\settagopt{\vt}{\mathit{tainted} ~ \emptyset}
-\settagopt{\overline{\lt}}{\left[\mathit{forbidden} ~ \{\sigma \mid \sigma \not \rightsquigarrow f.m\} \right]}
-\settag{\PCT'}{\PCT + 1}
-\end{aligned}\]
-
-\paragraph{Propagating Taint Through Expressions}
-
-It is simple enough to determine when a value is tainted: at a function
-call, all function arguments are tagged with their source identity, and the result
-of any expression is tagged with the union of the sources of its operands. If the
-expression involves a store or function call itself, we must check the taints on
-the value being stored or passed against the forbidden list of the target.
-
-Unary and binary operations:
-
-\begin{minipage}[t]{.49\textwidth}
-  \[\begin{aligned}
-  \truledef{\unopt}
-  \settag{\vt'}{\vt}
-  \end{aligned}\]
-\end{minipage}
-\begin{minipage}[t]{.49\textwidth}
-  \[\begin{aligned}
-  \truledef{\binopt}
-  \settag{\vt'}{
-    \vt_1 \sqcup \vt_2
-  }
-  \end{aligned}\]
-\end{minipage}
-
-Loads and stores:
-
-\begin{minipage}[t]{.4\textwidth}
-\[\begin{aligned}
-\truledef{\loadt}
-\settag{\vt'}{\PCT \sqcup \pt \sqcup \vt}
-\end{aligned}\]
-\end{minipage}
-\begin{minipage}[t]{.59\textwidth}
-\[\begin{aligned}
-\truledef{\storet}
-\assert{\forall \lt \in \overline{\lt} . \lt \models \PCT \sqcup \pt \sqcup \vt_2}
+\settag{\pt}{\PCT \sqcup \vtaint{\emptyset}}
+\settagopt{\vt}{\vtaint{\emptyset}}
+\settagopt{\overline{\lt}}{\left[\sink{f.m}\right]}
 \settag{\PCT'}{\PCT}
-\settag{\vt'}{\PCT \sqcup \pt \sqcup \vt_2}
-\settag{\overline{\lt'}}{\overline{\lt}}
+\end{aligned}\]
+\end{minipage}
+\begin{minipage}[t]{0.49\textwidth}
+\[\begin{aligned}
+\truledef{\globalt}
+\settag{\pt}{\vtaint{\emptyset}}
+\settag{\vt}{\vtaint{\{id\}}}
+\settag{\overline{\lt}}{\left[\sink{id}\right]}
 \end{aligned}\]
 \end{minipage}
 
+\paragraph*{PC Tag Taint}
 
-When we step into a conditional or loop, we record its join point on the PC Tag, associated with the sources
-that are tainted. Then, when we reach the label, we will subtract its sources from the PC Tag at that time.
-This means that if multiple branches share a join point, their taints will be removed simultaneously.
+It now becomes slightly more complicated to keep track of the join-point labels
+associated with various sources. [TODO: fix the alignment here.]
 
 \begin{minipage}[t]{.25\textwidth}
 \[\begin{aligned}
 \truledef{\splitt}
-\settag{\PCT'}{\PCT[L \rightarrowtail \vt]}
+\letin{\pctaint{\overline{(L,\sigma)}} := \PCT}
+\letin{\vtaint{\sigma} := \vt}
+\settag{\PCT'}{\pctaint{(\overline{(L,\sigma)} \cup (L,\sigma))}}
 \end{aligned}\]
 \end{minipage}
-\begin{minipage}[t]{.74\textwidth}
+\begin{minipage}[t]{.7\textwidth}
 \[\begin{aligned}
 \truledef{\labelt}
-\assert{\PCT = \mathit{pctaint} ~ \overline{(L,\sigma)}\}}
-\settag{\PCT'}{\mathit{pctaint} ~ \{(L',\sigma) \mid (L',\sigma) \in \overline{(L,\sigma)} \land L \not \eq L'\}}
+\letin{\pctaint{\overline{(L,\sigma)}} := \PCT}
+\settag{\PCT'}{\pctaint{\{(L',\sigma) \mid (L',\sigma) \in \overline{(L,\sigma)} \land L \not \eq L'\}}}
 \end{aligned}\]
 \end{minipage}
 
-The \(\labeltname\) control point applies whenever we reach a labeled statement, seen
-in \cref{fig:conditionals}.
-The remaining branching constructs are rather complicated, involving multiple steps
+The branching constructs are rather complicated, involving multiple steps
 and manipulations of the continuation that are not that relevant to their control
 points. Rather than give their semantics in full, it suffices to identify which
 transitions contain \(\mathbf{SplitT}\) control points. In \cref{fig:rest}, these
@@ -1888,8 +1834,8 @@ language to make it easier to write Tagged C policies.
 | & \kwhileloop{\expr}{\stmt}{L}{\cont} \\
 | & \kdowhiletest{\expr}{\stmt}{L}{\cont} \\
 | & \kdowhileloop{\expr}{\stmt}{L}{\cont} \\
-| & \kfor{\stmt}{\cont} \\
-| & \kforpost{\stmt}{\cont} \\
+| & \kfor{\expr}{\stmt_2}{\stmt_3}{L}{\cont} \\
+| & \kforpost{\expr}{\stmt_2}{\stmt_3}{L}{\cont} \\
 \end{split}\]
 
 \section{Initial State}
@@ -1990,21 +1936,47 @@ A right-hand reduction relates a triple of PC Tag, memory, and expression to ano
 
 \subsection{Call and Return Rules}
 
-\[\mathit{locals} ~ xs ~ \mem ~ \lenv =
+\callexprstep
+
+When we make an internal call, we need to allocated space for locals and arguments using the helper function
+\(\mathit{frame}\).
+
+\[\mathit{frame} ~ xs ~ as ~ \mem =
 \begin{cases}
-  (\mem, \lenv) & \textnormal{if } xs = \varepsilon \\
-  \mathit{locals} ~ xs' ~ \mem'' ~ \lenv' & \textnormal{if } xs = (id,ty)::xs' \\
-  & \textnormal{where } (\mem',p) \leftarrow \mathit{stack\_alloc} ~ |ty| ~ \mem, \\
-  & \mem'' = \mem'[p \dots p+|ty| \mapsto \vundef@\vt@\overline{\lt}]_{|ty|}, \\
+  (\mem''[p \mapsto \vundef@\vt@\overline{\lt}]_{|ty|}, & \textnormal{if } xs = (id,ty)::xs' \\
+  \lenv'[id \mapsto (\mathit{p, p+|ty|,ty,\pt})]) &
+  \textnormal{where } (\mem',p) \leftarrow \mathit{stack\_alloc} ~ |ty| ~ \mem, \\
   & \trule{\localtres}{\localt}, \\
-  & \textnormal{and } \lenv' = \lenv[id \mapsto (\mathit{p, p+|ty|,ty,\pt})]) \\
+  & \textnormal{and } (\mem'',\lenv') = \mathit{frame} ~ xs' ~ as ~ m' \\ 
+  \\
+  (\mem''[p \mapsto v@\vt'@\overline{\lt}]_{|ty|}, & \textnormal{if } as = (id,ty,v @ \vt)::as' \textnormal{ and } xs = \varepsilon \\
+  \lenv'[id \mapsto (\mathit{p, p+|ty|,ty,\pt})]) &
+  \textnormal{where } (\mem',p) \leftarrow \mathit{stack\_alloc} ~ |ty| ~ \mem, \\
+  & \trule{\argtres}{\argt}, \\
+  & \textnormal{and } (\mem'',\lenv') = \mathit{frame} ~ xs' ~ as ~ m' \\
+  \\
+  (\mem, \lambda x . \bot) & \textnormal{if } xs = \varepsilon \textnormal{ and } as = \varepsilon \\
 \end{cases}\]
 
-\mallocstep
-\callexprstep
 \callstep
+
+On the other hand, when we make an external call, we step directly to a return state with some value
+being returned and an updated memory. [TODO: talk more about how the tag policy applies in external
+  functions, what they can and can't do with tags.]
+
+\extcallstep
+
+Special external functions, such as malloc, just get their own rules.
+
+\mallocstep
+
+And finally, we have the return rules.
+
 \returnstep
 \retvalstep
 \retnovalstep
+
+
+
 
 \end{document}

@@ -60,8 +60,6 @@
     \sstate{\PCT'}{\mem}{\stmt'}{\cont}\)}
 }
 
-% step_ifthen_else_2_fail
-
 % step_while
 \newcommand{\whilestep}
 {\judgment{\(\stmt=\swhile{\expr}{\stmt'}{L}\)}
@@ -226,9 +224,9 @@
 % step_return_2
 \newcommand{\retvalstep}
 {\judgment{\(\mathit{dealloc} ~ \mem ~ \PCT = (\PCT',\mem')\)}
-  {\(\estate{\PCT}{\mem}{\sreturn{\val{v}{\vt}}}{\kreturn{\cont}}
+  {\(\estate{\PCT}{\mem}{\val{v}{\vt}}{\kreturn{\cont}}
     \longrightarrow
-    \rstate{\PCT}{\mem}{\val{v}{\vt}}{\cont}\)}
+    \rstate{\PCT'}{\mem}{\val{v}{\vt}}{\cont}\)}
 }
 
 % step_skip_call
@@ -290,13 +288,17 @@
 
 % step_internal_function
 \newcommand{\callstep}
-{\judgmentbr{\(\mathit{def}(f) = \mathit{internal}(xs, \stmt)\)}
-  {\(\lenv' = \lenv \llbracket x \mapsto v@\vt' \mid
-    (x,v@\vt) \leftarrow \mathit{zip}(xs,args), \vt' \leftarrow \argt \rrbracket\)}
+{\judgmenttwo{\(\mathit{def}(f) = \mathit{INT}(xs, as, \stmt)\)}
+  {\(\mem', \lenv' = \mathit{frame} ~ xs ~ (\mathit{zip} ~ as ~ args) ~ \mem ~ \lenv\)}
   {\(\cstate{\PCT}{\mem}{f}{args}{\cont} \longrightarrow
-    \sstate{\PCT}{\mem}{\genv}{\lenv'}{\stmt}{\cont}\)}}
+    \sstate{\PCT}{\mem'}{\stmt}{\cont} / \lenv'\)}}
 
 % step_external_function
+\newcommand{\extcallstep}
+{\judgmenttwo{\(\mathit{def}(f) = \mathit{EXT}(spec)\)}
+  {\(\PCT', \mem', (v @ \vt) = spec ~ args ~ \mem\)}
+  {\(\cstate{\PCT}{\mem}{f}{args}{\cont} \longrightarrow
+    \rstate{\PCT'}{\mem'}{v @ \vt}{\cont}\)}}
 
 % specific external function
 \newcommand{\mallocstep}
@@ -311,10 +313,10 @@
 
 % step_returnstate
 \newcommand{\returnstep}
-{\judgmenttwo{\(\cont = \mathit{Kcall} ~ \lenv' ~ \mathit{ctx} ~ \cont'\)}
-  {\(\PCT'',\vt' \leftarrow \rett\)}
-  {\(\rstate{\PCT}{\mem}{\val{v}{\vt}}{\cont} \longrightarrow
-    \estate{\PCT'}{\mem}{\mathit{ctx}[\val{v}{\vt'}]}{\cont'}\)}}
+{\judgmenttwo{\(\cont = \mathit{Kcall} ~ \lenv' ~ \mathit{ctx} ~ \PCT_{CLR} ~ \cont'\)}
+  {\(\trule{\rettres}{\rett}\)}
+  {\(\rstate{\PCT_{CLE}}{\mem}{\val{v}{\vt}}{\cont} \longrightarrow
+    \estate{\PCT'}{\mem}{\mathit{ctx}[\val{v}{\vt'}]}{\cont'} / \lenv'\)}}
 
 % lred_var_local
 \newcommand{\varlocalstep}
@@ -389,69 +391,69 @@
     \Rightarrow_\rh
     (\PCT,\mem,\val{v}{\vt'}:\type_2)\)}}
   
-% step_rred + red_ipcast
+% rred_ipcast
 \newcommand{\ipcaststep}
 {\judgmenttwobr{\(\neg \mathit{isptr}(\type_1)\)}
   {\(\type_2 = \mathit{ptr} ~ \type_2'\)}
   {\(\mem[v]_{|\type_2'|} = \_@\vt_2@\overline{\lt}\)}
   {\(\trule{\ipcasttres}{\ipcastt}\)}
-  {\(\defestate{\cast{(\val{v}{\vt_1}:\type_1)}{\type_2}}
-    \longrightarrow
-    \defestate{\val{v}{\pt}:\type_2}\)}}
+  {\((\PCT,\mem,\cast{(\val{v}{\vt_1}:\type_1)}{\type_2})
+    \Rightarrow_\rh
+    (\PCT,\mem,\val{v}{\pt}:\type_2)\)}}
 
-% step_rred + red_picast
+% rred_picast
 \newcommand{\picaststep}
 {\judgmenttwobr{\(\type_1 = \mathit{ptr} ~ \type_1'\)}
   {\(\neg \mathit{isptr}(\type_2)\)}
   {\(\mem[v]_{|\type_1'|} = \_@\vt@\overline{\lt}\)}
   {\(\trule{\picasttres}{\picastt}\)}
-  {\(\defestate{\cast{(\val{v}{\pt}:\type_1)}{\type_2}}
-    \longrightarrow
-    \defestate{\val{v}{\vt'}:\type_2}\)}}
+  {\((\PCT,\mem,\cast{(\val{v}{\pt}:\type_1)}{\type_2})
+    \Rightarrow_\rh
+    (\PCT,\mem,\val{v}{\vt'}:\type_2)\)}}
 
-% step_rred + red_ppcast
+% rred_ppcast
 \newcommand{\ppcaststep}
 {\judgmenttwobr{\(\type_1 = \mathit{ptr} ~ \type_1'\)}
   {\(\type_2 = \mathit{ptr} ~ \type_2'\)}
   {\(\mem[v]_{|\type_1'|} = \mem[v]_{|\type_2'|} = \_@\vt@\overline{\lt}\)}
   {\(\trule{\ppcasttres}{\ppcastt}\)}
-  {\(\defestate{\cast{(\val{v}{\pt}:\type_1)}{\type_2}}
-    \longrightarrow
-    \defestate{\val{v}{\pt'}:\type_2}\)}}
+  {\((\PCT,\mem,\cast{(\val{v}{\pt}:\type_1)}{\type_2})
+    \Rightarrow_\rh
+    (\PCT,\mem,\val{v}{\pt'}:\type_2)\)}}
 
-% step_rred + red_seqand_true
+% rred_seqand_true
 \newcommand{\seqandtruestep}
 {\judgmenttwo{\(\mathit{boolof}(v) = \mathbf{t}\)}
   {\(\trule{\exprsplittres}{\exprsplitt}\)}
-  {\(\defestate{\ctx{\seqand{(\val{v}{\vt})}{\expr}}}
-  \longrightarrow
-  \defestate{\ctx{\paren{\expr}{\mathit{Tbool}}{\PCT'}}}\)}}
+  {\((\PCT,\mem,\seqand{(\val{v}{\vt})}{\expr})
+  \Rightarrow_\rh
+  (\PCT',\mem,\paren{\expr}{\mathit{Tbool}}{\PCT})\)}}
 
-% step_rred + red_seqand_false
+% rred_seqand_false
 \newcommand{\seqandfalsestep}
 {\judgmenttwo{\(\mathit{boolof}(v) = \mathbf{f}\)}
   {\(\trule{\exprsplittres}{\exprsplitt}\)}
-  {\(\defestate{\ctx{\seqand{(\val{v}{\vt})}{\expr}}}
-    \longrightarrow
-    \defestate{\ctx{\paren{(\val{0}{\vt'})}{\mathit{Tbool}}{\PCT'}}}\)}}
+  {\((\PCT,\mem,\seqand{(\val{v}{\vt})}{\expr})
+    \Rightarrow_\rh
+    (\PCT',\mem,\paren{(\val{0}{\vt'})}{\mathit{Tbool}}{\PCT})\)}}
 
-% step_rred + red_seqor_true
+% rred_seqor_true
 \newcommand{\seqortruestep}
 {\judgmenttwo{\(\mathit{boolof}(v) = \mathbf{t}\)}
   {\(\trule{\exprsplittres}{\exprsplitt}\)}
-  {\(\defestate{\ctx{\seqor{(\val{v}{\vt})}{\expr}}}
-    \longrightarrow
-    \defestate{\ctx{\paren{(\val{1}{\vt'})}{\mathit{Tbool}}{\PCT'}}}\)}}
+  {\((\PCT,\mem,\seqor{(\val{v}{\vt})}{\expr})
+    \Rightarrow_\rh
+    (\PCT',\mem,\paren{(\val{1}{\vt'})}{\mathit{Tbool}}{\PCT})\)}}
 
-% step_rred + red_seqor_false
+% rred_seqor_false
 \newcommand{\seqorfalsestep}
 {\judgmenttwo{\(\mathit{boolof}(v) = \mathbf{f}\)}
   {\(\trule{\exprsplittres}{\exprsplitt}\)}
-  {\(\defestate{\ctx{\seqor{(\val{v}{\vt})}{\expr}}}
-  \longrightarrow
-  \defestate{\ctx{\paren{\expr}{\mathit{Tbool}}{\PCT'}}}\)}}
+  {\((\PCT,\mem,\seqor{(\val{v}{\vt})}{\expr})
+  \Rightarrow_\rh
+  (\PCT',\mem,\paren{\expr}{\mathit{Tbool}}{\PCT})\)}}
 
-% step_rred + red_condition
+% rred_condition
 \newcommand{\conditionstep}
 {\judgmenttwo{\(\expr' =
     \begin{cases}
@@ -459,77 +461,67 @@
       \expr_2 & \textnormal{if } \mathit{boolof}(v) = \mathbf{f} \\
     \end{cases}\)}
   {\(\trule{\exprsplittres}{\exprsplitt}\)}
-  {\(\defestate{\ctx{\condition{(\val{v}{\vt})}{\expr_1}{\expr_2}}}
-    \longrightarrow
-  \defestate{\ctx{\paren{\expr'}{}{\PCT'}}}\)}}
+  {\((\PCT,\mem,\condition{(\val{v}{\vt})}{\expr_1}{\expr_2})
+    \Rightarrow_\rh
+    (\PCT',\mem,\paren{\expr'}{}{\PCT}\)}}
 
 % step_rred + red_sizeof
 
 % step_rred + red_alignof
 
-% step_rred + red_assign
+% rred_assign
 \newcommand{\assignstep}
 {\judgmenttwobrlong{\(\mem[l]_{|ty|} = v_1@\vt_1@\overline{\lt}\)}
   {\(\mem' = \mem[l \mapsto v_2@\vt' @\overline{\lt}']\)}
   {\(\trule{\storetres}{\storet}\)}
-  {\(\defestate
-    {\ctx{\assign{(\loc{l}{\pt})}{(\val{v_2}{\vt_2})}}}
-    \longrightarrow
-    \estate{\PCT'}{\mem'}
-           {\ctx{\val{v_2}{\vt_2}}}{\cont}\)}}
+  {\((\PCT,\mem,\assign{(\loc{l}{\pt})}{(\val{v_2}{\vt_2})})
+    \Rightarrow_\rh
+    (\PCT', \mem', \val{v_2}{\vt_2})\)}}
 
-% step_rred + red_assignop
+% rred_assignop
 \newcommand{\assignopstep}
-{\judgmenttwobr{\(\mem[l]_{|ty|} = v_1@\vt @\overline{\lt}\)}
+{\judgmentthreebrlong{\(\mem[l]_{|ty|} = v_1@\vt @\overline{\lt}\)}
   {\(\oplus \in \{+,-,*,/,\%,<<,>>,\&,^\wedge,|\}\)}
   {\(\trule{\loadtres}{\loadt}\)}
   {\(\expr = \assign{(\loc{l}{\pt})}
-    {(\binop{\oplus}
-      {(\val{v_1}{\vt'})}
-      {(\val{v_2}{\vt_2})})}\)}
-  {\(\defestate
-    {\ctx{\assignop{\oplus}{(\loc{l}{\pt})}
-        {(\val{v_2}{\vt_2})}}}
-    \longrightarrow
-    \defestate
-        {\ctx{\expr}}\)}}
+               {(\binop{\oplus}{(\val{v_1}{\vt'})}{(\val{v_2}{\vt_2})})}\)}
+  {\((\PCT,\mem,\assignop{\oplus}{(\loc{l}{\pt})}{(\val{v_2}{\vt_2})})
+    \Rightarrow_\rh
+    (\PCT,\mem,\expr)\)}}
 
-% step_rred + red_postincr
+% rred_postincr
 \newcommand{\postincstep}
-{\judgmenttwobr{\(\mem[l] = v@\vt @\overline{\lt}\)}
+{\judgmentthreebrlong{\(\mem[l] = v@\vt @\overline{\lt}\)}
   {\(\oplus \in \{+,-\}\)}
   {\(\trule{\loadtres}{\loadt}\)}
-  {\(\expr = \comma{\assign{\loc{l}{\pt}}{\binop{\oplus}{\val{v}{\vt'}}{1@\deftag}}}
-    {\val{v}{\vt'}} \)}
-  {\(\defestate
-    {\ctx{\postinc{\oplus}
-        {\loc{l}{\pt}}}}
-    \longrightarrow
-    \defestate
-        {\ctx{\expr}}\)}}
+  {\(\expr = \comma{(\assign{(\loc{l}{\pt})}{(\binop{\oplus}{\val{v}{\vt'}}{1@\deftag})})}
+    {(\val{v}{\vt'})} \)}
+  {\((\PCT,\mem,\postinc{\oplus}{\loc{l}{\pt}})
+    \Rightarrow_\rh
+    (\PCT,\mem,\expr)\)}}
 
-% step_rred + red_comma
+% rred_comma
 \newcommand{\commastep}
 {\judgment{}
-  {\(\defestate{\comma{\val{v}{\vt}}{\expr}}
-    \longrightarrow
-    \defestate{\expr}\)}}
+  {\((\PCT,\mem,\comma{(\val{v}{\vt})}{\expr})
+    \Rightarrow_\rh
+    (\PCT,\mem,\expr)\)}}
 
-% step_rred + red_paren
+% rred_paren
 \newcommand{\parenstep}
-{\judgmenttwo
-  {\(\defestate{\paren{\val{v}{\vt}}{\gentag}}\)}
-  {\(\vt' \leftarrow \exprjoint\)}
-  {\(\defestate{\val{v}{\vt'}}\)}}
+{\judgment{\(\trule{\exprjointres}{\exprjoint}\)}
+  {\((\PCT,\mem,\paren{\expr}{\type}{\PCT'})
+    \Rightarrow_\rh
+    (\PCT'',\mem,\val{v}{\vt'})\)}}
 
 % step_rred + red_builtin
 
 % step_callred
 \newcommand{\callexprstep}
-{\judgment{}
+{\judgment{\(\trule{\calltres}{\callt}\)}
   {\(\estate{\PCT}{\mem}{\ctx{\call{f'}{\overline{v @ \vt}}}{ty}}{\cont}
     \longrightarrow
-    \cstate{f'}{\PCT}{\mem}{\lenv}{v @ \vt}{\kcall{f}{\ctx{}}{\cont}}\)}}
+    \cstate{\PCT'}{\mem}{f'}{v @ \vt}{\kcall{f}{C}{\PCT}{\cont}}\)}}
 
 \newcommand{\sequencing}
 {
