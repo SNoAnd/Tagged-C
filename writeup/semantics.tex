@@ -295,10 +295,11 @@
 
 % step_external_function
 \newcommand{\extcallstep}
-{\judgmenttwo{\(\mathit{def}(f) = \mathit{EXT}(spec)\)}
-  {\(\PCT', \mem', (v @ \vt) = spec ~ args ~ \mem\)}
+{\judgmentthree{\(\mathit{def}(f) = \mathit{EXT}(spec)\)}
+  {\(\trule{\extcalltres}{\extcallt}\)}
+  {\(\PCT'', \mem', (v @ \vt) = spec ~ \PCT' ~ args ~ \mem\)}
   {\(\cstate{\PCT}{\mem}{f}{args}{\cont} \longrightarrow
-    \rstate{\PCT'}{\mem'}{v @ \vt}{\cont}\)}}
+    \rstate{\PCT''}{\mem'}{v @ \vt}{\cont}\)}}
 
 % specific external function
 \newcommand{\mallocstep}

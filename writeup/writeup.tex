@@ -269,7 +269,7 @@ the user has provided.
     | & \comma{\expr_1}{\expr_2} & \textnormal{Expression Sequence} \\
     | & \call{\expr_f}{\overline{\expr}_{args}} & \textnormal{Function Call} \\
     | & \loc{l}{\lt} & \textnormal{Memory Location} \\
-    | & \paren{\expr}{ty} & \textnormal{Parenthetical Cast} \\
+    | & \paren{\expr}{ty}{\gentag} & \textnormal{Parenthetical with Optional Cast} \\
     \end{aligned}\]
   \end{subfigure}
   \caption{Tagged C Abstract Syntax}
@@ -361,23 +361,29 @@ context in the continuation all with the caller's continuation.
     \hline
     Name & Inputs & Outputs & Control Points \\
     \hline
-    \(\globaltname\) & \(\globaltargstyped\) & \(\globaltres\)    & Program initialization \\
-    \(\localtname\)  & \(\localtargstyped\)  & \(\localtres\)     & Call \\
-    \(\loadtname\)   & \(\loadtargs\)        & \(\loadtres\)      & ValOf, AssignOp, PostIncr \\
-    \(\storetname\)  & \(\storetargs\)       & \(\storetres\)     & Assign \\
-    \(\consttname\)  &                       & \(\consttres\)     & Const, PostIncr \\
-    \(\unoptname\)   & \(\unoptargs\)        & \(\unoptres\)      & UnOp \\
-    \(\binoptname\)  & \(\binoptargs\)       & \(\binoptres\)     & BinOp \\
-    \(\malloctname\) & \(\malloctargs\)      & \(\malloctres\)    & Call to {\tt malloc} \\
-    \(\freetname\)   & \(\freetargs\)        & \(\freetres\)      & Call to {\tt free} \\
-    \(\picasttname\) & \(\picasttargs\)      & \(\picasttres\)    & Cast from pointer to scalar \\
-    \(\ipcasttname\) & \(\ipcasttargs\)      & \(\ipcasttres\)    & Cast from scalar to pointer \\
-    \(\ppcasttname\) & \(\ppcasttargs\)      & \(\ppcasttres\)    & Cast between pointers \\
-    \(\iicasttname\) & \(\iicasttargs\)      & \(\iicasttres\)    & Cast between scalars \\
-    \(\splittname\)  & \(\splittargs\)       & \(\splittres\)     & Split points (\cref{fig:splits})\\
-    \(\labeltname\)   & \(\labeltargs\)        & \(\labeltres\)      & Label \\
-    \(\argtname\)    & \(\argtargs\)         & \(\argtres\)       & Call \\
-    \(\rettname\)    & \(\rettargs\)         & \(\rettres\)       & Return \\
+    \(\globaltname\)    & \(\globaltargstyped\)  & \(\globaltres\)    & Program initialization \\
+    \(\fieldtname\)     & \(\fieldtargs\)        & \(\fieldtres\)     & Field Access \\
+    \(\loadtname\)      & \(\loadtargs\)         & \(\loadtres\)      & ValOf, AssignOp, PostIncr \\
+    \(\storetname\)     & \(\storetargs\)        & \(\storetres\)     & Assign \\
+    \(\consttname\)     &                        & \(\consttres\)     & Const, PostIncr \\
+    \(\unoptname\)      & \(\unoptargs\)         & \(\unoptres\)      & Unary Operation \\
+    \(\binoptname\)     & \(\binoptargs\)        & \(\binoptres\)     & Binary Operation \\
+    \(\malloctname\)    & \(\malloctargs\)       & \(\malloctres\)    & Call to {\tt malloc} \\
+    \(\freetname\)      & \(\freetargs\)         & \(\freetres\)      & Call to {\tt free} \\
+    \(\picasttname\)    & \(\picasttargs\)       & \(\picasttres\)    & Cast from pointer to scalar \\
+    \(\ipcasttname\)    & \(\ipcasttargs\)       & \(\ipcasttres\)    & Cast from scalar to pointer \\
+    \(\ppcasttname\)    & \(\ppcasttargs\)       & \(\ppcasttres\)    & Cast between pointers \\
+    \(\iicasttname\)    & \(\iicasttargs\)       & \(\iicasttres\)    & Cast between scalars \\
+    \(\exprsplittname\) & \(\exprsplittargs\)    & \(\exprsplittres\) & Control-flow split points in expressions \\
+    \(\exprjointname\)  & \(\exprjointargs\)     & \(\exprjointres\)  & Parenthetical expressions \\
+    \(\splittname\)     & \(\splittargs\)        & \(\splittres\)     & Split points (\cref{fig:splits})\\
+    \(\labeltname\)     & \(\labeltargs\)        & \(\labeltres\)     & Label \\
+    \(\calltname\)      & \(\calltargs\)         & \(\calltres\)      & Call \\
+    \(\extcalltname\)   & \(\extcalltargs\)      & \(\extcalltres\)   & External Call \\
+    \(\localtname\)     & \(\localtargstyped\)   & \(\localtres\)     & Call \\
+    \(\argtname\)       & \(\argtargs\)          & \(\argtres\)       & Call \\
+    \(\rettname\)       & \(\rettargs\)          & \(\rettres\)       & Return \\
+    \(\dealloctname\)   & \(\dealloctargstyped\) & \(\dealloctres\)   & Return \\
     \hline
   \end{tabular}
 

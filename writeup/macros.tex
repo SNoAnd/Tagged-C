@@ -52,7 +52,7 @@
 \newcommand{\constt}{\consttname}
 
 \newcommand{\unoptname}{\mathbf{UnopT}}
-\newcommand{\unoptargs}{\PCT, \vt}
+\newcommand{\unoptargs}{\odot, \PCT, \vt}
 \newcommand{\unoptres}{\vt}
 \newcommand{\unopt}{\unoptname(\unoptargs)}
 
@@ -78,11 +78,6 @@
 \newcommand{\dealloctargstyped}{\PCT, id \in ident, s \in \mathbb{N}}
 \newcommand{\dealloctres}{\vt,\overline{\lt}}
 \newcommand{\dealloct}{\dealloctname(\dealloctargs)}
-
-\newcommand{\vartname}{\mathbf{VarT}}
-\newcommand{\vartargs}{\PCT, \vt}
-\newcommand{\vartres}{\pt}
-\newcommand{\vart}{\vartname(\vartargs)}
 
 \newcommand{\malloctname}{\mathbf{MallocT}}
 \newcommand{\malloctargs}{\PCT, \vt}
@@ -152,7 +147,7 @@
 
 \newcommand{\extcalltname}{\mathbf{ExtCallT}}
 \newcommand{\extcalltargs}{\PCT, f, f', \overline{\vt}}
-\newcommand{\extcalltres}{\PCT', \vt'}
+\newcommand{\extcalltres}{\PCT'}
 \newcommand{\extcallt}{\extcalltname(\extcalltargs)}
 
 \newcommand{\fieldtname}{\mathbf{FieldT}}
