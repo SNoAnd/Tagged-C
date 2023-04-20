@@ -306,11 +306,10 @@
 {\judgmenttwobrlong
     {\(\trule{\malloctres}{\malloct}\)}
     {\(\mem',p \leftarrow \mathit{heap\_alloc} ~ \mathit{size} ~ \mem\)}
-    {\(\mem'' = \mem'\left[p + i \mapsto (\vundef,\vt,\lt) \mid 0 \leq i < s\right]\)}
-    {\(\defestate{\ctx{\mathit{malloc(\mathit{size}@t)}}}
+    {\(\mem'' = \mem'\left[p + i \mapsto (\vundef,\vt,\lt)]_{\mathit{size}}\)}
+    {\(\cstate{\PCT}{\mem}{\mathit{malloc}}{(\mathit{size}@t)}{\cont}
       \longrightarrow
-      \estate{\PCT'}{\mem''}
-             {\ctx{\val{p}{\pt}}}{\cont}\)}}
+      \rstate{\PCT'}{\mem''}{\val{p}{\pt}}{\cont}\)}}
 
 % step_returnstate
 \newcommand{\returnstep}
