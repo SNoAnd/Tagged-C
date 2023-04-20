@@ -1942,6 +1942,9 @@ A right-hand reduction relates a triple of PC Tag, memory, and expression to ano
 
 \subsection{Call and Return Rules}
 
+In order to make a call, we need to reduce the function expression to an \(\floc{\_}\) value, an
+abstract location corresponding to a particular function. Then we can make the call.
+
 \callexprstep
 
 When we make an internal call, we need to allocated space for locals and arguments using the helper function

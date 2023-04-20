@@ -329,11 +329,19 @@
 % lred_var_global
 \newcommand{\varglobalstep}
 {\judgmenttwo{\(\lenv[id] = \bot\)}
-  {\(\genv[id] = (l,\_,\pt,ty)\)}
+  {\(\genv[id] = \textnormal{\sc var}(l,\_,\pt,ty)\)}
   {\(\var{id}
     \Rightarrow_\lh
     \loc{l}{\pt}\)}}
 
+\newcommand{\funglobalstep}
+{\judgmenttwo{\(\lenv[id] = \bot\)}
+  {\(\genv[id] = \textnormal{\sc var}(f,\pt)\)}
+  {\(\var{id}
+    \Rightarrow_\lh
+    \floc{l}{\pt}\)}}
+    
+  
 % rred_deref
 \newcommand{\derefstep}
 {\judgment{}
@@ -520,7 +528,7 @@
 % step_callred
 \newcommand{\callexprstep}
 {\judgment{\(\trule{\calltres}{\callt}\)}
-  {\(\estate{\PCT}{\mem}{\ctx{\call{f'}{\overline{v @ \vt}}}{ty}}{\cont}
+  {\(\estate{\PCT}{\mem}{\ctx{\call{\floc{f'}}{\overline{v @ \vt}}}{ty}}{\cont}
     \longrightarrow
     \cstate{\PCT'}{\mem}{f'}{v @ \vt}{\kcall{f}{C}{\PCT}{\cont}}\)}}
 
@@ -589,6 +597,7 @@
 {
   \varlocalstep
   \varglobalstep
+  \funglobalstep
   \derefstep
   \fieldstructstep
   \valofstep
