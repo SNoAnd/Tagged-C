@@ -237,7 +237,7 @@ Inductive lred: expr -> mem -> expr -> mem -> Prop :=
     e!x = None ->
     Genv.find_symbol (fst ge) x = Some (inr (lo, hi, pt)) ->
     lred (Evar x ty) m
-         (Eloc Ptrofs.zero pt Full ty) m
+         (Eloc (Ptrofs.repr lo) pt Full ty) m
 | red_deref_short: forall ofs vt ty1 ty m,
     lred (Ederef (Eval (Vint ofs,vt) ty1) ty) m
          (Eloc (Ptrofs.of_int ofs) vt Full ty) m
