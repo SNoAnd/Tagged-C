@@ -811,11 +811,18 @@ Since we don't want to share {\tt log}, we will need to label it as well.
 
 \paragraph{Mandatory Access Control}
 
-[TODO]
+Mandatory access control works by associating objects in memory with the compartments that
+are allowed to access them. 
 
 \paragraph{Memory Shared by Capability}
 
-[TODO]
+Mandatory access control requires the policy designer to identity every pair of object
+and compartment that it will be shared with. This may require too much analysis if
+objects are shared widely throughout the system. Conversely, it does not
+distinguish between accesses via a valid pointer and those that are the result of
+UB. [TODO: example]
+
+
 
 %\paragraph{Avoiding Confused Deputies}
 %
