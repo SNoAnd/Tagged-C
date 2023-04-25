@@ -22,7 +22,7 @@
 \usepackage{cleveref}
 \usepackage{tikz}
 
-\usetikzlibrary{automata,positioning}
+\usetikzlibrary{automata,positioning,shapes.multipart}
 
 \title{Policies}
 \author{Sean Anderson}
@@ -134,6 +134,54 @@ a secure information flow policy. We round out our policies in \cref{sec:comp} w
 a compartmentalization policy. In \cref{sec:evaluations} we discuss the degree to
 which the design meets our goals of flexibility and applicability to realistic
 security concerns.
+
+[TODO: update outdated map]
+
+\paragraph{What is Metadata Tagging?}
+
+Consider a very simple example: we have a global variable, {\tt a}, that will be
+set at some point during execution and then should never change afterward. We would
+like to guarantee that it is never read before initialization, and never written
+afterward. This would be hard to guarantee statically in a memory-unsafe setting,
+because the target of any load or store might alias to {\tt a} in the presence
+of pointer arithmetic.
+
+\begin{tikzpicture}[every text node part/.style={align=center}]
+  \node[anchor=north] (a) {\memory{{\tt a}(1000)}{\(\vundef\)}{}{}};
+  \node[node distance=8em, right=of a] (b)   {\memory{{\tt a}(1000)}{\(0\)}{}{}};
+  \node[node distance=8em, right=of b] (c)   {\memory{{\tt a}(1000)}{\(1\)}{}{}};
+
+  \path[->]
+  (a) edge node [pos=0.5,above] {\tt a = 0;} (b)
+  (b) edge node [pos=0.5,above] {\tt *(1000) = 1;} (c);
+\end{tikzpicture}
+
+We need a way to distinguish {\tt a} from the memory around it, and to dynamically
+track its state over time. We can do this by associating metadata with the addresses
+that make up {\tt a}, written \(\AU\), for `` {\tt a} uninitialized.''
+All other addresses will be associated with \(\N\), for ``not {\tt a}.''
+When we update {\tt a}, we also update that metadata, in a two-step process: first, check that
+the address is either \(\AU\) or \(\N\), and in the former case,
+update the metadata to \(\AI\), for ``{\tt a} initialized.''
+
+\begin{tikzpicture}[every text node part/.style={align=center}]
+  \node[anchor=north] (a) {\memory{{\tt a}(1000)}{\(\vundef\)}{}{\(\AU\)}};
+  \node[node distance=8em, right=of a] (b)   {\memory{{\tt a}(1000)}{\(0\)}{}{\(\AI\)}};
+  \node[node distance=8em, right=of b] (c)   {\(fail\)};
+
+  \path[->]
+  (a) edge node [pos=0.5,above] {\tt a = 0;}
+  node [pos=0.5,below] {\(\AU \rightarrow \AI\) \\
+    \(\N \rightarrow \N\) \\
+    \(\AI \rightarrow fail\) \\} (b)
+  (b) edge node [pos=0.5,above] {\tt *(1000) = 1;}
+  node [pos=0.5,below] {\(\AU \rightarrow \AI\) \\
+    \(\N \rightarrow \N\) \\
+    \(\AI \rightarrow fail\) \\} (c);
+
+%       \node (state) [node distance=1.2em, above=of a, anchor=west]
+%             {\(\sstate{\PCT=\tagz}{\mem}{\expr=\mathit{malloc}(1 @ t)}{}\)};
+\end{tikzpicture}
 
 \section{Related Work}
 
