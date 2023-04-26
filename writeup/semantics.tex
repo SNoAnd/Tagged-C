@@ -306,7 +306,7 @@
 {\judgmenttwobrlong
     {\(\trule{\malloctres}{\malloct}\)}
     {\(\mem',p \leftarrow \mathit{heap\_alloc} ~ \mathit{size} ~ \mem\)}
-    {\(\mem'' = \mem'\left[p + i \mapsto (\vundef,\vt,\lt)]_{\mathit{size}}\)}
+    {\(\mem'' = \mem'\left[p + i \mapsto (\vundef,\vt,\lt)\right]_{\mathit{size}}\)}
     {\(\cstate{\PCT}{\mem}{\mathit{malloc}}{(\mathit{size}@t)}{\cont}
       \longrightarrow
       \rstate{\PCT'}{\mem''}{\val{p}{\pt}}{\cont}\)}}

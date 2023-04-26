@@ -69,7 +69,7 @@ and {\em compartmentalization}.
 % [sec code review paper] https://dl.acm.org/doi/10.1007/978-3-642-36563-8_14 https://people.eecs.berkeley.edu/~daw/papers/coderev-essos13.pdf
 
 % establish C is everywhere and that you care about your car working correctly
-Many essential technologies of modern life rely on new and old C code. The C language rose to prominence 30 years ago by powering
+Many essential technologies of modern life rely on new and old C code. The C language rose to prominence 40 years ago by powering
 the UNIX, Windows, and OSX operating systems,  as well as major applications like the Oracle database \cite{Munoz:PoweredbyC} . 
 and the Apache web server \cite{apache97:main-site}. Now our cars, smartphones, 
 home appliances (embedded systems like your garage door or tv remote), smart homes and hospitals (Internet of Things, embedded devices), 
@@ -118,7 +118,7 @@ We offer the following contributions:
 
 \begin{itemize}
 \item A full formal semantics for Tagged C, formalized in Coq
-\item Proposed {\em control points} at which the language interfaces with the policy
+\item A complete set of {\em control points} at which the language interfaces with the policy
 \item A Tagged C interpreter, implemented in Coq and extracted to Ocaml
 \item Policies implementing (1) compartmentalization,
   (2) realistic, permissive memory models from the literature (PVI and PNVI),
@@ -139,51 +139,134 @@ security concerns.
 
 \paragraph{What is Metadata Tagging?}
 
-Consider a very simple example: we have a global variable, {\tt a}, that will be
-set at some point during execution and then should never change afterward. We would
-like to guarantee that it is never read before initialization, and never written
-afterward. This would be hard to guarantee statically in a memory-unsafe setting,
-because the target of any load or store might alias to {\tt a} in the presence
-of pointer arithmetic.
+Consider a very simple security requirement: ``do not {\tt printf} the password.''
+For simplicity, we will suppose that {\tt pwd} is an integer in this case.
+It is not possible to enforce this statically in general, though it may be over-approximated.
 
+\vspace{\abovedisplayskip}
+\begin{minipage}{0.4\textwidth}
+\begin{verbatim}
+void main(int pwd) {
+  int x = pwd;
+  printf("%d", x);
+}
+\end{verbatim}
+\end{minipage}
+\begin{minipage}{0.6\textwidth}
 \begin{tikzpicture}[every text node part/.style={align=center}]
-  \node[anchor=north] (a) {\memory{{\tt a}(1000)}{\(\vundef\)}{}{}};
-  \node[node distance=8em, right=of a] (b)   {\memory{{\tt a}(1000)}{\(0\)}{}{}};
-  \node[node distance=8em, right=of b] (c)   {\memory{{\tt a}(1000)}{\(1\)}{}{}};
+  \node[draw=black]                                  (p)      {\(42\)};
+  \node[node distance=0em, above=of p]               (pname)  {\tt pwd};
+  \node[node distance=5em, right=of p, draw=black]   (x)      {\(42\)};
+  \node[node distance=0em, above=of x]               (xname)  {\tt x};
+  \node[node distance=5em, right=of x, state]        (printf) {\tt printf \\ (``\%d'', 42);};
 
   \path[->]
-  (a) edge node [pos=0.5,above] {\tt a = 0;} (b)
-  (b) edge node [pos=0.5,above] {\tt *(1000) = 1;} (c);
+  (p) edge node [pos=0.5,above] {\tt x = pwd;} (x)
+  (x) edge node [pos=0.5,above] {\tt x}        (printf);
 \end{tikzpicture}
+\end{minipage}
+\vspace{\belowdisplayskip}
 
-We need a way to distinguish {\tt a} from the memory around it, and to dynamically
-track its state over time. We can do this by associating metadata with the addresses
-that make up {\tt a}, written \(\AU\), for `` {\tt a} uninitialized.''
-All other addresses will be associated with \(\N\), for ``not {\tt a}.''
-When we update {\tt a}, we also update that metadata, in a two-step process: first, check that
-the address is either \(\AU\) or \(\N\), and in the former case,
-update the metadata to \(\AI\), for ``{\tt a} initialized.''
+We need a way to dynamically track the value of {\tt pwd} as it moves through the variable
+{\tt x} and is then passed to {\tt printf}. We can do so by associating metadata with the
+value; namely, that it originates in {\tt pwd}. We will write this ``tagged'' value \(42 @ \PT\),
+with the \(@\) symbol denoting a value tagged with metadata.
+All other values will be tagged \(\N\), for ``not {\tt pwd}.''
+Then when we copy {\tt pwd} into {\tt x}, it will bring its tag with it unchanged,
+as represented by the pattern \(\gentag \rightarrow \gentag\) under the arrow.
+When we call {\tt printf}, we must check that the tag is \(\N\), and if it is
+\(\PT\), we would like to failstop rather than permit the call.
 
 \begin{tikzpicture}[every text node part/.style={align=center}]
-  \node[anchor=north] (a) {\memory{{\tt a}(1000)}{\(\vundef\)}{}{\(\AU\)}};
-  \node[node distance=8em, right=of a] (b)   {\memory{{\tt a}(1000)}{\(0\)}{}{\(\AI\)}};
-  \node[node distance=8em, right=of b] (c)   {\(fail\)};
-
+  \node[draw=black]                                  (p)      {\(42 @ \PT\)};
+  \node[node distance=0em, above=of p]               (pname)  {\tt pwd};
+  \node[node distance=5em, right=of p, draw=black]   (x)      {\(42 @ \PT\)};
+  \node[node distance=0em, above=of x]               (xname)  {\tt x};
+  \node[node distance=5em, right=of x, state]        (printf) {\tt printf \\ (``\%d'', \(42@\PT\));};
+  \node[node distance=5em, right=of printf, state]   (fail)   {\(\fail\)};
+  
   \path[->]
-  (a) edge node [pos=0.5,above] {\tt a = 0;}
-  node [pos=0.5,below] {\(\AU \rightarrow \AI\) \\
-    \(\N \rightarrow \N\) \\
-    \(\AI \rightarrow fail\) \\} (b)
-  (b) edge node [pos=0.5,above] {\tt *(1000) = 1;}
-  node [pos=0.5,below] {\(\AU \rightarrow \AI\) \\
-    \(\N \rightarrow \N\) \\
-    \(\AI \rightarrow fail\) \\} (c);
-
-%       \node (state) [node distance=1.2em, above=of a, anchor=west]
-%             {\(\sstate{\PCT=\tagz}{\mem}{\expr=\mathit{malloc}(1 @ t)}{}\)};
+  (p) edge node [pos=0.5,above] {\tt x = pwd;}
+           node [pos=0.5,below] {\(\gentag \rightarrow \gentag\)} (x)
+  (x) edge node [pos=0.5,above] {\tt x} (printf)
+  (printf) edge node [pos=0.5,above] {}
+                node [pos=0.5,below] {\(\N \rightarrow \N\) \\ \(\PT \rightarrow \fail\)} (fail);
 \end{tikzpicture}
 
-\section{Related Work}
+The points at which the tags are checked and either propagated or updated are termed
+{\em control points}, and the particular set of rules that are applied to tags at each
+control point is a {\em tag rule}. Collectively, the tag rules form a {\em policy}.
+
+If our goal is to prevent {\tt pwd} from being leaked, our policy should also prevent
+values derived from {\tt pwd} from leaking. This means that if we add {\tt pwd} to a
+constant, we still keep the result tagged \(\PT\)---otherwise, someone watching our output
+could deduce \(\PT\) by subtraction.
+
+\begin{verbatim}
+void main(int pwd) {
+  printf(pwd+5);
+}
+\end{verbatim}
+\begin{tikzpicture}[every text node part/.style={align=center}]
+  \node[anchor=north]                                     (pname)  {\tt pwd};
+  \node[node distance=0em, below=of pname, draw=black]    (p)      {\(42 @ \PT\)};
+  \node[node distance=1em, above=of pname, state]         (const)  {\tt 5};
+  \node[node distance=5em, right=of pname.north, state]   (sum)    {\(42@\PT + 5@\N\)};
+  \node[node distance=5em, right=of sum, state]             (printf) {\tt printf \\ (``\%d'', \(47@\PT\));};
+  \node[node distance=6em, right=of printf, state]           (fail)   {\(\fail\)};
+
+  \path[->]
+  (p) edge node [pos=0.5,above, sloped] {\tt pwd}
+           node [pos=0.5,below, sloped] {\(\gentag \rightarrow \gentag\)} (sum)
+  (const) edge node [pos=0.5,above, sloped] {\tt 5}
+           node [pos=0.5,below, sloped] {\(\N\)} (sum)
+  (sum) edge node [pos=0.5,above] {}
+           node [pos=0.5,below] {\(\N,\N \rightarrow \N\) \\ \(\_,\_ \rightarrow \PT\)} (printf)
+  (printf) edge node [pos=0.5,above] {}
+                node [pos=0.5,below] {\(\N \rightarrow \N\) \\ \(\PT \rightarrow \fail\)} (fail);           
+\end{tikzpicture}
+
+Function calls aren't the only means of leaking data, however. We might additionally want
+to prevent {\tt pwd} from leaking by being written mmapped memory. Supposing the {\tt mm} is
+such a location, we would separately tag the location itself (not just the value in the
+location) to designate it as such. We'll call that tag \(\M\). [TODO: the diagrams for this are pretty rough.]
+
+\begin{verbatim}
+void main(int pwd) {
+  int x = pwd;
+  mm = pwd;
+}
+\end{verbatim}
+\begin{tikzpicture}[every text node part/.style={align=center}]
+  \node[draw=black]                                  (p)      {\(42 @ \PT\)};
+  \node[node distance=0em, above=of p]               (pname)  {\tt pwd};
+  \node[node distance=1em, below=of p]   (x0)      {\(\memory{\tt x}{\(\vundef\)}{\(\N\)}{\(\N\)}{}\)};
+  \node[node distance=6em, right=of p]   (x)      {\(\memory{\tt x}{42}{\(\PT\)}{\(\N\)}{}\)};
+  \node[node distance=2em, right=of x, draw=black]   (p2)      {\(42 @ \PT\)};
+  \node[node distance=0em, above=of p2]               (p2name)  {\tt pwd};
+  \node[node distance=1em, below=of p2]   (mm0)      {\(\memory{\tt mm}{\(\vundef\)}{\(\N\)}{\(\M\)}{}\)};
+  \node[node distance=5em, right=of p2, state]   (fail)   {\(\fail\)};
+  
+  \path[->]
+  (p) edge node [pos=0.5,above] {\tt x = pwd;}
+  node [pos=0.5,below] {\(\PT,\M \rightarrow \fail\) \\ \(\gentag_1,\gentag_2 \rightarrow \gentag_1,\gentag_2\)} (x)
+  (p2) edge node [pos=0.5,above] {\tt mm = pwd;}
+  node [pos=0.5,below] {\(\PT,\M \rightarrow \fail\) \\ \(\gentag_1,\gentag_2 \rightarrow \gentag_1,\gentag_2\)} (fail);
+\end{tikzpicture}
+
+Finally, we may be concerned with less leaks of {\tt pwd}, such as this one:
+\begin{verbatim}
+void main(int pwd) {
+  for (int i; i<pwd; i++) {
+    printf(i);
+  }
+}
+\end{verbatim}
+
+This will give away the exact value of {\tt pwd}! In order to prevent this, we must keep track of
+when we are inside of a loop or conditional that depends on {\tt pwd}.
+To this end, we carry an additional tag associated with the global state.
+[TODO: diagram here, too, except I'm not sure how to effectively represent the added complexity.]
 
 \paragraph{CompCert C}
 
@@ -191,6 +274,8 @@ Tagged C is built on top of CompCert C, the C semantics formalized along with th
 Our interpeter is likewise built on top of the CompCert C reference interpreter \cite{Leroy09:CompCert}.
 We chose CompCert C as a base because it is a widely used and well-supported C semantics, with a working
 interpreter and a full formalization. Being written in Coq, it is ideal for future proof work.
+
+\section{Related Work}
 
 \paragraph{Reference Monitors}
 
@@ -324,29 +409,31 @@ the user has provided.
   \label{fig:syntax}
 \end{figure}
 
-Tagged C uses full C syntax with minimal modification (\cref{fig:syntax}), but its semantics differ in
-two key respects. First, there is no memory-undefined behavior: the source semantics reflect a
+Tagged C uses the full syntax of CompCert C \cite{Leroy09:CompCert} with minimal modification (\cref{fig:syntax}).
+There are two notable syntactical differences in the language, relative to CompCert C:
+conditionals and loops take an optional {\em join point} label, and parenthetical expressions
+an optional ``context tag.''
+
+Our semantics are a small-step reduction semantics which differ from CompCert C's in
+two key respects. These are given in full in the appendix. First, Tagged C's semantics contain
+{\em control points}: hooks within the
+operational semantics at which the tag policy is consulted and either tags are updated, or the system
+failstops. (Control points resemble ``advice points'' in aspect-oriented programming, but narrowly
+focused on the manipulation of tags.) A control point consists of the name of a {\em tag rule}
+and the bindings of its inputs and outputs; a tag rule is a partial function. The names and
+signatures of the tag rules, and their corresponding control points, are listed in \Cref{fig:controlpoints}.
+
+Second, there is no memory-undefined behavior: the source semantics reflect a
 concrete target-level view of memory as a flat address space. Without memory safety, programs
 that exhibit memory-undefined behavior will act as their compiled equivalents would, potentially
 corrupting memory; we expect that a memory safety policy will be a standard default, but that the
 strictness of the policy may need to be tuned for programs that use low-level idioms.
 
-Secondly, and more crucially, Tagged C's semantics contain {\em control points}: hooks within the
-operational semantics at which the tag policy is consulted and either tags are updated, or the system
-failstops. Control points resemble ``advice points'' in aspect-oriented programming, but narrowly
-focused on the manipulation of tags. A control point consists of the name of a {\em tag rule}
-and the bindings of its inputs and outputs; a tag rule is a partial function. The names and
-signatures of the tag rules, and their corresponding control points, are listed in \Cref{fig:controlpoints}.
-
-There are two notable syntactical differences in the language, relative to CompCert C:
-conditionals and loops take an optional {\em join point} label, and parenthetical expressions
-an optional ``context tag.''
-
 The choice of control points and their associations with tag rules, as well as the tag rules'
 signatures, are a crucial design element. Our proposed design is sufficient for the three classes of
 policy that we explore in this paper, but it may not be complete.
 
-Tagged C uses a small-step reduction semantics, given in full in the appendix. We will introduce
+Tagged C uses a small-step reduction semantics,  We will introduce
 a limited number of step rules as they become relevant.
 
 \paragraph{Notations}
@@ -390,6 +477,8 @@ States can be of several kinds, denoted by their script prefix: a {\em general s
 an {\em expression state} \(\mathcal{E}(\dots)\), a {\em call state} \(\mathcal{C}(\dots)\), or a
 {\em return state} \(\mathcal{R}(\dots)\). Finally, the special state {\em failstop} (\(\mathcal{F}(\dots)\))
 represents a tag failure, and carries the state that produced the failure.
+[Allison: to whatever degree you've figured out what is useful here by publication-time, we can
+  tune this to be more specific.]
 
 \[\begin{aligned}
 S ::= & \sstate{\PCT}{\mem}{\stmt}{\cont} \\
@@ -398,9 +487,6 @@ S ::= & \sstate{\PCT}{\mem}{\stmt}{\cont} \\
 | & \rstate{\PCT}{\mem}{\genv}{\lenv}{\val{v}{\vt}}{\cont} \\
 | & \fstate{S} \\
 \end{aligned}\]
-
-Expressions (\cref{fig:exprstep}) use a contextual semantics; a call expression stores the
-context in the continuation all with the caller's continuation.
 
 \section{Tags and Policies}
 
@@ -974,14 +1060,14 @@ on the left hand of the assignment matches the location tag on all of the bytes 
 \end{aligned}\]
 \end{minipage}
 
-[Not sure how important this is.]
-There are two other expressions that load from memory, and which therefore invoke
-this same rule, {\it assignop} and {\it postincr}. Note that the C spec has the order
-of evaluation for {\it assignop} ``unsequenced''; we follow CompCert \cite{Leroy09:CompCert}
-in evaluating both the left
-and right completely before performing the load. Intuitively, assignment-with-an-operator is
-classed along with the standard assignment in the spec, so it is appropriate that it be ordered
-in the same way.
+%[Not sure how important this is.]
+%There are two other expressions that load from memory, and which therefore invoke
+%this same rule, {\it assignop} and {\it postincr}. Note that the C spec has the order
+%of evaluation for {\it assignop} ``unsequenced''; we follow CompCert \cite{Leroy09:CompCert}
+%in evaluating both the left
+%and right completely before performing the load. Intuitively, assignment-with-an-operator is
+%classed along with the standard assignment in the spec, so it is appropriate that it be ordered
+%in the same way.
 
 \paragraph*{Color Propagation}
 
@@ -1011,22 +1097,22 @@ be used as an integer, but if cast back to a pointer it will be invalid.
   \end{aligned}\]
 \end{minipage}
 
-\subsection{PNVI Memory Safety}
-\label{sec:PNVI}
+%\subsection{PNVI Memory Safety}
+%\label{sec:PNVI}
 
-[TODO: PNVI needs a lot more motivation, especially given that the security benefits are
-  likely marginal].
+%[TODO: PNVI needs a lot more motivation, especially given that the security benefits are
+%  likely marginal].
 
-In PNVI, by contrast, an integer cast to a pointer gains the provenance of the object it points
-to when the cast occurs. While PNVI supports a wider range of programs, it is inconsistent with important
-assumptions of the C memory model, in ways that may have serious security consequences.
-The difference between PVI and PNVI is illustrated in Figure \ref{fig:PVI-PNVI}.
+%In PNVI, by contrast, an integer cast to a pointer gains the provenance of the object it points
+%to when the cast occurs. While PNVI supports a wider range of programs, it is inconsistent with important
+%assumptions of the C memory model, in ways that may have serious security consequences.
+%The difference between PVI and PNVI is illustrated in Figure \ref{fig:PVI-PNVI}.
 
-\begin{figure}
-  \includegraphics[width=.6\textwidth]{PVIvsPNVI.png}
-  \caption{Integer-pointer casts in PVI and PNVI}
-  \label{fig:PVI-PNVI}
-\end{figure}
+%\begin{figure}
+%  \includegraphics[width=.6\textwidth]{PVIvsPNVI.png}
+%  \caption{Integer-pointer casts in PVI and PNVI}
+%  \label{fig:PVI-PNVI}
+%\end{figure}
 
 %We will aim to prove that for any program, if it is run in both the PVI semantics
 %and in Tagged C with our PVI policy, it either produces identical output, or it is both
@@ -1034,67 +1120,43 @@ The difference between PVI and PNVI is illustrated in Figure \ref{fig:PVI-PNVI}.
 %some UB in PNVI is non-deterministic, and we only require that it failstop in an execution
 %that would {\it reach} the UB.
 
-In PNVI, the basic provenance model remains the same as PVI, so we can reuse most of the
-same rules. The primary difference is what happens when we cast a pointer to an integer.
-In PVI, tags are propagated as normal.
-To support PNVI, we need the {\it cast} expression to update the tags of a pointer
-being cast to an integer and vice versa. We add two special-case steps to reflect this.
+%In PNVI, the basic provenance model remains the same as PVI, so we can reuse most of the
+%same rules. The primary difference is what happens when we cast a pointer to an integer.
+%In PVI, tags are propagated as normal.
+%To support PNVI, we need the {\it cast} expression to update the tags of a pointer
+%being cast to an integer and vice versa. We add two special-case steps to reflect this.
 
-\judgmenttwo{\optional{\(\mem[p]_{|ty|} = \_@\vt_2 @ \overline{\lt}\)}}
-            {\(\trule{\picasttres}{\picastt}\)}
-            {\(\defestate{\cast{int}{\val{p}{\pt}}}{\tptr{ty}} \longrightarrow
-              \defestate{\val{p}{vt}}{int}\)}
+%\judgmenttwo{\optional{\(\mem[p]_{|ty|} = \_@\vt_2 @ \overline{\lt}\)}}
+%            {\(\trule{\picasttres}{\picastt}\)}
+%            {\(\defestate{\cast{int}{\val{p}{\pt}}}{\tptr{ty}} \longrightarrow
+%              \defestate{\val{p}{vt}}{int}\)}
 
-\judgmenttwo{\optional{\(\mem[p]_{|ty|} = \_@\vt_2 @ \overline{\lt}\)}}
-            {\(\trule{\ipcasttres}{\ipcastt}\)}
-            {\(\defestate{\cast{int}{\val{p}{\pt}}}{\tptr{ty}} \longrightarrow
-              \defestate{\val{p}{vt}}{int}\)}
+%\judgmenttwo{\optional{\(\mem[p]_{|ty|} = \_@\vt_2 @ \overline{\lt}\)}}
+%            {\(\trule{\ipcasttres}{\ipcastt}\)}
+%            {\(\defestate{\cast{int}{\val{p}{\pt}}}{\tptr{ty}} \longrightarrow
+%              \defestate{\val{p}{vt}}{int}\)}
 
-For casting an integer to a pointer, we don't need the optional ``peek'' at the memory that it points to.
-We simply clear the tag on the resulting integer. On the other hand, when casting back to a pointer,
-we need to check the color of the object that it points to.
+%For casting an integer to a pointer, we don't need the optional ``peek'' at the memory that it points to.
+%We simply clear the tag on the resulting integer. On the other hand, when casting back to a pointer,
+%we need to check the color of the object that it points to.
 
-\begin{minipage}{0.34\textwidth}
-\[\begin{aligned}
-\truledef{\picastt}
-\settag{\PCT'}{\PCT}
-\settag{\vt}{N}
-\end{aligned}\]
-\end{minipage}
-\begin{minipage}{0.65\textwidth}
-\[\begin{aligned}
-\truledef{\ipcastt}
-\assert{\exists t . \forall \lt \in \overline{\lt} . \lt = t \land t \not = N}
-\settag{\PCT'}{\PCT}
-\settag{\pt}{t}
-\end{aligned}\]
-\end{minipage}
+%\begin{minipage}{0.34\textwidth}
+%\[\begin{aligned}
+%\truledef{\picastt}
+%\settag{\PCT'}{\PCT}
+%\settag{\vt}{N}
+%\end{aligned}\]
+%\end{minipage}
+%\begin{minipage}{0.65\textwidth}
+%\[\begin{aligned}
+%\truledef{\ipcastt}
+%\assert{\exists t . \forall \lt \in \overline{\lt} . \lt = t \land t \not = N}
+%\settag{\PCT'}{\PCT}
+%\settag{\pt}{t}
+%\end{aligned}\]
+%\end{minipage}
 
-\paragraph{Realizing the Integer-Pointer Cast}
-
-The pointer cast rules take as input the tags on the location pointed to by the
-argument being cast. This requires the compiler to add extra instructions to retrieve that tag.
-On RISCV, the sequence would be as follows, assuming that {\tt a0} contains the
-value being cast. The meaning of instruction tags will be explained below.
-
-\begin{verbatim}
-lw a1 a0 0 @ RETRIEVE
-sub a1 a1 a1 @ L
-add a0 a1 a0 @ IPCAST
-\end{verbatim}
-
-In the underlying assembly, we use instruction tags to inform the low-level monitor
-of the purpose of each instruction. {\tt RETRIEVE} indicates a special load
-whose job is retrieve value and location tags from a location in memory. When it sees
-a {\tt RETRIEVE} tag, the monitor allows the load even if it should failstop under the
-Concrete C backstop policy. If the load should failstop, however, it is given a default
-tag rather than the tags on the memory. A legal load recieves both the value and the location
-tags.
-
-The {\tt L} instruction tag simply denotes taking the left-operand's tag on the result of a
-binary operation. In this case both operations are identical, but we still need to pick one.
-Finally, the {\tt IPCAST} tag declares that this instruction should mimic the Tagged-C-level
-rule.
+%\paragraph{Realizing the Integer-Pointer Cast}
 
 \subsection{Secure Information Flow}
 \label{sec:SIF}
@@ -1153,7 +1215,8 @@ by the sensitive input, the tag \(\vtaint{}\) represents values that have been i
 {\tt read\_and\_parse}, and the tag \(\pctaint{\overline{L}}\) carries a set of labels
 representing that the current control-flow of the program is tainted (we will discuss this in detail
 below.) Lastly, the tag \(\vol\) marks the memory locations of {\em volatile} global variables.
-Volatile variables represent 
+Volatile variables represent mmapped regions or memory that for other reasons is accessible
+outside the process.
 
 Initially, the PC Tag is \(\pctaint{\emptyset}\), and all values and memory locations are
 tagged \(\N\). The taint tags are introduced at the external call to {\tt read\_and\_parse}.
@@ -1541,13 +1604,13 @@ we wish to allow {\tt name} to influence the result of {\tt sanitize}, naturally
 of {\tt sanitize} to influence the value passed to {\tt sql\_query}, but we do not wish for
 {\tt name} to influence {\tt sql\_query} directly.
 
-\paragraph*{Data Sources and Sinks}
-
-We generalize our SIF policy by identifying parts of the state as
-{\em sources} and as {\em sinks}.
+We are now forced to consider multiple sources of information, {\tt name} and {\tt sanitize},
+as well as multiple information ``sinks,'' {\tt sanitize} and {\tt sql\_query}.
 A source \(\sigma\) can be an argument of a function, its return value (as before), or a global
 (whether or not that global is volatile.)
 A sink \(\psi\) can be any of these, plus the set of heap objects allocated by a given function.
+[NOTE: Andrew thinks the generalization here is too complicated, so it is going to get cut
+  in favor of focusing on the specific sources and sinks just described.]
 We write them as follows:
 
 \begin{minipage}{0.5\textwidth}
@@ -1811,16 +1874,14 @@ and the type of rule. This is then translated into the policy.
 The other implementation detail to consider are the label tags. These resemble
 instruction tags, and that is exactly how they would be implemented: as a special instruction
 tag on the appropriate instruction, which might be an existing instruction or a specially
-added no-op. But importantly, in this case, these tags are mutable; in a policy that can be
-expected to take advantage of their mutability, we will need an extra store to set the tag
-for later.
+added no-op, that the processor handles by introducing a tag corresponding to that label.
 
 It remains to generate those labels. For purposes of an IFC policy, we first generate the program's
 control flow graph. Then, for each if, while, do-while, for, and switch statement, we identify the
 immediate post-dominator in the graph, and wrap it in a label statement with a fresh identifier.
 That identifier is also added as a field in the original conditional statement. The tags
 associated with the labels are initialized at program state---in the case of IFC, these defaults
-declare that there are no secrets to lowre when it is reached.
+declare that there are no secrets to lower when it is reached.
 
 \section{Evaluation}
 \label{sec:evaluation}
