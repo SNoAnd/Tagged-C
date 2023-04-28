@@ -24,7 +24,7 @@
 
 \usetikzlibrary{automata,positioning,shapes.multipart}
 
-\title{Policies}
+\title{Flexible Runtime Security Enforcement with Tagged C}
 \author{Sean Anderson}
 \affiliation{
   \department{Computer Science}
@@ -58,6 +58,11 @@ not desirable to legacy code owners. We introduce Tagged C, a C variant with a b
 Demonstrated in this paper: two varieties of {\em memory safety} exploring the trade-off between
 security and support for low-level idioms, {\em secure information flow} (SIF),
 and {\em compartmentalization}.
+
+Adjectives to sell:
+-- flexible
+-- accessible (more than assembly)
+-- comprehensive
 \end{abstract}
 
 \maketitle
@@ -268,55 +273,16 @@ when we are inside of a loop or conditional that depends on {\tt pwd}.
 To this end, we carry an additional tag associated with the global state.
 [TODO: diagram here, too, except I'm not sure how to effectively represent the added complexity.]
 
+\paragraph{General Purpose Security Enforcement}
+
+[TODO: Emphasize breadth]
+
 \paragraph{CompCert C}
 
 Tagged C is built on top of CompCert C, the C semantics formalized along with the CompCert verified compiler.
 Our interpeter is likewise built on top of the CompCert C reference interpreter \cite{Leroy09:CompCert}.
 We chose CompCert C as a base because it is a widely used and well-supported C semantics, with a working
 interpreter and a full formalization. Being written in Coq, it is ideal for future proof work.
-
-\section{Related Work}
-
-\paragraph{Reference Monitors}
-
-The concept of a reference monitor was first introduced fifty years ago in \cref{Anderson72:PlanningStudy}:
-a tamper-proof and verifiable subsystem that checks every security-relevant operation in a system to
-ensure that it conforms to a security {\em policy} (a general specification of acceptable behavior;
-see \cref{Goguen82:SecurityPolicies}.)
-
-A reference monitor can be implemented at any level of a system. An {\em inline reference monitor}
-is a purely compiler-based system that inserts checks at appropriate places in the code.
-Alternatively, a reference monitor might be embedded in the operating system, or in an interpreted
-language's runtime. A {\em hardware reference monitor} instead provides primitives at the ISA-level
-that accelerate security and make it harder to subvert.
-
-Programmable Interlocks for Policy Enforcement (PIPE) \cite{Dhawan14:PUMP} is a hardware extension
-that uses {\em metadata tagging}. Each register and each word of memory is associated with
-an additional array of bits called a tag. The policy is decomposed into a set of {\em tag rules}
-that act in parallel with each executing instruction, using the tags on its operands to
-decide whether the instruction is legal and, if so, determine which tags to place on its results.
-PIPE tags are large relative to other tag-based hardware, giving it the flexibility
-to implement complex policies with structured tags, and even run multiple policies at once.
-
-Other hardware monitors include Arm MTE, [Binghamton], and CHERI.
-Arm MTE aims to enforce a narrow form of memory safety using 4-bit tags, which distinguish adjacent objects
-in memory from one another, preventing buffer overflows, but not necessarily other memory violations.
-[TODO: read the Binghamton paper, figure out where they sit here.] 
-
-CHERI is capability machine [TODO: cite OG CHERI]. In CHERI, capabilities
-are ``fat pointers'' carrying extra bounds and permission information, and capability-protected
-memory can only be accessed via a capability with the appropriate privilege. This is a natural
-way to enforce spatial memory safety, and techniques have been demonstrated for enforcing
-temporal safety \cite{NWF20:Cornucopia}, stack safety \cite{Skorstengaard19:stktokens},
-and compartmentalization [TODO: figure out what to cite], with varying degrees of ease and
-efficiency. But CHERI cannot easily enforce notions of security based on dataflow,
-such as Secure Information Flow.
-
-In this paper, we describe a programming language with an abstract reference monitor.
-We realize it as an interpreter with the reference monitor built in, and envision
-eventually compiling to PIPE-equipped hardware. An inlining compiler would also be plausible.
-As a result of this choice, our abstract reference monitor uses a PIPE-esque notion of
-tags.
 
 \paragraph{PIPE Backend Implementation}
 
@@ -1212,13 +1178,13 @@ treat that value as an input, and track its influence through the system.
 For this initial, simplified policy, we will assume that it is the only input that we care about,
 so we have four classes of tags. The default tag \(\N\) represents values that are not tainted
 by the sensitive input, the tag \(\vtaint{}\) represents values that have been influenced by
-{\tt read\_and\_parse}, and the tag \(\pctaint{\overline{L}}\) carries a set of labels
+{\tt read\_and\_parse}, and the tag \(\pctaint{f}{\overline{L}}\) carries a set of labels
 representing that the current control-flow of the program is tainted (we will discuss this in detail
 below.) Lastly, the tag \(\vol\) marks the memory locations of {\em volatile} global variables.
 Volatile variables represent mmapped regions or memory that for other reasons is accessible
 outside the process.
 
-Initially, the PC Tag is \(\pctaint{\emptyset}\), and all values and memory locations are
+Initially, the PC Tag is \(\pctaint{f}{\emptyset}\), and all values and memory locations are
 tagged \(\N\). The taint tags are introduced at the external call to {\tt read\_and\_parse}.
 At the same time, all external calls must check that they aren't leaking a tainted value!
 
@@ -1227,7 +1193,7 @@ At the same time, all external calls must check that they aren't leaking a taint
   \begin{align*}
     \tau ::= & \N \\
     & \vtaint{} \\
-    & \pctaint{\overline{L}} \\
+    & \pctaint{f}{\overline{L}} \\
     & \vol \\
 \end{align*} }
 \end{minipage}
@@ -1599,152 +1565,27 @@ used the unsanitized string! This creates the opportunity for an SQL injection a
 to this function could (presumably at the behest of an outside user) call it with {\tt field} of
 3 and {\tt name} of ``Bobby; drop table;''.
 
-In this example, we particularly want to implement an {\it intransitive} SIF policy:
+In this example, we want to implement an {\it intransitive integrity} SIF policy:
 we wish to allow {\tt name} to influence the result of {\tt sanitize}, naturally, and the result
 of {\tt sanitize} to influence the value passed to {\tt sql\_query}, but we do not wish for
 {\tt name} to influence {\tt sql\_query} directly.
 
-We are now forced to consider multiple sources of information, {\tt name} and {\tt sanitize},
-as well as multiple information ``sinks,'' {\tt sanitize} and {\tt sql\_query}.
-A source \(\sigma\) can be an argument of a function, its return value (as before), or a global
-(whether or not that global is volatile.)
-A sink \(\psi\) can be any of these, plus the set of heap objects allocated by a given function.
-[NOTE: Andrew thinks the generalization here is too complicated, so it is going to get cut
-  in favor of focusing on the specific sources and sinks just described.]
-We write them as follows:
+We are now forced to consider multiple sources of information, {\tt name} and the output of
+{\tt sanitize}, as well as multiple information ``sinks,'' the input to {\tt sanitize} and {\tt sql\_query}.
+Let \(\Sigma\) be the set of these three identifiers, ranged over by \(\sigma\). A value may be tainted
+any subset of \(\Sigma\),
+written \(\vtaint{\overline{\sigma}}\). The PC Tag tracks the current function identifier and an
+association list of labels and sources. Each pair \((L, \sigma)\) in the association list indicates
+that until reaching label \(L\), the state itself has been influenced by \(\sigma\).
 
-\begin{minipage}{0.5\textwidth}
-  \[\begin{aligned}
-  \sigma ::= & x & \textnormal{Global} \\
-  & f(x) & \textnormal{Argument {\tt x} of {\tt f}} \\
-  & f.ret & \textnormal{Return value of {\tt f}} \\
-  \end{aligned}\]
-\end{minipage}
-\begin{minipage}{0.5\textwidth}
-  \[\begin{aligned}
-  \psi ::= & x & \textnormal{Global} \\
-  & f(x) & \textnormal{Argument {\tt x} of {\tt f}} \\
-  & f.ret & \textnormal{Return value of {\tt f}} \\
-  & f.m & \textnormal{Memory owned by {\tt f}} \\
-  \end{aligned}\]
-\end{minipage}
-
-We track the influence of a particular source through the system in the form
-of tags on values. Sinks that are in memory have their memory locations tagged accordingly. And
-the PC Tag at all times tracks a set of sources that are implicitly influencing the state, described
-further below.
-%
 \[  \color{blue}
 \begin{aligned}
-  \tau ::= & \vtaint{\overline{\sigma}} \\
-  & \mathit{sink} ~ \psi \\
-  & \pctaint{\overline{(L,\sigma)}} \\
+  \tau ::= & \vtaint{\overline{id}} \\
+  & \pctaint{f}{\overline{(L,id)}} \\
   & \N \\
 \end{aligned}\]
-%
 
-
-%In classic SIF theory, we specify an {\em information flow policy} (IFPol)---not to be confused with a
-%tag policy---as a relation \(\cdot \rightsquigarrow \cdot \in \sigma \times \psi\). However,
-%manually defining such a policy is challenging, especially in an intransitive setting.
-%We envision the IFPol being initially stated in negative terms, with the ``no-flow'' relation
-%\(\not \rightsquigarrow\). That is, we will assume by default that for any source \(\sigma\)
-%and any sink \(\psi\), \(\sigma \rightsquigarrow \psi\), unless the user has explicitly
-%declared the contrary.
-
-%So, in the above example, the user would declare that \(\mathtt{name} \not \rightsquigarrow \mathtt{sql\_query}\).
-%But, in the case of \(\mathtt{sanitize}\), we want it to be the case that \(\mathtt{name}\) can flow to
-%\(\mathtt{sql\_query}\) only via \(\mathtt{sanitize}\). We therefore need to allow the user to declare
-%a {\em declassification} rule. In general we will write \(\sigma / \sigma'\) to indicate that \(\sigma'\)
-%supersedes \(\sigma\): if a value that has been influenced by \(\sigma\) influences \(\sigma'\), we
-%can safely ignore its history with \(\sigma\). We may write \(* / \sigma\) to say that \(\sigma\)
-%declassifies anything.
-
-%For example, suppose that in the following code, we want to enforce a no-flow rule between
-%the argument {\tt x} of {\tt f} and the global variable {\tt z}
-%(\(\mathtt{f.x} \not \rightsquigarrow \mathtt{z}\)), and a declassification rule
-%\(* / \mathtt{g.a}\).
-
-%\begin{verbatim}
-%  int z;
-%
-%  int g(int a);
-%
-%  void f(int x, int y) {
-%    z = x;                    // violation
-%    z = x + y;                // violation
-%    if(x) z = 1; else z = 0;  // violation
-%    z = g(x);                 // violation, unless f.x / g.a
-%  }
-%\end{verbatim}
-
-%The first three lines of {\tt f} violate the no-flow relation by storing values derived from
-%{\tt x} into {\tt z}. The third line is especially interesting: although {\tt x} is not stored
-%directly, the value that is stored is conditioned upon it, and can be used to deduce information
-%about the original value. This is termed an {\em implicit flow}. Finally, in the last line,
-%the value of {\tt g(x)} depends on {\tt x}, which is a violation unless it is subject to a
-%declassification rule.
-
-%We can therefore define an IFPol as a set of rules of each kind:
-
-%\[I \subseteq \{\sigma \not \rightsquigarrow \psi \mid \sigma \not \eq \psi\} \cup
-%\{\sigma / \sigma' \mid \sigma \not \eq \sigma'\}\]
-
-%We do not need to distinguish between rules that notionally represent ``integrity'' versus ``confidentiality''
-%concerns. The SQL injection example is an instance of integrity, ensuring that an input cannot influence data
-%in an undesired way, but the same concept can be used to prevent data from influencing the program's output
-%inappropriately.
-
-%\paragraph{SIF, formally}
-
-%We can characterize the protection offered by a SIF policy in terms of a {\em non-interference}
-%property along the lines of Bay and Askarov \cite{}. We annotate our transitions with events \(\alpha\),
-%each representing the transmission of a value through a source or sink---possibly several. We write the
-%projection of data relevant to a particular source \(\sigma\) or sink \(\psi\) as \(\pi_\sigma(\alpha)\)
-%or \(\pi_\psi(\alpha)\).
-
-%\[\begin{aligned}
-%\alpha ::= & \\
-%& \\
-%\end{aligned}\]
-
-%[TODO: add the relevant events to their transitions in the semantics, and list them here.]
-
-%Now, we define the knowledge that an observer monitoring a particular sink can extrapolate about the
-%state of the system as a whole, as a set of states that are consistent with the events it observes.
-%Given some initial state \(S\), this is precisely the set of other initial states that might
-%produce the same trace (or an extension thereof) and that are equivalent.
-
-%\[\mathbf{K}(S,\overline{\alpha},\sigma,\psi) \triangleq
-%\{S' \mid S \sim_\sigma S' \land S' \hookrightarrow_{\psi} \overline{\alpha} \cdot \alpha\}\]
-
-%Then, absent any declassification rules, we can define non-interference as holding between
-%\(\sigma\) and \(\psi\) if, for any states \(S_1\) and \(S_2\) such that
-%\(S_1 \xrightarrow{\overline{\alpha}\cdot \alpha} S_2\),
-%\(\mathbf{K}(S_2,\overline{\alpha}\cdot \alpha,\sigma,\psi) \supseteq
-%\mathbf{K}(S_1,\overline{\alpha},\sigma,\psi)\). That is, every world that was possible before
-%\(\alpha\) remains possible after.
-
-%In the presence of declassification, we add an exception for the case where \(\alpha\)
-%reflects an event that should indeed allow an observer to gain some information. We extend
-%the above definition to talk about all of \(I\).
-
-%\[NI_I \triangleq \forall S_1, S_2, \overline{\alpha}, \alpha .
-%\begin{cases}
-%\mathbf{K}(S_2,\overline{\alpha}\cdot \alpha,\sigma,\psi) \supseteq
-%\mathbf{K}(S_1,\overline{\alpha},\sigma,\psi) &
-%\textnormal{if } \sigma \not \rightsquigarrow \psi \in I \\
-%\mathbf{K}(S_2,\overline{\alpha}\cdot \alpha,\sigma,\psi) \supseteq
-%\mathbf{K}(S_1,\overline{\alpha},\sigma \sqcup \sigma',\psi &
-%\textnormal{if } \sigma / \sigma' \in I \land \sigma' \rightsquigarrow \psi \in I \\
-%\end{cases}\]
-
-A value that is tagged \(\vtaint{\overline{\sigma}}\) has been influnced
-by all of the sources in \(\overline{\sigma}\). A location tagged \(\sink{\psi}\)
-belongs to \(\psi\). The PC Tag carries a set of taints and
-the labels of their associated join points.
-%
-We define the join and operation in this new setting, and the {\em minus} operation (\(\gentag_1 - \gentag_2\)).
+We define the join operation in this new setting, as well as the {\em minus} operation (\(\gentag_1 - \gentag_2\)).
 %
 \[\gentag_1 \sqcup \gentag_2 \triangleq
 \begin{cases}
@@ -1752,10 +1593,10 @@ We define the join and operation in this new setting, and the {\em minus} operat
   \textnormal{if } \gentag_1 = \vtaint{\overline{\sigma}_1} \textnormal{ and }
   \gentag_2 = \vtaint{\overline{\sigma}_2}\\
   \vtaint{(\overline{\sigma}_2 \cup \{\sigma \mid (L,\sigma) \in \overline{(L,\sigma)}_1\})} &
-  \textnormal{if } \gentag_1 = \pctaint{\overline{(L,\sigma)}_1} \textnormal{ and }
+  \textnormal{if } \gentag_1 = \pctaint{f}{\overline{(L,\sigma)}_1} \textnormal{ and }
   \gentag_2 = \vtaint{\overline{\sigma}_2}\\
   \vtaint{(\overline{\sigma}_1 \cup \{\sigma \mid (L,\sigma) \in \overline{(L,\sigma)}_2\})} &
-  \textnormal{if } \gentag_2 = \pctaint{\overline{(L,\sigma)}_2} \textnormal{ and }
+  \textnormal{if } \gentag_2 = \pctaint{f}{\overline{(L,\sigma)}_2} \textnormal{ and }
   \gentag_1 = \vtaint{\overline{\sigma}_1}\\
   \bot & \textnormal{otherwise} \\
 \end{cases}\]
@@ -1767,18 +1608,18 @@ We define the join and operation in this new setting, and the {\em minus} operat
   \bot & \textnormal{otherwise} \\
 \end{cases}\]
 
-And once again we wish to define the ``no-higher-than'' relation. In this case,
-recall that we want to avoid the {\tt name} argument flowing to {\tt sql\_query}.
-So we will define that \(\mathtt{sql\_query(query)}\), as a sink, is strictly
-higher security than \(\mathtt{get\_data(name)}\), and every other combination is fine.
+%And once again we wish to define the ``no-higher-than'' relation. In this case,
+%recall that we want to avoid the {\tt name} argument flowing to {\tt sql\_query}.
+%So we will define that \(\mathtt{sql\_query(query)}\), as a sink, is strictly
+%higher security than \(\mathtt{sql\_query(name)}\), and every other combination is fine.
 
-\[\gentag_2 \sqsubseteq \gentag_1 \triangleq
-\begin{cases}
-  \mathbf{f} & \textnormal{if } \gentag_1 = \vtaint{\overline{\sigma}},
-  \gentag_2 = \sink{\mathtt{(sql\_query(query))}}, \textnormal{ and }
-  \mathtt{(get\_data(name))} \in \overline{\sigma} \\
-  \mathbf{t} & \textnormal{otherwise} \\
-\end{cases}\]
+%\[\gentag_2 \sqsubseteq \gentag_1 \triangleq
+%\begin{cases}
+%  \mathbf{f} & \textnormal{if } \gentag_1 = \vtaint{\overline{\sigma}},
+%  \gentag_2 = \sink{\mathtt{(sql\_query(query))}}, \textnormal{ and }
+%  \mathtt{(get\_data(name))} \in \overline{\sigma} \\
+%  \mathbf{t} & \textnormal{otherwise} \\
+%\end{cases}\]
 
 \paragraph{Tainting and Checking Arguments and Returns}
 
@@ -1791,7 +1632,7 @@ the {\tt sanitize} function to ``forget'' the influence of {\tt name}.
 \begin{minipage}[t]{.49\textwidth}
   \[\begin{aligned}
   \truledef{\argt}
-  \assert{\PCT \sqcup \vt \sqsubseteq \sink{(f(x))}}
+  \assert{\PCT \sqcup \vt}
   \letin{\vt_1 := \vt - \{\mathtt{santize(src)}\}}
   \letin{\vt_2 := \vt_1 \sqcup \vtaint{\{f(x)\}}}
   \settag{\vt'}{\vt_2}
@@ -1799,7 +1640,7 @@ the {\tt sanitize} function to ``forget'' the influence of {\tt name}.
   \settag{\lts}{\left[\N\right]}
   \end{aligned}\]
 \end{minipage}
-\begin{minipage}[t]{.49\textwidth}            
+\begin{minipage}[t]{.49\textwidth}
   \[\begin{aligned}
   \truledef{\rett}
   \assert{\PCT \sqcup \vt \subseteq \sink{(f.ret)}}
@@ -1843,16 +1684,16 @@ associated with various sources. [TODO: fix the alignment here.]
 \begin{minipage}[t]{.25\textwidth}
 \[\begin{aligned}
 \truledef{\splitt}
-\letin{\pctaint{\overline{(L,\sigma)}} := \PCT}
+\letin{\pctaint{f}{\overline{(L,\sigma)}} := \PCT}
 \letin{\vtaint{\sigma} := \vt}
-\settag{\PCT'}{\pctaint{(\overline{(L,\sigma)} \cup (L,\sigma))}}
+\settag{\PCT'}{\pctaint{f}{(\overline{(L,\sigma)} \cup (L,\sigma))}}
 \end{aligned}\]
 \end{minipage}
 \begin{minipage}[t]{.7\textwidth}
 \[\begin{aligned}
 \truledef{\labelt}
-\letin{\pctaint{\overline{(L,\sigma)}} := \PCT}
-\settag{\PCT'}{\pctaint{\{(L',\sigma) \mid (L',\sigma) \in \overline{(L,\sigma)} \land L \not \eq L'\}}}
+\letin{\pctaint{f}{\overline{(L,\sigma)}} := \PCT}
+\settag{\PCT'}{\pctaint{f}{\{(L',\sigma) \mid (L',\sigma) \in \overline{(L,\sigma)} \land L \not \eq L'\}}}
 \end{aligned}\]
 \end{minipage}
 
@@ -1883,6 +1724,10 @@ That identifier is also added as a field in the original conditional statement. 
 associated with the labels are initialized at program state---in the case of IFC, these defaults
 declare that there are no secrets to lower when it is reached.
 
+\section{Implementing Tagged C with PIPE}
+
+[TODO: more detailed description of Chris' work and why the optional arguments are optional]
+
 \section{Evaluation}
 \label{sec:evaluation}
 
@@ -1907,6 +1752,53 @@ can enforce. In general, a reference monitor can enforce any policy that constit
 trace. This class includes such policies as ``no integer overflow'' and ``pointers are always in-bounds,''
 which depend on the values of variables. Tag-based monitors cannot enforce any policy that
 depends on the value of a variable rather than its tags.
+
+\section{Related Work}
+
+\paragraph{Reference Monitors}
+
+The concept of a reference monitor was first introduced fifty years ago in \cref{Anderson72:PlanningStudy}:
+a tamper-proof and verifiable subsystem that checks every security-relevant operation in a system to
+ensure that it conforms to a security {\em policy} (a general specification of acceptable behavior;
+see \cref{Goguen82:SecurityPolicies}.)
+
+A reference monitor can be implemented at any level of a system. An {\em inline reference monitor}
+is a purely compiler-based system that inserts checks at appropriate places in the code.
+Alternatively, a reference monitor might be embedded in the operating system, or in an interpreted
+language's runtime. A {\em hardware reference monitor} instead provides primitives at the ISA-level
+that accelerate security and make it harder to subvert.
+
+Programmable Interlocks for Policy Enforcement (PIPE) \cite{Dhawan14:PUMP} is a hardware extension
+that uses {\em metadata tagging}. Each register and each word of memory is associated with
+an additional array of bits called a tag. The policy is decomposed into a set of {\em tag rules}
+that act in parallel with each executing instruction, using the tags on its operands to
+decide whether the instruction is legal and, if so, determine which tags to place on its results.
+PIPE tags are large relative to other tag-based hardware, giving it the flexibility
+to implement complex policies with structured tags, and even run multiple policies at once.
+
+Other hardware monitors include Arm MTE, [Binghamton], and CHERI.
+Arm MTE aims to enforce a narrow form of memory safety using 4-bit tags, which distinguish adjacent objects
+in memory from one another, preventing buffer overflows, but not necessarily other memory violations.
+[TODO: read the Binghamton paper, figure out where they sit here.] 
+
+CHERI is capability machine [TODO: cite OG CHERI]. In CHERI, capabilities
+are ``fat pointers'' carrying extra bounds and permission information, and capability-protected
+memory can only be accessed via a capability with the appropriate privilege. This is a natural
+way to enforce spatial memory safety, and techniques have been demonstrated for enforcing
+temporal safety \cite{NWF20:Cornucopia}, stack safety \cite{Skorstengaard19:stktokens},
+and compartmentalization [TODO: figure out what to cite], with varying degrees of ease and
+efficiency. But CHERI cannot easily enforce notions of security based on dataflow,
+such as Secure Information Flow.
+
+In this paper, we describe a programming language with an abstract reference monitor.
+We realize it as an interpreter with the reference monitor built in, and envision
+eventually compiling to PIPE-equipped hardware. An inlining compiler would also be plausible.
+As a result of this choice, our abstract reference monitor uses a PIPE-esque notion of
+tags.
+
+\paragraph{Aspect Oriented Programming}
+
+[TODO: do forward search from original AOP paper]
 
 \section{Future Work}
 \label{sec:futurework}
