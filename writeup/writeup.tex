@@ -399,9 +399,6 @@ The choice of control points and their associations with tag rules, as well as t
 signatures, are a crucial design element. Our proposed design is sufficient for the three classes of
 policy that we explore in this paper, but it may not be complete.
 
-Tagged C uses a small-step reduction semantics,  We will introduce
-a limited number of step rules as they become relevant.
-
 \paragraph{Notations}
 \label{sec:semantics}
 
@@ -763,8 +760,8 @@ we will enforce that memory allocated by a function is only accessible by functi
 compartment. To do that, we need to keep track of which compartment we're in, using the PC Tag.
 
 Calls and returns each take two steps: first to an intermediate call or return state, and
-then to the normal execution state, as shown in \cref{fig:functions} with to example functions,
-\(f\) and \(f'\). Three of these steps feature control points. In the initial call step, \(\calltname\)
+then to the normal execution state, as shown in \cref{fig:functions} with some function \(f\)
+calling \(f'\). Three of these steps feature control points. In the initial call step, \(\calltname\)
 uses the name-tags of the caller and callee to update the PC Tag. Then, in the step from the call
 state, we place the function arguments in memory, tagging their values and locations with
 the results of \(\argtname\). And on return, \(\rettname\) updates both the PC Tag and
@@ -847,7 +844,7 @@ And during a load or store, we compare the memory tags to the PC Tag, not the po
 
 \paragraph{Sharing Memory}
 
-The above policy is functional if our compartments only ever communicate by passing
+The above policy works if our compartments only ever communicate by passing
 non-pointer values. In practice, this is far too restrictive! Many libraries take pointers
 and operate on the associated memory, starting with the most basic ones, like the
 standard library's string functions. And yet, if we are forced to include large
@@ -1213,7 +1210,7 @@ if either of them was. We define this as the {\em join} or {\em least-upper-boun
 operator, \(\sqcup\). We will then compare tags according to a partial order, the
 {\em no-higher-than} operator, \(\sqsubseteq\). In this case, \(a \sqsubseteq b\)
 means that \(a\) does not have higher privilege than \(b\), and so information is
-allowed to flow between.
+allowed to flow from \(a\) to \(b\).
 
 \begin{minipage}[t]{.49\textwidth}
 \[t_1 \sqcup t_2 \triangleq
@@ -1309,7 +1306,8 @@ When the PC Tag is tainted, all stores to memory and all updates to environments
 also be tainted until all branches eventually rejoin, which might be at any point.
 We term the point at which it is safe to remove taint a {\it join point}.
 In terms of the program's control-flow graph, the
-join point of a branch is its immediate post-dominator.
+join point of a branch is its immediate post-dominator \cite{}.
+[TODO: this is the Denning cited in Bay and Askarov]
 
 In many simple programs, the join point of a conditional or loop is obvious:
 the point at which the chosen branch is complete, or the loop has ended.
@@ -1323,8 +1321,8 @@ the program. So, it is safe to assume that the post-dominator \(J\)
 of the while loop is reached.
 
 But in the presence of unrestricted go-to statements, a join point may not be
-local---and sometimes may not exist within the function, assuming that we have not
-consolidated return points. Consider \cref{fig:forbreak}, which
+local (and sometimes may not exist within the function, assuming that we have not
+consolidated return points.) Consider \cref{fig:forbreak}, which
 uses go-to statements to create an approximation of an if-statement whose join-point
 is far removed from the for-loop. The label {\tt J} now has nothing to do with the
 semantics of any particular statement.
@@ -1608,18 +1606,18 @@ We define the join operation in this new setting, as well as the {\em minus} ope
   \bot & \textnormal{otherwise} \\
 \end{cases}\]
 
-%And once again we wish to define the ``no-higher-than'' relation. In this case,
-%recall that we want to avoid the {\tt name} argument flowing to {\tt sql\_query}.
-%So we will define that \(\mathtt{sql\_query(query)}\), as a sink, is strictly
-%higher security than \(\mathtt{sql\_query(name)}\), and every other combination is fine.
+And once again we wish to define the ``no-higher-than'' relation. In this case,
+recall that we want to avoid the {\tt name} argument flowing to {\tt sql\_query}.
+So we will define that \(\mathtt{sql\_query(query)}\), as a sink, is strictly
+higher security than \(\mathtt{sql\_query(name)}\), and every other combination is fine.
 
-%\[\gentag_2 \sqsubseteq \gentag_1 \triangleq
-%\begin{cases}
-%  \mathbf{f} & \textnormal{if } \gentag_1 = \vtaint{\overline{\sigma}},
-%  \gentag_2 = \sink{\mathtt{(sql\_query(query))}}, \textnormal{ and }
-%  \mathtt{(get\_data(name))} \in \overline{\sigma} \\
-%  \mathbf{t} & \textnormal{otherwise} \\
-%\end{cases}\]
+\[\gentag_1 \sqsubseteq (\gentag_2,\gentag_3) \triangleq
+\begin{cases}
+  \mathbf{f} & \textnormal{if } \gentag_1 = \vtaint{\overline{\sigma}},
+  \gentag_2 = \mathtt{sql\_query}, \gentag_3 = \mathtt{query}, \textnormal{ and }
+  \mathtt{name} \in \overline{\sigma} \\
+  \mathbf{t} & \textnormal{otherwise} \\
+\end{cases}\]
 
 \paragraph{Tainting and Checking Arguments and Returns}
 
@@ -1632,7 +1630,7 @@ the {\tt sanitize} function to ``forget'' the influence of {\tt name}.
 \begin{minipage}[t]{.49\textwidth}
   \[\begin{aligned}
   \truledef{\argt}
-  \assert{\PCT \sqcup \vt}
+  \assert{\PCT \sqcup \vt \sqsubseteq (f, x)}
   \letin{\vt_1 := \vt - \{\mathtt{santize(src)}\}}
   \letin{\vt_2 := \vt_1 \sqcup \vtaint{\{f(x)\}}}
   \settag{\vt'}{\vt_2}
