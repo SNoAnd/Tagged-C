@@ -23,6 +23,7 @@
 \input{macros.tex}
 \input{semantics.tex}
 \input{memorygraphics.tex}
+\input{tagrules.tex}
 
 \begin{abstract}
 % i think we should refer to it as the C family, because its not really one language
@@ -512,8 +513,8 @@ at the source level? Consider some example code:
 
 \begin{verbatim}
 void main() {
-  int* x = malloc(1);
-  int* y = malloc(1);
+  int[1] x;
+  int[1] y;
   *x = 0;
   *(x+1) = 0;
 }
@@ -530,7 +531,7 @@ For our example, we'll assume a straightforward first-fit allocator, with the he
 from address 1000, and the stack growing downward from address 2000. Our set of tags consists of
 \(N\), for non-pointers, and pointer ``colors'' \(c \in \mathbb{N}\). The PC Tag
 (\(\PCT\)) tracks the next color to allocate, so it's initialized to \(\tagz\), and everything else is \(N\).
-\(N\) is the default for constants.
+\(N\) is the default for constants. [TODO: needs another pass]
 
 \begin{tikzpicture}[]
   \node[matrix, ampersand replacement=\&, column sep=-0.6em]  (mem)
@@ -566,20 +567,7 @@ the size argument and returns these three updated tags.
         {\(\sstate{\PCT'=\tagone}{\mem}{\expr=p @ \pt}{}\)};
 
   
-  \node[matrix, ampersand replacement=\&, right = of mem] (tr)
-       {
-         \& \node[anchor=center] {\(\malloct\)}; \\
-         \node (pctout) {\(\PCT'\)}; \& \node[anchor=west] (pctret) {\(\PCT+1\)}; \\
-         \node (ptout)  {\(\pt\)};   \& \node[anchor=west] (ptret)  {\(\PCT\)}; \\
-         \node (vtout)  {\(\vt\)};   \& \node[anchor=west] (vtret)  {\(\N\)}; \\
-         \node (ltsout) {\(\lt\)};   \& \node[anchor=west] (ltsret) {\(\left[\PCT\right]\)}; \\
-       };
-
-  \path[->]
-  (pctret) edge (pctout)
-  (ptret)  edge (ptout)
-  (vtret)  edge (vtout)
-  (ltsret) edge (ltsout);
+  \malloctruleblock{}{\(\PCT+1\)}{\(\PCT\)}{\(\N\)}{\(\left[\PCT\right]\)}
 
   \draw[->]
   (pctout.north) |- (state.east);
@@ -618,13 +606,9 @@ This check is performed by comparing the tag on the pointer to the tags on memor
 byte being written, in case the pointer is misaligned. Then the tag on the value being stored
 is propagated with it into memory, unchanged.
 
-\[\begin{aligned}
-\truledef{\storet}
-\assert{\forall \lt \in \overline{\lt} . \pt = \lt}
-\settag{\PCT'}{\PCT}
-\settag{\vt'}{\vt_2}
-\settag{\overline{\lt'}}{\overline{\lt}}
-\end{aligned}\]
+\begin{tikzpicture}[]
+  \storetruleblock{\(\forall \lt \in \lts . \pt = \lt\)}{\(\PCT\)}{\(\vt_2\)}{\(\lts\)}
+\end{tikzpicture}
 
 \vspace{\abovedisplayskip}
 
@@ -682,14 +666,14 @@ a non-pointer from a pointer (but not the reverse), to yield a pointer to the sa
 subtract two pointers to the same object from one another to yield a non-pointer, the offset between them.
 All other binary operations are only permitted between non-pointers.
 
-\[\begin{aligned}
-\truledef{\binopt}
-\settag{\PCT'}{\PCT}
-\settag{\vt'}{\caseof{(\oplus,~ \vt_1,~ \vt_2)}}
-\caseentry{+, c, \N \mid +, \N, c \mid -, c, \N}{c} \\
-\caseentry{-, c, c \mid \_, \N, \N}{\N} \\
-\caseentry{\_, c_1, c_2}{\textnormal{\color{red} fail}} \\
-\end{aligned}\]
+\begin{tikzpicture}[]
+  \binoptruleblock{}{\(\PCT\)}
+                  {\left\lbrace \begin{tabular}{l r l}
+                      \(c\) & when \((\oplus,~ \vt_1,~ \vt_2)\) is & \(+, c, \N \mid +, \N, c \mid -, c, \N\) \\
+                      \(\N\) & is & \(-, c, c \mid \_,\N,\N\) \\
+                      \(\fail\) & is & otherwise \\
+                    \end{tabular}\]}
+\end{tikzpicture}
 
 So, when we try to write through the pointer \(1004@0\), the bytes at addresses 1004-1007 are
 tagged \(1\), and the policy issues a failstop.
@@ -1002,7 +986,7 @@ of escape analysis.
 // In compartment A
 void setup() {
   int* key = malloc(100);
-  char* msg = malloc\_share(100);
+  char* msg = malloc_share(100);
   char* log = malloc(100);
 
   fetch_msg(&msg); // Function also in A
@@ -1916,8 +1900,5 @@ And finally, we have the return rules.
 \returnstep
 \retvalstep
 \retnovalstep
-
-
-
 
 \end{document}

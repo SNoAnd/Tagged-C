@@ -1,0 +1,52 @@
+\newcommand{\malloctruleblock}[5]
+           {
+             \node[matrix, ampersand replacement=\&, right = of mem, fill=gray!10] (tr)
+                  {
+                    \& \node[anchor=center] {\(\malloct\)}; \\
+                    \& \node[anchor=center] {#1}; \\
+                    \node (pctout) {\(\PCT'\)}; \& \node[anchor=west] (pctret) {#2}; \\
+                    \node (ptout)  {\(\pt\)};   \& \node[anchor=west] (ptret)  {#3}; \\
+                    \node (vtout)  {\(\vt\)};   \& \node[anchor=west] (vtret)  {#4}; \\
+                    \node (ltsout) {\(\lt\)};   \& \node[anchor=west] (ltsret) {#5}; \\
+                  };
+
+                  \path[->]
+                  (pctret) edge (pctout)
+                  (ptret)  edge (ptout)
+                  (vtret)  edge (vtout)
+                  (ltsret) edge (ltsout);
+                  
+           }
+
+\newcommand{\storetruleblock}[4]
+           {
+             \node[matrix, ampersand replacement=\&, right = of mem, fill=gray!10] (tr)
+                  {
+                    \& \node[anchor=center] {\(\storet\)}; \\
+                    \& \node[anchor=center] {#1}; \\
+                    \node (pctout) {\(\PCT'\)}; \& \node[anchor=west] (pctret) {#2}; \\
+                    \node (vtout)  {\(\vt'\)};   \& \node[anchor=west] (vtret)  {#3}; \\
+                    \node (ltsout) {\(\lts'\)};   \& \node[anchor=west] (ltsret) {#4}; \\
+                  };
+
+                  \path[->]
+                  (pctret) edge (pctout)
+                  (vtret)  edge (vtout)
+                  (ltsret) edge (ltsout);
+                  
+           }
+
+\newcommand{\binoptruleblock}[3]
+           {
+             \node[matrix, ampersand replacement=\&, right = of mem, fill=gray!10] (tr)
+                  {
+                    \& \node[anchor=center] {\(\binopt\)}; \\
+                    \& \node[anchor=center] {#1}; \\
+                    \node (pctout) {\(\PCT'\)}; \& \node[anchor=west] (pctret) {#2}; \\
+                    \node (vtout)  {\(\vt'\)};   \& \node[anchor=west] (vtret)  {#3}; \\
+                  };
+
+                  \path[->]
+                  (pctret) edge (pctout)
+                  (vtret)  edge (vtout)                  
+           }
