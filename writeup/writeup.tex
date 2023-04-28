@@ -694,221 +694,10 @@ All other binary operations are only permitted between non-pointers.
 So, when we try to write through the pointer \(1004@0\), the bytes at addresses 1004-1007 are
 tagged \(1\), and the policy issues a failstop.
 
-\paragraph*{Realizing Memory Safety}
-
-A brief description is in order of how this policy would be implemented by a compiler to a PIPE
-target. This will serve to outline the basic structure of the compilation scheme described in
-\cite{Chhak21:Tagine}.
-
-\subsection{Compartmentalization}
-\label{sec:comp}
-% notes ended up below, in the coarse grained section
-In a perfect world, all C programs would be memory safe. But it is unfortunately common
-for a codebase to contain undefined behavior that will not be fixed, including memory undefined
-behavior. This may occur because developers intentionally use low-level idioms that are UB
-\cite{DeFacto}.
-Or the cost and potential risk of regressions may make it undesirable to fix bugs in older code,
-as opposed to code under active development that is held to a higher standard \cite{Bessey10:Coverity}.
-
-A compartmentalization policy isolates potentially risky code, such as code with known UB,
-from safety-critical code, minimizing the damage that can be done if a vulnerability is exploited.
-This is a very common form of protection that can be implemented at many levels. It is often built
-into a system's fundamental design, like a web browser sandbox untrusted javascript.
-But for our use-case, we consider a compartmentalization scheme being added to the system
-after the fact.
-
-Let's assume that we have a set of compartment identifiers, ranged over by \(C\), and a mapping
-from function identifiers to compartments, \(\mathit{comp}(f)\). This mapping must be provided by
-a security engineer.
-
-\paragraph{Coarse-grained Protection}
-
-% this is two tasks in the same process, all they want to do is pass scalars adn not stomp
-% on each other
-% then fine grained is libaries + your code, which usually need more
-% than mere scalars. think libc. could foil rop gadgets? 
-% mac - explicit list of allowed calls
-% capability - says this is shared, protects with basic safety. anything 
-%   else cannot be shared. unique colors to defeat forced pointer arthimetic. hybrid system
-%   roughly the effect of containing things, but wihtout the issues of the MAC
-%
-The core of a compartmentalization scheme is once again memory protection. For the simplest version,
-we will enforce that memory allocated by a function is only accessible by functions that share its
-compartment. To do that, we need to keep track of which compartment we're in, using the PC Tag.
-
-Calls and returns each take two steps: first to an intermediate call or return state, and
-then to the normal execution state, as shown in \cref{fig:functions} with some function \(f\)
-calling \(f'\). Three of these steps feature control points. In the initial call step, \(\calltname\)
-uses the name-tags of the caller and callee to update the PC Tag. Then, in the step from the call
-state, we place the function arguments in memory, tagging their values and locations with
-the results of \(\argtname\). And on return, \(\rettname\) updates both the PC Tag and
-the tag on the returned value.
-
-\begin{figure}
-  \begin{tikzpicture}[]
-    \node[state]                                      (f)                           {$f$};
-    \node[state, inner sep = 0pt, minimum size = 0pt] (call) [above right=of f]     {$\mathcal{C}$};
-    \node[state]                                      (g)    [below right=of call]  {$f'$};
-    \node[state, inner sep = 0pt, minimum size = 0pt] (ret)  [below right=of f]     {$\mathcal{R}$};
-    
-    \path[->]
-    (f)    edge [bend left] node [pos=0.5,above left] {\(\calltres \leftarrow \callt\)}       (call)
-    (call) edge [bend left] node [pos=0.25,above right] {\(\argtres \leftarrow \argtname(\PCT, \vt, f', x)\)}
-    node [pos=0.75,above right] {\(\localtres \leftarrow \localt\)} (g)
-    (g)    edge [bend left] node [pos=0.5,below right] {\(\dealloctres \leftarrow \dealloct\)}  (ret)
-    (ret)  edge [bend left] node [pos=0.5,below left] {\(\rettres \leftarrow \rett\)}  (f);
-  \end{tikzpicture}
-
-  \caption{Structure of a function call}
-  \label{fig:functions}
-\end{figure}
-
-In our compartmentalization policy, we define a tag to be a compartment identifier or
-the default \(\N\) tag.
-%
-\[\tau ::= C | \N\]
-%
-At any given time, the PC Tag carries the compartment of the active function.
-This is kept up to date by the \(\calltname\) and \(\rettname\) rules. Note that
-Tagged C automatically keeps track of the PC Tag at the time of a call, so that
-it can be used as a parameter in the return.
-
-\begin{minipage}[t]{.49\textwidth}
-  \[\begin{aligned}
-  \truledef{\callt}
-  \letin{C := \mathit{comp}(f')}
-  \settag{\PCT'}{\PCT}
-  \end{aligned}\]
-\end{minipage}
-\begin{minipage}[t]{.49\textwidth}
-  \[\begin{aligned}
-  \truledef{\rett}
-  \settag{\PCT'}{\PCT_{CLR}}
-  \settag{\vt'}{\vt}
-  \end{aligned}\]
-\end{minipage}
-
-Now that we know which compartment we're in, we can make sure that its memory is protected.
-This will essentially work just like the basic memory safety policy, except that coarse-grained
-protection means that the ``color'' we assign to an allocation is the active compartment.
-And during a load or store, we compare the memory tags to the PC Tag, not the pointer.
-
-\begin{minipage}[t]{0.25\textwidth}
-\[\begin{aligned}
-\truledef{\malloct}
-\settag{\pt}{\N}
-\settagopt{\vt}{\N}
-\settagopt{\overline{\lt}}{\left[\PCT\right]}
-\settag{\PCT'}{\PCT}
-\end{aligned}\]
-\end{minipage}
-\begin{minipage}[t]{0.3\textwidth}
-\[\begin{aligned}
-\truledef{\loadt}
-\assert{\forall \lt \in \overline{\lt} . \PCT = \lt}
-\settag{\vt'}{\vt}
-\end{aligned}\]
-\end{minipage}
-\begin{minipage}[t]{0.5\textwidth}
-\[\begin{aligned}
-\truledef{\storet}
-\assert{\forall \lt \in \overline{\lt} . \lt = \PCT}
-\settag{\PCT'}{\PCT}
-\settag{\vt'}{\N}
-\settag{\overline{\lt'}}{\overline{\lt}}
-\end{aligned}\]
-\end{minipage}
-
-\paragraph{Sharing Memory}
-
-The above policy works if our compartments only ever communicate by passing
-non-pointer values. In practice, this is far too restrictive! Many libraries take pointers
-and operate on the associated memory, starting with the most basic ones, like the
-standard library's string functions. And yet, if we are forced to include large
-external libraries in the same compartment as critical code, we have lost much of
-the value of compartmentalization.
-
-So, we need to modify our policy to account for intentional sharing of memory.
-In our example, the function {\tt setup} in compartment \(A\) will allocate several
-buffers, call a function that fills the buffer {\tt msg}, and then pass {\tt msg}
-to the {\tt strlen} function in compartment \(B\).
-
-\begin{verbatim}
-// In compartment A
-void setup() {
-  int* key = malloc(100);
-  char* msg = malloc(100);
-  char* log = malloc(100);
-
-  fetch_msg(&msg); // Function also in A
-
-  ...
-  int msg_size = strlen(msg); // StdLib function in B
-  ...
-}
-\end{verbatim}
-
-Naturally, we want {\tt strlen} to be able to read {\tt msg}, but we would
-rather that it not read {\tt key}, if it should happen to be malicious.
-Even if {\tt log} isn't as sensitive, we have no reason to share it, so
-it should be protected.
-
-The literature contains two main approaches to this problem:
-{\em mandatory access control} and {\em capabilities}. The former explicitly
-enumerates the access rights of each compartment, while the latter turns passed
-pointers into unforgeable tokens of privilege, so that the act of passing one
-implicitly grants the recipient access.
-
-We can handle a mix of allocations that will be passed and those that will not
-by creating a variant identifier for {\tt malloc}, {\tt malloc\_share}. This
-identifier maps to the same address (i.e., it is still calling the same function)
-but its name tag differs and can therefore parameterize the tag rule. The source
-must have the malloc name changed for every allocation that might be shared.
-The annotation could be performed manually, or perhaps automatically using some form
-of escape analysis.
-
-\begin{verbatim}
-// In compartment A
-void setup() {
-  int* key = malloc(100);
-  char* msg = malloc\_share(100);
-  char* log = malloc(100);
-
-  fetch_msg(&msg); // Function also in A
-
-  ...
-  int msg_size = strlen(msg); // StdLib function in B
-  ...
-}
-\end{verbatim}
-
-Executing a labeled statement invokes the \(\labelt\) tag rule to update the PC Tag.
-Since we don't want to share {\tt log}, we will need to label it as well.
-
-\paragraph{Mandatory Access Control}
-
-Mandatory access control works by associating objects in memory with the compartments that
-are allowed to access them. 
-
-\paragraph{Memory Shared by Capability}
-
-Mandatory access control requires the policy designer to identity every pair of object
-and compartment that it will be shared with. This may require too much analysis if
-objects are shared widely throughout the system. Conversely, it does not
-distinguish between accesses via a valid pointer and those that are the result of
-UB. [TODO: example]
-
-
-
-%\paragraph{Avoiding Confused Deputies}
-%
-%[TODO: need a solid example of this]
-% compartments are not a silver bullet, incomplete barrier (software compartments, bsd capabilites)
-% can pass around and get things written when unexpected
-% can use a hardware policy to clamp down on that regardless of the compartmentalization method
-% assuming you cant touch the (software) compartment mechaism 
 \subsection{PVI Memory Safety}
 \label{sec:PVI}
+
+[NOTE: Andrew suggested putting this first, seeing if it works.]
 
 The simple memory safety policy described above is too restrictive to run many real-world
 C programs, because they contain undefined behavior that is nevertheless part of the
@@ -1039,6 +828,213 @@ be used as an integer, but if cast back to a pointer it will be invalid.
   \end{aligned}\]
 \end{minipage}
 
+\subsection{Compartmentalization}
+\label{sec:comp}
+% notes ended up below, in the coarse grained section
+In a perfect world, all C programs would be memory safe. But it is unfortunately common
+for a codebase to contain undefined behavior that will not be fixed, including memory undefined
+behavior. This may occur because developers intentionally use low-level idioms that are UB
+\cite{DeFacto}.
+Or the cost and potential risk of regressions may make it undesirable to fix bugs in older code,
+as opposed to code under active development that is held to a higher standard \cite{Bessey10:Coverity}.
+
+A compartmentalization policy isolates potentially risky code, such as code with known UB,
+from safety-critical code, minimizing the damage that can be done if a vulnerability is exploited.
+This is a very common form of protection that can be implemented at many levels. It is often built
+into a system's fundamental design, like a web browser sandbox untrusted javascript.
+But for our use-case, we consider a compartmentalization scheme being added to the system
+after the fact.
+
+[TODO: a few words about least privilege, the other main compartmentalization use.]
+
+Let's assume that we have a set of compartment identifiers, ranged over by \(C\), and a mapping
+from function identifiers to compartments, \(\mathit{comp}(f)\). This mapping must be provided by
+a security engineer.
+
+\paragraph{Coarse-grained Protection}
+
+% this is two tasks in the same process, all they want to do is pass scalars adn not stomp
+% on each other
+% then fine grained is libaries + your code, which usually need more
+% than mere scalars. think libc. could foil rop gadgets? 
+% mac - explicit list of allowed calls
+% capability - says this is shared, protects with basic safety. anything 
+%   else cannot be shared. unique colors to defeat forced pointer arthimetic. hybrid system
+%   roughly the effect of containing things, but wihtout the issues of the MAC
+%
+The core of a compartmentalization scheme is once again memory protection. For the simplest version,
+we will enforce that memory allocated by a function is only accessible by functions that share its
+compartment. To do that, we need to keep track of which compartment we're in, using the PC Tag.
+
+Calls and returns each take two steps: first to an intermediate call or return state, and
+then to the normal execution state, as shown in \cref{fig:functions} with some function \(f\)
+calling \(f'\). Three of these steps feature control points. In the initial call step, \(\calltname\)
+uses the name-tags of the caller and callee to update the PC Tag. Then, in the step from the call
+state, we place the function arguments in the temp environment, tagging their values with
+the results of \(\argtname\), and we allocate our stack locals, tagging their values and locations
+with the results of \(\localtname\). And on return, \(\rettname\) updates both the PC Tag and
+the tag on the returned value.
+
+\begin{figure}
+  \begin{tikzpicture}[]
+    \node[state]                                      (f)                           {$f$};
+    \node[state, inner sep = 0pt, minimum size = 0pt] (call) [above right=of f]     {$\mathcal{C}$};
+    \node[state]                                      (g)    [below right=of call]  {$f'$};
+    \node[state, inner sep = 0pt, minimum size = 0pt] (ret)  [below right=of f]     {$\mathcal{R}$};
+    
+    \path[->]
+    (f)    edge [bend left] node [pos=0.5,above left] {\(\calltres \leftarrow \callt\)}       (call)
+    (call) edge [bend left] node [pos=0.25,above right] {\(\argtres \leftarrow \argtname(\PCT, \vt, f', x)\)}
+    node [pos=0.75,above right] {\(\localtres \leftarrow \localt\)} (g)
+    (g)    edge [bend left] node [pos=0.5,below right] {\(\dealloctres \leftarrow \dealloct\)}  (ret)
+    (ret)  edge [bend left] node [pos=0.5,below left] {\(\rettres \leftarrow \rett\)}  (f);
+  \end{tikzpicture}
+
+  \caption{Structure of a function call}
+  \label{fig:functions}
+\end{figure}
+
+In our compartmentalization policy, we define a tag to be a compartment identifier or
+the default \(\N\) tag.
+%
+\[\color{blue} \tau ::= C | \N\]
+%
+At any given time, the PC Tag carries the compartment of the active function.
+This is kept up to date by the \(\calltname\) and \(\rettname\) rules. Note that
+Tagged C automatically keeps track of the PC Tag at the time of a call, so that
+it can be used as a parameter in the return.
+
+\begin{minipage}[t]{.49\textwidth}
+  \[\begin{aligned}
+  \truledef{\callt}
+  \letin{C := \mathit{comp}(f')}
+  \settag{\PCT'}{\PCT}
+  \end{aligned}\]
+\end{minipage}
+\begin{minipage}[t]{.49\textwidth}
+  \[\begin{aligned}
+  \truledef{\rett}
+  \settag{\PCT'}{\PCT_{CLR}}
+  \settag{\vt'}{\vt}
+  \end{aligned}\]
+\end{minipage}
+
+Now that we know which compartment we're in, we can make sure that its memory is protected.
+This will essentially work just like the basic memory safety policy, except that coarse-grained
+protection means that the ``color'' we assign to an allocation is the active compartment.
+And during a load or store, we compare the memory tags to the PC Tag, not the pointer.
+
+\begin{minipage}[t]{0.25\textwidth}
+\[\begin{aligned}
+\truledef{\malloct}
+\settag{\pt}{\N}
+\settagopt{\vt}{\N}
+\settagopt{\overline{\lt}}{\left[\PCT\right]}
+\settag{\PCT'}{\PCT}
+\end{aligned}\]
+\end{minipage}
+\begin{minipage}[t]{0.3\textwidth}
+\[\begin{aligned}
+\truledef{\loadt}
+\assert{\forall \lt \in \overline{\lt} . \PCT = \lt}
+\settag{\vt'}{\vt}
+\end{aligned}\]
+\end{minipage}
+\begin{minipage}[t]{0.5\textwidth}
+\[\begin{aligned}
+\truledef{\storet}
+\assert{\forall \lt \in \overline{\lt} . \lt = \PCT}
+\settag{\PCT'}{\PCT}
+\settag{\vt'}{\N}
+\settag{\overline{\lt'}}{\overline{\lt}}
+\end{aligned}\]
+\end{minipage}
+
+\paragraph{Sharing Memory}
+
+The above policy works if our compartments only ever communicate by passing
+non-pointer values. In practice, this is far too restrictive! Many libraries take pointers
+and operate on the associated memory, starting with the most basic ones, like the
+standard library's string functions. And yet, if we are forced to include large
+external libraries in the same compartment as critical code, we have lost much of
+the value of compartmentalization.
+
+So, we need to modify our policy to account for intentional sharing of memory.
+In our example, the function {\tt setup} in compartment \(A\) will allocate several
+buffers, call a function that fills the buffer {\tt msg}, and then pass {\tt msg}
+to the {\tt strlen} function in compartment \(B\).
+
+\begin{verbatim}
+// In compartment A
+void setup() {
+  int* key = malloc(100);
+  char* msg = malloc(100);
+  char* log = malloc(100);
+
+  fetch_msg(&msg); // Function also in A
+
+  ...
+  int msg_size = strlen(msg); // StdLib function in B
+  ...
+}
+\end{verbatim}
+
+Naturally, we want {\tt strlen} to be able to read {\tt msg}, but we would
+rather that it not read {\tt key}, if it should happen to be malicious.
+Even if {\tt log} isn't as sensitive, we have no reason to share it, so
+it should be protected.
+
+The literature contains two main approaches to this problem:
+{\em mandatory access control} and {\em capabilities}. The former explicitly
+enumerates the access rights of each compartment, while the latter turns passed
+pointers into unforgeable tokens of privilege, so that the act of passing one
+implicitly grants the recipient access.
+
+We can handle a mix of allocations that will be passed and those that will not
+by creating a variant identifier for {\tt malloc}, {\tt malloc\_share}. This
+identifier maps to the same address (i.e., it is still calling the same function)
+but its name tag differs and can therefore parameterize the tag rule. The source
+must have the malloc name changed for every allocation that might be shared.
+The annotation could be performed manually, or perhaps automatically using some form
+of escape analysis.
+
+\begin{verbatim}
+// In compartment A
+void setup() {
+  int* key = malloc(100);
+  char* msg = malloc\_share(100);
+  char* log = malloc(100);
+
+  fetch_msg(&msg); // Function also in A
+
+  ...
+  int msg_size = strlen(msg); // StdLib function in B
+  ...
+}
+\end{verbatim}
+
+\paragraph{Mandatory Access Control}
+
+Mandatory access control works by associating objects in memory with the compartments that
+are allowed to access them. 
+
+\paragraph{Memory Shared by Capability}
+
+Mandatory access control requires the policy designer to identity every pair of object
+and compartment that it will be shared with. This may require too much analysis if
+objects are shared widely throughout the system. Conversely, it does not
+distinguish between accesses via a valid pointer and those that are the result of
+UB. [TODO: example]
+
+
+
+%\paragraph{Avoiding Confused Deputies}
+%
+%[TODO: need a solid example of this]
+% compartments are not a silver bullet, incomplete barrier (software compartments, bsd capabilites)
+% can pass around and get things written when unexpected
+% can use a hardware policy to clamp down on that regardless of the compartmentalization method
+% assuming you cant touch the (software) compartment mechaism 
 %\subsection{PNVI Memory Safety}
 %\label{sec:PNVI}
 
@@ -1103,8 +1099,8 @@ be used as an integer, but if cast back to a pointer it will be invalid.
 \subsection{Secure Information Flow}
 \label{sec:SIF}
 
-Memory safety and compartmentalization are both aimed at preventing or mitigating
-memory errors. But programs can be memory safe and still do insecure things! Consider the
+Memory safety and compartmentalization both either prevent or mitigate memory errors.
+But programs can be memory safe and still do insecure things! Consider the
 following code, in which we have some error-handling code that writes to a log.
 
 \begin{verbatim}
@@ -1223,61 +1219,17 @@ device that might be read or might transfer.
 \begin{minipage}{0.49\textwidth}
   \[\begin{aligned}
   \truledef{\storet}
-  \assert{\PCT \sqcup \pt \sqcup \vt_2 \sqsubseteq }
+  \assert{\forall \lt \in \lts . \PCT \sqcup \pt \sqcup \vt_2 \sqsubseteq \lt}
   \settag{\PCT'}{\PCT}
   \settag{\vt'}{\PCT \sqcup \pt \sqcup \vt_2}
   \settag{\overline{\lt'}}{\overline{\lt}}
   \end{aligned}\]
 \end{minipage}
 
-Now things become trickier, because the program's control-flow itself can be tainted.
+Things become trickier when we consider that the program's control-flow itself can be tainted.
 This can occur in any of our semantics' steps that can produce different statements and continuations
 depending on the tained value. At that point, any change to the machine state constitutes
 an information flow. This is termed an {\em implicit flow}.
-
-Take, for example, the expression {\tt x = y ? (z=0) : (z=1);} where {\tt y} is
-tainted and {\tt z} is volatile. If {\tt y} is non-zero, then {\tt z} will be assigned 0,
-thus leaking one bit of information about the contents of {\tt y}. So, we need to remember
-while inside of whichever branch we take that the state depends on {\tt y}
-and restrict external writes accordingly.
-
-\Cref{app:context} discusses the building of expression contexts. For our purposes here,
-it is crucial to understand that when we construct a parenthetical expression, we can
-set the PC Tag locally within that context, so that our rules have different behavior.
-In this case, when we step from the condition expression to a parenthetical, we will
-mark it with a PC Tag that reflects the heightened security of its contents.
-
-\begin{minipage}[t]{0.59\textwidth}
-\[\begin{aligned}
-& \condition{(\val{1}{\vtaint})}{(\assign{(\var{x})}{(\val{0}{\N})})}{(\stmt_2)} \\
-& \longrightarrow \paren{(\assign{(\var{x})}{\val{0}{\N}})}{\type}{\gentag} \\
-& \longrightarrow \paren{(\assign{(\loc{4000}{\N})}{(\val{0}{\N}}))}{\type}{\gentag} \\
-& \longrightarrow \paren{(\val{0}{\N})}{\type}{\gentag} \\
-\end{aligned}\]
-\end{minipage}
-\begin{minipage}[t]{0.4\textwidth}
-\[\begin{aligned}
-\truledef{\exprsplitt}
-\settag{\gentag}{\PCT \sqcup \vt}
-\end{aligned}\]
-
-\memory{\(4000\)}{\(0\)}{\bf \color{red} fail}{\(\vol\)} \hspace{-3em} \(\leftarrow \storetname(\gentag, \N, \N, \left[\vol\right])\)
-\end{minipage}
-
-On the other hand, if {\tt z} is not volatile, then we end up with a value in our
-parentheses, and we will remove the parentheses and carry on with execution.
-We need to transfer the taint information from the context onto the value, and in
-some cases we might want to merge it with the global PC Tag. We do this with
-the \(\exprjointname\) tag rule.
-
-\[\begin{aligned}
-\truledef{\exprjoint}
-\settag{\PCT'}{\PCT}
-\settag{\vt'}{\gentag}
-\end{aligned}\]
-
-This principle applies to other expressions with control flow, namely {\em and} and {\em or}
-expressions that shortcut.
 
 Implicit flows become much more complex outside of expressions, when we have more
 complex control flow. This time the taint is carried on the PC Tag itself.
@@ -1294,10 +1246,12 @@ Such a simple example can be seen in \cref{fig:ifthenelse}; {\tt public1} must b
 tagged with the taint tag of {\tt secret}, while it is safe to tag {\tt public2}
 \(\N\), because that is after the join point, {\tt J}. The same goes for \cref{fig:while},
 if we are in a {\em termination-insensitive} setting \cite{Askarov08:TINILeaks}.
-In termination-insensitive noninterference, we allow for the possibility that
-an observer could glean information by the termination or non-termination of
+In termination-insensitive noninterference, we allow
+an observer to glean information by the termination or non-termination of
 the program. So, it is safe to assume that the post-dominator \(J\)
 of the while loop is reached.
+
+[TODO: implicit flow rules for statements]
 
 But in the presence of unrestricted go-to statements, a join point may not be
 local (and sometimes may not exist within the function, assuming that we have not
@@ -1306,8 +1260,13 @@ uses go-to statements to create an approximation of an if-statement whose join-p
 is far removed from the for-loop. The label {\tt J} now has nothing to do with the
 semantics of any particular statement.
 
-Luckily this can still be determined statically from a function's full
-control-flow graph. So, to implement the policy, we must first transform our program
+Luckily this can be determined statically from a function's full control-flow graph,
+so we can implement it as long as we're willing to deviate from our purely syntax-based
+tag rules by performing a code transformation. This can be done completely automatically;
+for each split point in the code, the control-flow graph identifies its join point statement,
+and the transformation must wrap that statement in a fresh label.
+
+to implement the policy, we must first transform our program
 by adding labels at the join point of each conditional.
 Every statement that branches carries an optional label indicating its corresponding
 join point, if it has one---a function with multiple returns might not, in which case
@@ -1721,10 +1680,10 @@ depends on the value of a variable rather than its tags.
 
 \paragraph{Reference Monitors}
 
-The concept of a reference monitor was first introduced fifty years ago in \cref{Anderson72:PlanningStudy}:
+The concept of a reference monitor was first introduced fifty years ago in \cite{Anderson72:PlanningStudy}:
 a tamper-proof and verifiable subsystem that checks every security-relevant operation in a system to
 ensure that it conforms to a security {\em policy} (a general specification of acceptable behavior;
-see \cref{Goguen82:SecurityPolicies}.)
+see \cite{Goguen82:SecurityPolicies}.)
 
 A reference monitor can be implemented at any level of a system. An {\em inline reference monitor}
 is a purely compiler-based system that inserts checks at appropriate places in the code.
