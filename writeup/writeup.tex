@@ -1,45 +1,22 @@
-\documentclass[acmsmall,review,anonymous]{acmart}\settopmatter{printfolios=true,printccs=false,printacmref=false}
+\documentclass{lmcs}
 
-\acmJournal{PACMPL}
-\acmVolume{1}
-\acmNumber{CONF} % CONF = POPL or ICFP or OOPSLA
-\acmArticle{1}
-\acmYear{2018}
-\acmMonth{1}
-\acmDOI{} % \acmDOI{10.1145/nnnnnnn.nnnnnnn}
-\startPage{1}
-
-\setcopyright{none}
-
-\bibliographystyle{ACM-Reference-Format}
-\citestyle{acmauthoryear}
-
-\usepackage{geometry}
+\usepackage{amsmath,amssymb,amsfonts}
 \usepackage{graphicx}
 \usepackage{xcolor}
 \usepackage{stmaryrd}
 \usepackage{subcaption}
-\usepackage{cleveref}
+\usepackage{hyperref,cleveref}
 \usepackage{tikz}
 
 \usetikzlibrary{automata,positioning,shapes.multipart}
 
 \title{Flexible Runtime Security Enforcement with Tagged C}
 \author{Sean Anderson}
-\affiliation{
-  \department{Computer Science}
-  \institution{Portland State University}
-}
 \author{Allison Naaktgeboren}
-\affiliation{
-  \department{Computer Science}
-  \institution{Portland State University}
-}
 \author{Andrew Tolmach}
-\affiliation{
-  \department{Computer Science}
-  \institution{Portland State University}
-}
+
+\address{Portland State University, Department of Computer Science}
+\email{ander28@pdx.edu, naak@pdx.edu, apt@pdx.edu}
 
 \begin{document}
 
@@ -286,7 +263,7 @@ interpreter and a full formalization. Being written in Coq, it is ideal for futu
 
 \paragraph{PIPE Backend Implementation}
 
-In \cref{Chhak20:VerifiedCompilation}, Chhak et al. introduce a verified compiler from a toy
+In \cref{Chhak21:Tagine}, Chhak et al. introduce a verified compiler from a toy
 high-level language with tags
 to a control-flow-graph-based intermediate representation with a PIPE-based
 ISA. This establishes a proof-of-concept for compiling a source language's tag policy to
@@ -882,18 +859,20 @@ enumerates the access rights of each compartment, while the latter turns passed
 pointers into unforgeable tokens of privilege, so that the act of passing one
 implicitly grants the recipient access.
 
-In either case, our first step is to distinguish which allocation we want to pass.
-We do this by labeling the statement that contains the relevant call to {\tt malloc}
+We can handle a mix of allocations that will be passed and those that will not
+by creating a variant identifier for {\tt malloc}, {\tt malloc\_share}. This
+identifier maps to the same address (i.e., it is still calling the same function)
+but its name tag differs and can therefore parameterize the tag rule. The source
+must have the malloc name changed for every allocation that might be shared.
 The annotation could be performed manually, or perhaps automatically using some form
-of escape analysis. The name of the label doesn't matter, it will just be referenced
-via its name tag in the policies.
+of escape analysis.
 
 \begin{verbatim}
 // In compartment A
 void setup() {
   int* key = malloc(100);
-  SHARE: char* msg = malloc(100);
-  NOSHARE: char* log = malloc(100);
+  char* msg = malloc\_share(100);
+  char* log = malloc(100);
 
   fetch_msg(&msg); // Function also in A
 
@@ -1528,31 +1507,18 @@ J:  public2 = 42;
 Our second example involves information from outside of the system ending up somewhere it isn't supposed to.
 
 \begin{verbatim}
-void sanitize(src, dst);
+void sanitize(buf);
 char* sql_query(char* query);
 
-void get_data(char* name, char* buf, int field) {
-  // field: 1=address, 2=phone, 3(default)=astrological sign
-  char[10] name_san;
-  char[100] query;
-  sanitize(name, name_san);
+void get_data() {
+  char[20] name;
+  char[100] query = "select address where name =";
 
-  switch(field) {
-    case 1:
-      sprintf(query, "select address where name =");
-      strncat(query, name_san, strlen(name_san));
-      break;
-    case 2:
-      sprintf(query, "select phone where name =");
-      strncat(query, name_san, strlen(name_san));
-      break;
-    default:
-      sprintf(query, "select sign where name =");
-      strncat(query, name, strlen(name)); // Oops!
-      break;
-  }
-
-  sprintf(buf, sql_query(query);
+  scanf("%19f", name);
+  sanitize(name);
+  strncat(query, name, strlen(name));
+  
+  sprintf(buf, sql_query(query));
   return;
 }
 \end{verbatim}
@@ -1691,7 +1657,7 @@ associated with various sources. [TODO: fix the alignment here.]
 \[\begin{aligned}
 \truledef{\labelt}
 \letin{\pctaint{f}{\overline{(L,\sigma)}} := \PCT}
-\settag{\PCT'}{\pctaint{f}{\{(L',\sigma) \mid (L',\sigma) \in \overline{(L,\sigma)} \land L \not \eq L'\}}}
+\settag{\PCT'}{\pctaint{f}{\{(L',\sigma) \mid (L',\sigma) \in \overline{(L,\sigma)} \land L \not = L'\}}}
 \end{aligned}\]
 \end{minipage}
 
@@ -1830,6 +1796,7 @@ Currently, policies are written in Gallina, the language embedded in Coq. This i
 proof-of-concept, but not satisfactory for real use. We plan to develop a domain-specific policy
 language to make it easier to write Tagged C policies.
 
+\bibliographystyle{alphaurl}
 \bibliography{taggedc.bib}
 
 \appendix
