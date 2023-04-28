@@ -668,11 +668,11 @@ All other binary operations are only permitted between non-pointers.
 
 \begin{tikzpicture}[]
   \binoptruleblock{}{\(\PCT\)}
-                  {\left\lbrace \begin{tabular}{l r l}
+                  {\(\left\lbrace \begin{tabular}{l r l}
                       \(c\) & when \((\oplus,~ \vt_1,~ \vt_2)\) is & \(+, c, \N \mid +, \N, c \mid -, c, \N\) \\
                       \(\N\) & is & \(-, c, c \mid \_,\N,\N\) \\
                       \(\fail\) & is & otherwise \\
-                    \end{tabular}\]}
+                    \end{tabular} \right.\)}
 \end{tikzpicture}
 
 So, when we try to write through the pointer \(1004@0\), the bytes at addresses 1004-1007 are
