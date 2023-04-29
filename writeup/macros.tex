@@ -1,3 +1,13 @@
+\newif\ifdraft \drafttrue
+\newif\iftext \textfalse
+\newif\iflater \latertrue
+\newif\ifspace \spacefalse
+\newif\ifaftersubmission \aftersubmissionfalse
+\newif\ifcameraready  \camerareadyfalse
+\newif\ifexceptions \exceptionsfalse
+
+% !!! PLEASE DON'T CHANGE THESE !!! INSTEAD DEFINE YOUR OWN texdirectives.tex !!!
+\makeatletter \@input{texdirectives} \makeatother
 \newcommand{\tagcolor}{C}
 
 \newcommand{\gentag}{\mathit{\color{blue} t}}
@@ -7,6 +17,10 @@
 \newcommand{\lts}{\overline{\color{blue} \lt}}
 \newcommand{\nt}{\mathit{\color{blue} nt}}
 \newcommand{\PCT}{\mathcal{\color{blue} P}}
+
+\newcommand{\apt}[1]{\ifdraft\textcolor{orange}{{[APT:~#1]}}\fi}
+\newcommand{\sna}[1]{\ifdraft\textcolor{darkgreen}{{[SNA:~#1]}}\fi}
+\newcommand{\an}[1]{\ifdraft\textcolor{purple}{{AN:~#1}}\fi}
 
 \newcommand{\deftag}{\mathit{\color{blue} def}}
 

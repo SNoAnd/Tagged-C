@@ -31,7 +31,8 @@
 Today's computing infrastructure is built atop layers of legacy C code, often
 insecure, poorly understood, and/or difficult to maintain.
 These foundations may be shored up with dynamic security enforcement,
-which spares legacy code owners from having to modify their code and potentially introduce regressions.
+which spares legacy code owners from having to modify their code.
+% and potentially introduce regressions.
 Tagged C is a C variant with a built-in {\em tag-based reference monitor} for use in expressing
 a variety of dynamic security policies and enforcing them with compiler and hardware support.
 
@@ -51,43 +52,55 @@ Operating systems (Linux, Windows, OSX, BSD), databases (Oracle, sqlite3), the i
  web (Apache, NGNIX, NetBSD, Cisco IOS), the Internet of Things (IoT), and the 
  embedded devices that run our homes and hospitals are built in and on C \cite{Munoz:PoweredbyC}. 
  C is not a relic; more than a third of professional programmers report active developing
-  in C today \cite{stackoverflow22:dev-survey}. The security of C code is synonymous 
+  in C today \cite{stackoverflow22:dev-survey}. The security of C code is synonymous\apt{too strong} 
   with the safety of public and private systems we depend on every day. 
 
-  Although the security of C code is critical to public safety, 
-  it is not always possible to fully secure it before run-time. 
-  Ideally, bugs would be identified and then fixed promptly. 
+  \apt{You need to talk here about the kinds of properties we plan to address.}
+
+
+  \apt{This para gets in the way of the flow. We do not need to diss static enforcement to this audience.
+    Also, the para makes it sound like we are only interested in C language errors. 
+    But bugs in the programmer's logic are at least as important for the properties we are trying to enforce!}
+  Although the security of C code is critical to public safety\apt{repeats previous sentence},
+  it is not always possible to fully secure it before run-time.
+  Ideally, bugs would be identified \apt{when?} and then fixed promptly. 
   That is not always possible for a variety of reasons: bugs may escape detection, 
-  escape identification, or be unchangeable. Static analysis is a well researched 
-  technique for identifying bugs, however it suffers from a fatal flaw: C is not 
+  escape identification\apt{what's the difference}, or be unchangeable\apt{``unfixable''?} . Static analysis is a well researched \apt{and widely deployed!}
+  technique for identifying bugs, but it suffers from a fatal flaw: C is not 
   well defined. There is not universal agreement among experts on what and when 
   something is a bug in C code, especially around Undefined Behaviors (UB) 
   \cite{defactoC}. Confusion around expected behavior is no small problem. 
   There are 191 undefined behaviors and 52 unspecified behaviors in the C99 
   specification \cite{Csmith}. Sometimes these behaviors are benign and skillfully 
   used by the developer, other times they are unintended and highly dangerous. 
-  Unfortunately the distinction is typically lost on static analysis tools. 
+  Unfortunately the distinction is typically lost on static analysis tools. \apt{I'm not sure
+    this is a supportable statement.}
   Discerning expert code review is considered best practice, although it is 
   rarely perfectly successful \cite{} % https://dl.acm.org/doi/10.1007/978-3-642-36563-8_14 }
-  even if such an expert is available at all. Even when there is both consensus 
-  and detection of a bug, changes to the code may not be possible. 
-  It may be resident in proprietary 3rd party libraries and drivers, or in code
-  where regulations prohibit changes \cite{Bessey10:Coverity}.
+  even if an expert is available at all. Even when there is both consensus 
+  and detection of a bug\apt{??}, changing the code may not be possible because  
+  it is in proprietary 3rd party libraries and drivers, or because
+  regulations prohibit changes \cite{Bessey10:Coverity}.\apt{last clause is mysterious}
 
-The last line of defense against unknown or immutable vulnerabilities is dynamic enforcement in 
-the runtime. Dynamic enforcement options are well studied, however most suffer from similiar 
-flaws; they cannot easily discern developer intent nor are usable by C developers,
-i.e. the source of developer intent. We propose Tagged C, a dynamic tag-based policy enforcement 
-system operating at the same level the developers do: the C source code itself. Tagged C allows
+\apt{This should be the second para. Move the stuff above to later.}
+The last line of defense against unknown or immutable vulnerabilities is dynamic enforcement at
+run time. Dynamic enforcement options are well studied\apt{citations?}, but most suffer from similar 
+flaws: they cannot easily discern developer intent nor are usable by C developers,
+i.e. the source of developer intent.\apt{awkward, and again needs evidence.}
+
+In this paper, we propose Tagged C, a \apt{``generic'' or ``general-purpose''} dynamic tag-based policy enforcement 
+system operating at \apt{unclear} the same level the developers do: the C source code itself. Tagged C allows
 developers to express their security intent for UB from permissive to conservative, and even
-beyond UB to rule out defined-but-erroneous behaviors that may be difficult to predict.
+beyond UB \apt{well beyond} to rule out defined-but-erroneous behaviors that may be difficult to predict.
 
 A tag-based reference monitor associates a metadata tag with the data in the underlying system,
 and throughout execution it updates these tags according to a set a predefined rules, or halts if
 the program would violate a rule, replacing a security violation with failstop behavior. By attaching
 such a monitor to the C language, we allow a user to apply whatever security policy meets their needs,
 tuned if necessary so that non-standard but benign code can still run, while actually dangerous activity
-is failstopped.
+is failstopped.\apt{not sure we want to coin this word.}
+
+\apt{Need a high-level description of the elements of Tagged C here: control points, policy rules, etc.}
 
 %This is the underlying concept of PIPE, an ISA extension that implements a reference monitor in
 %hardware, as well as similar systems such as ARM MTE and [that thing from Binghamton]. Being
@@ -98,10 +111,11 @@ is failstopped.
 
 Tagged C is built on top of CompCert C, the C semantics formalized along with the CompCert verified compiler.
 Our interpeter is likewise built on top of the CompCert C reference interpreter \cite{Leroy09:CompCert}.
-We chose CompCert C as a base because it is a widely used and well-supported C semantics, with a working
-interpreter and a full formalization. Being written in Coq, it is ideal for future proof work.
+We chose CompCert C as a base because it is a widely used\apt{??} and well-supported\apt{??} C semantics, with a working
+interpreter and a full formalization. Being written in Coq, it is ideal for future proof work.\apt{why is this relevant?}
 
 \paragraph{General Purpose Security Enforcement}
+\apt{These points need to be integrated much earlier int he main text.}
 
 Tagged C does not assume any particular notion of security. It can express a range of policies
 including memory safety, compartmentalization, and secure information flow. These represent many
@@ -112,12 +126,13 @@ of the typical notions of security seen in the wild.
 In \cref{Chhak21:Tagine}, Chhak et al. introduce a verified compiler from a toy
 high-level language with tags
 to a control-flow-graph-based intermediate representation with a PIPE-based
-ISA. This establishes a proof-of-concept for compiling a source language's tag policy to
+ISA. \apt{Oops. What's PIPE?} This establishes a proof-of-concept for compiling a source language's tag policy to
 realistic hardware. They take advantage of the fact that, like everything else in a PIPE system,
 instructions in memory carry tags. Instruction tags are statically determined at compile-time.
 They ``piggyback'' information about source-level control points onto the tags of the instructions
 that implement those source constructs.
 
+\apt{Not clear this belongs in the intro.}
 Tagged C is designed to be implemented in the same way. But, before we can soundly transmit
 tag rules from the source language to the assembly level, we also need to protect the basic
 control-flow properties of the source language. So, a compiled Tagged C requires a backend that
@@ -146,10 +161,14 @@ which the design meets our goals of flexibility and applicability to realistic
 security concerns.
 
 \paragraph{What is Metadata Tagging?}
+\apt{If this really needs to be part of the intro, then it needs to come above the Contributions.}
 
+\apt{I think this example works pretty well, but diagrams are not clear yet.}
+  
 Consider a very simple security requirement: ``do not {\tt printf} the password.''
 For simplicity, we will suppose that {\tt pwd} is an integer in this case.
-It is not possible to enforce this statically in general, though it may be over-approximated.
+It is not possible to enforce this statically in general, though it\apt{??} may be over-approximated.
+\apt{Very unclear, and probably not needed here.}
 
 \vspace{\abovedisplayskip}
 \begin{minipage}{0.4\textwidth}
@@ -175,7 +194,9 @@ void main(int pwd) {
 \end{minipage}
 \vspace{\belowdisplayskip}
 
-We need a way to dynamically track the value of {\tt pwd} as it moves through the variable
+\apt{Not clear what the labels on edges mean.  (And why is there a font change in the figure?)}
+
+We need a way to dynamically track the value\apt{``confidential status''?} of {\tt pwd} as it moves through the variable
 {\tt x} and is then passed to {\tt printf}. We can do so by associating metadata with the
 value; namely, that it originates in {\tt pwd}. We will write this ``tagged'' value \(42 @ \PT\),
 with the \(@\) symbol denoting a value tagged with metadata.
@@ -200,6 +221,9 @@ When we call {\tt printf}, we must check that the tag is \(\N\), and if it is
   (printf) edge node [pos=0.5,above] {}
                 node [pos=0.5,below] {\(\N \rightarrow \N\) \\ \(\PT \rightarrow \fail\)} (fail);
 \end{tikzpicture}
+
+\apt{Arrow to ``fail'' is confusing. We should only go there is tag on x is P. And it is unclear that the N and P on the
+  arrow label are attached to the printed value.}
 
 The points at which the tags are checked and either propagated or updated are termed
 {\em control points}, and the particular set of rules that are applied to tags at each
@@ -262,7 +286,7 @@ void main(int pwd) {
   node [pos=0.5,below] {\(\PT,\M \rightarrow \fail\) \\ \(\gentag_1,\gentag_2 \rightarrow \gentag_1,\gentag_2\)} (fail);
 \end{tikzpicture}
 
-Finally, we may be concerned with less leaks of {\tt pwd}, such as this one:
+Finally, we may be concerned with less \apt{??} leaks of {\tt pwd}, such as this one:
 \begin{verbatim}
 void main(int pwd) {
   for (int i; i<pwd; i++) {
@@ -322,6 +346,10 @@ written \(\PCT\). In examples that show states we will note it alongside the sta
   \caption{Tagged C Abstract Syntax}
   \label{fig:syntax}
 \end{figure}
+
+\apt{You still have not addressed my earlier comments about making this section more accessible, by:
+  clarifying the difference between source and artificial intermediate forms in Figure 1, reordering al the
+  figures to put the important/common cases first, etc.}
 
 Tagged C uses the full syntax of CompCert C \cite{Leroy09:CompCert} with minimal modification (\cref{fig:syntax}).
 There are two notable syntactical differences in the language, relative to CompCert C:
@@ -493,7 +521,7 @@ void main() {
 \end{verbatim}
 
 The above code is undefined behavior in C, because it writes to the address one past the end
-of the array pointed to by {\tt x}. In Tagged C under a typical allocation strategy,
+of the array pointed to by {\tt x}. In Tagged C under a typical allocation strategy\apt{what does that mean?},
 {\tt x} and {\tt y} are given adjacent concrete addresses, and the program
 writes to the address of {\tt x+1}, which is also the address of {\tt y}.
 For our example, we'll assume that the stack grows downward from address 100.
