@@ -496,12 +496,13 @@ and outputs are marked with \(\optional{boxes}\).
 When we want to define a per-program policy, we need to be able to attach tags to the program's
 functions, globals, and so on. We do this by automatically embedding their identifiers in tags,
 which are available to all policies. These are called {\em name tags} and are ranged over by
-\(\nt\). We give name tags to:
+\(\nt\). We give name tags to the following constructions and identify them as follows:
 \begin{itemize}
-\item Function identifiers
-\item Function arguments, written {\tt f.x}
-\item Local and global variables
-\item Labels
+\item Function identifiers, \(FN(f)\)
+\item Function arguments, \(AN(f,x)\)
+\item Global variables, \(GN(x)\)
+\item Labels, \(LN(L)\)
+\item Types, \(TN(\type)\)
 \end{itemize}
 
 \subsection{Basic Memory Safety}
@@ -521,83 +522,114 @@ void main() {
 \end{verbatim}
 
 The above code is undefined behavior in C, because it writes to the address one past the end
-of the array pointed to by {\tt x}. In Tagged C, it is defined in correspondence to
-the allocation strategy. {\tt x} and {\tt y} are given concrete addresses, and the program
-writes to the address of {\tt x+1}. It's possible that this address is free, in which case
-there is no harm; but if {\tt y} is allocated there, then it will write to the first address
-of {\tt y}.
+of the array pointed to by {\tt x}. In Tagged C under a typical allocation strategy,
+{\tt x} and {\tt y} are given adjacent concrete addresses, and the program
+writes to the address of {\tt x+1}, which is also the address of {\tt y}.
+For our example, we'll assume that the stack grows downward from address 100.
 
-For our example, we'll assume a straightforward first-fit allocator, with the heap growing upward
-from address 1000, and the stack growing downward from address 2000. Our set of tags consists of
+We can prevent situations like this using a {\em memory safety} policy, as follows.
+We assign to each object in memory a unique ``color'' when it is allocated---in this case,
+on entry to the function {\tt main}.
+
+Our set of tags consists of
 \(N\), for non-pointers, and pointer ``colors'' \(c \in \mathbb{N}\). The PC Tag
 (\(\PCT\)) tracks the next color to allocate, so it's initialized to \(\tagz\), and everything else is \(N\).
-\(N\) is the default for constants. [TODO: needs another pass]
+\(N\) is the default for constants.
 
-\begin{tikzpicture}[]
-  \node[matrix, ampersand replacement=\&, column sep=-0.6em]  (mem)
+\begin{tikzpicture}[every text node part/.style={align=center}]
+  \node[matrix, ampersand replacement=\&, draw=black]  (le)
        {
-         \node (a) {\memory{\(1000\)}{\(\vundef\)}{\(\N\)}{\(\N\)}}; \&
-         \node {\memory{\(1004\)}{\(\vundef\)}{\(\N\)}{\(\N\)}}; \&
-         \node {\memory{\(1008\)}{\(\vundef\)}{\(\N\)}{\(\N\)}}; \&
-         \node[anchor=north] {\(~ ~\dots ~ ~\)}; \&
-         \node {\memory{\(1092\)}{\(\vundef\)}{\(\N\)}{\(\N\)}}; \&
-         \node {\memory{\(1096\)}{\(\vundef\)}{\(\N\)}{\(\N\)}}; \\
+         \node {\(x \mapsto 92 @ \tagz\)}; \\
+         \node {\(y \mapsto 96 @ \tagone\)}; \\
        };
-         
-       \node (state) [node distance=1.2em, above=of a, anchor=west]
-             {\(\sstate{\PCT=\tagz}{\mem}{\expr=\mathit{malloc}(1 @ t)}{}\)};
+
+  \node[state, node distance=1em, below=of le]  (stmt)
+       {
+         \(*x = 0@\N\) \\
+         {\color{blue} \(\PCT : \tagtwo\)}
+       };
+  
+  \node[matrix, ampersand replacement=\&, column sep=-1em, node distance=0.5em, below=of stmt]  (mem)
+       {
+         \node[anchor=north] {\(~ ~\cdots ~ ~\)}; \&
+         \node[anchor=center] {\memory{\(92\)}{\(\vundef\)}{\(\N\)}{\(\tagz\)}}; \&
+         \node[anchor=center] {\memory{\(96\)}{\(\vundef\)}{\(\N\)}{\(\tagone\)}}; \\
+       };
+
+  \node[matrix, ampersand replacement=\&, draw=black, node distance=12em, right=of le]  (le2)
+       {
+         \node {\(x \mapsto 92 @ \tagz\)}; \\
+         \node {\(y \mapsto 96 @ \tagone\)}; \\
+       };
+
+  \node[state, node distance=1em, below=of le2]  (stmt2)
+       { \\
+         \(92 @ \tagone = 0@\N\) \\
+         {\color{blue} \(\PCT : \tagtwo\)}
+       };
+  
+  \node[matrix, ampersand replacement=\&, column sep=-1em, node distance=-0.5em, below=of stmt2]  (mem2)
+       {
+         \node[anchor=north] {\(~ ~\cdots ~ ~\)}; \&
+         \node[anchor=center] {\memory{\(92\)}{\(\vundef\)}{\(\N\)}{\(\tagz\)}}; \&
+         \node[anchor=center] {\memory{\(96\)}{\(\vundef\)}{\(\N\)}{\(\tagone\)}}; \\
+       };
+
+  \draw[->]
+  (stmt) -- (stmt2);
   
 \end{tikzpicture}
 
-The call to malloc allocates the region from 1000 to 1039, and returns a pointer to the base
-address, 1000. We consult the policy to determine (1) the tag on the resulting value,
-(2) the updated tags on the allocated memory region, and (3) the updated PC Tag.
-Specifically, we invoke the \(\malloctname\) tag rule, which takes the PC Tag and the tag on
-the size argument and returns these three updated tags.
 
-\begin{tikzpicture}[]
-  \node[matrix, ampersand replacement=\&, column sep=-0.6em]  (mem)
-       {
-         \node[outer ysep=-5pt] (a) {\(\underbrace{\memory{1000}{\(\vundef\)}{\N}{\tagz}}\)};\\ %\&
+%The call to malloc allocates the region from 1000 to 1039, and returns a pointer to the base
+%address, 1000. We consult the policy to determine (1) the tag on the resulting value,
+%(2) the updated tags on the allocated memory region, and (3) the updated PC Tag.
+%Specifically, we invoke the \(\malloctname\) tag rule, which takes the PC Tag and the tag on
+%the size argument and returns these three updated tags.
+
+%\begin{tikzpicture}[]
+%  \node[matrix, ampersand replacement=\&, column sep=-0.6em]  (mem)
+%       {
+%         \node[outer ysep=-5pt] (a) {\(\underbrace{\memory{1000}{\(\vundef\)}{\N}{\tagz}}\)};\\ %\&
 %         \node {\memory{\(1004\)}{\(\vundef\)}{\(\N\)}{\(\N\)}}; \&
 %         \node {\memory{\(1008\)}{\(\vundef\)}{\(\N\)}{\(\N\)}}; \\
-       };
+%       };
   
-  \node (state) [node distance=1.2em, above=of a]
-        {\(\sstate{\PCT'=\tagone}{\mem}{\expr=p @ \pt}{}\)};
+%  \node (state) [node distance=1.2em, above=of a]
+%        {\(\sstate{\PCT'=\tagone}{\mem}{\expr=p @ \pt}{}\)};
 
   
-  \malloctruleblock{}{\(\PCT+1\)}{\(\PCT\)}{\(\N\)}{\(\left[\PCT\right]\)}
+%  \malloctruleblock{}{\(\PCT+1\)}{\(\PCT\)}{\(\N\)}{\(\left[\PCT\right]\)}
 
-  \draw[->]
-  (pctout.north) |- (state.east);
+%  \draw[->]
+%  (pctout.north) |- (state.east);
 
-  \draw[->]
-  (ptout.west) -- (state.south);
+%  \draw[->]
+%  (ptout.west) -- (state.south);
 
-  \draw[->]
-  (vtout.west) -- (a.east);
+%  \draw[->]
+%  (vtout.west) -- (a.east);
   
-  \draw[->]
-  (ltsout) -| (a.south);
-\end{tikzpicture}
+%  \draw[->]
+%  (ltsout) -| (a.south);
+%\end{tikzpicture}
 
-In this case, we tag the pointer and the memory region with the current count, and then
-increment the count. Once the pointer is stored in {\tt x}, our memory is:
+%In this case, we tag the pointer and the memory region with the current count, and then
+%increment the count. Once the pointer is stored in {\tt x}, our memory is:
 
-We do the same for allocating {\tt y}, to get the memory:
+%We do the same for allocating {\tt y}, to get the memory:
 
-\begin{tikzpicture}[]
-  \node[matrix, ampersand replacement=\&, column sep=-0.6em]  (mem)
-       {
-         \node (a) {\memory{\(1000\)}{\(\vundef\)}{\(\N\)}{\(\tagz\)}}; \&
-         \node {\memory{\(1004\)}{\(\vundef\)}{\(\N\)}{\(\tagone\)}}; \&
-         \node {\memory{\(1008\)}{\(\vundef\)}{\(\N\)}{\(\N\)}}; \&
-         \node[anchor=north] {\(~ ~\dots ~ ~\)}; \&
-         \node {\memory{\(1092\)}{\(1004\)}{\(\tagone\)}{\(\N\)}}; \&
-         \node {\memory{\(1096\)}{\(1000\)}{\(\tagz\)}{\(\N\)}}; \\
-       };       
-\end{tikzpicture}
+%\begin{tikzpicture}[]
+%  \node[matrix, ampersand replacement=\&, column sep=-0.6em]  (mem)
+%       {
+%         \node (a) {\memory{\(1000\)}{\(\vundef\)}{\(\N\)}{\(\tagz\)}}; \&
+%         \node {\memory{\(1004\)}{\(\vundef\)}{\(\N\)}{\(\tagone\)}}; \&
+%         \node {\memory{\(1008\)}{\(\vundef\)}{\(\N\)}{\(\N\)}}; \&
+%         \node[anchor=north] {\(~ ~\dots ~ ~\)}; \&
+%         \node {\memory{\(1092\)}{\(1004\)}{\(\tagone\)}{\(\N\)}}; \&
+%         \node {\memory{\(1096\)}{\(1000\)}{\(\tagz\)}{\(\N\)}}; \\
+%       };       
+%\end{tikzpicture}
 
 Next, the program stores a 0 to address 1000. The constant 0
 takes on the default tag, \(I\). The policy needs to check that
@@ -611,53 +643,6 @@ is propagated with it into memory, unchanged.
 \end{tikzpicture}
 
 \vspace{\abovedisplayskip}
-
-\(\PCT: 2\)
-
-\vspace{\abovedisplayskip}
-
-\begin{tabular}{|c|c|c|c|}
-  \multicolumn{4}{l}{\(1000\)} \\
-  \hline
-  \multicolumn{4}{|c|}{\(\vundef @ \N\)} \\
-  \hline
-  \(\tagz\) & \(\tagz\) & \(\tagz\) & \(\tagz\) \\
-  \hline
-\end{tabular}\hspace{-2pt}
-\begin{tabular}{|c|c|c|c|}
-  \multicolumn{4}{l}{\(1004\)} \\
-  \hline
-  \multicolumn{4}{|c|}{\(\vundef @ \N\)} \\
-  \hline
-  \(\tagone\) & \(\tagone\) & \(\tagone\) & \(\tagone\) \\
-  \hline
-\end{tabular}\hspace{-2pt}
-\begin{tabular}{|c|c|c|c|}
-  \multicolumn{4}{l}{\(1008\)} \\
-  \hline
-  \multicolumn{4}{|c|}{\(\vundef @ \N\)} \\
-  \hline
-  \footnotesize \(\N\) & \footnotesize \(\N\) & \footnotesize \(\N\) & \footnotesize \(\N\) \\
-  \hline
-\end{tabular}~ ~\dots~ ~
-\begin{tabular}{|c|c|c|c|}
-  \multicolumn{4}{l}{\(1092\) ({\tt y})} \\
-  \hline
-  \multicolumn{4}{|c|}{\(1004 @ 1\)} \\
-  \hline
-  \footnotesize \(\N\) & \footnotesize \(\N\) & \footnotesize \(\N\) & \footnotesize \(\N\) \\
-  \hline
-\end{tabular}\hspace{-2pt}
-\begin{tabular}{|c|c|c|c|}
-  \multicolumn{4}{l}{\(1096\) ({\tt x})} \\
-  \hline
-  \multicolumn{4}{|c|}{\(1000 @ 0\)} \\
-  \hline
-  \footnotesize \(\N\) & \footnotesize \(\N\) & \footnotesize \(\N\) & \footnotesize \(\N\) \\
-  \hline
-\end{tabular}
-
-\vspace{\belowdisplayskip}
 
 Finally, on the last line, we add 2 to {\tt x}, which invokes the \(\binoptname\) tag rule
 to combine the tags on the arguments. \(\binoptname\) takes as argument the operation \(\oplus\).
@@ -681,8 +666,6 @@ tagged \(1\), and the policy issues a failstop.
 \subsection{PVI Memory Safety}
 \label{sec:PVI}
 
-[NOTE: Andrew suggested putting this first, seeing if it works.]
-
 The simple memory safety policy described above is too restrictive to run many real-world
 C programs, because they contain undefined behavior that is nevertheless part of the
 ``de facto standard'' \cite{???}. These low-level idioms are one reason that we might
@@ -693,13 +676,13 @@ de facto standard, support the common low-level idioms, yet still place sufficie
 restrictions on programs that it remains sound to use alias analysis in optimizations.
 The first of these is {\it PVI} (provenanace via integer), in which pointers remain valid
 when they are cast to integers, subjected to the full range of arithmetic operations, and
-cast back.
-
-Memarian et al. do not propose to enforce PVI, merely to use it as an alternative to the
+cast back. Memarian et al. do not propose to enforce PVI, merely to use it as an alternative to the
 C standard. But its relative permissiveness makes it a great target for enforcement in Tagged C!
+Their second memory model, {\it PNVI} (provenance not via integer), is even more permissive.
+We can also enforce it in Tagged C, though its security value is questionable, and we will
+not describe it in this paper.
 
-[TODO: example of what we do want (I-P cast, maybe using low bits as flags?),
-  and what we don't (memory violations that use similar idioms)]
+[TODO: For example, garbage collectors use low order bits to mark pointers.]
 
 \paragraph*{PVI Definitions}
 
