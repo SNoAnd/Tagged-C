@@ -637,11 +637,38 @@ this store is valid, in addition to determining the tags on the value that is st
 This check is performed by comparing the tag on the pointer to the tags on memory---each
 byte being written, in case the pointer is misaligned. Then the tag on the value being stored
 is propagated with it into memory, unchanged.
+[TODO: arrows aren't pointing to quite the right places right now, but one can imagine.]
 
-\begin{tikzpicture}[]
+\begin{tikzpicture}[every text node part/.style={align=center}]
+  \node[matrix, ampersand replacement=\&, draw=black]  (le)
+       {
+         \node {\(x \mapsto 92 @ \tagz\)}; \\
+         \node {\(y \mapsto 96 @ \tagone\)}; \\
+       };
+
+  \node[state, node distance=1em, below=of le]  (stmt)
+       {
+         \(92@\tagz = 0@\N\) \\
+         {\color{blue} \(\PCT : \tagtwo\)}
+       };
+  
+  \node[matrix, ampersand replacement=\&, column sep=-1em, node distance=0.5em, below=of stmt]  (mem)
+       {
+         \node[anchor=north] {\(~ ~\cdots ~ ~\)}; \&
+         \node[anchor=center] (x) {\(\underbrace{\memory{\(92\)}{\(0\)}{\(\N\)}{\(\tagz\)}}\)}; \&
+         \node[anchor=center] {\(~ ~ \cdots ~ ~\)}; \\
+       };
+
   \storetruleblock{\(\forall \lt \in \lts . \pt = \lt\)}{\(\PCT\)}{\(\vt_2\)}{\(\lts\)}
-\end{tikzpicture}
 
+  \draw[->]
+  (pctout) -- (stmt.south);
+  \draw[->]
+  (vtout) -- (x.east);
+  \draw[->]
+  (ltsout) |- (x.south);
+\end{tikzpicture}
+  
 \vspace{\abovedisplayskip}
 
 Finally, on the last line, we add 2 to {\tt x}, which invokes the \(\binoptname\) tag rule
@@ -651,7 +678,7 @@ a non-pointer from a pointer (but not the reverse), to yield a pointer to the sa
 subtract two pointers to the same object from one another to yield a non-pointer, the offset between them.
 All other binary operations are only permitted between non-pointers.
 
-\begin{tikzpicture}[]
+\begin{tikzpicture}       
   \binoptruleblock{}{\(\PCT\)}
                   {\(\left\lbrace \begin{tabular}{l r l}
                       \(c\) & when \((\oplus,~ \vt_1,~ \vt_2)\) is & \(+, c, \N \mid +, \N, c \mid -, c, \N\) \\

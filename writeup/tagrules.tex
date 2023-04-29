@@ -1,6 +1,6 @@
 \newcommand{\malloctruleblock}[5]
            {
-             \node[matrix, ampersand replacement=\&, right = of mem, fill=gray!10] (tr)
+             \node[matrix, ampersand replacement=\&, right = of mem.east, fill=gray!10, matrix anchor=south west] (tr)
                   {
                     \& \node[anchor=center] {\(\malloct\)}; \\
                     \& \node[anchor=center] {#1}; \\
@@ -20,7 +20,7 @@
 
 \newcommand{\storetruleblock}[4]
            {
-             \node[matrix, ampersand replacement=\&, right = of mem, fill=gray!10] (tr)
+             \node[matrix, ampersand replacement=\&, right = of mem.east, fill=gray!10, matrix anchor=south west] (tr)
                   {
                     \& \node[anchor=center] {\(\storet\)}; \\
                     \& \node[anchor=center] {#1}; \\
@@ -38,7 +38,7 @@
 
 \newcommand{\binoptruleblock}[3]
            {
-             \node[matrix, ampersand replacement=\&, right = of mem, fill=gray!10] (tr)
+             \node[matrix, ampersand replacement=\&, right = of mem.east, fill=gray!10, matrix anchor=south west] (tr)
                   {
                     \& \node[anchor=center] {\(\binopt\)}; \\
                     \& \node[anchor=center] {#1}; \\
