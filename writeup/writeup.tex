@@ -46,42 +46,44 @@ Adjectives to sell:
 \maketitle
 
 \section{Introduction}
+Many essential technologies rely on new and old C code. 
+Operating systems (Linux, Windows, OSX, BSD), databases (Oracle, sqlite3), the internet \&
+ web (Apache, NGNIX, NetBSD, Cisco IOS), the Internet of Things (IoT), and the 
+ embedded devices that run our homes and hospitals are built in and on C \cite{Munoz:PoweredbyC}. 
+ C is not a relic; more than a third of professional programmers report active developing
+  in C today \cite{stackoverflow22:dev-survey}. The security of C code is synonymous 
+  with the safety of public and private systems we depend on every day. 
 
-% lazy citations - move to bib if they survive editing
-% [so dev survey] https://survey.stackoverflow.co/2022
-% [sec code review paper] https://dl.acm.org/doi/10.1007/978-3-642-36563-8_14 https://people.eecs.berkeley.edu/~daw/papers/coderev-essos13.pdf
+  Although the security of C code is critical to public safety, 
+  it is not always possible to fully secure it before run-time. 
+  Ideally, bugs would be identified and then fixed promptly. 
+  That is not always possible for a variety of reasons: bugs may escape detection, 
+  escape identification, or be unchangeable. Static analysis is a well researched 
+  technique for identifying bugs, however it suffers from a fatal flaw: C is not 
+  well defined. There is not universal agreement among experts on what and when 
+  something is a bug in C code, especially around Undefined Behaviors (UB) 
+  \cite{defactoC}. Confusion around expected behavior is no small problem. 
+  There are 191 undefined behaviors and 52 unspecified behaviors in the C99 
+  specification \cite{Csmith}. Sometimes these behaviors are benign and skillfully 
+  used by the developer, other times they are unintended and highly dangerous. 
+  Unfortunately the distinction is typically lost on static analysis tools. 
+  Discerning expert code review is considered best practice, although it is 
+  rarely perfectly successful \cite{https://dl.acm.org/doi/10.1007/978-3-642-36563-8_14 }
+   even if such an expert is available at all. Even when there is both consensus 
+   and detection of a bug, changes to the code may not be possible. 
+   It may be resident in proprietary 3rd party libraries and drivers, or in code
+   where regulations prohibit changes \cite{coverity}.
 
-% establish C is everywhere and that you care about your car working correctly
-Many essential technologies of modern life rely on new and old C code. The C language rose to prominence 40 years ago by powering
-the UNIX, Windows, and OSX operating systems,  as well as major applications like the Oracle database \cite{Munoz:PoweredbyC} . 
-and the Apache web server \cite{apache97:main-site}. Now our cars, smartphones, 
-home appliances (embedded systems like your garage door or tv remote), smart homes and hospitals (Internet of Things, embedded devices), 
-and most of the internet runs the C language family (though it may not be the only language) \cite{Munoz:PoweredbyC}.
-[The C language family remains a force in active development, in a 2022 more 
-than 35\% of professionals report using it [so dev survey].
-% establish that C has security problems, Csmith paper for why there is no 1 C
-Legacy codebases, especially C codebases, pose a security conundrum. 
-% Sean notes coverity paper mentions govt approval (like FDA) as a blocker to patching/bug fixes
-% then the damage a sec problem can do
-%   loss of sensitve records: OPM breach
-%   loss of life: https://ieeexplore.ieee.org/document/274940 bug in pdp-11 (asm not C), medical device killed people
-%   loss of money 4 billion 
-% wanna get this scary medical device one in there 
-%   https://www.hipaajournal.com/83-of-medical-devices-run-on-outdated-operating-systems/
-%    "57% all IoT devices are vulnerable to high or medium severity attacks." and those all run C
-% then why do we still have problems, vvv
-They are difficult or impossible to
-modify, the original programmers are unavailable, and no specification of behavior (however informal), is available.
+The last line of defense against unknown or immutable vulnerabilities is dynamic enforcement in 
+the runtime. Dynamic enforcement options are well studied, however most suffer from similiar 
+flaws; they cannot easily discern developer intent nor are usable by C developers,
+i.e. the source of developer intent. We propose Tagged C, a dynamic tag-based policy enforcement 
+system operating at the same level the developers do: the C source code itself. Tagged C allows
+developers to express their security intent for UB from permissive to conservative. 
 
-% establish that we need dynamic analysis
-% why static isnt good enough (seans bits probably have this covered)
-% also need to talk about code review here. and why it isnt enough either. 
 
-This means that it may not be feasible to fix the bugs
-turned up by a conservative static analysis; a more permissive but unsound one, on the other hand,
-may miss bugs entirely. Worse, most static analyses aim to detect undefined behavior (UB), but
-UBs may be used intentionally in the form of low-level idioms. Where static analysis
-is unsatisfactory we turn to dynamic enforcement.
+[TODO: old intro. remove after new intro is added]
+
 
 A tag-based reference monitor is a mechanism for dynamic security enforcement. It associates
 a metadata tag with the data in the underlying system, and throughout execution it updates these
@@ -97,6 +99,11 @@ assembly code, usually with the help of a compiler. Instead, we attach tags to t
 itself, and aim to use PIPE as a compilation target, translating the high-level tags into
 PIPE's ISA primitives.
 
+Tagged C is built on top of CompCert C, the C semantics formalized along with the CompCert verified compiler.
+Our interpeter is likewise built on top of the CompCert C reference interpreter \cite{Leroy09:CompCert}.
+We chose CompCert C as a base because it is a widely used and well-supported C semantics, with a working
+interpreter and a full formalization. Being written in Coq, it is ideal for future proof work.
+
 We offer the following contributions:
 
 \begin{itemize}
@@ -109,6 +116,7 @@ We offer the following contributions:
 \end{itemize}
 
 % restructure to be the paper map. In Section X we do Y, etc
+[TODO: update outdated map]
 In the next section, we give a full account of the formal semantics of Tagged C,
 including its control points. Then in \cref{sec:memsafe}, we describe how we attach
 a memory safety policy to it, in the process giving some justification of how we chose to
@@ -118,7 +126,6 @@ a compartmentalization policy. In \cref{sec:evaluations} we discuss the degree t
 which the design meets our goals of flexibility and applicability to realistic
 security concerns.
 
-[TODO: update outdated map]
 
 \paragraph{What is Metadata Tagging?}
 
@@ -255,12 +262,6 @@ To this end, we carry an additional tag associated with the global state.
 
 [TODO: Emphasize breadth]
 
-\paragraph{CompCert C}
-
-Tagged C is built on top of CompCert C, the C semantics formalized along with the CompCert verified compiler.
-Our interpeter is likewise built on top of the CompCert C reference interpreter \cite{Leroy09:CompCert}.
-We chose CompCert C as a base because it is a widely used and well-supported C semantics, with a working
-interpreter and a full formalization. Being written in Coq, it is ideal for future proof work.
 
 \paragraph{PIPE Backend Implementation}
 
@@ -682,7 +683,7 @@ Their second memory model, {\it PNVI} (provenance not via integer), is even more
 We can also enforce it in Tagged C, though its security value is questionable, and we will
 not describe it in this paper.
 
-[TODO: For example, garbage collectors use low order bits to mark pointers.]
+[TODO: For example, garbage collectors use low order bits to mark pointers as in the Cheney algorithm.]
 
 \paragraph*{PVI Definitions}
 
@@ -920,36 +921,34 @@ And during a load or store, we compare the memory tags to the PC Tag, not the po
 \paragraph{Sharing Memory}
 
 The above policy works if our compartments only ever communicate by passing
-non-pointer values. In practice, this is far too restrictive! Many libraries take pointers
-and operate on the associated memory, starting with the most basic ones, like the
-standard library's string functions. And yet, if we are forced to include large
-external libraries in the same compartment as critical code, we have lost much of
-the value of compartmentalization.
+non-pointer values. In practice, this is far too restrictive! Many library functions 
+take pointers and operate on memory shared with the caller. External libraries are
+effectively required for most software to function yet represent a threat. Isolating 
+external libraries from critical code prevents vulnerabilities in the library from 
+compromising critical code and deprives potential attackers of ROP gadgets and other
+tools if there is an exploit in the critical code. 
 
-So, we need to modify our policy to account for intentional sharing of memory.
-In our example, the function {\tt setup} in compartment \(A\) will allocate several
-buffers, call a function that fills the buffer {\tt msg}, and then pass {\tt msg}
-to the {\tt strlen} function in compartment \(B\).
+To allow intentional sharing of memory across compartments, a more flexible policy is needed. 
+Suppose for example the hostname needs to conform to an expected pattern, 
+such as in an enterprise network, to differentiate between different classes of
+ computers (employee, server, contractor, etc). The standard library, 
+ over in its own compartment, has helpful functions, 
+ provided the caller provides the buffers from which to set or get the hostname. 
 
 \begin{verbatim}
-// In compartment A
-void setup() {
-  int* key = malloc(100);
-  char* msg = malloc(100);
-  char* log = malloc(100);
-
-  fetch_msg(&msg); // Function also in A
-
-  ...
-  int msg_size = strlen(msg); // StdLib function in B
-  ...
-}
+  void configure_enterprise(char* intended_name) {
+    int ret = 0;
+    char curr_name = [HOST_NAME_MAX + 1] ;
+    ret = gethostname( &curr_name, HOST_NAME_MAX + 1 );
+    if (! ret && curr_name != intended_name) { // !ret == (ret==0)
+      ret = sethostname(intended_name), strlen(intended_name);
+      ....
+    }
+    ....
+  }
 \end{verbatim}
 
-Naturally, we want {\tt strlen} to be able to read {\tt msg}, but we would
-rather that it not read {\tt key}, if it should happen to be malicious.
-Even if {\tt log} isn't as sensitive, we have no reason to share it, so
-it should be protected.
+[TODO: update this section for the new example code]
 
 The literature contains two main approaches to this problem:
 {\em mandatory access control} and {\em capabilities}. The former explicitly
@@ -965,20 +964,6 @@ must have the malloc name changed for every allocation that might be shared.
 The annotation could be performed manually, or perhaps automatically using some form
 of escape analysis.
 
-\begin{verbatim}
-// In compartment A
-void setup() {
-  int* key = malloc(100);
-  char* msg = malloc_share(100);
-  char* log = malloc(100);
-
-  fetch_msg(&msg); // Function also in A
-
-  ...
-  int msg_size = strlen(msg); // StdLib function in B
-  ...
-}
-\end{verbatim}
 
 \paragraph{Mandatory Access Control}
 
