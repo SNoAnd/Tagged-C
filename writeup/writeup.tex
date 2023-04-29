@@ -29,18 +29,18 @@
 % i think we should refer to it as the C family, because its not really one language
 % the first paragraph was really more of an abstract so I moved it here
 Today's computing infrastructure is built atop layers of legacy C code, often
-insecure, poorly understood, and/or difficult to maintain. These foundations may be shored up with retroactive security
-enforcement, but such mechanisms vary widely in their security goals and carry nuanced trade-offs which are often 
-not desirable to legacy code owners. We introduce Tagged C, a C variant with a built-in
-{\em tag-based reference monitor} that supports a range of user-defined security policies.
-Demonstrated in this paper: two varieties of {\em memory safety} exploring the trade-off between
-security and support for low-level idioms, {\em secure information flow} (SIF),
-and {\em compartmentalization}.
+insecure, poorly understood, and/or difficult to maintain.
+These foundations may be shored up with dynamic security enforcement,
+which spares legacy code owners from having to modify their code and potentially introduce regressions.
+Tagged C is a C variant with a built-in {\em tag-based reference monitor} for use in expressing
+a variety of dynamic security policies and enforcing them with compiler and hardware support.
 
-Adjectives to sell:
--- flexible
--- accessible (more than assembly)
--- comprehensive
+Tagged C is comprehensive in the policies that it can support. In this paper we will discuss
+{\em memory safety}, {\em compartmentalization}, and {\em secure information flow} (SIF)
+policies. It is flexible in covering the tradeoff between conservative policies that may
+halt too many programs and more permissive ones. And as a source language, it should be
+more accessible to C programmers than existing assembly-level tag-based reference monitors.
+
 \end{abstract}
 
 \maketitle
@@ -68,41 +68,64 @@ Operating systems (Linux, Windows, OSX, BSD), databases (Oracle, sqlite3), the i
   used by the developer, other times they are unintended and highly dangerous. 
   Unfortunately the distinction is typically lost on static analysis tools. 
   Discerning expert code review is considered best practice, although it is 
-  rarely perfectly successful \cite{https://dl.acm.org/doi/10.1007/978-3-642-36563-8_14 }
-   even if such an expert is available at all. Even when there is both consensus 
-   and detection of a bug, changes to the code may not be possible. 
-   It may be resident in proprietary 3rd party libraries and drivers, or in code
-   where regulations prohibit changes \cite{coverity}.
+  rarely perfectly successful \cite{} % https://dl.acm.org/doi/10.1007/978-3-642-36563-8_14 }
+  even if such an expert is available at all. Even when there is both consensus 
+  and detection of a bug, changes to the code may not be possible. 
+  It may be resident in proprietary 3rd party libraries and drivers, or in code
+  where regulations prohibit changes \cite{Bessey10:Coverity}.
 
 The last line of defense against unknown or immutable vulnerabilities is dynamic enforcement in 
 the runtime. Dynamic enforcement options are well studied, however most suffer from similiar 
 flaws; they cannot easily discern developer intent nor are usable by C developers,
 i.e. the source of developer intent. We propose Tagged C, a dynamic tag-based policy enforcement 
 system operating at the same level the developers do: the C source code itself. Tagged C allows
-developers to express their security intent for UB from permissive to conservative. 
+developers to express their security intent for UB from permissive to conservative, and even
+beyond UB to rule out defined-but-erroneous behaviors that may be difficult to predict.
 
+A tag-based reference monitor associates a metadata tag with the data in the underlying system,
+and throughout execution it updates these tags according to a set a predefined rules, or halts if
+the program would violate a rule, replacing a security violation with failstop behavior. By attaching
+such a monitor to the C language, we allow a user to apply whatever security policy meets their needs,
+tuned if necessary so that non-standard but benign code can still run, while actually dangerous activity
+is failstopped.
 
-[TODO: old intro. remove after new intro is added]
-
-
-A tag-based reference monitor is a mechanism for dynamic security enforcement. It associates
-a metadata tag with the data in the underlying system, and throughout execution it updates these
-tags according to a set a predefined rules. If the program would violate a rule, the system halts
-instead, replacing a security violation with failstop behavior. By attaching such a monitor to
-the C language, we enable dynamic enforcement of arbitrary kinds of security, tuned so that
-non-standard but benign code can still run, while actually dangerous activity is failstopped.
-
-This is the underlying concept of PIPE, an ISA extension that implements a reference monitor in
-hardware, as well as similar systems such as ARM MTE and [that thing from Binghamton]. Being
-implemented at the ISA level, these systems currently require their policies to be defined in terms of
-assembly code, usually with the help of a compiler. Instead, we attach tags to the C language
-itself, and aim to use PIPE as a compilation target, translating the high-level tags into
-PIPE's ISA primitives.
+%This is the underlying concept of PIPE, an ISA extension that implements a reference monitor in
+%hardware, as well as similar systems such as ARM MTE and [that thing from Binghamton]. Being
+%implemented at the ISA level, these systems currently require their policies to be defined in terms of
+%assembly code, usually with the help of a compiler. Instead, we attach tags to the C language
+%itself, and aim to use PIPE as a compilation target, translating the high-level tags into
+%PIPE's ISA primitives.
 
 Tagged C is built on top of CompCert C, the C semantics formalized along with the CompCert verified compiler.
 Our interpeter is likewise built on top of the CompCert C reference interpreter \cite{Leroy09:CompCert}.
 We chose CompCert C as a base because it is a widely used and well-supported C semantics, with a working
 interpreter and a full formalization. Being written in Coq, it is ideal for future proof work.
+
+\paragraph{General Purpose Security Enforcement}
+
+Tagged C does not assume any particular notion of security. It can express a range of policies
+including memory safety, compartmentalization, and secure information flow. These represent many
+of the typical notions of security seen in the wild.
+
+\paragraph{PIPE Backend Implementation}
+
+In \cref{Chhak21:Tagine}, Chhak et al. introduce a verified compiler from a toy
+high-level language with tags
+to a control-flow-graph-based intermediate representation with a PIPE-based
+ISA. This establishes a proof-of-concept for compiling a source language's tag policy to
+realistic hardware. They take advantage of the fact that, like everything else in a PIPE system,
+instructions in memory carry tags. Instruction tags are statically determined at compile-time.
+They ``piggyback'' information about source-level control points onto the tags of the instructions
+that implement those source constructs.
+
+Tagged C is designed to be implemented in the same way. But, before we can soundly transmit
+tag rules from the source language to the assembly level, we also need to protect the basic
+control-flow properties of the source language. So, a compiled Tagged C requires a backend that
+can at the very least protect its control flow. In the case of a PIPE-based backend, we would
+run a basic stack-and-function-pointer-safety policy in parallel with whatever Tagged C policy
+the user has provided.
+
+\paragraph{Contributions}
 
 We offer the following contributions:
 
@@ -115,17 +138,12 @@ We offer the following contributions:
   and (3) Secure Information Flow (SIF)
 \end{itemize}
 
-% restructure to be the paper map. In Section X we do Y, etc
-[TODO: update outdated map]
-In the next section, we give a full account of the formal semantics of Tagged C,
-including its control points. Then in \cref{sec:memsafe}, we describe how we attach
-a memory safety policy to it, in the process giving some justification of how we chose to
-attach the control points. In \cref{sec:SIF}, we give a similar description of
-a secure information flow policy. We round out our policies in \cref{sec:comp} with
-a compartmentalization policy. In \cref{sec:evaluations} we discuss the degree to
+In the next section, we give a high-level introduction of metadata-tagging: how it works,
+and how that can improve security. Then in \cref{sec:semantics}, we briefly discuss the
+language as a whole, before moving into policies in \cref{sec:policies}. Finally, in
+\cref{sec:evaluations} we discuss the degree to
 which the design meets our goals of flexibility and applicability to realistic
 security concerns.
-
 
 \paragraph{What is Metadata Tagging?}
 
@@ -255,62 +273,13 @@ void main(int pwd) {
 
 This will give away the exact value of {\tt pwd}! In order to prevent this, we must keep track of
 when we are inside of a loop or conditional that depends on {\tt pwd}.
-To this end, we carry an additional tag associated with the global state.
-[TODO: diagram here, too, except I'm not sure how to effectively represent the added complexity.]
-
-\paragraph{General Purpose Security Enforcement}
-
-[TODO: Emphasize breadth]
-
-
-\paragraph{PIPE Backend Implementation}
-
-In \cref{Chhak21:Tagine}, Chhak et al. introduce a verified compiler from a toy
-high-level language with tags
-to a control-flow-graph-based intermediate representation with a PIPE-based
-ISA. This establishes a proof-of-concept for compiling a source language's tag policy to
-realistic hardware. They take advantage of the fact that, like everything else in a PIPE system,
-instructions in memory carry tags. Instruction tags are statically determined at compile-time.
-They ``piggyback'' information about source-level control points onto the tags of the instructions
-that implement those source constructs.
-
-Tagged C is designed to be implemented in the same way. But, before we can soundly transmit
-tag rules from the source language to the assembly level, we also need to protect the basic
-control-flow properties of the source language. So, a compiled Tagged C requires a backend that
-can at the very least protect its control flow. In the case of a PIPE-based backend, we would
-run a basic stack-and-function-pointer-safety policy in parallel with whatever Tagged C policy
-the user has provided.
+To this end, we carry an additional tag associated with the global state. This is called the PC Tag,
+written \(\PCT\). In examples that show states we will note it alongside the statement under focus.
 
 \section{The Language}
 
 \begin{figure}
   \begin{subfigure}[t]{0.3\textwidth}
-    \begin{minipage}[t]{0.4\textwidth}
-      \[\begin{aligned}
-      \odot ::= & ~ ! \\
-      | & \sim \\
-      | & ~ \text{-} \\
-      | & ~ \mathit{abs} \\
-      \end{aligned}\]
-    \end{minipage}
-    \begin{minipage}[t]{0.3\textwidth}
-      \[\begin{aligned}
-      \oplus ::= & ~ + \\
-      | & ~ - \\
-      | & ~ \times \\
-      | & ~ \div \\
-      | & ~ \% \\
-      \end{aligned}\]
-    \end{minipage}
-    \begin{minipage}[t]{0.25\textwidth}
-      \[\begin{aligned}
-      | & \ll \\
-      | & \gg \\
-      | & ~ \& \\
-      | & \mid \\
-      | & ~ \wedge \\
-      \end{aligned}\]
-    \end{minipage}
     \[\begin{aligned}
     \stmt ::= & \sskip \\
     | & \sdo{\expr} \\
@@ -431,6 +400,7 @@ S ::= & \sstate{\PCT}{\mem}{\stmt}{\cont} \\
 \end{aligned}\]
 
 \section{Tags and Policies}
+\label{sec:policies}
 
 \begin{table}
   \begin{tabular}{|l|l|l|l|}
@@ -540,8 +510,9 @@ Our set of tags consists of
 \begin{tikzpicture}[every text node part/.style={align=center}]
   \node[matrix, ampersand replacement=\&, draw=black]  (le)
        {
-         \node {\(x \mapsto 92 @ \tagz\)}; \\
-         \node {\(y \mapsto 96 @ \tagone\)}; \\
+         \node {\it le}; \\
+         \node {\(x \mapsto 92 @ \tagone\)}; \\
+         \node {\(y \mapsto 96 @ \tagz\)}; \\
        };
 
   \node[state, node distance=1em, below=of le]  (stmt)
@@ -553,14 +524,15 @@ Our set of tags consists of
   \node[matrix, ampersand replacement=\&, column sep=-1em, node distance=0.5em, below=of stmt]  (mem)
        {
          \node[anchor=north] {\(~ ~\cdots ~ ~\)}; \&
-         \node[anchor=center] {\memory{\(92\)}{\(\vundef\)}{\(\N\)}{\(\tagz\)}}; \&
-         \node[anchor=center] {\memory{\(96\)}{\(\vundef\)}{\(\N\)}{\(\tagone\)}}; \\
+         \node[anchor=center] {\memory{\(92\)}{\(\vundef\)}{\(\N\)}{\(\tagone\)}}; \&
+         \node[anchor=center] {\memory{\(96\)}{\(\vundef\)}{\(\N\)}{\(\tagz\)}}; \\
        };
 
   \node[matrix, ampersand replacement=\&, draw=black, node distance=12em, right=of le]  (le2)
        {
-         \node {\(x \mapsto 92 @ \tagz\)}; \\
-         \node {\(y \mapsto 96 @ \tagone\)}; \\
+         \node {\it le}; \\
+         \node {\(x \mapsto 92 @ \tagone\)}; \\
+         \node {\(y \mapsto 96 @ \tagz\)}; \\
        };
 
   \node[state, node distance=1em, below=of le2]  (stmt2)
@@ -572,8 +544,8 @@ Our set of tags consists of
   \node[matrix, ampersand replacement=\&, column sep=-1em, node distance=-0.5em, below=of stmt2]  (mem2)
        {
          \node[anchor=north] {\(~ ~\cdots ~ ~\)}; \&
-         \node[anchor=center] {\memory{\(92\)}{\(\vundef\)}{\(\N\)}{\(\tagz\)}}; \&
-         \node[anchor=center] {\memory{\(96\)}{\(\vundef\)}{\(\N\)}{\(\tagone\)}}; \\
+         \node[anchor=center] {\memory{\(92\)}{\(\vundef\)}{\(\N\)}{\(\tagone\)}}; \&
+         \node[anchor=center] {\memory{\(96\)}{\(\vundef\)}{\(\N\)}{\(\tagz\)}}; \\
        };
 
   \draw[->]
@@ -643,24 +615,24 @@ is propagated with it into memory, unchanged.
 \begin{tikzpicture}[every text node part/.style={align=center}]
   \node[matrix, ampersand replacement=\&, draw=black]  (le)
        {
-         \node {\(x \mapsto 92 @ \tagz\)}; \\
-         \node {\(y \mapsto 96 @ \tagone\)}; \\
+         \node {\(x \mapsto 92 @ \tagone\)}; \\
+         \node {\(y \mapsto 96 @ \tagz\)}; \\
        };
 
   \node[state, node distance=1em, below=of le]  (stmt)
        {
-         \(92@\tagz = 0@\N\) \\
+         \(92@\tagone = 0@\N\) \\
          {\color{blue} \(\PCT : \tagtwo\)}
        };
   
   \node[matrix, ampersand replacement=\&, column sep=-1em, node distance=0.5em, below=of stmt]  (mem)
        {
          \node[anchor=north] {\(~ ~\cdots ~ ~\)}; \&
-         \node[anchor=center] (x) {\(\underbrace{\memory{\(92\)}{\(0\)}{\(\N\)}{\(\tagz\)}}\)}; \&
+         \node[anchor=center] (x) {\(\underbrace{\memory{\(92\)}{\(0\)}{\(\N\)}{\(\tagone\)}}\)}; \&
          \node[anchor=center] {\(~ ~ \cdots ~ ~\)}; \\
        };
 
-  \storetruleblock{\(\forall \lt \in \lts . \pt = \lt\)}{\(\PCT\)}{\(\vt_2\)}{\(\lts\)}
+  \storetruleblock{\(\mathbf{assert} ~ \forall \lt \in \lts . \pt = \lt\)}{\(\PCT\)}{\(\vt_2\)}{\(\lts\)}
 
   \draw[->]
   (pctout) -- (stmt.south);
@@ -672,12 +644,56 @@ is propagated with it into memory, unchanged.
   
 \vspace{\abovedisplayskip}
 
-Finally, on the last line, we add 2 to {\tt x}, which invokes the \(\binoptname\) tag rule
+Next, on the last line, we add 1 to {\tt x}, which invokes the \(\binoptname\) tag rule
 to combine the tags on the arguments. \(\binoptname\) takes as argument the operation \(\oplus\).
 In memory safety terms, we can add a pointer to a non-pointer in either order, and we can subtract
 a non-pointer from a pointer (but not the reverse), to yield a pointer to the same object. We can
 subtract two pointers to the same object from one another to yield a non-pointer, the offset between them.
 All other binary operations are only permitted between non-pointers.
+
+\begin{tikzpicture}[every text node part/.style={align=center}]
+  \node[matrix, ampersand replacement=\&, draw=black]  (le)
+       {
+         \node {\(x \mapsto 92 @ \tagone\)}; \\
+         \node {\(y \mapsto 96 @ \tagz\)}; \\
+       };
+
+  \node[state, node distance=1em, below=of le]  (stmt)
+       {
+         \(*(x+1) = 0@\N\) \\
+         {\color{blue} \(\PCT : \tagtwo\)}
+       };
+  
+  \node[matrix, ampersand replacement=\&, column sep=-1em, node distance=0.5em, below=of stmt]  (mem)
+       {
+         \node[anchor=north] {\(~ ~\cdots ~ ~\)}; \&
+         \node[anchor=center] {\memory{\(92\)}{\(v\)}{\(\N\)}{\(\tagone\)}}; \&
+         \node[anchor=center] {\memory{\(96\)}{\(\vundef\)}{\(\N\)}{\(\tagz\)}}; \\
+       };
+
+  \node[matrix, ampersand replacement=\&, draw=black, node distance=12em, right=of le]  (le2)
+       {
+         \node {\(x \mapsto 92 @ \tagone\)}; \\
+         \node {\(y \mapsto 96 @ \tagz\)}; \\
+       };
+
+  \node[state, node distance=1em, below=of le2]  (stmt2)
+       { \\
+         \(96 @ \tagone = 0@\N\) \\
+         {\color{blue} \(\PCT : \tagtwo\)}
+       };
+  
+  \node[matrix, ampersand replacement=\&, column sep=-1em, node distance=-0.5em, below=of stmt2]  (mem2)
+       {
+         \node[anchor=north] {\(~ ~\cdots ~ ~\)}; \&
+         \node[anchor=center] {\memory{\(92\)}{\(v\)}{\(\N\)}{\(\tagone\)}}; \&
+         \node[anchor=center] {\memory{\(96\)}{\(\vundef\)}{\(\N\)}{\(\tagz\)}}; \\
+       };
+
+  \draw[->]
+  (stmt) -- (stmt2);
+  
+\end{tikzpicture}
 
 \begin{tikzpicture}       
   \binoptruleblock{}{\(\PCT\)}
@@ -688,8 +704,8 @@ All other binary operations are only permitted between non-pointers.
                     \end{tabular} \right.\)}
 \end{tikzpicture}
 
-So, when we try to write through the pointer \(1004@0\), the bytes at addresses 1004-1007 are
-tagged \(1\), and the policy issues a failstop.
+So, when we try to write through the address \(96@\tagone\), we compare its tag to that of the memory
+locations, which are tagged \(\tagz\). Therefore the policy must failstop on the store.
 
 \subsection{PVI Memory Safety}
 \label{sec:PVI}
@@ -729,7 +745,6 @@ When initializing program memory, before any execution, each global \(id\) has i
 memory locations and its pointer in the global environment tagged with \(\mathit{glob} ~ id\),
 using the \(\globaltname\) tag rule.
 
-[TODO: diagram]
 \[\begin{aligned}
 \truledef{\globalt}
 \settag{\pt}{\mathit{glob ~ id}}
@@ -737,11 +752,9 @@ using the \(\globaltname\) tag rule.
 \settag{\overline{\lt}}{\left[\mathit{glob} ~ id \mid 0 \leq i < s\right]}
 \end{aligned}\]
 
-Stack-allocated locals are allocated at the start of a function call. Like a global environment,
-a local environment maps indentifiers to base, bound, type, and tag. The rule is almost identical
-to allocation of globals, except that the stack allocator, \(\mathit{stack\_alloc}\) will be more
-complex in order to support deallocation (in practice, it uses a normal stack structure and allocates
-and deallocates by increasing and decreasing a ``stack pointer''.)
+In our previous memory safety example, we began with the active stack frame already allocated.
+When it is allocated at runtime, its tags are initialize by the \(\localtname\) rule.
+Stack-allocated locals and heap-allocated objects both
 
 The tag rules for allocating memory in the heap and in the stack should look familiar.
 
@@ -958,14 +971,14 @@ tools if there is an exploit in the critical code.
 To allow intentional sharing of memory across compartments, a more flexible policy is needed. 
 Suppose for example the hostname needs to conform to an expected pattern, 
 such as in an enterprise network, to differentiate between different classes of
- computers (employee, server, contractor, etc). The standard library, 
- over in its own compartment, has helpful functions, 
- provided the caller provides the buffers from which to set or get the hostname. 
+computers (employee, server, contractor, etc). The standard library, 
+over in its own compartment, has helpful functions, 
+provided the caller provides the buffers from which to set or get the hostname. 
 
 \begin{verbatim}
   void configure_enterprise(char* intended_name) {
     int ret = 0;
-    char curr_name = [HOST_NAME_MAX + 1] ;
+    char curr_name = malloc(HOST_NAME_MAX + 1);
     ret = gethostname( &curr_name, HOST_NAME_MAX + 1 );
     if (! ret && curr_name != intended_name) { // !ret == (ret==0)
       ret = sethostname(intended_name), strlen(intended_name);
@@ -991,7 +1004,6 @@ must have the malloc name changed for every allocation that might be shared.
 The annotation could be performed manually, or perhaps automatically using some form
 of escape analysis.
 
-
 \paragraph{Mandatory Access Control}
 
 Mandatory access control works by associating objects in memory with the compartments that
@@ -1003,9 +1015,20 @@ Mandatory access control requires the policy designer to identity every pair of 
 and compartment that it will be shared with. This may require too much analysis if
 objects are shared widely throughout the system. Conversely, it does not
 distinguish between accesses via a valid pointer and those that are the result of
-UB. [TODO: example]
+UB.
 
+A capability model resolves both issues by treating shared pointers as tokens of privilege.
+If a compartment can obtain a shared pointer, we assume that it is allowed to access the associated
+memory. But the access must be performed using that pointer, ruling out other methods such as pointer
+forging.
 
+\[\color{blue}
+\begin{split}
+  \tau ::= & \N \\
+  & \mathit{glob} ~ C \\
+  & \mathit{dyn\_local} ~ C \\
+  & \mathit{dyn\_share} ~ c \\
+\end{split}\]
 
 %\paragraph{Avoiding Confused Deputies}
 %
@@ -1081,6 +1104,7 @@ UB. [TODO: example]
 Memory safety and compartmentalization both either prevent or mitigate memory errors.
 But programs can be memory safe and still do insecure things! Consider the
 following code, in which we have some error-handling code that writes to a log.
+[TODO: more realistic example]
 
 \begin{verbatim}
 int checked_div(int a, int b) {
@@ -1093,15 +1117,9 @@ int checked_div(int a, int b) {
 }
 
 void main(int factor) {
-  ...
   int key = read_and_parse(keyfile);
-  
   int dividend = checked_div(key, factor);
-  if (!dividend) {
-    ...
-  } else {
-    ...
-  }
+  if (!dividend) { ... } else { ... }
 }
 \end{verbatim}
 
@@ -1252,7 +1270,7 @@ join point, if it has one---a function with multiple returns might not, in which
 once the PC Tag is tainted, it must remain so until a return.
 
 \begin{figure}
-  \begin{subfigure}{0.5\textwidth}
+  \begin{subfigure}{0.4\textwidth}
 \begin{verbatim}
 int f(bool secret) {
     int public1, public2;
@@ -1292,7 +1310,7 @@ J:  public2 = 42;
 \end{figure}
 
 \begin{figure}
-  \begin{subfigure}{0.5\textwidth}
+  \begin{subfigure}{0.4\textwidth}
 \begin{verbatim}
 int f(bool secret) {
     int public1=1;
@@ -1373,11 +1391,11 @@ J:  public2 = 42;
   \label{fig:forbreak}
 \end{figure}
 \begin{figure}
-  \begin{subfigure}{0.5\textwidth}
+  \begin{subfigure}{0.3\textwidth}
     \begin{tikzpicture}
-      [ initial text={}, initial distance=4em,
+      [ initial text={}, initial distance=1em,
         accepting/.style=accepting by arrow,
-        accepting distance=3em
+        accepting distance=1em
       ]
       \node[state,initial]    (do)                             {do};
       \node[state,accepting]  (S) [right=of do]                {\(S\):test};
@@ -1387,11 +1405,11 @@ J:  public2 = 42;
     \end{tikzpicture}
     \subcaption{Do-while}
   \end{subfigure}
-  \begin{subfigure}{0.5\textwidth}
+  \begin{subfigure}{0.3\textwidth}
     \begin{tikzpicture}
-      [ initial text={}, initial distance=4em,
+      [ initial text={}, initial distance=1em,
         accepting/.style=accepting by arrow,
-        accepting distance=4em
+        accepting distance=1em
       ]
       \node[state,initial]    (init)                             {init};
       \node[state,accepting]  (S)    [right=of init]             {\(S\):test};
@@ -1405,32 +1423,28 @@ J:  public2 = 42;
     \end{tikzpicture}
     \subcaption{For}
   \end{subfigure}
-  \begin{subfigure}{\textwidth}
+  \begin{subfigure}{0.3\textwidth}
     \center
     \begin{tikzpicture}
-      [ initial text={}, initial distance=4em, initial above,
+      [ initial text={}, initial distance=1em, initial above,
         accepting/.style=accepting by arrow,
-        accepting distance=4em
+        accepting distance=1em, node distance=2em, inner sep=1pt
       ]
       \node[state,initial]    (switch)                           {\(S\):switch};
       \node[state]            (case1)    [below left=of switch]  {};
       \node[state]            (case2)    [right=of case1]        {};
-      \node[state]            (case3)    [right=of case2]        {};
-      \node[state]            (default)  [right=of case3]        {def};
+      \node[state]            (default)  [right=of case2]        {def};
       \node                   (after)    [right=of default]      {};
 
       \path[->] (switch)  edge              node  {}  (case1)
                           edge              node  {}  (case2)
-                          edge              node  {}  (case3)
                           edge              node  {}  (default)
                 (default) edge              node  {}  (after)
                 (case1)   edge [bend right] node  {}  (after)
-                (case2)   edge [bend right] node  {}  (after)
-                (case3)   edge [bend right] node  {}  (after);
+                (case2)   edge [bend right] node  {}  (after);
 
       \path[dotted,->] (case1) edge              node  {}  (case2)
-                (case2) edge              node  {}  (case3)
-                (case3) edge              node  {}  (default);
+                (case2) edge              node  {}  (default);
                          
     \end{tikzpicture}
     \subcaption{Switch}
