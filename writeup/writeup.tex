@@ -46,17 +46,43 @@ Operating systems (Linux, Windows, OSX, BSD), databases (Oracle, sqlite3), the i
 web (Apache, NGNIX, NetBSD, Cisco IOS), the Internet of Things (IoT), and the 
 embedded devices that run our homes and hospitals are built in and on C \cite{Munoz:PoweredbyC}. 
 C is not a relic; more than a third of professional programmers report active developing
-in C today \cite{stackoverflow22:dev-survey}. The security of C code is synonymous\apt{too strong} 
-with the safety of public and private systems we depend on every day. 
+in C today \cite{stackoverflow22:dev-survey}. The safety of public and private systems we depend on every day
+in turn depends on the security of their underlying C codebases. Insecurity might take the form
+of undefined behavior such as memory errors, of logic errors such as sql injection or other
+input-sanitization flaws, or of larger-scale architectural flaws that over-provision components of the
+system with privilege.
 
-  \apt{You need to talk here about the kinds of properties we plan to address.}
+The last line of defense against unknown or unfixable vulnerabilities is dynamic enforcement at
+runtime. To this end, we introduce Tagged C: a general-purpose dynamic tag-based enforcement language
+that allows developers to define flexible security policies on top of their existing C codebases,
+from defining memory UB to specifying detailed information flow policies.
 
-
-  \apt{This para gets in the way of the flow. We do not need to diss static enforcement to this audience.
-    Also, the para makes it sound like we are only interested in C language errors. 
-    But bugs in the programmer's logic are at least as important for the properties we are trying to enforce!}
-  \amn{I thought the focus was on C UB limiting and thats kinda C specific? Are there logic errors
+\apt{... the para makes it sound like we are only interested in C language errors. 
+  But bugs in the programmer's logic are at least as important for the properties we are trying to enforce!}
+\amn{I thought the focus was on C UB limiting and thats kinda C specific? Are there logic errors
   in any of our example sections?}
+\sna{SQL injection and information leaks are logic errors}
+
+A tag-based reference monitor associates a metadata tag with the data in the underlying system,
+and throughout execution it updates these tags according to a set a predefined rules, or halts if
+the program would violate a rule, replacing a security violation with failstop behavior. By attaching
+such a monitor to the C language, we allow a user to apply whatever security policy meets their needs,
+tuned if necessary so that non-standard but benign code can still run, while actually dangerous activity
+is halted.
+
+Tagged C consists of an underlying semantics that establishes the baseline concrete behavior of programs
+with no policies, and a set of {\em control points} at which the semantics consult a user defined set of
+{\em tag rules}. Our underlying semantics are built on the CompCert C semantics, the C semantics formalized
+along with the CompCert verified compiler \cite{Leroy09:CompCert}. We provide a reference interpreter
+also based on that of CompCert.
+\sna{I feel some need to justify this, but I'm not sure what justification is appropriate.}
+%Our interpeter is likewise built on top of the CompCert C reference interpreter .
+%We chose CompCert C as a base because it is a widely used\apt{??} and well-supported\apt{??} C semantics, with a working
+%interpreter and a full formalization. Being written in Coq, it is ideal for future proof work.\apt{why is this relevant?}
+
+
+\sna{I'm organizing our diss tracks into paragraphs that we can cut or move as needed}
+\paragraph*{Why Dynamic?}
   
   Unfortunately, it is not always possible to fully secure C code before run-time.
   Ideally, bugs would be quickly identified and then fixed promptly. 
@@ -75,31 +101,22 @@ with the safety of public and private systems we depend on every day.
   and detection of a bug\apt{??} \amn{we can find it at and we can agree its a problem that should be fixed}, 
   changing the code may not be possible because  
   it is in proprietary 3rd party libraries and drivers, or because
-  regulations prohibit changes \cite{Bessey10:Coverity}.\apt{last clause is mysterious} \amn {
+  regulations prohibit changes \cite{Bessey10:Coverity}.
+
+  \apt{last clause is mysterious} \amn {
     for example FDA approval used to forbid patching because you'd have to go through recertification. 
     So healthcare wouldn't patch. SNA pointed out the coverity paper comments on this as a reason for 
     bugs not getting fixed}
   }
 
-\apt{This should be the second para. Move the stuff above to later.}
-The last line of defense against unknown or immutable vulnerabilities is dynamic enforcement at
-run time. Dynamic enforcement options are well studied\apt{citations?}, but most suffer from similar 
-flaws: they cannot easily discern developer intent nor are usable by C developers,
-i.e. the source of developer intent.\apt{awkward, and again needs evidence.}
-
-In this paper, we propose Tagged C, a \apt{``generic'' or ``general-purpose''} dynamic tag-based policy enforcement 
-system operating at \apt{unclear} the same level the developers do: the C source code itself. Tagged C allows
-developers to express their security intent for UB from permissive to conservative, and even
-beyond UB \apt{well beyond} to rule out defined-but-erroneous behaviors that may be difficult to predict.
-
-A tag-based reference monitor associates a metadata tag with the data in the underlying system,
-and throughout execution it updates these tags according to a set a predefined rules, or halts if
-the program would violate a rule, replacing a security violation with failstop behavior. By attaching
-such a monitor to the C language, we allow a user to apply whatever security policy meets their needs,
-tuned if necessary so that non-standard but benign code can still run, while actually dangerous activity
-is halted.
-
-\apt{Need a high-level description of the elements of Tagged C here: control points, policy rules, etc.}
+\paragraph*{Why C-Level?}
+Tag-based enforcement in general has a significant body of work at the assembly level, especially
+PIPE (Programmable Interlocks for Policy Enforcement) \cite{}. However, even at the assembly-level
+these systems need the compiler to be in the trusted computing base (TCB), as many policies require
+knowledge of source-level constructs, even ones that do not depend on detailed knowledge of the program's
+behavior [cite Nick and Andre; anyone else?]. Moving policy-definition to the source level therefore
+does not expand the TCB and allows C developers to reason about policies in terms of the language that
+they program in regularly.
 
 %This is the underlying concept of PIPE, an ISA extension that implements a reference monitor in
 %hardware, as well as similar systems such as ARM MTE and [that thing from Binghamton]. Being
@@ -107,18 +124,6 @@ is halted.
 %assembly code, usually with the help of a compiler. Instead, we attach tags to the C language
 %itself, and aim to use PIPE as a compilation target, translating the high-level tags into
 %PIPE's ISA primitives.
-
-Tagged C is built on top of CompCert C, the C semantics formalized along with the CompCert verified compiler.
-Our interpeter is likewise built on top of the CompCert C reference interpreter \cite{Leroy09:CompCert}.
-We chose CompCert C as a base because it is a widely used\apt{??} and well-supported\apt{??} C semantics, with a working
-interpreter and a full formalization. Being written in Coq, it is ideal for future proof work.\apt{why is this relevant?}
-
-\paragraph{General Purpose Security Enforcement}
-\apt{These points need to be integrated much earlier int he main text.}
-
-Tagged C does not assume any particular notion of security. It can express a range of policies
-including memory safety, compartmentalization, and secure information flow. These represent many
-of the typical notions of security seen in the wild.
 
 \paragraph{PIPE Backend Implementation}
 
