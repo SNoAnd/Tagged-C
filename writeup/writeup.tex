@@ -22,8 +22,6 @@
 \input{tagrules.tex}
 
 \begin{abstract}
-% i think we should refer to it as the C family, because its not really one language
-% the first paragraph was really more of an abstract so I moved it here
 Today's computing infrastructure is built atop layers of legacy C code, often
 insecure, poorly understood, and/or difficult to maintain.
 These foundations may be shored up with dynamic security enforcement,
@@ -57,27 +55,31 @@ with the safety of public and private systems we depend on every day.
   \apt{This para gets in the way of the flow. We do not need to diss static enforcement to this audience.
     Also, the para makes it sound like we are only interested in C language errors. 
     But bugs in the programmer's logic are at least as important for the properties we are trying to enforce!}
-  Although the security of C code is critical to public safety\apt{repeats previous sentence},
-  it is not always possible to fully secure it before run-time.
-  Ideally, bugs would be identified \apt{when?} and then fixed promptly. 
+  \amn{I thought the focus was on C UB limiting and thats kinda C specific? Are there logic errors
+  in any of our example sections?}
+  
+  Unfortunately, it is not always possible to fully secure C code before run-time.
+  Ideally, bugs would be quickly identified and then fixed promptly. 
   That is not always possible for a variety of reasons: bugs may escape detection, 
-  require significant effort to diagnose, or be impractical to fix.
-  Static analysis is a well researched \apt{and widely deployed!}
-  technique for identifying bugs, but it suffers from a fatal flaw: C is not 
-  well defined. There is not universal agreement among experts on what and when 
-  something is a bug in C code, especially around Undefined Behaviors (UB) 
-  \cite{defactoC}. Confusion around expected behavior is no small problem. 
+  require significant effort to diagnose, or be impractical to fix. 
+  There are many techniques for finding bugs, but there is a shared stumbling block: C is not 
+  well defined. We cannot always agree on when something is a bug in C, especially code using
+   Undefined Behaviors (UB) \cite{defactoC}. Confusion around expected behavior is no small problem. 
   There are 191 undefined behaviors and 52 unspecified behaviors in the C99 
   specification \cite{Csmith}. Sometimes these behaviors are benign and skillfully 
   used by the developer, other times they are unintended and highly dangerous. 
-  Unfortunately the distinction is typically lost on static analysis tools. \apt{I'm not sure
-    this is a supportable statement.}
+  Unfortunately the distinction between the two is easily lost. 
   Discerning expert code review is considered best practice, although it is 
   rarely perfectly successful \cite{} % https://dl.acm.org/doi/10.1007/978-3-642-36563-8_14 }
   even if an expert is available at all. Even when there is both consensus 
-  and detection of a bug\apt{??}, changing the code may not be possible because  
+  and detection of a bug\apt{??} \amn{we can find it at and we can agree its a problem that should be fixed}, 
+  changing the code may not be possible because  
   it is in proprietary 3rd party libraries and drivers, or because
-  regulations prohibit changes \cite{Bessey10:Coverity}.\apt{last clause is mysterious}
+  regulations prohibit changes \cite{Bessey10:Coverity}.\apt{last clause is mysterious} \amn {
+    for example FDA approval used to forbid patching because you'd have to go through recertification. 
+    So healthcare wouldn't patch. SNA pointed out the coverity paper comments on this as a reason for 
+    bugs not getting fixed}
+  }
 
 \apt{This should be the second para. Move the stuff above to later.}
 The last line of defense against unknown or immutable vulnerabilities is dynamic enforcement at
