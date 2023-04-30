@@ -45,11 +45,11 @@ more accessible to C programmers than existing assembly-level tag-based referenc
 \section{Introduction}
 Many essential technologies rely on new and old C code. 
 Operating systems (Linux, Windows, OSX, BSD), databases (Oracle, sqlite3), the internet \&
- web (Apache, NGNIX, NetBSD, Cisco IOS), the Internet of Things (IoT), and the 
- embedded devices that run our homes and hospitals are built in and on C \cite{Munoz:PoweredbyC}. 
- C is not a relic; more than a third of professional programmers report active developing
-  in C today \cite{stackoverflow22:dev-survey}. The security of C code is synonymous\apt{too strong} 
-  with the safety of public and private systems we depend on every day. 
+web (Apache, NGNIX, NetBSD, Cisco IOS), the Internet of Things (IoT), and the 
+embedded devices that run our homes and hospitals are built in and on C \cite{Munoz:PoweredbyC}. 
+C is not a relic; more than a third of professional programmers report active developing
+in C today \cite{stackoverflow22:dev-survey}. The security of C code is synonymous\apt{too strong} 
+with the safety of public and private systems we depend on every day. 
 
   \apt{You need to talk here about the kinds of properties we plan to address.}
 
@@ -61,7 +61,8 @@ Operating systems (Linux, Windows, OSX, BSD), databases (Oracle, sqlite3), the i
   it is not always possible to fully secure it before run-time.
   Ideally, bugs would be identified \apt{when?} and then fixed promptly. 
   That is not always possible for a variety of reasons: bugs may escape detection, 
-  escape identification\apt{what's the difference}, or be unchangeable\apt{``unfixable''?} . Static analysis is a well researched \apt{and widely deployed!}
+  require significant effort to diagnose, or be impractical to fix.
+  Static analysis is a well researched \apt{and widely deployed!}
   technique for identifying bugs, but it suffers from a fatal flaw: C is not 
   well defined. There is not universal agreement among experts on what and when 
   something is a bug in C code, especially around Undefined Behaviors (UB) 
@@ -94,7 +95,7 @@ and throughout execution it updates these tags according to a set a predefined r
 the program would violate a rule, replacing a security violation with failstop behavior. By attaching
 such a monitor to the C language, we allow a user to apply whatever security policy meets their needs,
 tuned if necessary so that non-standard but benign code can still run, while actually dangerous activity
-is failstopped.\apt{not sure we want to coin this word.}
+is halted.
 
 \apt{Need a high-level description of the elements of Tagged C here: control points, policy rules, etc.}
 
@@ -156,15 +157,12 @@ language as a whole, before moving into policies in \cref{sec:policies}. Finally
 which the design meets our goals of flexibility and applicability to realistic
 security concerns.
 
-\paragraph{What is Metadata Tagging?}
-\apt{If this really needs to be part of the intro, then it needs to come above the Contributions.}
+\section{What is Metadata Tagging?}
 
 \apt{I think this example works pretty well, but diagrams are not clear yet.}
   
 Consider a very simple security requirement: ``do not {\tt printf} the password.''
 For simplicity, we will suppose that {\tt pwd} is an integer in this case.
-It is not possible to enforce this statically in general, though it\apt{??} may be over-approximated.
-\apt{Very unclear, and probably not needed here.}
 
 \vspace{\abovedisplayskip}
 \begin{minipage}{0.4\textwidth}
@@ -192,7 +190,7 @@ void main(int pwd) {
 
 \apt{Not clear what the labels on edges mean.  (And why is there a font change in the figure?)}
 
-We need a way to dynamically track the value\apt{``confidential status''?} of {\tt pwd} as it moves through the variable
+We need a way to dynamically track the confidential status of {\tt pwd} as it moves through the variable
 {\tt x} and is then passed to {\tt printf}. We can do so by associating metadata with the
 value; namely, that it originates in {\tt pwd}. We will write this ``tagged'' value \(42 @ \PT\),
 with the \(@\) symbol denoting a value tagged with metadata.
@@ -282,7 +280,7 @@ void main(int pwd) {
   node [pos=0.5,below] {\(\PT,\M \rightarrow \fail\) \\ \(\gentag_1,\gentag_2 \rightarrow \gentag_1,\gentag_2\)} (fail);
 \end{tikzpicture}
 
-Finally, we may be concerned with less \apt{??} leaks of {\tt pwd}, such as this one:
+Finally, we may be concerned with implicit leaks of {\tt pwd}, such as this one:
 \begin{verbatim}
 void main(int pwd) {
   for (int i; i<pwd; i++) {
@@ -297,55 +295,6 @@ To this end, we carry an additional tag associated with the global state. This i
 written \(\PCT\). In examples that show states we will note it alongside the statement under focus.
 
 \section{The Language}
-
-\begin{figure}
-  \begin{subfigure}[t]{0.3\textwidth}
-    \[\begin{aligned}
-    \stmt ::= & \sskip \\
-    | & \sdo{\expr} \\
-    | & \sseq{\stmt_1}{\stmt_2} \\
-    | & \sifthenelse{\expr}{\stmt_1}{\stmt_2}{L} \\
-    | & \swhile{\expr}{\stmt}{L} \\
-    | & \sdowhile{\expr}{\stmt}{L} \\
-    | & \sfor{\stmt_1}{\expr}{\stmt_2}{\stmt_3} \\
-    | & \sbreak \\
-    | & \scontinue \\
-    | & \sreturn \\
-    | & \sswitch{\expr}{\overline{(L,\stmt)}} \\
-    | & \slabel{L}{\stmt} \\
-    | & \sgoto{L} \\    
-    \end{aligned}\]
-  \end{subfigure}
-  \begin{subfigure}[t]{0.69\textwidth}
-    \[\begin{aligned}
-    \expr ::= & \val{v}{\vt} & \textnormal{Value} \\
-    | & \var{x} & \textnormal{Variable} \\
-    | & \field{\expr}{id} & \textnormal{Field} \\
-    | & \valof{\expr} & \textnormal{Load from Object} \\
-    | & \deref{\expr} & \textnormal{Dereference Pointer} \\
-    | & \addrof{\expr} & \textnormal{Address of Object} \\
-    | & \unop{\odot}{\expr} & \textnormal{Unary Operator} \\
-    | & \binop{\oplus}{\expr_1}{\expr_2} & \textnormal{Binary Operator} \\
-    | & \cast{\expr}{ty} & \textnormal{Cast} \\
-    | & \condition{\expr_1}{\expr_2}{\expr_3} & \textnormal{Conditional} \\
-    | & \sizeof{ty} & \textnormal{Size of Type} \\
-    | & \alignof{ty} & \textnormal{Alignment of Type} \\
-    | & \assign{\expr_1}{\expr_2} & \textnormal{Assignment} \\
-    | & \assignop{\oplus}{\expr_1}{\expr_2} & \textnormal{Operator Assignment} \\
-    | & \postinc{\oplus}{\expr} & \textnormal{Post-Increment/Decrement} \\
-    | & \comma{\expr_1}{\expr_2} & \textnormal{Expression Sequence} \\
-    | & \call{\expr_f}{\overline{\expr}_{args}} & \textnormal{Function Call} \\
-    | & \loc{l}{\lt} & \textnormal{Memory Location} \\
-    | & \paren{\expr}{ty}{\gentag} & \textnormal{Parenthetical with Optional Cast} \\
-    \end{aligned}\]
-  \end{subfigure}
-  \caption{Tagged C Abstract Syntax}
-  \label{fig:syntax}
-\end{figure}
-
-\apt{You still have not addressed my earlier comments about making this section more accessible, by:
-  clarifying the difference between source and artificial intermediate forms in Figure 1, reordering al the
-  figures to put the important/common cases first, etc.}
 
 Tagged C uses the full syntax of CompCert C \cite{Leroy09:CompCert} with minimal modification (\cref{fig:syntax}).
 There are two notable syntactical differences in the language, relative to CompCert C:
@@ -517,9 +466,9 @@ void main() {
 \end{verbatim}
 
 The above code is undefined behavior in C, because it writes to the address one past the end
-of the array pointed to by {\tt x}. In Tagged C under a typical allocation strategy\apt{what does that mean?},
-{\tt x} and {\tt y} are given adjacent concrete addresses, and the program
-writes to the address of {\tt x+1}, which is also the address of {\tt y}.
+of the array pointed to by {\tt x}. Since
+{\tt x} and {\tt y} are given adjacent concrete addresses, when the program
+writes to the address of {\tt x+1}, it is writing to the address of {\tt y}.
 For our example, we'll assume that the stack grows downward from address 100.
 
 We can prevent situations like this using a {\em memory safety} policy, as follows.
@@ -940,22 +889,12 @@ And during a load or store, we compare the memory tags to the PC Tag, not the po
 \begin{tikzpicture}[every text node part/.style={align=center}]
   \malloctruleblock{}{\(\N\)}{\(\N\)}{\(\left[\PCT\right]\)}{\(\PCT\)}
 \end{tikzpicture}
-\begin{minipage}[t]{0.3\textwidth}
-\[\begin{aligned}
-\truledef{\loadt}
-\assert{\forall \lt \in \overline{\lt} . \PCT = \lt}
-\settag{\vt'}{\vt}
-\end{aligned}\]
-\end{minipage}
-\begin{minipage}[t]{0.5\textwidth}
-\[\begin{aligned}
-\truledef{\storet}
-\assert{\forall \lt \in \overline{\lt} . \lt = \PCT}
-\settag{\PCT'}{\PCT}
-\settag{\vt'}{\N}
-\settag{\overline{\lt'}}{\overline{\lt}}
-\end{aligned}\]
-\end{minipage}
+\begin{tikzpicture}[every text node part/.style={align=center}]
+  \loadtruleblock{\(\mathbf{assert} ~ \forall \lt \in \overline{\lt} . \PCT = \lt\)}{\(\vt\)}
+\end{tikzpicture}
+\begin{tikzpicture}[every text node part/.style={align=center}]
+  \storetruleblock{\(\mathbf{assert} ~ \forall \lt \in \overline{\lt} . \lt = \PCT\)}{\(\PCT\)}{\(\N\)}{\(\lts\)}
+\end{tikzpicture}
 
 \paragraph{Sharing Memory}
 
@@ -1754,6 +1693,53 @@ language to make it easier to write Tagged C policies.
 \bibliography{taggedc.bib}
 
 \appendix
+
+\section{Syntax}
+
+\begin{figure}
+  \begin{subfigure}[t]{0.3\textwidth}
+    \[\begin{aligned}
+    \stmt ::= & \sskip \\
+    | & \sdo{\expr} \\
+    | & \sseq{\stmt_1}{\stmt_2} \\
+    | & \sifthenelse{\expr}{\stmt_1}{\stmt_2}{L} \\
+    | & \swhile{\expr}{\stmt}{L} \\
+    | & \sdowhile{\expr}{\stmt}{L} \\
+    | & \sfor{\stmt_1}{\expr}{\stmt_2}{\stmt_3} \\
+    | & \sbreak \\
+    | & \scontinue \\
+    | & \sreturn \\
+    | & \sswitch{\expr}{\overline{(L,\stmt)}} \\
+    | & \slabel{L}{\stmt} \\
+    | & \sgoto{L} \\    
+    \end{aligned}\]
+  \end{subfigure}
+  \begin{subfigure}[t]{0.69\textwidth}
+    \[\begin{aligned}
+    \expr ::= & \val{v}{\vt} & \textnormal{Value} \\
+    | & \var{x} & \textnormal{Variable} \\
+    | & \field{\expr}{id} & \textnormal{Field} \\
+    | & \valof{\expr} & \textnormal{Load from Object} \\
+    | & \deref{\expr} & \textnormal{Dereference Pointer} \\
+    | & \addrof{\expr} & \textnormal{Address of Object} \\
+    | & \unop{\odot}{\expr} & \textnormal{Unary Operator} \\
+    | & \binop{\oplus}{\expr_1}{\expr_2} & \textnormal{Binary Operator} \\
+    | & \cast{\expr}{ty} & \textnormal{Cast} \\
+    | & \condition{\expr_1}{\expr_2}{\expr_3} & \textnormal{Conditional} \\
+    | & \sizeof{ty} & \textnormal{Size of Type} \\
+    | & \alignof{ty} & \textnormal{Alignment of Type} \\
+    | & \assign{\expr_1}{\expr_2} & \textnormal{Assignment} \\
+    | & \assignop{\oplus}{\expr_1}{\expr_2} & \textnormal{Operator Assignment} \\
+    | & \postinc{\oplus}{\expr} & \textnormal{Post-Increment/Decrement} \\
+    | & \comma{\expr_1}{\expr_2} & \textnormal{Expression Sequence} \\
+    | & \call{\expr_f}{\overline{\expr}_{args}} & \textnormal{Function Call} \\
+    | & \loc{l}{\lt} & \textnormal{Memory Location} \\
+    | & \paren{\expr}{ty}{\gentag} & \textnormal{Parenthetical with Optional Cast} \\
+    \end{aligned}\]
+  \end{subfigure}
+  \caption{Tagged C Abstract Syntax}
+  \label{fig:syntax}
+\end{figure}
 
 \section{Continuations}
 \label{app:continuations}
