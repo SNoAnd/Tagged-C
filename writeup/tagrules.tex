@@ -18,6 +18,19 @@
                   
            }
 
+\newcommand{\loadtruleblock}[2]
+           {
+             \node[matrix, ampersand replacement=\&, right = of mem.east, fill=gray!10, matrix anchor=south west] (tr)
+                  {
+                    \& \node[anchor=center] {\(\loadt\)}; \\
+                    \& \node[anchor=center] {#1}; \\
+                    \node (vtout)  {\(\vt'\)};   \& \node[anchor=west] (vtret)  {#2}; \\
+                  };
+
+                  \path[->]
+                  (vtret)  edge (vtout);
+           }
+
 \newcommand{\storetruleblock}[4]
            {
              \node[matrix, ampersand replacement=\&, right = of mem.east, fill=gray!10, matrix anchor=south west] (tr)
@@ -33,14 +46,56 @@
                   (pctret) edge (pctout)
                   (vtret)  edge (vtout)
                   (ltsret) edge (ltsout);
-                  
            }
 
+\newcommand{\unoptruleblock}[3]
+           {
+             \node[matrix, ampersand replacement=\&, right = of mem.east, fill=gray!10, matrix anchor=south west] (tr)
+                  {
+                    \& \node[anchor=center] {\(\unopt\)}; \\
+                    \& \node[anchor=center] {#1}; \\
+                    \node (pctout) {\(\PCT'\)}; \& \node[anchor=west] (pctret) {#2}; \\
+                    \node (vtout)  {\(\vt'\)};   \& \node[anchor=west] (vtret)  {#3}; \\
+                  };
+
+                  \path[->]
+                  (pctret) edge (pctout)
+                  (vtret)  edge (vtout);
+           }
+           
 \newcommand{\binoptruleblock}[3]
            {
              \node[matrix, ampersand replacement=\&, right = of mem.east, fill=gray!10, matrix anchor=south west] (tr)
                   {
                     \& \node[anchor=center] {\(\binopt\)}; \\
+                    \& \node[anchor=center] {#1}; \\
+                    \node (pctout) {\(\PCT'\)}; \& \node[anchor=west] (pctret) {#2}; \\
+                    \node (vtout)  {\(\vt'\)};   \& \node[anchor=west] (vtret)  {#3}; \\
+                  };
+
+                  \path[->]
+                  (pctret) edge (pctout)
+                  (vtret)  edge (vtout);
+           }
+
+\newcommand{\calltruleblock}[2]
+           {
+             \node[matrix, ampersand replacement=\&, right = of mem.east, fill=gray!10, matrix anchor=south west] (tr)
+                  {
+                    \& \node[anchor=center] {\(\callt\)}; \\
+                    \& \node[anchor=center] {#1}; \\
+                    \node (pctout) {\(\PCT'\)}; \& \node[anchor=west] (pctret) {#2}; \\
+                  };
+
+                  \path[->]
+                  (pctret) edge (pctout);
+           }
+
+\newcommand{\rettruleblock}[3]
+           {
+             \node[matrix, ampersand replacement=\&, right = of mem.east, fill=gray!10, matrix anchor=south west] (tr)
+                  {
+                    \& \node[anchor=center] {\(\rett\)}; \\
                     \& \node[anchor=center] {#1}; \\
                     \node (pctout) {\(\PCT'\)}; \& \node[anchor=west] (pctret) {#2}; \\
                     \node (vtout)  {\(\vt'\)};   \& \node[anchor=west] (vtret)  {#3}; \\

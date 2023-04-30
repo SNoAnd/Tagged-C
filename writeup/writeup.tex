@@ -1,4 +1,4 @@
-\documentclass{lmcs}
+\documentclass{llncs}
 
 \usepackage{amsmath,amssymb,amsfonts}
 \usepackage{graphicx}
@@ -11,12 +11,8 @@
 \usetikzlibrary{automata,positioning,shapes.multipart}
 
 \title{Flexible Runtime Security Enforcement with Tagged C}
-\author{Sean Anderson}
-\author{Allison Naaktgeboren}
-\author{Andrew Tolmach}
-
-\address{Portland State University, Department of Computer Science}
-\email{ander28@pdx.edu, naak@pdx.edu, apt@pdx.edu}
+\author{Sean Anderson \and Allison Naaktgeboren \and Andrew Tolmach}
+\institute{Portland State University}
 
 \begin{document}
 
@@ -811,20 +807,14 @@ As in the basic policy, when we perform a memory load or store, we check that th
 on the left hand of the assignment matches the location tag on all of the bytes being loaded or stored.
 
 \begin{minipage}{0.49\textwidth}
-\[\begin{aligned}
-\truledef{\loadt}
-\assert{\forall \lt \in \overline{\lt} . \pt = \lt}
-\settag{\vt'}{\vt}
-\end{aligned}\]
+  \begin{tikzpicture}[every text node part/.style={align=center}]
+    \loadtruleblock{\(\mathbf{assert} ~ \forall \lt \in \overline{\lt} . \pt = \lt\)}{\(\vt\)}
+  \end{tikzpicture}
 \end{minipage}
 \begin{minipage}{0.49\textwidth}
-\[\begin{aligned}
-\truledef{\storet}
-\assert{\forall \lt \in \overline{\lt} . \pt = \lt}
-\settag{\PCT'}{\PCT}
-\settag{\vt'}{\vt_2}
-\settag{\overline{\lt'}}{\overline{\lt}}
-\end{aligned}\]
+  \begin{tikzpicture}[every text node part/.style={align=center}]
+    \storetruleblock{\(\mathbf{assert} ~ \forall \lt \in \lts . \pt = \lt\)}{\(\PCT\)}{\(\vt_2\)}{\(\lts\)}
+  \end{tikzpicture}
 \end{minipage}
 
 %[Not sure how important this is.]
@@ -845,24 +835,19 @@ input, and all binary operations where exactly one argument is tagged as a point
 propagate that tag to their result. Performing an operation with two pointer-tagged values
 sets the tag on the result to \(\N\). It can still
 be used as an integer, but if cast back to a pointer it will be invalid.
-            
-\begin{minipage}[t]{.49\textwidth}            
-  \[\begin{aligned}
-  \truledef{\unopt}
-  \settag{\PCT'}{\PCT}
-  \settag{\vt'}{\vt}
-  \end{aligned}\]
-\end{minipage}
-\begin{minipage}[t]{.49\textwidth}           
-  \[\begin{aligned}
-  \truledef{\binopt}
-  \settag{\PCT'}{\PCT}
-  \settag{\vt'}{\caseof{(\vt_1,~ \vt_2)}}
-  \caseentry{\mathit{dyn ~ n},N}{\mathit{dyn ~ n}} \\
-  \caseentry{\mathit{glob ~ id},N}{\mathit{glob ~ id}} \\
-  \caseentry{N,t}{t} \\
-  \end{aligned}\]
-\end{minipage}
+
+\begin{tikzpicture}[every text node part/.style={align=center}]
+  \unoptruleblock{}{\(\PCT\)}{\(\vt\)}
+\end{tikzpicture}
+\begin{tikzpicture}[every text node part/.style={align=center}]
+  \binoptruleblock{}{\(\PCT\)}
+                  {\(\left\lbrace \begin{tabular}{l r l}
+                      \(\gentag\) & when \((\oplus,~ \vt_1,~ \vt_2)\) is & \((\_,\gentag,\N)\) \\
+                      \(\gentag\) & is & \((\_,\N,\gentag)\) \\
+                      \(\N\) & is & \(-,\mathit{dyn ~ n_1},\mathit{dyn ~ n_2}\) \\
+                      \(\fail\) & is & otherwise \\
+                    \end{tabular} \right.\)}
+\end{tikzpicture}
 
 \subsection{Compartmentalization}
 \label{sec:comp}
@@ -940,35 +925,21 @@ This is kept up to date by the \(\calltname\) and \(\rettname\) rules. Note that
 Tagged C automatically keeps track of the PC Tag at the time of a call, so that
 it can be used as a parameter in the return.
 
-\begin{minipage}[t]{.49\textwidth}
-  \[\begin{aligned}
-  \truledef{\callt}
-  \letin{C := \mathit{comp}(f')}
-  \settag{\PCT'}{\PCT}
-  \end{aligned}\]
-\end{minipage}
-\begin{minipage}[t]{.49\textwidth}
-  \[\begin{aligned}
-  \truledef{\rett}
-  \settag{\PCT'}{\PCT_{CLR}}
-  \settag{\vt'}{\vt}
-  \end{aligned}\]
-\end{minipage}
+\begin{tikzpicture}[every text node part/.style={align=center}]
+  \calltruleblock{\(\mathit{let} ~ C := \mathit{comp}(f') ~ \mathit{in}\)}{\(\PCT\)}
+\end{tikzpicture}
+\begin{tikzpicture}[every text node part/.style={align=center}]
+  \rettruleblock{}{\(\PCT_{CLR}\)}{\(\vt\)}
+\end{tikzpicture}
 
 Now that we know which compartment we're in, we can make sure that its memory is protected.
 This will essentially work just like the basic memory safety policy, except that coarse-grained
 protection means that the ``color'' we assign to an allocation is the active compartment.
 And during a load or store, we compare the memory tags to the PC Tag, not the pointer.
 
-\begin{minipage}[t]{0.25\textwidth}
-\[\begin{aligned}
-\truledef{\malloct}
-\settag{\pt}{\N}
-\settagopt{\vt}{\N}
-\settagopt{\overline{\lt}}{\left[\PCT\right]}
-\settag{\PCT'}{\PCT}
-\end{aligned}\]
-\end{minipage}
+\begin{tikzpicture}[every text node part/.style={align=center}]
+  \malloctruleblock{}{\(\N\)}{\(\N\)}{\(\left[\PCT\right]\)}{\(\PCT\)}
+\end{tikzpicture}
 \begin{minipage}[t]{0.3\textwidth}
 \[\begin{aligned}
 \truledef{\loadt}
@@ -1056,7 +1027,10 @@ forging.
   & \mathit{glob} ~ C \\
   & \mathit{dyn\_local} ~ C \\
   & \mathit{dyn\_share} ~ c \\
+  & \mathit{comp} ~ C ~ c \\
 \end{split}\]
+
+We define a predicate \(\mathit{cap}\) that holds when the 
 
 %\paragraph{Avoiding Confused Deputies}
 %
@@ -1776,7 +1750,7 @@ Currently, policies are written in Gallina, the language embedded in Coq. This i
 proof-of-concept, but not satisfactory for real use. We plan to develop a domain-specific policy
 language to make it easier to write Tagged C policies.
 
-\bibliographystyle{alphaurl}
+\bibliographystyle{splncs04}
 \bibliography{taggedc.bib}
 
 \appendix
