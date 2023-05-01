@@ -82,20 +82,17 @@
 \newcommand{\binopt}{\binoptname(\binoptargs)}
 
 \newcommand{\globaltname}{\mathbf{GlobalT}}
-\newcommand{\globaltargs}{id, s}
-\newcommand{\globaltargstyped}{id \in ident, s \in \mathbb{N}}
+\newcommand{\globaltargs}{GN(x), TN(ty)}
 \newcommand{\globaltres}{\pt,\vt,\overline{\lt}}
 \newcommand{\globalt}{\globaltname(\globaltargs)}
 
 \newcommand{\localtname}{\mathbf{LocalT}}
-\newcommand{\localtargs}{\PCT, x, s}
-\newcommand{\localtargstyped}{\PCT, x \in ident, s \in \mathbb{N}}
+\newcommand{\localtargs}{\PCT, TN(ty)}
 \newcommand{\localtres}{\pt,\vt,\overline{\lt}}
 \newcommand{\localt}{\localtname(\localtargs)}
 
 \newcommand{\dealloctname}{\mathbf{DeallocT}}
-\newcommand{\dealloctargs}{\PCT, id, s}
-\newcommand{\dealloctargstyped}{\PCT, id \in ident, s \in \mathbb{N}}
+\newcommand{\dealloctargs}{\PCT, TN(ty)}
 \newcommand{\dealloctres}{\vt,\overline{\lt}}
 \newcommand{\dealloct}{\dealloctname(\dealloctargs)}
 
@@ -145,33 +142,32 @@
 \newcommand{\exprjoint}{\exprjointname(\exprjointargs)}
 
 \newcommand{\labeltname}{\mathbf{LabelT}}
-\newcommand{\labeltargs}{\PCT, L}
+\newcommand{\labeltargs}{\PCT, LN(L)}
 \newcommand{\labeltres}{\PCT'}
 \newcommand{\labelt}{\labeltname(\labeltargs)}
 
 \newcommand{\calltname}{\mathbf{CallT}}
-\newcommand{\calltargs}{\PCT, f, f'}
+\newcommand{\calltargs}{\PCT, FN(f), FN(f')}
 \newcommand{\calltres}{\PCT'}
 \newcommand{\callt}{\calltname(\calltargs)}
 
 \newcommand{\argtname}{\mathbf{ArgT}}
-\newcommand{\argtargs}{\PCT, \vt, f, x, s}
-\newcommand{\argtargstyped}{\PCT, \vt, f, x \in ident, s \in \mathbb{N}}
+\newcommand{\argtargs}{\PCT, \vt, FN(f), AN(x), TN(ty)}
 \newcommand{\argtres}{\PCT', \pt, \vt',\lts}
 \newcommand{\argt}{\argtname(\argtargs)}
 
 \newcommand{\rettname}{\mathbf{RetT}}
-\newcommand{\rettargs}{\PCT_{CLE}, \PCT_{CLR}, \vt, f}
+\newcommand{\rettargs}{\PCT_{CLE}, \PCT_{CLR}, \vt, FN(f)}
 \newcommand{\rettres}{\PCT',\vt'}
 \newcommand{\rett}{\rettname(\rettargs)}
 
 \newcommand{\extcalltname}{\mathbf{ExtCallT}}
-\newcommand{\extcalltargs}{\PCT, f, f', \overline{\vt}}
+\newcommand{\extcalltargs}{\PCT, FN(f), FN(f'), \overline{\vt}}
 \newcommand{\extcalltres}{\PCT'}
 \newcommand{\extcallt}{\extcalltname(\extcalltargs)}
 
 \newcommand{\fieldtname}{\mathbf{FieldT}}
-\newcommand{\fieldtargs}{\pt, id}
+\newcommand{\fieldtargs}{\pt, TN(ty), GN(x)}
 \newcommand{\fieldtres}{\pt'}
 \newcommand{\fieldt}{\fieldtname(\fieldtargs)}
 

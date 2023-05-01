@@ -2,7 +2,7 @@
 
 \usepackage{amsmath,amssymb,amsfonts}
 \usepackage{graphicx}
-\usepackage{xcolor}
+\usepackage{xcolor, colortbl}
 \usepackage{stmaryrd}
 \usepackage{subcaption}
 \usepackage{hyperref,cleveref}
@@ -104,37 +104,87 @@ which the design meets our goals of flexibility and applicability to realistic
 security concerns.
 
 \section{What is Metadata Tagging?}
-
-\apt{I think this example works pretty well, but diagrams are not clear yet.}
   
 Consider a very simple security requirement: ``do not {\tt printf} the password.''
-For simplicity, we will suppose that {\tt pwd} is an integer in this case.
+For simplicity, we will suppose that {\tt pwd} is an integer in this case, and consider
+a number of ways that it might be leaked (\cref{fig:exampleleak}).
 
-\vspace{\abovedisplayskip}
-\begin{minipage}{0.4\textwidth}
+\begin{figure}
+  \begin{subfigure}[t]{0.49\textwidth}
 \begin{verbatim}
 void main(int pwd) {
   int x = pwd;
   printf("%d", x);
 }
+
 \end{verbatim}
-\end{minipage}
-\begin{minipage}{0.6\textwidth}
+\caption{}
+\label{fig:ex1}
+  \end{subfigure}
+  \begin{subfigure}[t]{0.49\textwidth}
+\begin{verbatim}
+void main(int pwd) {
+  printf(pwd+5);
+}
+\end{verbatim}
+\caption{}
+\label{fig:ex2}
+  \end{subfigure}
+  
+  \begin{subfigure}[t]{0.49\textwidth}
+\begin{verbatim}
+void main(int pwd) {
+  int x = pwd;
+  mm = x;
+}
+\end{verbatim}
+\caption{}
+\label{fig:ex3}
+  \end{subfigure}
+  \begin{subfigure}[t]{0.49\textwidth}
+\begin{verbatim}
+void main(int pwd) {
+  for (int i; i<pwd; i++) {
+    mm = i;
+  }
+}
+\end{verbatim}
+\caption{}
+\label{fig:ex4}
+  \end{subfigure}
+
+  \caption{Examples of leaking {\tt pwd}}
+  \label{fig:exampleleak}
+\end{figure}
+
+Consider this state diagram of example \ref{fig:ex1}. In the temporary environment,
+we map {\tt pwd} to 42, and then assign it into {\tt x} in memory.
+
 \begin{tikzpicture}[every text node part/.style={align=center}]
-  \node[draw=black]                                  (p)      {\(42\)};
-  \node[node distance=0em, above=of p]               (pname)  {\tt pwd};
-  \node[node distance=5em, right=of p, draw=black]   (x)      {\(42\)};
-  \node[node distance=0em, above=of x]               (xname)  {\tt x};
-  \node[node distance=5em, right=of x, state]        (printf) {\tt printf \\ (``\%d'', 42);};
+  \node[state]                                        (stmt)   {\tt x = pwd};
+  \node[node distance=0.5em, above=of stmt, draw=black] (te)     {\(\mathtt{pwd} \mapsto 42\)};
+  \node[node distance=1em, below=of stmt, draw=black] (p)      {\(\vundef\)};
+  \node[node distance=0.5em, above=of p.west]                (pname)  {\tt x};
 
+  \node[state, right=of stmt]                         (stmt2)  {\(\sskip\)};
+  \node[node distance=0.5em, above=of stmt2, draw=black] (te2)    {\(\mathtt{pwd} \mapsto 42\)};
+  \node[node distance=1em, below=of stmt2, draw=black] (p2)     {\(42\)};
+  \node[node distance=0.5em, above=of p2.west]                (pname2) {\tt x};
+
+  \node[state, right=of stmt2]                         (stmt3)  {\tt printf \\ \tt ("\%d", x)};
+  \node[node distance=0.5em, above=of stmt3, draw=black] (te3)    {\(\mathtt{pwd} \mapsto 42\)};
+  \node[node distance=1em, below=of stmt3, draw=black] (p3)     {\(42\)};
+  \node[node distance=0.5em, above=of p3.west]                (pname3) {\tt x};
+    
+%    \node[node distance=5em, right=of p, draw=black]   (x)      {\(42\)};
+%    \node[node distance=0em, above=of x]               (xname)  {\tt x};
+%    \node[node distance=5em, right=of x, state]        (printf) {\tt printf \\ (``\%d'', 42);};
+    
   \path[->]
-  (p) edge node [pos=0.5,above] {\tt x = pwd;} (x)
-  (x) edge node [pos=0.5,above] {\tt x}        (printf);
+  (stmt) edge (stmt2)
+  (stmt2) edge (stmt3);
 \end{tikzpicture}
-\end{minipage}
 \vspace{\belowdisplayskip}
-
-\apt{Not clear what the labels on edges mean.  (And why is there a font change in the figure?)}
 
 We need a way to dynamically track the confidential status of {\tt pwd} as it moves through the variable
 {\tt x} and is then passed to {\tt printf}. We can do so by associating metadata with the
@@ -146,24 +196,39 @@ as represented by the pattern \(\gentag \rightarrow \gentag\) under the arrow.
 When we call {\tt printf}, we must check that the tag is \(\N\), and if it is
 \(\PT\), we would like to failstop rather than permit the call.
 
+\vspace{\abovedisplayskip}
 \begin{tikzpicture}[every text node part/.style={align=center}]
-  \node[draw=black]                                  (p)      {\(42 @ \PT\)};
-  \node[node distance=0em, above=of p]               (pname)  {\tt pwd};
-  \node[node distance=5em, right=of p, draw=black]   (x)      {\(42 @ \PT\)};
-  \node[node distance=0em, above=of x]               (xname)  {\tt x};
-  \node[node distance=5em, right=of x, state]        (printf) {\tt printf \\ (``\%d'', \(42@\PT\));};
-  \node[node distance=5em, right=of printf, state]   (fail)   {\(\fail\)};
-  
-  \path[->]
-  (p) edge node [pos=0.5,above] {\tt x = pwd;}
-           node [pos=0.5,below] {\(\gentag \rightarrow \gentag\)} (x)
-  (x) edge node [pos=0.5,above] {\tt x} (printf)
-  (printf) edge node [pos=0.5,above] {}
-                node [pos=0.5,below] {\(\N \rightarrow \N\) \\ \(\PT \rightarrow \fail\)} (fail);
-\end{tikzpicture}
+  \node[state]                                        (stmt)   {\tt x = pwd};
+  \node[node distance=0.5em, above=of stmt, draw=black] (te)     {\(\mathtt{pwd} \mapsto 42 @ \PT\)};
+  \node[node distance=1em, below=of stmt, draw=black] (p)      {\(\vundef @ \N\)};
+  \node[node distance=0.5em, above=of p.west]                (pname)  {\tt x};
 
-\apt{Arrow to ``fail'' is confusing. We should only go there is tag on x is P. And it is unclear that the N and P on the
-  arrow label are attached to the printed value.}
+  \node[state, right=of stmt]                         (stmt2)  {\(\sskip\)};
+  \node[node distance=0.5em, above=of stmt2, draw=black] (te2)    {\(\mathtt{pwd} \mapsto 42 @ \PT\)};
+  \node[node distance=1em, below=of stmt2, draw=black] (p2)     {\(42 @ \PT\)};
+  \node[node distance=0.5em, above=of p2.west]                (pname2) {\tt x};
+
+  \node[state, right=of stmt2]                         (stmt3)  {\tt printf \\ \tt ("\%d", \\ \tt x)};
+  \node[node distance=0.5em, above=of stmt3, draw=black] (te3)    {\(\mathtt{pwd} \mapsto 42 @ \PT\)};
+  \node[node distance=1em, below=of stmt3, draw=black] (p3)     {\(42 @ \PT\)};
+  \node[node distance=0.5em, above=of p3.west]                (pname3) {\tt x};
+
+  \node[node distance=6em, right=of stmt3] (center) {};
+  
+  \node[state,node distance=2em, above=of center]      (call)  {\(\mathit{Call}\dots\) \\ \(\mathtt{42}@\N\)};
+  \node[node distance=2em, below=of center]      (fail)  {\(\fail\)};
+  
+%    \node[node distance=5em, right=of p, draw=black]   (x)      {\(42\)};
+%    \node[node distance=0em, above=of x]               (xname)  {\tt x};
+%    \node[node distance=5em, right=of x, state]        (printf) {\tt printf \\ (``\%d'', 42);};
+    
+  \path[->]
+  (stmt) edge node [pos=0.5,below] {\(\gentag \rightarrow \gentag\)} (stmt2)
+  (stmt2) edge (stmt3)
+  (stmt3) edge node [pos=0.5,below,sloped] {\(\N \rightarrow \N\)} (call)
+  (stmt3) edge node [pos=0.5,below,sloped] {\(\PT \rightarrow \fail\)} (fail);
+\end{tikzpicture}
+\vspace{\belowdisplayskip}
 
 The points at which the tags are checked and either propagated or updated are termed
 {\em control points}, and the particular set of rules that are applied to tags at each
@@ -172,92 +237,128 @@ control point is a {\em tag rule}. Collectively, the tag rules form a {\em polic
 If our goal is to prevent {\tt pwd} from being leaked, our policy should also prevent
 values derived from {\tt pwd} from leaking. This means that if we add {\tt pwd} to a
 constant, we still keep the result tagged \(\PT\)---otherwise, someone watching our output
-could deduce \(\PT\) by subtraction.
+could deduce \(\PT\) by subtraction. Consider example \ref{fig:ex2}, focusing first on
+the computation of {\tt pwd + 5} inside of the context \(C\), then moving on to make
+the call once the expression is fully evaluated.
 
-\begin{verbatim}
-void main(int pwd) {
-  printf(pwd+5);
-}
-\end{verbatim}
 \begin{tikzpicture}[every text node part/.style={align=center}]
-  \node[anchor=north]                                     (pname)  {\tt pwd};
-  \node[node distance=0em, below=of pname, draw=black]    (p)      {\(42 @ \PT\)};
-  \node[node distance=1em, above=of pname, state]         (const)  {\tt 5};
-  \node[node distance=5em, right=of pname.north, state]   (sum)    {\(42@\PT + 5@\N\)};
-  \node[node distance=5em, right=of sum, state]             (printf) {\tt printf \\ (``\%d'', \(47@\PT\));};
-  \node[node distance=6em, right=of printf, state]           (fail)   {\(\fail\)};
+  \node[state]                                        (stmt)   {\(C[\mathtt{pwd}+\) \\ \(5@\N]\)};
+  \node[node distance=0.5em, above=of stmt, draw=black] (te)     {\(\mathtt{pwd} \mapsto 42 @ \PT\)};
 
+  \node[state, right=of stmt]                         (stmt2)  {\(C[42@\PT+\) \\ \(5@\N]\)};
+
+  \node[state, node distance=6em, right=of stmt2]                         (stmt3) {\(\ctx{47@\PT}\)};
+
+%  \node[node distance=6em, right=of stmt3] (center) {};
+  
+%  \node[state,node distance=2em, above=of center]      (call)  {\(\mathit{Call}\dots\) \\ \(\mathtt{47}@\N\)};
+%  \node[node distance=2em, below=of center]      (fail)  {\(\fail\)};
+  
+%    \node[node distance=5em, right=of p, draw=black]   (x)      {\(42\)};
+%    \node[node distance=0em, above=of x]               (xname)  {\tt x};
+%    \node[node distance=5em, right=of x, state]        (printf) {\tt printf \\ (``\%d'', 42);};
+    
   \path[->]
-  (p) edge node [pos=0.5,above, sloped] {\tt pwd}
-           node [pos=0.5,below, sloped] {\(\gentag \rightarrow \gentag\)} (sum)
-  (const) edge node [pos=0.5,above, sloped] {\tt 5}
-           node [pos=0.5,below, sloped] {\(\N\)} (sum)
-  (sum) edge node [pos=0.5,above] {}
-           node [pos=0.5,below] {\(\N,\N \rightarrow \N\) \\ \(\_,\_ \rightarrow \PT\)} (printf)
-  (printf) edge node [pos=0.5,above] {}
-                node [pos=0.5,below] {\(\N \rightarrow \N\) \\ \(\PT \rightarrow \fail\)} (fail);           
+  (stmt) edge (stmt2)
+  (stmt2) edge node [pos=0.5,below]
+       {\(\N,\N \rightarrow \N\) \\
+         \(\PT,\gentag \rightarrow \PT\) \\
+         \(\gentag,\PT \rightarrow \PT\)} (stmt3);
+
+  \node[state, node distance=1em, below=of stmt3]            (stmt4) {\(\mathtt{printf}\) \\ \tt ("\%d", \\ \tt \(47@\PT\))};
+  \node[node distance=6em, right=of stmt4] (center) {};
+
+  \node[state,node distance=2em, above=of center]      (call)  {\(\mathit{Call}\dots\) \\ \(\mathtt{47}@\N\)};
+  \node[node distance=2em, below=of center]      (fail)  {\(\fail\)};
+  
+  \path[->]
+  (stmt4) edge node [pos=0.5,below,sloped] {\(\N \rightarrow \N\)} (call)
+  (stmt4) edge node [pos=0.5,below,sloped] {\(\PT \rightarrow \fail\)} (fail);
+    
 \end{tikzpicture}
 
 Function calls aren't the only means of leaking data, however. We might additionally want
-to prevent {\tt pwd} from leaking by being written mmapped memory. Supposing the {\tt mm} is
+to prevent {\tt pwd} from leaking by being written mmapped memory, like in example \ref{fig:ex3}.
+Supposing the {\tt mm} is
 such a location, we would separately tag the location itself (not just the value in the
-location) to designate it as such. We'll call that tag \(\M\). [TODO: the diagrams for this are pretty rough.]
+location) to designate it as such. We'll call that tag \(\M\).
 
-\begin{verbatim}
-void main(int pwd) {
-  int x = pwd;
-  mm = pwd;
-}
-\end{verbatim}
+\vspace{\abovedisplayskip}
 \begin{tikzpicture}[every text node part/.style={align=center}]
-  \node[draw=black]                                  (p)      {\(42 @ \PT\)};
-  \node[node distance=0em, above=of p]               (pname)  {\tt pwd};
-  \node[node distance=1em, below=of p]   (x0)      {\(\memory{\tt x}{\(\vundef\)}{\(\N\)}{\(\N\)}{}\)};
-  \node[node distance=6em, right=of p]   (x)      {\(\memory{\tt x}{42}{\(\PT\)}{\(\N\)}{}\)};
-  \node[node distance=2em, right=of x, draw=black]   (p2)      {\(42 @ \PT\)};
-  \node[node distance=0em, above=of p2]               (p2name)  {\tt pwd};
-  \node[node distance=1em, below=of p2]   (mm0)      {\(\memory{\tt mm}{\(\vundef\)}{\(\N\)}{\(\M\)}{}\)};
-  \node[node distance=5em, right=of p2, state]   (fail)   {\(\fail\)};
+  \node[state]                                        (stmt)   {\tt x = pwd};
+  \node[node distance=0.5em, above=of stmt, draw=black] (te)     {\(\mathtt{pwd} \mapsto 42 @ \PT\)};
+  \node[node distance=0em, below=of stmt] (p)      {\(\memory{}{\(\vundef\)}{\(\N\)}{\(\N\)}{}\)};
+  \node[node distance=0.5em, above=of p.west]                (pname)  {\tt x};
+  \node[node distance=-0.5em, below=of p] (mm)      {\(\memory{}{\(\vundef\)}{\(\N\)}{\(\M\)}{}\)};
+  \node[node distance=0.5em, above=of mm.west]                (mmname)  {\tt mm};
+
+  \node[state, right=of stmt]                         (stmt2)  {\(\sskip\)};
+  \node[node distance=0em, below=of stmt2] (p2)      {\(\memory{}{42}{\(\PT\)}{\(\N\)}{}\)};
+  \node[node distance=0.5em, above=of p2.west]                (pname2)  {\tt x};
+  \node[node distance=-0.5em, below=of p2] (mm2)      {\(\memory{}{\(\vundef\)}{\(\N\)}{\(\M\)}{}\)};
+  \node[node distance=0.5em, above=of mm2.west]                (mmname2)  {\tt mm};
+
+  \node[state, right=of stmt2]                         (stmt3)  {\tt mm = x};
+  \node[node distance=0em, below=of stmt3] (p3)      {\(\memory{}{42}{\(\PT\)}{\(\N\)}{}\)};
+  \node[node distance=0.5em, above=of p3.west]                (pname3)  {\tt x};
+  \node[node distance=-0.5em, below=of p3] (mm3)      {\(\memory{}{\(\vundef\)}{\(\N\)}{\(\M\)}{}\)};
+  \node[node distance=0.5em, above=of mm3.west]                (mmname3)  {\tt mm};
+ 
+  \node[node distance=12em, right=of stmt3] (center) {};
   
+  \node[state,node distance=2em, above=of center]      (write)  {\(\sskip\)};
+  \node[node distance=-0.5em, below=of write] (mm3)      {\(\memory{}{\(42\)}{\(\N\)}{\(\M\)}{}\)};
+  \node[node distance=0.5em, above=of mm3.west]                (mmname3)  {\tt mm};
+  \node[node distance=2em, below=of center]      (fail)  {\(\fail\)};
+  
+%    \node[node distance=5em, right=of p, draw=black]   (x)      {\(42\)};
+%    \node[node distance=0em, above=of x]               (xname)  {\tt x};
+%    \node[node distance=5em, right=of x, state]        (printf) {\tt printf \\ (``\%d'', 42);};
+    
   \path[->]
-  (p) edge node [pos=0.5,above] {\tt x = pwd;}
-  node [pos=0.5,below] {\(\PT,\M \rightarrow \fail\) \\ \(\gentag_1,\gentag_2 \rightarrow \gentag_1,\gentag_2\)} (x)
-  (p2) edge node [pos=0.5,above] {\tt mm = pwd;}
-  node [pos=0.5,below] {\(\PT,\M \rightarrow \fail\) \\ \(\gentag_1,\gentag_2 \rightarrow \gentag_1,\gentag_2\)} (fail);
+  (stmt) edge node [pos=0.5,below] {\(\gentag \rightarrow \gentag\)} (stmt2)
+  (stmt2) edge (stmt3)
+  (stmt3) edge node [pos=0.5,below,sloped] {\(\gentag,\N \rightarrow \gentag\) \\ \(\N,\M \rightarrow \N\)} (write)
+  (stmt3) edge node [pos=0.5,below,sloped] {\(\PT,\M \rightarrow \fail\)} (fail);
 \end{tikzpicture}
+\vspace{\belowdisplayskip}
 
-Finally, we may be concerned with implicit leaks of {\tt pwd}, such as this one:
-\begin{verbatim}
-void main(int pwd) {
-  for (int i; i<pwd; i++) {
-    printf(i);
-  }
-}
-\end{verbatim}
+Finally, we may be concerned with implicit leaks of {\tt pwd}, such as the one in
+example \ref{fig:ex4}. It will give away the value of {\tt pwd}! In order to prevent this,
+we must keep track of the privilege of the current context, by carrying
+an additional tag associated with the global state. This is called the PC Tag,
+written \(\PCT\). Inside of a loop or conditional that depends on {\tt pwd}, the
+state carries information about {\tt pwd}, and this is reflected by \(\PCT = \PT\).
+In the example below we focus on the state inside of the loop, where \(\PCT = \PT\),
+and so we should not write to {\tt mm}.
 
-This will give away the exact value of {\tt pwd}! In order to prevent this, we must keep track of
-when we are inside of a loop or conditional that depends on {\tt pwd}.
-To this end, we carry an additional tag associated with the global state. This is called the PC Tag,
-written \(\PCT\). In examples that show states we will note it alongside the statement under focus.
+\begin{minipage}{0.6\textwidth}
+\begin{tikzpicture}[every text node part/.style={align=center}]
+  \node[state, right]                         (stmt3)  {\tt mm = x \\ \(\PCT = \PT\)};
+  \node[node distance=0em, below=of stmt3] (p3)      {\(\memory{}{42}{\(\PT\)}{\(\N\)}{}\)};
+  \node[node distance=0.5em, above=of p3.west]                (pname3)  {\tt x};
+  \node[node distance=-0.5em, below=of p3] (mm3)      {\(\memory{}{\(\vundef\)}{\(\N\)}{\(\M\)}{}\)};
+  \node[node distance=0.5em, above=of mm3.west]                (mmname3)  {\tt mm};
+ 
+  \node[node distance=10em, right=of stmt3] (center) {};
+  
+  \node[state,node distance=2em, above=of center]      (write)  {\(\sskip\)};
+  \node[node distance=-0.5em, below=of write] (mm3)      {\(\memory{}{\(i\)}{\(\N\)}{\(\M\)}{}\)};
+  \node[node distance=0.5em, above=of mm3.west]                (mmname3)  {\tt mm};
+  \node[node distance=2em, below=of center]      (fail)  {\(\fail\)};
+  
+%    \node[node distance=5em, right=of p, draw=black]   (x)      {\(42\)};
+%    \node[node distance=0em, above=of x]               (xname)  {\tt x};
+%    \node[node distance=5em, right=of x, state]        (printf) {\tt printf \\ (``\%d'', 42);};
+    
+  \path[->]
+  (stmt3) edge node [pos=0.5,below,sloped] {\dots} (write)
+  (stmt3) edge node [pos=0.5,below,sloped] {\(\PT,\gentag,\M \rightarrow \fail\) \\
+    \(\gentag,\PT,\M \rightarrow \fail\)} (fail);
+\end{tikzpicture}
+\end{minipage}
 
-\paragraph{PIPE Backend Implementation}
 
-In \cref{Chhak21:Tagine}, Chhak et al. introduce a verified compiler from a toy
-high-level language with tags
-to a control-flow-graph-based intermediate representation with a PIPE-based
-ISA. \apt{Oops. What's PIPE?} This establishes a proof-of-concept for compiling a source language's tag policy to
-realistic hardware. They take advantage of the fact that, like everything else in a PIPE system,
-instructions in memory carry tags. Instruction tags are statically determined at compile-time.
-They ``piggyback'' information about source-level control points onto the tags of the instructions
-that implement those source constructs.
-
-\apt{Not clear this belongs in the intro.}
-Tagged C is designed to be implemented in the same way. But, before we can soundly transmit
-tag rules from the source language to the assembly level, we also need to protect the basic
-control-flow properties of the source language. So, a compiled Tagged C requires a backend that
-can at the very least protect its control flow. In the case of a PIPE-based backend, we would
-run a basic stack-and-function-pointer-safety policy in parallel with whatever Tagged C policy
-the user has provided.
 
 \section{The Language}
 
@@ -296,10 +397,10 @@ and memory-location expressions, \(\lt\) for tags associated with memory locatio
 global ``program counter tag'' or PC Tag.
 An {\it atom} is a pair of a value and a tag, \(\val{v}{\vt}\); the @ symbol should be read
 as a pair in general, and is used when the second object in the pair is a tag.
-Expressions are ranged over by \(\expr\) (Figure \ref{fig:syntax}),
-statements by \(\stmt\), and continuations by \(\cont\).
+Expressions are ranged over by \(\expr\), statements by \(\stmt\), and continuations by \(\cont\).
 The continuations are defined in \cref{app:continuations}, and step rules in \cref{app:rules}.
 
+[TODO: temp environments]
 Global environments, ranged over by \(\genv\), map identifiers to either function
 or global variable definitions, including the variable's location in memory. Local environments,
 ranged over by \(\lenv\), map identifiers to atoms.
@@ -311,88 +412,84 @@ Each byte is also associated with a ``location tag'' \(\lt\). When a contiguous 
 starting at location \(l\) comprise an atom \(v@\vt\), and their locations tags comprise the list \(\lts\),
 we write \(\mem[l]_s = v@\vt @\lts\). Likewise, \(\mem[l \dots l + s \mapsto v@\vt @ \lts]_s\)
 denotes storing that many bytes. Visually, we will represent whole atoms in memory as condensed boxes,
-with their location tags separate. For example, a four-byte aligned address:
-
-\begin{tabular}{|c|c|c|c|}
-  \multicolumn{4}{l}{\(l\)} \\
-  \hline
-  \multicolumn{4}{|c|}{\(v @ \vt\)} \\
-  \hline
-  \(\lt_1\) & \(\lt_2\) & \(\lt_3\) & \(\lt_4\) \\
-  \hline
-\end{tabular}
-
-States can be of several kinds, denoted by their script prefix: a {\em general state} \(\mathcal{S}(\dots)\),
-an {\em expression state} \(\mathcal{E}(\dots)\), a {\em call state} \(\mathcal{C}(\dots)\), or a
-{\em return state} \(\mathcal{R}(\dots)\). Finally, the special state {\em failstop} (\(\mathcal{F}(\dots)\))
-represents a tag failure, and carries the state that produced the failure.
-[Allison: to whatever degree you've figured out what is useful here by publication-time, we can
-  tune this to be more specific.]
-
-\[\begin{aligned}
-S ::= & \sstate{\PCT}{\mem}{\stmt}{\cont} \\
-| & \estate{\PCT}{\mem}{\expr}{\cont} \\
-| & \cstate{f}{\PCT}{\mem}{\lenv}{f'}{\overline{\val{v}{\vt}}}{\cont} \\
-| & \rstate{\PCT}{\mem}{\genv}{\lenv}{\val{v}{\vt}}{\cont} \\
-| & \fstate{S} \\
-\end{aligned}\]
+with their location tags separate.
 
 \section{Tags and Policies}
 \label{sec:policies}
-
-\begin{table}
-  \begin{tabular}{|l|l|l|l|}
-    \hline
-    Name & Inputs & Outputs & Control Points \\
-    \hline
-    \(\globaltname\)    & \(\globaltargstyped\)  & \(\globaltres\)    & Program initialization \\
-    \(\fieldtname\)     & \(\fieldtargs\)        & \(\fieldtres\)     & Field Access \\
-    \(\loadtname\)      & \(\loadtargs\)         & \(\loadtres\)      & ValOf, AssignOp, PostIncr \\
-    \(\storetname\)     & \(\storetargs\)        & \(\storetres\)     & Assign \\
-    \(\consttname\)     &                        & \(\consttres\)     & Const, PostIncr \\
-    \(\unoptname\)      & \(\unoptargs\)         & \(\unoptres\)      & Unary Operation \\
-    \(\binoptname\)     & \(\binoptargs\)        & \(\binoptres\)     & Binary Operation \\
-    \(\malloctname\)    & \(\malloctargs\)       & \(\malloctres\)    & Call to {\tt malloc} \\
-    \(\freetname\)      & \(\freetargs\)         & \(\freetres\)      & Call to {\tt free} \\
-    \(\picasttname\)    & \(\picasttargs\)       & \(\picasttres\)    & Cast from pointer to scalar \\
-    \(\ipcasttname\)    & \(\ipcasttargs\)       & \(\ipcasttres\)    & Cast from scalar to pointer \\
-    \(\ppcasttname\)    & \(\ppcasttargs\)       & \(\ppcasttres\)    & Cast between pointers \\
-    \(\iicasttname\)    & \(\iicasttargs\)       & \(\iicasttres\)    & Cast between scalars \\
-    \(\exprsplittname\) & \(\exprsplittargs\)    & \(\exprsplittres\) & Control-flow split points in expressions \\
-    \(\exprjointname\)  & \(\exprjointargs\)     & \(\exprjointres\)  & Parenthetical expressions \\
-    \(\splittname\)     & \(\splittargs\)        & \(\splittres\)     & Split points (\cref{fig:splits})\\
-    \(\labeltname\)     & \(\labeltargs\)        & \(\labeltres\)     & Label \\
-    \(\calltname\)      & \(\calltargs\)         & \(\calltres\)      & Call \\
-    \(\extcalltname\)   & \(\extcalltargs\)      & \(\extcalltres\)   & External Call \\
-    \(\localtname\)     & \(\localtargstyped\)   & \(\localtres\)     & Call \\
-    \(\argtname\)       & \(\argtargs\)          & \(\argtres\)       & Call \\
-    \(\rettname\)       & \(\rettargs\)          & \(\rettres\)       & Return \\
-    \(\dealloctname\)   & \(\dealloctargstyped\) & \(\dealloctres\)   & Return \\
-    \hline
-  \end{tabular}
-
-  \label{fig:controlpoints}
-\end{table}
 
 Tagged C can enforce a wide range of policies, as follows.
 A policy consists of a tag type \(\tau\), a default tag inhabiting that type, and an instantiation
 of each tag rule identified in \cref{fig:controlpoints}.
 
-For each policy under discussion, we will give a code example of the sort of security
-situation in which it might be useful. We will introduce a formal characterization drawn
-from the literature of a security property that a correct policy should satisfy.
-[TODO: talk about properties somewhere before this?]
-Then we will walk through the important tag rules, and the control points that call them,
-introducing step rules as needed. Finally, if there are any implementation details that
-are necessary to realize a policy, we discuss those.
+\begin{table}[t]
+  \begin{tabular}{|l|l|l|l|}
+    \hline
+    Rule Name & Inputs & Outputs & Control Points \\
+    \hline
+    \rowcolor{gray!10}    
+    \(\loadtname\)      & \(\loadtargs\)         & \(\loadtres\)      & Memory Loads \\
+    \rowcolor{gray!10}    
+    \(\storetname\)     & \(\storetargs\)        & \(\storetres\)     & Memory Stores \\
+    \rowcolor{gray!10}    
+    \(\unoptname\)      & \(\unoptargs\)         & \(\unoptres\)      & Unary Operation \\
+    \rowcolor{gray!10}    
+    \(\binoptname\)     & \(\binoptargs\)        & \(\binoptres\)     & Binary Operation \\
+    \rowcolor{gray!10}    
+    \(\consttname\)     &                        & \(\consttres\)     & Applied to Constants/Literals \\
+    \rowcolor{gray!10}    
+    \(\exprsplittname\) & \(\exprsplittargs\)    & \(\exprsplittres\) & Control-flow split points in expressions \\
+    \rowcolor{gray!10}    
+    \(\exprjointname\)  & \(\exprjointargs\)     & \(\exprjointres\)  & Join points in expressions \\
+    \rowcolor{gray!10}    
+    \(\splittname\)     & \(\splittargs\)        & \(\splittres\)     & Control-flow split points in statements)\\
+    \rowcolor{gray!10}    
+    \(\labeltname\)     & \(\labeltargs\)        & \(\labeltres\)     & Labels/arbitrary code points \\
+    \rowcolor{gray!10}    
+    \(\calltname\)      & \(\calltargs\)         & \(\calltres\)      & Call \\
+    \rowcolor{gray!10}    
+    \(\argtname\)       & \(\argtargs\)          & \(\argtres\)       & Call \\
+    \rowcolor{gray!10}    
+    \(\rettname\)       & \(\rettargs\)          & \(\rettres\)       & Return \\
 
-\paragraph*{Control Points with Side-effects and Optional Arguments}
+    \hline
+    
+    \rowcolor{gray!40}    
+    \(\globaltname\)    & \(\globaltargs\)       & \(\globaltres\)    & Program initialization \\
+    \rowcolor{gray!40}    
+    \(\localtname\)     & \(\localtargs\)   & \(\localtres\)     & Call \\
+    \rowcolor{gray!40}    
+    \(\dealloctname\)   & \(\dealloctargs\) & \(\dealloctres\)   & Return \\
+    \rowcolor{gray!40}    
+    \(\extcalltname\)   & \(\extcalltargs\)      & \(\extcalltres\)   & Call to linked code \\
+    \rowcolor{gray!40}    
+    \(\malloctname\)    & \(\malloctargs\)       & \(\malloctres\)    & Call to {\tt malloc} \\
+    \rowcolor{gray!40}    
+    \(\freetname\)      & \(\freetargs\)         & \(\freetres\)      & Call to {\tt free} \\
+    \rowcolor{gray!40}    
+    \(\fieldtname\)     & \(\fieldtargs\)        & \(\fieldtres\)     & Field Access \\
+
+    \hline
+
+    \rowcolor{red!20}    
+    \(\picasttname\)    & \(\picasttargs\)       & \(\picasttres\)    & Cast from pointer to scalar \\
+    \rowcolor{red!20}    
+    \(\ipcasttname\)    & \(\ipcasttargs\)       & \(\ipcasttres\)    & Cast from scalar to pointer \\
+    \rowcolor{red!20}    
+    \(\ppcasttname\)    & \(\ppcasttargs\)       & \(\ppcasttres\)    & Cast between pointers \\
+    \rowcolor{red!20}    
+    \(\iicasttname\)    & \(\iicasttargs\)       & \(\iicasttres\)    & Cast between scalars \\
+    \hline
+  \end{tabular}
+
+  \caption{Full list of tag-rules in control points}
+  \label{fig:controlpoints}
+\end{table}
 
 Chhak et al. \cite{Chhak21:Tagine} give a general strategy for mapping Tagged C's tag rules
 onto instructions in a PIPE target. But as they note, translating tag rules in full generality
-requires adding extra instructions that may be unnecessary for some policies. The most problematic
-situation is when a Tagged-C control point requires a tag from a location that is not read under
-a normal compilation scheme or must update tags in locations that would otherwise not be written.
+requires adding extra instructions that may be unnecessary for some policies. A Tagged-C control point
+may require a tag from a location that is not read under a normal compilation scheme, or must update tags
+in locations that would otherwise not be written.
 
 To mitigate this, control points whose compilation would add potentially extraneous instructions
 take optional parameters or return optional results. We will explain how the rule should be
@@ -404,8 +501,8 @@ and outputs are marked with \(\optional{boxes}\).
 
 When we want to define a per-program policy, we need to be able to attach tags to the program's
 functions, globals, and so on. We do this by automatically embedding their identifiers in tags,
-which are available to all policies. These are called {\em name tags} and are ranged over by
-\(\nt\). We give name tags to the following constructions and identify them as follows:
+which are available to all policies. These are called {\em name tags}. We give name tags to the
+following constructions and identify them as follows:
 \begin{itemize}
 \item Function identifiers, \(FN(f)\)
 \item Function arguments, \(AN(f,x)\)
@@ -1613,6 +1710,24 @@ eventually compiling to PIPE-equipped hardware. An inlining compiler would also 
 As a result of this choice, our abstract reference monitor uses a PIPE-esque notion of
 tags.
 
+\paragraph{PIPE Backend Implementation}
+
+In \cref{Chhak21:Tagine}, Chhak et al. introduce a verified compiler from a toy
+high-level language with tags
+to a control-flow-graph-based intermediate representation with a PIPE-based
+ISA. This establishes a proof-of-concept for compiling a source language's tag policy to
+realistic hardware. They take advantage of the fact that, like everything else in a PIPE system,
+instructions in memory carry tags. Instruction tags are statically determined at compile-time.
+They ``piggyback'' information about source-level control points onto the tags of the instructions
+that implement those source constructs.
+
+Tagged C is designed to be implemented in the same way. But, before we can soundly transmit
+tag rules from the source language to the assembly level, we also need to protect the basic
+control-flow properties of the source language. So, a compiled Tagged C requires a backend that
+can at the very least protect its control flow. In the case of a PIPE-based backend, we would
+run a basic stack-and-function-pointer-safety policy in parallel with whatever Tagged C policy
+the user has provided.
+
 \paragraph{Aspect Oriented Programming}
 
 [TODO: do forward search from original AOP paper]
@@ -1716,6 +1831,23 @@ language to make it easier to write Tagged C policies.
 | & \kfor{\expr}{\stmt_2}{\stmt_3}{L}{\cont} \\
 | & \kforpost{\expr}{\stmt_2}{\stmt_3}{L}{\cont} \\
 \end{split}\]
+
+\section{States}
+
+States can be of several kinds, denoted by their script prefix: a {\em general state} \(\mathcal{S}(\dots)\),
+an {\em expression state} \(\mathcal{E}(\dots)\), a {\em call state} \(\mathcal{C}(\dots)\), or a
+{\em return state} \(\mathcal{R}(\dots)\). Finally, the special state {\em failstop} (\(\mathcal{F}(\dots)\))
+represents a tag failure, and carries the state that produced the failure.
+[Allison: to whatever degree you've figured out what is useful here by publication-time, we can
+  tune this to be more specific.]
+
+\[\begin{aligned}
+S ::= & \sstate{\PCT}{\mem}{\stmt}{\cont} \\
+| & \estate{\PCT}{\mem}{\expr}{\cont} \\
+| & \cstate{f}{\PCT}{\mem}{\lenv}{f'}{\overline{\val{v}{\vt}}}{\cont} \\
+| & \rstate{\PCT}{\mem}{\genv}{\lenv}{\val{v}{\vt}}{\cont} \\
+| & \fstate{S} \\
+\end{aligned}\]
 
 \section{Initial State}
 
