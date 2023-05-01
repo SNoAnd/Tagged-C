@@ -419,7 +419,10 @@ with their location tags separate.
 
 Tagged C can enforce a wide range of policies, as follows.
 A policy consists of a tag type \(\tau\), a default tag inhabiting that type, and an instantiation
-of each tag rule identified in \cref{fig:controlpoints}.
+of each tag rule identified in \cref{fig:controlpoints}. We divide these into the most common (light gray),
+which cover operations such as loads, stores, and arithmetic; more specialized ones (dark gray) that
+deal with state initialization and special functions; and the cast rules (red) which are necessary
+for certain niche policies.
 
 \begin{table}[t]
   \begin{tabular}{|l|l|l|l|}
