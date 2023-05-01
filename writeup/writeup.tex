@@ -57,23 +57,17 @@ system with privilege.
 % and the tools to change it later on.  
 The last line of defense against unknown or unfixable vulnerabilities is dynamic enforcement at
 runtime. To this end, we introduce Tagged C: a general-purpose dynamic tag-based enforcement language
-that allows developers to define flexible security policies on top of their existing C codebases,
-from defining memory UB to specifying detailed information flow policies.
-
-\apt{... the para makes it sound like we are only interested in C language errors. 
-  But bugs in the programmer's logic are at least as important for the properties we are trying to enforce!}
-\amn{I thought the focus was on C UB limiting and thats kinda C specific? Are there logic errors
-  in any of our example sections?}
-\sna{SQL injection and information leaks are logic errors}
-
-A tag-based reference monitor associates a metadata tag with the data in the underlying system,
-and throughout execution it updates these tags according to a set a predefined rules, or halts if
-the program would violate a rule, replacing a security violation with failstop behavior. By attaching
-such a monitor to the C language, we allow a user to apply whatever security policy meets their needs,
+that allows developers to define flexible security policies in terms of a familiar source language,
+from giving definition to memory UB to specifying detailed information flow policies.
+The user can apply whatever security policy meets their needs,
 tuned if necessary so that non-standard but benign code can still run, while actually dangerous activity
-is halted.
+is halted. Importantly, it is rarely necessary to recompile code to modify a security policy
+after the fact.
 
-\sna{Explicitly call out that we can change things without recompilation}
+The novelty of Tagged C is in building a tag-based reference monitor directly into the C semantics.
+This style of monitor associates a metadata tag with the data in the underlying system,
+and throughout execution it updates these tags according to a set a predefined rules, or halts if
+the program would violate a rule.
 
 Tagged C consists of an underlying semantics that establishes the baseline concrete behavior of programs
 with no policies, and a set of {\em control points} at which the semantics consult a user defined set of
@@ -81,18 +75,6 @@ with no policies, and a set of {\em control points} at which the semantics consu
 along with the CompCert verified compiler \cite{Leroy09:CompCert}. We provide a reference interpreter
 also based on that of CompCert.
 \sna{I feel some need to justify this, but I'm not sure what justification is appropriate.}
-%Our interpeter is likewise built on top of the CompCert C reference interpreter .
-%We chose CompCert C as a base because it is a widely used\apt{??} and well-supported\apt{??} C semantics, with a working
-%interpreter and a full formalization. Being written in Coq, it is ideal for future proof work.\apt{why is this relevant?}
-
-\paragraph*{Why C-Level?}
-Tag-based enforcement in general has a significant body of work at the assembly level, especially
-PIPE (Programmable Interlocks for Policy Enforcement) \cite{}. However, even at the assembly-level
-these systems need the compiler to be in the trusted computing base (TCB), as many policies require
-knowledge of source-level constructs, even ones that do not depend on detailed knowledge of the program's
-behavior [cite Nick and Andre; anyone else?]. Moving policy-definition to the source level therefore
-does not expand the TCB and allows C developers to reason about policies in terms of the language that
-they program in regularly.
 
 %This is the underlying concept of PIPE, an ISA extension that implements a reference monitor in
 %hardware, as well as similar systems such as ARM MTE and [that thing from Binghamton]. Being
@@ -1905,5 +1887,13 @@ And finally, we have the return rules.
     So healthcare wouldn't patch. SNA pointed out the coverity paper comments on this as a reason for 
     bugs not getting fixed}
 
+  \paragraph*{Why C-Level?}
+  Tag-based enforcement in general has a significant body of work at the assembly level, especially
+  PIPE (Programmable Interlocks for Policy Enforcement) \cite{}. However, even at the assembly-level
+  these systems need the compiler to be in the trusted computing base (TCB), as many policies require
+  knowledge of source-level constructs, even ones that do not depend on detailed knowledge of the program's
+  behavior [cite Nick and Andre; anyone else?]. Moving policy-definition to the source level therefore
+  does not expand the TCB and allows C developers to reason about policies in terms of the language that
+  they program in regularly.
 
 \end{document}
