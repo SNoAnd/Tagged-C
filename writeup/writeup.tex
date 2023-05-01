@@ -70,6 +70,8 @@ such a monitor to the C language, we allow a user to apply whatever security pol
 tuned if necessary so that non-standard but benign code can still run, while actually dangerous activity
 is halted.
 
+\sna{Explicitly call out that we can change things without recompilation}
+
 Tagged C consists of an underlying semantics that establishes the baseline concrete behavior of programs
 with no policies, and a set of {\em control points} at which the semantics consult a user defined set of
 {\em tag rules}. Our underlying semantics are built on the CompCert C semantics, the C semantics formalized
@@ -79,7 +81,6 @@ also based on that of CompCert.
 %Our interpeter is likewise built on top of the CompCert C reference interpreter .
 %We chose CompCert C as a base because it is a widely used\apt{??} and well-supported\apt{??} C semantics, with a working
 %interpreter and a full formalization. Being written in Coq, it is ideal for future proof work.\apt{why is this relevant?}
-
 
 \sna{I'm organizing our diss tracks into paragraphs that we can cut or move as needed}
 \paragraph*{Why Dynamic?}
@@ -976,7 +977,8 @@ forging.
   & \mathit{comp} ~ C ~ c \\
 \end{split}\]
 
-We define a predicate \(\mathit{cap}\) that holds when the 
+We define a predicate \(\mathit{cap}\) that holds when the target address is local to the active
+compartment or is shared and accessed through an appropriate capability.
 
 %\paragraph{Avoiding Confused Deputies}
 %
@@ -1427,8 +1429,9 @@ we wish to allow {\tt name} to influence the result of {\tt sanitize}, naturally
 of {\tt sanitize} to influence the value passed to {\tt sql\_query}, but we do not wish for
 {\tt name} to influence {\tt sql\_query} directly.
 
-We are now forced to consider multiple sources of information, {\tt name} and the output of
-{\tt sanitize}, as well as multiple information ``sinks,'' the input to {\tt sanitize} and {\tt sql\_query}.
+In this context, we consider the functions {\tt scanf} and {\tt sanitize} as sources of
+information, and the input to {\tt sanitize} and {\tt sql\_query} as information ``sinks.''
+
 Let \(\Sigma\) be the set of these three identifiers, ranged over by \(\sigma\). A value may be tainted
 any subset of \(\Sigma\),
 written \(\vtaint{\overline{\sigma}}\). The PC Tag tracks the current function identifier and an
@@ -1438,7 +1441,7 @@ that until reaching label \(L\), the state itself has been influenced by \(\sigm
 \[  \color{blue}
 \begin{aligned}
   \tau ::= & \vtaint{\overline{id}} \\
-  & \pctaint{f}{\overline{(L,id)}} \\
+  & \pctaint{f}{ets}{\overline{(L,id)}} \\
   & \N \\
 \end{aligned}\]
 
