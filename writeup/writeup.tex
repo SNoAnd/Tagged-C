@@ -80,35 +80,6 @@ also based on that of CompCert.
 %We chose CompCert C as a base because it is a widely used\apt{??} and well-supported\apt{??} C semantics, with a working
 %interpreter and a full formalization. Being written in Coq, it is ideal for future proof work.\apt{why is this relevant?}
 
-
-\sna{I'm organizing our diss tracks into paragraphs that we can cut or move as needed}
-\paragraph*{Why Dynamic?}
-  
-  Unfortunately, it is not always possible to fully secure C code before run-time.
-  Ideally, bugs would be quickly identified and then fixed promptly. 
-  That is not always possible for a variety of reasons: bugs may escape detection, 
-  require significant effort to diagnose, or be impractical to fix. 
-  There are many techniques for finding bugs, but there is a shared stumbling block: C is not 
-  well defined. We cannot always agree on when something is a bug in C, especially code using
-   Undefined Behaviors (UB) \cite{defactoC}. Confusion around expected behavior is no small problem. 
-  There are 191 undefined behaviors and 52 unspecified behaviors in the C99 
-  specification \cite{Csmith}. Sometimes these behaviors are benign and skillfully 
-  used by the developer, other times they are unintended and highly dangerous. 
-  Unfortunately the distinction between the two is easily lost. 
-  Discerning expert code review is considered best practice, although it is 
-  rarely perfectly successful \cite{} % https://dl.acm.org/doi/10.1007/978-3-642-36563-8_14 }
-  even if an expert is available at all. Even when there is both consensus 
-  and detection of a bug\apt{??} \amn{we can find it at and we can agree its a problem that should be fixed}, 
-  changing the code may not be possible because  
-  it is in proprietary 3rd party libraries and drivers, or because
-  regulations prohibit changes \cite{Bessey10:Coverity}.
-
-  \apt{last clause is mysterious} \amn {
-    for example FDA approval used to forbid patching because you'd have to go through recertification. 
-    So healthcare wouldn't patch. SNA pointed out the coverity paper comments on this as a reason for 
-    bugs not getting fixed}
-
-
 \paragraph*{Why C-Level?}
 Tag-based enforcement in general has a significant body of work at the assembly level, especially
 PIPE (Programmable Interlocks for Policy Enforcement) \cite{}. However, even at the assembly-level
@@ -1897,5 +1868,35 @@ And finally, we have the return rules.
 \returnstep
 \retvalstep
 \retnovalstep
+
+\section{Moved from Intro}
+
+\sna{I'm organizing our diss tracks into paragraphs that we can cut or move as needed}
+\paragraph*{Why Dynamic?}
+  
+  Unfortunately, it is not always possible to fully secure C code before run-time.
+  Ideally, bugs would be quickly identified and then fixed promptly. 
+  That is not always possible for a variety of reasons: bugs may escape detection, 
+  require significant effort to diagnose, or be impractical to fix. 
+  There are many techniques for finding bugs, but there is a shared stumbling block: C is not 
+  well defined. We cannot always agree on when something is a bug in C, especially code using
+   Undefined Behaviors (UB) \cite{defactoC}. Confusion around expected behavior is no small problem. 
+  There are 191 undefined behaviors and 52 unspecified behaviors in the C99 
+  specification \cite{Csmith}. Sometimes these behaviors are benign and skillfully 
+  used by the developer, other times they are unintended and highly dangerous. 
+  Unfortunately the distinction between the two is easily lost. 
+  Discerning expert code review is considered best practice, although it is 
+  rarely perfectly successful \cite{} % https://dl.acm.org/doi/10.1007/978-3-642-36563-8_14 }
+  even if an expert is available at all. Even when there is both consensus 
+  and detection of a bug\apt{??} \amn{we can find it at and we can agree its a problem that should be fixed}, 
+  changing the code may not be possible because  
+  it is in proprietary 3rd party libraries and drivers, or because
+  regulations prohibit changes \cite{Bessey10:Coverity}.
+
+  \apt{last clause is mysterious} \amn {
+    for example FDA approval used to forbid patching because you'd have to go through recertification. 
+    So healthcare wouldn't patch. SNA pointed out the coverity paper comments on this as a reason for 
+    bugs not getting fixed}
+
 
 \end{document}
