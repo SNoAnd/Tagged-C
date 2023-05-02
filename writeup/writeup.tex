@@ -21,6 +21,8 @@
 \input{memorygraphics.tex}
 \input{tagrules.tex}
 
+\maketitle
+
 \begin{abstract}
 Today's computing infrastructure is built atop layers of legacy C code, often
 insecure, poorly understood, and/or difficult to maintain.
@@ -38,8 +40,6 @@ more accessible to C programmers than existing assembly-level tag-based referenc
 
 \end{abstract}
 
-\maketitle
-
 \section{Introduction}
 Many essential technologies rely on new and old C code. 
 Operating systems (Linux, Windows, OSX, BSD), databases (Oracle, sqlite3), the internet \&
@@ -55,27 +55,32 @@ system with privilege.
 %AMN - not everyone will agree on what is secure behavior, 
 % esp as we can't even agree on what defined C is, so give poeple the tools to specficy themselves
 % and the tools to change it later on.  
+\apt{Maybe start with ``Although a wide variety of static analyses have been applied to detect and
+  mitigate C insecurities,''}
 The last line of defense against unknown or unfixable vulnerabilities is dynamic enforcement at
-runtime. To this end, we introduce Tagged C: a general-purpose dynamic tag-based enforcement language
-that allows developers to define flexible security policies in terms of a familiar source language,
-from giving definition to memory UB to specifying detailed information flow policies.
+runtime. To this end\apt{to what end? The actual need being addressed needs to be made explicit here!}, we introduce Tagged C: a general-purpose dynamic tag-based enforcement language
+that allows developers to define flexible security policies in terms of a familiar source language.
+Applications of Tagged C include giving precise definition to undefined behaviors (UBs) involving memory, specifying detailed information flow policies, and \apt{more here ???}.
 The user can apply whatever security policy meets their needs,
-tuned if necessary so that non-standard but benign code can still run, while actually dangerous activity
-is halted. Importantly, it is rarely necessary to recompile code to modify a security policy
-after the fact.
+tuned if necessary so that non-standard but benign code can still run\apt{this is a little mysterious in this context}, while actually dangerous activity
+is halted. Importantly, it is rarely necessary to recompile code to modify a security policy.
+\apt{omit: ``after the fact''. And by the way, when \emph{is} it necessary?}
 
 The novelty of Tagged C is in building a tag-based reference monitor directly into the C semantics.
+\apt{I hope not.  The novelty is in having a \emph{general-purpose} scheme for specifying monitor behavior
+  based on tags. The semantics is just an artifact of giving a rigorous definition to this scheme.}
 This style of monitor associates a metadata tag with the data in the underlying system,
 and throughout execution it updates these tags according to a set a predefined rules, or halts if
 the program would violate a rule.
 
 Tagged C consists of an underlying semantics that establishes the baseline concrete behavior of programs
 with no policies, and a set of {\em control points} at which the semantics consult a user defined set of
-{\em tag rules}. Our underlying semantics are built on the CompCert C semantics, the C semantics formalized
-along with the CompCert verified compiler \cite{Leroy09:CompCert}. We provide a reference interpreter
+{\em tag rules}. Our underlying semantics are built on the CompCert C semantics, which are formalized 
+as part of the CompCert verified compiler \cite{Leroy09:CompCert}. We provide a reference interpreter
 also based on that of CompCert.
-\sna{I feel some need to justify this, but I'm not sure what justification is appropriate.}
+\sna{I feel some need to justify this\apt{what, exactly?}, but I'm not sure what justification is appropriate.}
 
+\apt{Need to say \emph{something} about PIPE or other enforcement mechanisms in the intro.}
 %This is the underlying concept of PIPE, an ISA extension that implements a reference monitor in
 %hardware, as well as similar systems such as ARM MTE and [that thing from Binghamton]. Being
 %implemented at the ISA level, these systems currently require their policies to be defined in terms of
@@ -83,21 +88,23 @@ also based on that of CompCert.
 %itself, and aim to use PIPE as a compilation target, translating the high-level tags into
 %PIPE's ISA primitives.
 
+
+
 \paragraph{Contributions}
 
 We offer the following contributions:
 
 \begin{itemize}
-\item A full formal semantics for Tagged C, formalized in Coq
-\item A complete set of {\em control points} at which the language interfaces with the policy
+\item A full formal semantic definition for Tagged C, formalized in Coq
+\item The design of a comprehensive set of {\em control points} at which the language interfaces with the policy
 \item A Tagged C interpreter, implemented in Coq and extracted to Ocaml
-\item Policies implementing (1) compartmentalization,
-  (2) realistic, permissive memory models from the literature (PVI and PNVI),
+\item Tagged C policies implementing (1) compartmentalization,
+  (2) realistic, permissive memory models from the literature (PVI and PNVI\apt{maybe}),
   and (3) Secure Information Flow (SIF)
 \end{itemize}
 
 In the next section, we give a high-level introduction of metadata-tagging: how it works,
-and how that can improve security. Then in \cref{sec:semantics}, we briefly discuss the
+and how its use can improve security. Then in \cref{sec:semantics}, we briefly discuss the
 language as a whole, before moving into policies in \cref{sec:policies}. Finally, in
 \cref{sec:evaluations} we discuss the degree to
 which the design meets our goals of flexibility and applicability to realistic
@@ -156,6 +163,9 @@ void main(int pwd) {
   \caption{Examples of leaking {\tt pwd}}
   \label{fig:exampleleak}
 \end{figure}
+
+\apt{Sorry, but I really find these diagrams hard to follow and needlessly complicated.
+  I'm sure we have had better ways of describing these things in the past.}
 
 Consider this state diagram of example \ref{fig:ex1}. In the temporary environment,
 we map {\tt pwd} to 42, and then assign it into {\tt x} in memory.
@@ -362,6 +372,13 @@ and so we should not write to {\tt mm}.
 
 \section{The Language}
 
+\apt{The purpose of this section is unclear.  
+  Are you trying to introduce the syntax or the semantics of Tagged C?  Formally or informally?
+  The points of difference from CompCert are hard to appreciate without a lot more (at least informally)
+  about the standard CompCert semantics.  Without at least some semantic rules, you lack a way
+  to describe how control points are hooked in.
+  Since you are giving almost no details now, the stuff on notation seems way too pedantic.}
+
 Tagged C uses the full syntax of CompCert C \cite{Leroy09:CompCert} with minimal modification (\cref{fig:syntax}).
 There are two notable syntactical differences in the language, relative to CompCert C:
 conditionals and loops take an optional {\em join point} label, and parenthetical expressions
@@ -422,7 +439,7 @@ A policy consists of a tag type \(\tau\), a default tag inhabiting that type, an
 of each tag rule identified in \cref{fig:controlpoints}. We divide these into the most common (light gray),
 which cover operations such as loads, stores, and arithmetic; more specialized ones (dark gray) that
 deal with state initialization and special functions; and the cast rules (red) which are necessary
-for certain niche policies.
+for certain niche policies.\apt{Actually, I think colors is overkill: just the re-ordering is enough.}
 
 \begin{table}[t]
   \begin{tabular}{|l|l|l|l|}
@@ -488,6 +505,7 @@ for certain niche policies.
   \label{fig:controlpoints}
 \end{table}
 
+\apt{Next two paras are making a roadblock out of a small point. Shorten and/or defer discussion of options.}
 Chhak et al. \cite{Chhak21:Tagine} give a general strategy for mapping Tagged C's tag rules
 onto instructions in a PIPE target. But as they note, translating tag rules in full generality
 requires adding extra instructions that may be unnecessary for some policies. A Tagged-C control point
@@ -507,7 +525,7 @@ functions, globals, and so on. We do this by automatically embedding their ident
 which are available to all policies. These are called {\em name tags}. We give name tags to the
 following constructions and identify them as follows:
 \begin{itemize}
-\item Function identifiers, \(FN(f)\)
+\item Function identifiers, \(FN(f)\) \apt{For decent kerning, use $\mathit{FN}$, etc. rather than $FN$.}
 \item Function arguments, \(AN(f,x)\)
 \item Global variables, \(GN(x)\)
 \item Labels, \(LN(L)\)
@@ -642,12 +660,13 @@ Our set of tags consists of
 %       };       
 %\end{tikzpicture}
 
-Next, the program stores a 0 to address 1000. The constant 0
-takes on the default tag, \(I\). The policy needs to check that
+Next, the program stores a 0 to address 1000\apt{92(?)}. The constant 0
+takes on the default tag, \(I\)\apt{??}. The policy needs to check that
 this store is valid, in addition to determining the tags on the value that is stored.
 This check is performed by comparing the tag on the pointer to the tags on memory---each
-byte being written, in case the pointer is misaligned. Then the tag on the value being stored
+byte being written, in case the pointer is misaligned.\apt{unclear} Then the tag on the value being stored
 is propagated with it into memory, unchanged.
+\apt{explain what StoreT means}
 [TODO: arrows aren't pointing to quite the right places right now, but one can imagine.]
 
 \begin{tikzpicture}[every text node part/.style={align=center}]
