@@ -18,6 +18,26 @@
                   
            }
 
+\newcommand{\localtruleblock}[5]
+           {
+             \node[matrix, ampersand replacement=\&, right = of mem.east, fill=gray!10, matrix anchor=south west] (tr)
+                  {
+                    \& \node[anchor=center] {\(\localt\)}; \\
+                    \& \node[anchor=center] {#1}; \\
+                    \node (pctout) {\(\PCT'\)}; \& \node[anchor=west] (pctret) {#2}; \\
+                    \node (ptout)  {\(\pt\)};   \& \node[anchor=west] (ptret)  {#3}; \\
+                    \node (vtout)  {\(\vt\)};   \& \node[anchor=west] (vtret)  {#4}; \\
+                    \node (ltsout) {\(\lt\)};   \& \node[anchor=west] (ltsret) {#5}; \\
+                  };
+
+                  \path[->]
+                  (pctret) edge (pctout)
+                  (ptret)  edge (ptout)
+                  (vtret)  edge (vtout)
+                  (ltsret) edge (ltsout);
+                  
+           }
+           
 \newcommand{\loadtruleblock}[2]
            {
              \node[matrix, ampersand replacement=\&, right = of mem.east, fill=gray!10, matrix anchor=south west] (tr)

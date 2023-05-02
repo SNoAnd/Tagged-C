@@ -780,40 +780,26 @@ using unique colors.
 \end{align*}
 
 When initializing program memory, before any execution, each global \(id\) has its
-memory locations and its pointer in the global environment tagged with \(\mathit{glob} ~ id\),
-using the \(\globaltname\) tag rule.
-
-\[\begin{aligned}
-\truledef{\globalt}
-\settag{\pt}{\mathit{glob ~ id}}
-\settag{\vt}{N}
-\settag{\overline{\lt}}{\left[\mathit{glob} ~ id \mid 0 \leq i < s\right]}
-\end{aligned}\]
+memory locations and its pointer in the global environment tagged with \(\mathit{glob} ~ id\).
 
 In our previous memory safety example, we began with the active stack frame already allocated.
 When it is allocated at runtime, its tags are initialize by the \(\localtname\) rule.
-Stack-allocated locals and heap-allocated objects both
+Stack-allocated locals and heap-allocated objects are both tagged with unique colors;
+the PC Tag carries a counter of the dynamic objects allocated so far, and it is incremented
+each time.
 
-The tag rules for allocating memory in the heap and in the stack should look familiar.
-
-\begin{minipage}{0.49\textwidth}
-\[\begin{aligned}
-\truledef{\localt}
-\settag{\pt}{dyn ~ \PCT}
-\settagopt{\vt}{N}
-\settagopt{\overline{\lt}}{\left[dyn ~ \PCT\right]}
-\settag{\PCT'}{\PCT+1}
-\end{aligned}\]
-\end{minipage}
-\begin{minipage}{0.49\textwidth}
-\[\begin{aligned}
-\truledef{\malloct}
-\settag{\pt}{dyn ~ \PCT}
-\settagopt{\vt}{N}
-\settagopt{\overline{\lt}}{\left[dyn ~ \PCT\right]}
-\settag{\PCT'}{\PCT + 1}
-\end{aligned}\]
-\end{minipage}
+\begin{tikzpicture}[every text node part/.style={align=center}]
+  \localtruleblock{}{\(\PCT+1\)}
+                  {\(\mathit{dyn ~ \PCT}\)}
+                  {\(\N\)}
+                  {\(\left[ \mathit{dyn} ~ \PCT \right]\)}
+\end{tikzpicture}
+\begin{tikzpicture}[every text node part/.style={align=center}]
+  \malloctruleblock{}{\(\PCT+1\)}
+                   {\(\mathit{dyn ~ \PCT}\)}
+                   {\(\N\)}
+                   {\(\left[ \mathit{dyn} ~ \PCT \right]\)}
+\end{tikzpicture}
 
 \paragraph*{Color Checking}
 
@@ -1154,13 +1140,13 @@ treat that value as an input, and track its influence through the system.
 For this initial, simplified policy, we will assume that it is the only input that we care about,
 so we have four classes of tags. The default tag \(\N\) represents values that are not tainted
 by the sensitive input, the tag \(\vtaint{}\) represents values that have been influenced by
-{\tt read\_and\_parse}, and the tag \(\pctaint{f}{\overline{L}}\) carries a set of labels
+{\tt read\_and\_parse}, and the tag \(\pctaint{f}{ets}{\overline{L}}\) carries a set of labels
 representing that the current control-flow of the program is tainted (we will discuss this in detail
 below.) Lastly, the tag \(\vol\) marks the memory locations of {\em volatile} global variables.
 Volatile variables represent mmapped regions or memory that for other reasons is accessible
 outside the process.
 
-Initially, the PC Tag is \(\pctaint{f}{\emptyset}\), and all values and memory locations are
+Initially, the PC Tag is \(\pctaint{f}{\emptyset}{\emptyset}\), and all values and memory locations are
 tagged \(\N\). The taint tags are introduced at the external call to {\tt read\_and\_parse}.
 At the same time, all external calls must check that they aren't leaking a tainted value!
 
@@ -1169,7 +1155,7 @@ At the same time, all external calls must check that they aren't leaking a taint
   \begin{align*}
     \tau ::= & \N \\
     & \vtaint{} \\
-    & \pctaint{f}{\overline{L}} \\
+    & \pctaint{f}{ets}{\overline{L}} \\
     & \vol \\
 \end{align*} }
 \end{minipage}
@@ -1510,10 +1496,10 @@ We define the join operation in this new setting, as well as the {\em minus} ope
   \textnormal{if } \gentag_1 = \vtaint{\overline{\sigma}_1} \textnormal{ and }
   \gentag_2 = \vtaint{\overline{\sigma}_2}\\
   \vtaint{(\overline{\sigma}_2 \cup \{\sigma \mid (L,\sigma) \in \overline{(L,\sigma)}_1\})} &
-  \textnormal{if } \gentag_1 = \pctaint{f}{\overline{(L,\sigma)}_1} \textnormal{ and }
+  \textnormal{if } \gentag_1 = \pctaint{f}{ets}{\overline{(L,\sigma)}_1} \textnormal{ and }
   \gentag_2 = \vtaint{\overline{\sigma}_2}\\
   \vtaint{(\overline{\sigma}_1 \cup \{\sigma \mid (L,\sigma) \in \overline{(L,\sigma)}_2\})} &
-  \textnormal{if } \gentag_2 = \pctaint{f}{\overline{(L,\sigma)}_2} \textnormal{ and }
+  \textnormal{if } \gentag_2 = \pctaint{f}{ets}{\overline{(L,\sigma)}_2} \textnormal{ and }
   \gentag_1 = \vtaint{\overline{\sigma}_1}\\
   \bot & \textnormal{otherwise} \\
 \end{cases}\]
