@@ -459,9 +459,9 @@ for certain niche policies.
     \rowcolor{gray!40}    
     \(\globaltname\)    & \(\globaltargs\)       & \(\globaltres\)    & Program initialization \\
     \rowcolor{gray!40}    
-    \(\localtname\)     & \(\localtargs\)   & \(\localtres\)     & Call \\
+    \(\localtname\)     & \(\localtargs\)        & \(\localtres\)     & Call \\
     \rowcolor{gray!40}    
-    \(\dealloctname\)   & \(\dealloctargs\) & \(\dealloctres\)   & Return \\
+    \(\dealloctname\)   & \(\dealloctargs\)      & \(\dealloctres\)   & Return \\
     \rowcolor{gray!40}    
     \(\extcalltname\)   & \(\extcalltargs\)      & \(\extcalltres\)   & Call to linked code \\
     \rowcolor{gray!40}    
@@ -969,7 +969,7 @@ take pointers and operate on memory shared with the caller. External libraries a
 effectively required for most software to function yet represent a threat. Isolating 
 external libraries from critical code prevents vulnerabilities in the library from 
 compromising critical code and deprives potential attackers of ROP gadgets and other
-tools if there is an exploit in the critical code. 
+tools if there is an exploit in the critical code.
 
 To allow intentional sharing of memory across compartments, a more flexible policy is needed. 
 Suppose for example the hostname needs to conform to an expected pattern, 
