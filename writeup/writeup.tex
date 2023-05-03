@@ -99,16 +99,28 @@ security concerns.
 
 \section{What is Metadata Tagging?}
   
-Consider a very simple security requirement: ``do not {\tt printf} the password.''
+Consider a very simple security requirement: ``do not leak the password.''
 For simplicity, we will suppose that {\tt pwd} is an integer in this case, and consider
 a number of ways that it might be leaked (\cref{fig:exampleleak}).
+In example (a), we store it in a local variable, then pass it to {\tt printf}.
+In (b), we perform some arithmetic on it before printing it, but an observer could
+easily determine the original value. In (c), we store it to a volatile variable
+representing an mmapped region. And in (d), we loop over it, and store the loop
+counter in the same mmapped variable, indirectly revealing the value.
+
+To prevent example (a), we need to keep track of the value of the input as it
+moves from its initial temporary variable to the stack and then is passed, and
+we need to check the origins of any value we pass to {\tt printf}. Example (b)
+further requires that we track the provenance of the value as we perform arithmetic
+on it.
+
+Example (c) reveals that we need to separately track some information about memory
+locations in addition to the values that they hold, and example (d) asks us to track
+how the overall state has been influenced by {\tt pwd}.
 
 % Other options: (1) cursor pointing at lines of code
 % (2) table of te/mem states, corresponding to lines of code
 % Introduce rules by name from the beginning
-% Use a letter other that P for pwd
-% Discuss the four examples first, explain what kind of checks we'd like to do
-% Maybe better: one routine that leaks four different ways
 % Call out how we attach P to pwd (introduce name tags)
 % Text explaining diagrams
 % Elide byte-level description, explain that we're cheating later
@@ -161,42 +173,11 @@ void main(int pwd) {
   \label{fig:exampleleak}
 \end{figure}
 
-\apt{Sorry, but I really find these diagrams hard to follow and needlessly complicated.
-  I'm sure we have had better ways of describing these things in the past.}
 
-Consider this state diagram of example \ref{fig:ex1}. In the temporary environment,
-we map {\tt pwd} to 42, and then assign it into {\tt x} in memory.
-
-\begin{tikzpicture}[every text node part/.style={align=left}]
-  \node[matrix, ampersand replacement=\&, anchor=west]
-       {
-         \node (l1) {\tt void main(int pwd) \{}; \\
-         \node (l2) {\tt ~ ~ int x = pwd;}; \\
-         \node {\tt ~ ~ printf("\%d", x);}; \\
-         \node {\tt \}}; \\
-       };
-
-       \node[node distance=20em, right=of l1.west, draw=black, anchor=north]           (te1)     {\(\mathtt{pwd} \mapsto 42\)};
-       \node[node distance=1em, right=of te1, draw=black]                        (p1)      {\(\vundef\)};
-       \node[node distance=0.5em, above=of p1.west]                              (pname1)  {\tt x};
-
-       \node[node distance=20em, right=of l2.west, draw=black, anchor=north]           (te2)     {\(\mathtt{pwd} \mapsto 42\)};
-       \node[node distance=1em, right=of te2, draw=black]                        (p2)      {\(42\)};
-       
-       \path[{Circle}-]
-       (l1.south) edge (te1)
-       (l2.south) edge (te2);
-\end{tikzpicture}
-
-We need a way to dynamically track the confidential status of {\tt pwd} as it moves through the variable
-{\tt x} and is then passed to {\tt printf}. We can do so by associating metadata with the
-value; namely, that it originates in {\tt pwd}. We will write this ``tagged'' value \(42 @ \PT\),
-with the \(@\) symbol denoting a value tagged with metadata.
-All other values will be tagged \(\N\), for ``not {\tt pwd}.''
-Then when we copy {\tt pwd} into {\tt x}, it will bring its tag with it unchanged,
-as represented by the pattern \(\gentag \rightarrow \gentag\) under the arrow.
-When we call {\tt printf}, we must check that the tag is \(\N\), and if it is
-\(\PT\), we would like to failstop rather than permit the call.
+Lets examine the state at various points in example \ref{fig:ex1}.
+At first, the temporary environment maps {\tt pwd} to 42, and the value of  {\tt x} in memory
+is undefined. We perform the assignment to {\tt x}, and then step to a special \(\mathit{Call}\)
+state where we marshall the arguments before stepping into {\tt printf}.
 
 \begin{tikzpicture}[every text node part/.style={align=left}]
   \node[matrix, ampersand replacement=\&, anchor=west]
@@ -207,59 +188,295 @@ When we call {\tt printf}, we must check that the tag is \(\N\), and if it is
          \node {\tt \}}; \\
        };
 
-       \node[node distance=20em, right=of l1.west, draw=black, anchor=north]     (te1)     {\(\mathtt{pwd} \mapsto 42@\PT\)};
-       \node[node distance=1em, right=of te1, draw=black]                        (p1)      {\(\vundef @\N\)};
+       \node[node distance=20em, right=of l1.west, draw=black, anchor=north]           (te1)     {\(\mathtt{pwd} \mapsto 42\)};
+       \node[node distance=1em, right=of te1, draw=black]                        (p1)      {\(\vundef\)};
        \node[node distance=0.5em, above=of p1.west]                              (pname1)  {\tt x};
 
-       \node[node distance=20em, right=of l2.west, draw=black, anchor=north]     (te2)     {\(\mathtt{pwd} \mapsto 42@\PT\)};
-       \node[node distance=1em, right=of te2, draw=black]                        (p2)      {\(42@\PT\)};
+       \node[node distance=20em, right=of l2.west, draw=black, anchor=north]           (te2)     {\(\mathtt{pwd} \mapsto 42\)};
+       \node[node distance=1em, right=of te2, draw=black]                        (p2)      {\(42\)};
 
-       \node[node distance=1em, below=of te2.west, draw=black, anchor=north west]                        (call)    {\(\mathit{Call} ~ \mathtt{printf} ~ (\mathtt{"\%d"}, 42 @ \vt)\)};
+
+       \node[node distance=1em, below=of l3.east, draw=black, anchor=north]                        (call)    {\(\mathit{Call} ~ \mathtt{printf} ~ (\texttt{"\%d"}, 42)\)};
        
        \path[{Circle}-]
        (l1.south) edge (te1)
        (l2.south) edge (te2);
 
        \draw[{Circle}-]
-       (l3.east)  |- (call);
+       (l3.east)  -- (call);
+
 \end{tikzpicture}
 
-The points at which the tags are checked and either propagated or updated are termed
-{\em control points}, and the particular set of rules that are applied to tags at each
-control point is a {\em tag rule}. Collectively, the tag rules form a {\em policy}.
+We can dynamically track the confidential status of {\tt pwd} by associating metadata with its
+value; namely, that it originates in {\tt pwd}. We will write this ``tagged'' value \(42 @ \PT\),
+with the \(@\) symbol denoting a value tagged with metadata.
+All other values will be tagged \(\N\), for ``not {\tt pwd}.''
+Then when we copy {\tt pwd} into {\tt x}, we need to come up with a tag for the result.
+We do so by consulting the {\em tag rule} \(\storetname\), which tells us to transmit \(\PT\).
+Likewise, when we pass {\tt x}, we consult the \(\argtname\) rule to determine if it
+gets a new tag. However, a tag rule may also refuse to proceed, causing the system
+to failstop. In this case, because we are trying to pass a value tagged \(\PT\) to
+an output function, \(\argtname\) should failstop, indicated by the red arrow.
 
-If our goal is to prevent {\tt pwd} from being leaked, our policy should also prevent
-values derived from {\tt pwd} from leaking. This means that if we add {\tt pwd} to a
-constant, we still keep the result tagged \(\PT\)---otherwise, someone watching our output
-could deduce {\tt pwd} by subtraction. Consider example \ref{fig:ex2}, focusing first on
-the computation of {\tt pwd + 5} inside of the context \(C\), then moving on to make
-the call once the expression is fully evaluated.
+\begin{tikzpicture}[every text node part/.style={align=left}]
+  \node[matrix, ampersand replacement=\&, anchor=west]
+       {
+         \node (l1) {\tt void main(int pwd) \{}; \\
+         \node (l2) {\tt ~ ~ int x = pwd;}; \\
+         \node (l3) {\tt ~ ~ printf("\%d", x);}; \\
+         \node {\tt \}}; \\
+       };
 
-Function calls aren't the only means of leaking data, however. We might additionally want
-to prevent {\tt pwd} from leaking by being written mmapped memory, like in example \ref{fig:ex3}.
-Supposing the {\tt mm} is
-such a location, we would separately tag the location itself (not just the value in the
-location) to designate it as such. We'll call that tag \(\M\).
-% explain rule here; how do we handle M?
+       \node[matrix, node distance=18em, right=of l1.west, column sep=0em, inner sep=0.1em,
+         draw=black, ampersand replacement=\&, anchor=north] (te1)
+            {\node {\(\mathtt{pwd} \mapsto 42@\)}; \& \node (t1) {\(\PT\)}; \\};
 
-Finally, we may be concerned with implicit leaks of {\tt pwd}, such as the one in
-example \ref{fig:ex4}. It will give away the value of {\tt pwd}! In order to prevent this,
+       \node[matrix, node distance=1em, right=of te1, column sep=0em, inner sep=0.1em,
+         draw=black, ampersand replacement=\&] (p1)
+            {\node {\(\vundef@\)}; \& \node (t2) {\(\N\)}; \\};
+            
+       \node[node distance=0.5em, above=of p1.west]                              (pname1)  {\tt x};
+
+       \node[node distance=4em, below=of te1, draw=black, anchor=north]     (te2)     {\(\mathtt{pwd} \mapsto 42@\PT\)};
+       \node[matrix, node distance=1em, right=of te2, column sep=0em, inner sep=0.1em,
+         draw=black, ampersand replacement=\&] (p2)
+            {\node {\(42@\)}; \& \node (t3) {\(\PT\)}; \\};
+
+       \node[node distance=0.5em, above=of p2.west]                              (pname2)  {\tt x};
+
+
+        \node[matrix, node distance=8em, below=of l3.east, column sep=0em, inner sep=0.1em,
+         draw=black, ampersand replacement=\&, anchor=north] (call)
+            {\node {\(\mathit{Call} ~ \mathtt{printf} ~ (\texttt{"\%d"}, 42 @\)}; \& \node (t4) {\(\color{blue} \square\))}; \\};
+
+       \node[node distance=2em, below=of te1.east, draw=blue] (trule1) {\color{blue} \(\storetname\)};
+       \node[node distance=2em, below=of te2.east, draw=blue] (trule2) {\color{blue} \(\argtname\)};
+
+       \draw[-{Triangle},thick,draw=blue]
+       (t1.south) -- (trule1);
+
+       \draw[-{Triangle},thick,draw=blue]
+       (t2.south) -- (trule1);
+
+       \draw[-{Triangle},thick,draw=blue]
+       (trule1) -- (t3);
+
+       \draw[-{Triangle},thick,draw=blue]
+       (t3.south) -- (trule2);
+
+       \draw[-{Triangle},thick,draw=red]
+       (trule2) -- (t4);
+       
+       \draw[{Circle}-]
+       (l1.south) -- (te1);
+
+       \draw[{Circle}-]
+       (l2.south) -| (te2);
+
+       \draw[{Circle}-]
+       (l3.east)  -- (call);
+\end{tikzpicture}
+
+These points at which the tags are checked and either propagated or updated by tag rules are termed
+{\em control points}. Collectively, the tag rules form a {\em policy}.
+
+In example \ref{fig:ex2}, we update {\tt pwd} in place, and the \(\binoptname\) tag rule
+checks the tags on both it and the constant being added to it. Since one side of the
+expression is tagged \(\PT\), that must be propagated, even though the other side is \(\N\).
+Once again, \(\argtname\) will failstop.
+
+\begin{tikzpicture}[every text node part/.style={align=left}]
+  \node[matrix, ampersand replacement=\&, anchor=west]
+       {
+         \node (l1) {\tt void main(int pwd) \{}; \\
+         \node (l2) {\tt ~ ~ pwd+=5;}; \\
+         \node (l3) {\tt ~ ~ printf("\%d", x);}; \\
+         \node {\tt \}}; \\
+       };
+
+       \node[matrix, node distance=18em, right=of l1.west, column sep=0em, inner sep=0.1em,
+         draw=black, ampersand replacement=\&, anchor=north] (te1)
+            {\node {\(\mathtt{pwd} \mapsto 42@\)}; \& \node (t1) {\(\PT\)}; \\};
+
+       \node[right=of te1] (t2) {5@\(\N\)};
+            
+       \node[matrix, node distance=4em, below=of te1, column sep=0em, inner sep=0.1em,
+         draw=black, ampersand replacement=\&, anchor=north] (te2)
+            {\node {\(\mathtt{pwd} \mapsto 47@\)}; \& \node (t3) {\(\PT\)}; \\};
+
+        \node[matrix, node distance=8em, below=of l3.east, column sep=0em, inner sep=0.1em,
+         draw=black, ampersand replacement=\&, anchor=north] (call)
+            {\node {\(\mathit{Call} ~ \mathtt{printf} ~ (\texttt{"\%d"}, 42 @\)}; \& \node (t4) {\(\color{blue} \square\))}; \\};
+
+       \node[node distance=1em, above=of t2, draw=blue] (trule0) {\(\color{blue} \consttname\)};
+       \node[node distance=2em, below=of te1.east, draw=blue] (trule1) {\color{blue} \(\binoptname\)};
+       \node[node distance=2em, below=of te2.east, draw=blue] (trule2) {\color{blue} \(\argtname\)};
+
+       \draw[-{Triangle},thick,draw=blue]
+       (trule0) -- (t2);
+       
+       \draw[-{Triangle},thick,draw=blue]
+       (t1.south) -- (trule1);
+
+       \draw[-{Triangle},thick,draw=blue]
+       (t2.south) -- (trule1);
+
+       \draw[-{Triangle},thick,draw=blue]
+       (trule1) -- (t3);
+
+       \draw[-{Triangle},thick,draw=blue]
+       (t3.south) -- (trule2);
+
+       \draw[-{Triangle},thick,draw=red]
+       (trule2) -- (t4);
+       
+       \draw[{Circle}-]
+       (l1.south) -- (te1);
+
+       \draw[{Circle}-]
+       (l2.south) -| (te2);
+
+       \draw[{Circle}-]
+       (l3.east)  -- (call);
+\end{tikzpicture}
+
+Example \ref{fig:ex3} adds a new wrinkle: some addresses have special behavior associated with them.
+So we extend our tagging with an additional ``location tag'' on any memory location. By convention
+we will write \(\lt\) for such tags and \(\vt\) for tags associated with values (\(\pt\) if the value
+is a pointer.) In this case we will tag {\tt mm} with a special tag \(\M\) designated it to be
+memory-mapped. The \(\storename\) tag rule now checks the tag on the value being written against
+the location tag and will failstop rather than write a \(\PT\) value to an \(M\) location.
+
+\begin{tikzpicture}[every text node part/.style={align=left}]
+  \node[matrix, ampersand replacement=\&, anchor=west]
+       {
+         \node {\tt volatile int mm;}; \\
+         \node (l1) {\tt void main(int pwd) \{}; \\
+         \node (l2) {\tt ~ ~ mm = pwd;}; \\
+         \node {\tt \}}; \\
+       };
+
+       \node[matrix, node distance=18em, right=of l1.west, column sep=0em, inner sep=0.1em,
+         draw=black, ampersand replacement=\&, anchor=north] (te1)
+            {\node {\(\mathtt{pwd} \mapsto 42@\)}; \& \node (t1) {\(\PT\)}; \\};
+
+       \node[matrix, node distance=1em, right=of te1, column sep=0em, inner sep=0.2em,
+         draw=black, ampersand replacement=\&] (p1)
+            {\node {\(\vundef@\)}; \& \node (t2) {\(\N\)}; \& \node[draw=black] (t3) {@ \(\M\)}; \\ };
+            
+       \node[node distance=1em, above=of p1.west]                              (pname1)  {\tt mm};
+
+       \node[node distance=4em, below=of te1, draw=black, anchor=north]     (te2)     {\(\mathtt{pwd} \mapsto 42@\PT\)};
+       \node[matrix, node distance=1em, right=of te2, column sep=0em, inner sep=0.1em,
+         draw=black, ampersand replacement=\&] (p2)
+            {\node {\(42@\)}; \& \node (t4) {\(\square\)}; \\};
+
+       \node[node distance=0.5em, above=of p2.west]                              (pname2)  {\tt mm};
+
+       \node[node distance=2em, below=of te1.east, draw=blue] (trule1) {\color{blue} \(\storetname\)};
+
+       \draw[-{Triangle},thick,draw=blue]
+       (t1.south) -- (trule1);
+
+       \draw[-{Triangle},thick,draw=blue]
+       (t2.south) -- (trule1);
+       
+       \draw[-{Triangle},thick,draw=blue]
+       (t3.south) -- (trule1);
+
+
+       \draw[-{Triangle},thick,draw=red]
+       (trule1) -- (t4);
+       
+       \draw[{Circle}-]
+       (l1.south) -- (te1);
+
+       \draw[{Circle}-]
+       (l2.south) -| (te2);
+
+\end{tikzpicture}
+
+Finally, we may be concerned with implicit leaks, such as the one in
+example \ref{fig:ex4}. In order to prevent this,
 we must keep track of the privilege of the current context, by carrying
 an additional tag associated with the global state. This is called the PC Tag,
-written \(\PCT\). Inside of a loop or conditional that depends on {\tt pwd}, the
-state carries information about {\tt pwd}, and this is reflected by \(\PCT = \PT\).
-In the example below we focus on the state inside of the loop, where \(\PCT = \PT\),
-and so we should not write to {\tt mm}.
+written \(\PCT\). When we perform the check to enter the for loop, {\tt i<pwd},
+the resulting value is tagged \(\PT\) (due to the \(\binoptname\) rule above.)
+We consult the \(\splittname\) tag rule, and it tells us that \(\PCT\) should
+be \(\PT\) as well (abbreviated \(\PCT'\) for space.)
+We extend \(\storetname\) to check the PC Tag as well
+as the value being written, and failstop if either is \(\PT\) and the memory
+location is \(\M\).
 
+\begin{tikzpicture}[every text node part/.style={align=left}]
+  \node[matrix, ampersand replacement=\&, anchor=west]
+       {
+         \node {\tt volatile int mm;}; \\
+         \node (l0) {\tt void main(int pwd) \{}; \\
+         \node (l1) {\tt ~ ~ for (int i=0; i<pwd; i++)}; \\
+         \node (l2) {\tt ~ ~ ~ ~  mm = i;}; \\
+         \node {\tt \}}; \\
+       };
 
-\section{The Language}
+       \node[matrix, node distance=16em, right=of l2.west, column sep=0em, inner sep=0.1em,
+         draw=black, ampersand replacement=\&] (te1)
+            {\node {\(\mathtt{pwd} \mapsto 42@\)}; \& \node (t1) {\(\PT\)}; \\
+              \node {\(\mathtt{i} \mapsto 0@\)}; \& \node (t1) {\(\N\)}; \\
+            };
 
-\apt{The purpose of this section is unclear.  
-  Are you trying to introduce the syntax or the semantics of Tagged C?  Formally or informally?
-  The points of difference from CompCert are hard to appreciate without a lot more (at least informally)
-  about the standard CompCert semantics.  Without at least some semantic rules, you lack a way
-  to describe how control points are hooked in.
-  Since you are giving almost no details now, the stuff on notation seems way too pedantic.}
+       \node[state, node distance=1em, left=of te1, draw=black] (pct1)
+            {\(\PCT'\)};
+       \node[state, node distance=1em, above=of pct1, draw=black] (pct0)
+            {\(\N\)};
+
+       \node[matrix, node distance=1em, right=of te1, column sep=0em, inner sep=0.2em,
+         draw=black, ampersand replacement=\&] (p1)
+            {\node {\(\vundef@\)}; \& \node (t2) {\(\N\)}; \& \node[draw=black] (t3) {@ \(\M\)}; \\ };
+            
+       \node[node distance=1em, above=of p1.west]                              (pname1)  {\tt mm};
+
+       \node[node distance=4em, below=of te1, draw=black, anchor=north]     (te2)     {\(\mathtt{pwd} \mapsto 42@\PT\)};
+       \node[matrix, node distance=1em, right=of te2, column sep=0em, inner sep=0.1em,
+         draw=black, ampersand replacement=\&] (p2)
+            {\node {\(42@\)}; \& \node (t4) {\(\square\)}; \& \node[draw=black] (t5) {@ \(\square\)}; \\};
+
+       \node[node distance=0.5em, above=of p2.west]                              (pname2)  {\tt mm};
+
+       \node[node distance=2em, below=of te1.east, draw=blue] (trule1) {\color{blue} \(\storetname\)};
+       \node[node distance=2em, right=of pct0.east, draw=blue] (trule0) {\color{blue} \(\splittname\)};
+
+       \node[state, node distance=1em, left=of te2, draw=black] (pct2)
+            {\(\square\)};
+
+       \draw[-{Triangle},thick,draw=blue]
+       (t1.south) -- (trule1);
+       \draw[-{Triangle},thick,draw=blue]
+       (t2.south) -- (trule1);
+       \draw[-{Triangle},thick,draw=blue]
+       (t3.south) -- (trule1);
+       \draw[-{Triangle},thick,draw=blue]
+       (pct1.south) -- (trule1);
+       \draw[-{Triangle},thick,draw=blue]
+       (pct0) -- (trule0);
+       \draw[-{Triangle},thick,draw=blue]
+       (trule0) -- (pct1);
+
+       \draw[-{Triangle},thick,draw=red]
+       (trule1) -- (t4);
+       \draw[-{Triangle},thick,draw=red]
+       (trule1) -- (t5);
+       \draw[-{Triangle},thick,draw=red]
+       (trule1) -- (pct2);
+       
+       \draw[{Circle}-]
+       (l1.south) -- (pct1);
+
+       \draw[{Circle}-]
+       (l2.south) |- (pct2);
+
+\end{tikzpicture}
+
+\section{The Language, Informally}
 
 Tagged C uses the full syntax of CompCert C \cite{Leroy09:CompCert} with minimal modification (\cref{fig:syntax}).
 There are two notable syntactical differences in the language, relative to CompCert C:
@@ -284,34 +501,6 @@ strictness of the policy may need to be tuned for programs that use low-level id
 The choice of control points and their associations with tag rules, as well as the tag rules'
 signatures, are a crucial design element. Our proposed design is sufficient for the three classes of
 policy that we explore in this paper, but it may not be complete.
-
-\paragraph{Notations}
-\label{sec:semantics}
-
-Values are ranged over by \(v\), variable identifiers by \(x\), and function identifiers by \(f\).
-Tags use a number of metavariables: \(t\) ranges over all tags, while we will use
-\(\vt\) to refer to the tags associated with values, \(\pt\) for tags on pointer values
-and memory-location expressions, \(\lt\) for tags associated with memory locations themselves,
-\(\nt\) for ``name tags'' automatically derived from identifiers, \(\PCT\) for the
-global ``program counter tag'' or PC Tag.
-An {\it atom} is a pair of a value and a tag, \(\val{v}{\vt}\); the @ symbol should be read
-as a pair in general, and is used when the second object in the pair is a tag.
-Expressions are ranged over by \(\expr\), statements by \(\stmt\), and continuations by \(\cont\).
-The continuations are defined in \cref{app:continuations}, and step rules in \cref{app:rules}.
-
-[TODO: temp environments]
-Global environments, ranged over by \(\genv\), map identifiers to either function
-or global variable definitions, including the variable's location in memory. Local environments,
-ranged over by \(\lenv\), map identifiers to atoms.
-Memories \(\mem\) map integers to
-triples: a value, a ``value tag'' \(\vt\), and a list of ``location tags'' \(\lts\).
-
-A memory is an array of bytes, where each byte is part of an atom.
-Each byte is also associated with a ``location tag'' \(\lt\). When a contiguous region of \(s\) bytes
-starting at location \(l\) comprise an atom \(v@\vt\), and their locations tags comprise the list \(\lts\),
-we write \(\mem[l]_s = v@\vt @\lts\). Likewise, \(\mem[l \dots l + s \mapsto v@\vt @ \lts]_s\)
-denotes storing that many bytes. Visually, we will represent whole atoms in memory as condensed boxes,
-with their location tags separate.
 
 \section{Tags and Policies}
 \label{sec:policies}
@@ -1885,4 +2074,22 @@ And finally, we have the return rules.
   does not expand the TCB and allows C developers to reason about policies in terms of the language that
   they program in regularly.
 
+  \paragraph*{Notations}
+  Values are ranged over by \(v\), variable identifiers by \(x\), and function identifiers by \(f\).
+Tags use a number of metavariables: \(t\) ranges over all tags, while we will use
+\(\vt\) to refer to the tags associated with values, \(\pt\) for tags on pointer values
+and memory-location expressions, \(\lt\) for tags associated with memory locations themselves,
+\(\nt\) for ``name tags'' automatically derived from identifiers, \(\PCT\) for the
+global ``program counter tag'' or PC Tag.
+An {\it atom} is a pair of a value and a tag, \(\val{v}{\vt}\); the @ symbol should be read
+as a pair in general, and is used when the second object in the pair is a tag.
+Expressions are ranged over by \(\expr\), statements by \(\stmt\), and continuations by \(\cont\).
+The continuations are defined in \cref{app:continuations}, and step rules in \cref{app:rules}.
+
+A memory is an array of bytes, where each byte is part of an atom.
+Each byte is also associated with a ``location tag'' \(\lt\). When a contiguous region of \(s\) bytes
+starting at location \(l\) comprise an atom \(v@\vt\), and their locations tags comprise the list \(\lts\),
+we write \(\mem[l]_s = v@\vt @\lts\). Likewise, \(\mem[l \dots l + s \mapsto v@\vt @ \lts]_s\)
+denotes storing that many bytes. Visually, we will represent whole atoms in memory as condensed boxes,
+with their location tags separate.
 \end{document}
