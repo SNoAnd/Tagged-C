@@ -1678,31 +1678,27 @@ declare that there are no secrets to lower when it is reached.
 
 In \cref{Chhak21:Tagine}, Chhak et al. introduce a verified compiler from a toy
 high-level language with tags
-to a control-flow-graph-based intermediate representation with a PIPE-based
-ISA. This establishes a proof-of-concept for compiling a source language's tag policy to
-realistic hardware. They take advantage of the fact that, like everything else in a PIPE system,
-instructions in memory carry tags. Instruction tags are statically determined at compile-time.
-They ``piggyback'' information about source-level control points onto the tags of the instructions
-that implement those source constructs.
-
-Tagged C is designed to be implemented in the same way. But, before we can soundly transmit
-tag rules from the source language to the assembly level, we also need to protect the basic
-control-flow properties of the source language. So, a compiled Tagged C requires a backend that
-can at the very least protect its control flow. In the case of a PIPE-based backend, we would
-run a basic stack-and-function-pointer-safety policy in parallel with whatever Tagged C policy
-the user has provided.
+to a control-flow-graph-based intermediate representation of a PIPE-based
+ISA. It is a proof-of-concept of compilation from a source language's tag policy to
+realistic hardware. Everything in a PIPE system carries tags, including instructions. 
+Instruction tags are statically determined at compile-time and they add data about source-level
+control points in the corresponding assembly. Tagged C is designed in the same way with 
+the extra requirement of basic control-flow protection in the backend to ensure tag rules
+ can be soundly transmited from source to assembly. 
+In the case of a PIPE-based backend, a basic stack-and-function-pointer-safety policy would be run in parallel 
+with the user's Tagged C policy. \amn{automatically run?}
 
 Chhak et al. \cite{Chhak21:Tagine} give a general strategy for mapping Tagged C's tag rules
-onto instructions in a PIPE target. But as they note, translating tag rules in full generality
+onto instructions in a PIPE target. However, translating tag rules in full generality
 requires adding extra instructions that may be unnecessary for some policies. A Tagged-C control point
 may require a tag from a location that is not read under a normal compilation scheme, or must update tags
 in locations that would otherwise not be written.
 
 To mitigate this, control points whose compilation would add potentially extraneous instructions
 take optional parameters or return optional results. We will explain how the rule should be
-implemented in the target if the options are used. If a policy does not make use of the options, it will
-be sound to compile without the extra instructions. Optional inputs
-and outputs are marked with \(\optional{boxes}\).
+implemented in the target if the options are used.  Optional inputs
+and outputs are marked with \(\optional{boxes}\). If a policy does not make use of the options, it will
+be sound to compile without the extra instructions.
 
 \section{Evaluation}
 \label{sec:evaluation}
