@@ -1,6 +1,6 @@
 \newcommand{\malloctruleblock}[5]
            {
-             \node[matrix, ampersand replacement=\&, right = of mem.east, fill=gray!10, matrix anchor=south west] (tr)
+             \node[matrix, ampersand replacement=\&, fill=gray!10, matrix anchor=south west] (tr)
                   {
                     \& \node[anchor=center] {\(\malloct\)}; \\
                     \& \node[anchor=center] {#1}; \\
@@ -20,7 +20,7 @@
 
 \newcommand{\localtruleblock}[5]
            {
-             \node[matrix, ampersand replacement=\&, right = of mem.east, fill=gray!10, matrix anchor=south west] (tr)
+             \node[matrix, ampersand replacement=\&, fill=gray!10, matrix anchor=south west] (tr)
                   {
                     \& \node[anchor=center] {\(\localt\)}; \\
                     \& \node[anchor=center] {#1}; \\
@@ -40,7 +40,7 @@
            
 \newcommand{\loadtruleblock}[2]
            {
-             \node[matrix, ampersand replacement=\&, right = of mem.east, fill=gray!10, matrix anchor=south west] (tr)
+             \node[matrix, ampersand replacement=\&, fill=gray!10, matrix anchor=south west] (tr)
                   {
                     \& \node[anchor=center] {\(\loadt\)}; \\
                     \& \node[anchor=center] {#1}; \\
@@ -53,7 +53,7 @@
 
 \newcommand{\storetruleblock}[4]
            {
-             \node[matrix, ampersand replacement=\&, right = of mem.east, fill=gray!10, matrix anchor=south west] (tr)
+             \node[matrix, ampersand replacement=\&, fill=gray!10, matrix anchor=south west] (tr)
                   {
                     \& \node[anchor=center] {\(\storet\)}; \\
                     \& \node[anchor=center] {#1}; \\
@@ -70,7 +70,7 @@
 
 \newcommand{\unoptruleblock}[3]
            {
-             \node[matrix, ampersand replacement=\&, right = of mem.east, fill=gray!10, matrix anchor=south west] (tr)
+             \node[matrix, ampersand replacement=\&, fill=gray!10, matrix anchor=south west] (tr)
                   {
                     \& \node[anchor=center] {\(\unopt\)}; \\
                     \& \node[anchor=center] {#1}; \\
@@ -85,7 +85,7 @@
            
 \newcommand{\binoptruleblock}[3]
            {
-             \node[matrix, ampersand replacement=\&, right = of mem.east, fill=gray!10, matrix anchor=south west] (tr)
+             \node[matrix, ampersand replacement=\&, fill=gray!10, matrix anchor=south west] (tr)
                   {
                     \& \node[anchor=center] {\(\binopt\)}; \\
                     \& \node[anchor=center] {#1}; \\
@@ -100,7 +100,7 @@
 
 \newcommand{\calltruleblock}[2]
            {
-             \node[matrix, ampersand replacement=\&, right = of mem.east, fill=gray!10, matrix anchor=south west] (tr)
+             \node[matrix, ampersand replacement=\&, fill=gray!10, matrix anchor=south west] (tr)
                   {
                     \& \node[anchor=center] {\(\callt\)}; \\
                     \& \node[anchor=center] {#1}; \\
@@ -111,9 +111,23 @@
                   (pctret) edge (pctout);
            }
 
+\newcommand{\argtruleblock}[2]
+           {
+             \node[matrix, ampersand replacement=\&, fill=gray!10, matrix anchor=south west] (tr)
+                  {
+                    \& \node[anchor=center] {\(\argt\)}; \\
+                    \& \node[anchor=center] {#1}; \\
+                    \node (vtout) {\(\PCT'\)}; \& \node[anchor=west] (vtret) {#2}; \\
+                  };
+
+                  \path[->]
+                  (vtret) edge (vtout);
+           }
+
+           
 \newcommand{\rettruleblock}[3]
            {
-             \node[matrix, ampersand replacement=\&, right = of mem.east, fill=gray!10, matrix anchor=south west] (tr)
+             \node[matrix, ampersand replacement=\&, fill=gray!10, matrix anchor=south west] (tr)
                   {
                     \& \node[anchor=center] {\(\rett\)}; \\
                     \& \node[anchor=center] {#1}; \\

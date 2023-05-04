@@ -249,8 +249,8 @@ an output function, \(\argtname\) should failstop, indicated by the red arrow.
          draw=black, ampersand replacement=\&, anchor=north] (call)
             {\node {\(\mathit{Call} ~ \mathtt{printf} ~ (\texttt{"\%d"}, 42 @\)}; \& \node (t4) {\(\color{blue} \square\))}; \\};
 
-       \node[node distance=2em, below=of te1.east, draw=blue] (trule1) {\color{blue} \(\storetname\)};
-       \node[node distance=2em, below=of te2.east, draw=blue] (trule2) {\color{blue} \(\argtname\)};
+       \node[node distance=2em, below=of te1.east, draw=blue] (trule1) {\(\storetname\)};
+       \node[node distance=2em, below=of te2.east, draw=blue] (trule2) {\(\argtname\)};
 
        \draw[-{Triangle},thick,draw=blue]
        (t1.south) -- (trule1);
@@ -308,9 +308,9 @@ Once again, \(\argtname\) will failstop.
          draw=black, ampersand replacement=\&, anchor=north] (call)
             {\node {\(\mathit{Call} ~ \mathtt{printf} ~ (\texttt{"\%d"}, 42 @\)}; \& \node (t4) {\(\color{blue} \square\))}; \\};
 
-       \node[node distance=1em, above=of t2, draw=blue] (trule0) {\(\color{blue} \consttname\)};
-       \node[node distance=2em, below=of te1.east, draw=blue] (trule1) {\color{blue} \(\binoptname\)};
-       \node[node distance=2em, below=of te2.east, draw=blue] (trule2) {\color{blue} \(\argtname\)};
+       \node[node distance=1em, above=of t2, draw=blue] (trule0) {\(\consttname\)};
+       \node[node distance=2em, below=of te1.east, draw=blue] (trule1) {\(\binoptname\)};
+       \node[node distance=2em, below=of te2.east, draw=blue] (trule2) {\(\argtname\)};
 
        \draw[-{Triangle},thick,draw=blue]
        (trule0) -- (t2);
@@ -373,7 +373,7 @@ the location tag and will failstop rather than write a \(\PT\) value to an \(M\)
 
        \node[node distance=0.5em, above=of p2.west]                              (pname2)  {\tt mm};
 
-       \node[node distance=2em, below=of te1.east, draw=blue] (trule1) {\color{blue} \(\storetname\)};
+       \node[node distance=2em, below=of te1.east, draw=blue] (trule1) {\(\storetname\)};
 
        \draw[-{Triangle},thick,draw=blue]
        (t1.south) -- (trule1);
@@ -442,8 +442,8 @@ location is \(\M\).
 
        \node[node distance=0.5em, above=of p2.west]                              (pname2)  {\tt mm};
 
-       \node[node distance=2em, below=of te1.east, draw=blue] (trule1) {\color{blue} \(\storetname\)};
-       \node[node distance=2em, right=of pct0.east, draw=blue] (trule0) {\color{blue} \(\splittname\)};
+       \node[node distance=2em, below=of te1.east, draw=blue] (trule1) {\(\storetname\)};
+       \node[node distance=2em, right=of pct0.east, draw=blue] (trule0) {\(\splittname\)};
 
        \node[state, node distance=1em, left=of te2, draw=black] (pct2)
             {\(\square\)};
@@ -559,82 +559,60 @@ following constructions and identify them as follows:
 \item Types, \(\TN\)
 \end{itemize}
 
-\subsection{Basic Memory Safety}
-\label{sec:memsafe}
+\subsection{PVI Memory Safety}
+\label{sec:PVI}
 
-Let's begin by walking through a common type of policy: memory safety. Variations of memory safety
-have been enforced in PIPE at the assembly level already, but what does it look like to enforce it
-at the source level? Consider some example code:
+Our first policy is a form of memory safety that uses the ``provenance via integer'' (PVI) memory model
+of Memarian et al. \cite{}. Variations of memory safety have been enforced in PIPE already, but usually using
+an ad hoc memory model. PVI has the virtue of giving definition to many memory UBs in which a pointer is
+cast to an integer, subjected to various arithmetic operations, and cast back to a pointer.
+Their second memory model, {\it PNVI} (provenance not via integer), is even more permissive.
+We can also enforce it in Tagged C, though its security value is questionable, and we will
+not describe it in this paper.
 
+When we say that we want to enforce this specific memory model, we mean that our policy should
+not failstop on any program that is defined in PVI, and that it should failstop if and when a program
+reaches undefined behavior. So, in the following examples, we would like {\tt mark} to proceed without
+failing, while {\tt overflow} should failstop.
+
+\begin{minipage}{0.7\textwidth}
 \begin{verbatim}
-void main() {
-  int[1] x;
-  int[1] y;
-  *x = 0;
-  *(x+1) = 0;
+int mark(uintptr ptr) {
+  if (!(ptr & 0x00000001))
+    *(int*) (ptr | 0x11111110) = 0;
+
+  return ((uintptr) ptr | 0x00000001);
 }
 \end{verbatim}
+\end{minipage}
+\begin{minipage}{0.29\textwidth}
+\begin{verbatim}
+void overflow() {
+  int[3] x;
+  int y;
+  *x = 0;
+  *(x+10) = 0;
+}
+\end{verbatim}
+\end{minipage}
 
-The above code is undefined behavior in C, because it writes to the address one past the end
-of the array pointed to by {\tt x}. Since
-{\tt x} and {\tt y} are given adjacent concrete addresses, when the program
-writes to the address of {\tt x+1}, it is writing to the address of {\tt y}.
-For our example, we'll assume that the stack grows downward from address 100.
+Both code snippets are undefined behavior in C, but {\tt mark} is a common low-level
+idiom seen in, for example, implementations of Cheney's algorithm for garbage collection.
+Taking advantage of the fact that objects in memory are four-aligned, it
+uses the lower-order bits of the pointer to store a flag. In this case, it first checks
+the flag, and if it is not set, it zeroes the memory and then sets it. This is generally
+considered to be harmless, in contrast to {\tt overflow}, where {\tt y} is being overwritten
+due to being adjacent in memory to {\tt x}.
 
-We can prevent situations like this using a {\em memory safety} policy, as follows.
-We assign to each object in memory a unique ``color'' when it is allocated---in this case,
-on entry to the function {\tt main}.
+We can prevent situations like this using a {\em memory safety} policy. In brief, whenever
+an object is allocated, it is assigned a unique ``color,'' and its memory locations as well
+as its pointer are tagged with that color. Pointers maintain their tags under arithmetic
+operations, and loads and stores are legal if the pointer matches the target memory location.
 
 Our set of tags consists of
 \(N\), for non-pointers, and pointer ``colors'' \(c \in \mathbb{N}\). The PC Tag
 (\(\PCT\)) tracks the next color to allocate, so it's initialized to \(\tagz\), and everything else is \(N\).
 \(N\) is the default for constants.
-
-\begin{tikzpicture}[every text node part/.style={align=center}]
-  \node[matrix, ampersand replacement=\&, draw=black]  (le)
-       {
-         \node {\it le}; \\
-         \node {\(x \mapsto 92 @ \tagone\)}; \\
-         \node {\(y \mapsto 96 @ \tagz\)}; \\
-       };
-
-  \node[state, node distance=1em, below=of le]  (stmt)
-       {
-         \(*x = 0@\N\) \\
-         {\color{blue} \(\PCT : \tagtwo\)}
-       };
-  
-  \node[matrix, ampersand replacement=\&, column sep=-1em, node distance=0.5em, below=of stmt]  (mem)
-       {
-         \node[anchor=north] {\(~ ~\cdots ~ ~\)}; \&
-         \node[anchor=center] {\memory{\(92\)}{\(\vundef\)}{\(\N\)}{\(\tagone\)}}; \&
-         \node[anchor=center] {\memory{\(96\)}{\(\vundef\)}{\(\N\)}{\(\tagz\)}}; \\
-       };
-
-  \node[matrix, ampersand replacement=\&, draw=black, node distance=12em, right=of le]  (le2)
-       {
-         \node {\it le}; \\
-         \node {\(x \mapsto 92 @ \tagone\)}; \\
-         \node {\(y \mapsto 96 @ \tagz\)}; \\
-       };
-
-  \node[state, node distance=1em, below=of le2]  (stmt2)
-       { \\
-         \(92 @ \tagone = 0@\N\) \\
-         {\color{blue} \(\PCT : \tagtwo\)}
-       };
-  
-  \node[matrix, ampersand replacement=\&, column sep=-1em, node distance=-0.5em, below=of stmt2]  (mem2)
-       {
-         \node[anchor=north] {\(~ ~\cdots ~ ~\)}; \&
-         \node[anchor=center] {\memory{\(92\)}{\(\vundef\)}{\(\N\)}{\(\tagone\)}}; \&
-         \node[anchor=center] {\memory{\(96\)}{\(\vundef\)}{\(\N\)}{\(\tagz\)}}; \\
-       };
-
-  \draw[->]
-  (stmt) -- (stmt2);
-  
-\end{tikzpicture}
 
 
 %The call to malloc allocates the region from 1000 to 1039, and returns a pointer to the base
@@ -695,36 +673,6 @@ byte being written, in case the pointer is misaligned.\apt{unclear} Then the tag
 is propagated with it into memory, unchanged.
 \apt{explain what StoreT means}
 [TODO: arrows aren't pointing to quite the right places right now, but one can imagine.]
-
-\begin{tikzpicture}[every text node part/.style={align=center}]
-  \node[matrix, ampersand replacement=\&, draw=black]  (le)
-       {
-         \node {\(x \mapsto 92 @ \tagone\)}; \\
-         \node {\(y \mapsto 96 @ \tagz\)}; \\
-       };
-
-  \node[state, node distance=1em, below=of le]  (stmt)
-       {
-         \(92@\tagone = 0@\N\) \\
-         {\color{blue} \(\PCT : \tagtwo\)}
-       };
-  
-  \node[matrix, ampersand replacement=\&, column sep=-1em, node distance=0.5em, below=of stmt]  (mem)
-       {
-         \node[anchor=north] {\(~ ~\cdots ~ ~\)}; \&
-         \node[anchor=center] (x) {\(\underbrace{\memory{\(92\)}{\(0\)}{\(\N\)}{\(\tagone\)}}\)}; \&
-         \node[anchor=center] {\(~ ~ \cdots ~ ~\)}; \\
-       };
-
-  \storetruleblock{\(\mathbf{assert} ~ \forall \lt \in \lts . \pt = \lt\)}{\(\PCT\)}{\(\vt_2\)}{\(\lts\)}
-
-  \draw[->]
-  (pctout) -- (stmt.south);
-  \draw[->]
-  (vtout) -- (x.east);
-  \draw[->]
-  (ltsout) |- (x.south);
-\end{tikzpicture}
   
 \vspace{\abovedisplayskip}
 
@@ -735,51 +683,7 @@ a non-pointer from a pointer (but not the reverse), to yield a pointer to the sa
 subtract two pointers to the same object from one another to yield a non-pointer, the offset between them.
 All other binary operations are only permitted between non-pointers.
 
-\begin{tikzpicture}[every text node part/.style={align=center}]
-  \node[matrix, ampersand replacement=\&, draw=black]  (le)
-       {
-         \node {\(x \mapsto 92 @ \tagone\)}; \\
-         \node {\(y \mapsto 96 @ \tagz\)}; \\
-       };
-
-  \node[state, node distance=1em, below=of le]  (stmt)
-       {
-         \(*(x+1) = 0@\N\) \\
-         {\color{blue} \(\PCT : \tagtwo\)}
-       };
-  
-  \node[matrix, ampersand replacement=\&, column sep=-1em, node distance=0.5em, below=of stmt]  (mem)
-       {
-         \node[anchor=north] {\(~ ~\cdots ~ ~\)}; \&
-         \node[anchor=center] {\memory{\(92\)}{\(v\)}{\(\N\)}{\(\tagone\)}}; \&
-         \node[anchor=center] {\memory{\(96\)}{\(\vundef\)}{\(\N\)}{\(\tagz\)}}; \\
-       };
-
-  \node[matrix, ampersand replacement=\&, draw=black, node distance=12em, right=of le]  (le2)
-       {
-         \node {\(x \mapsto 92 @ \tagone\)}; \\
-         \node {\(y \mapsto 96 @ \tagz\)}; \\
-       };
-
-  \node[state, node distance=1em, below=of le2]  (stmt2)
-       { \\
-         \(96 @ \tagone = 0@\N\) \\
-         {\color{blue} \(\PCT : \tagtwo\)}
-       };
-  
-  \node[matrix, ampersand replacement=\&, column sep=-1em, node distance=-0.5em, below=of stmt2]  (mem2)
-       {
-         \node[anchor=north] {\(~ ~\cdots ~ ~\)}; \&
-         \node[anchor=center] {\memory{\(92\)}{\(v\)}{\(\N\)}{\(\tagone\)}}; \&
-         \node[anchor=center] {\memory{\(96\)}{\(\vundef\)}{\(\N\)}{\(\tagz\)}}; \\
-       };
-
-  \draw[->]
-  (stmt) -- (stmt2);
-  
-\end{tikzpicture}
-
-\begin{tikzpicture}       
+\begin{tikzpicture}
   \binoptruleblock{}{\(\PCT\)}
                   {\(\left\lbrace \begin{tabular}{l r l}
                       \(c\) & when \((\oplus,~ \vt_1,~ \vt_2)\) is & \(+, c, \N \mid +, \N, c \mid -, c, \N\) \\
@@ -791,34 +695,19 @@ All other binary operations are only permitted between non-pointers.
 So, when we try to write through the address \(96@\tagone\), we compare its tag to that of the memory
 locations, which are tagged \(\tagz\). Therefore the policy must failstop on the store.
 
-\subsection{PVI Memory Safety}
-\label{sec:PVI}
 
 The simple memory safety policy described above is too restrictive to run many real-world
 C programs, because they contain undefined behavior that is nevertheless part of the
 ``de facto standard'' \cite{???}. These low-level idioms are one reason that we might
 settle for isolating risky code in a compartment instead of enforcing full memory safety.
 
-Memarian et al. \cite{???} propose two memory models that aim to capture this
-de facto standard, support the common low-level idioms, yet still place sufficient
-restrictions on programs that it remains sound to use alias analysis in optimizations.
-The first of these is {\it PVI} (provenanace via integer), in which pointers remain valid
-when they are cast to integers, subjected to the full range of arithmetic operations, and
-cast back. Memarian et al. do not propose to enforce PVI, merely to use it as an alternative to the
-C standard. But its relative permissiveness makes it a great target for enforcement in Tagged C!
-Their second memory model, {\it PNVI} (provenance not via integer), is even more permissive.
-We can also enforce it in Tagged C, though its security value is questionable, and we will
-not describe it in this paper.
-
-[TODO: For example, garbage collectors use low order bits to mark pointers as in the Cheney algorithm.]
-
-\paragraph*{PVI Definitions}
-
-Since PVI is a more realistic policy than the basic memory safety described above,
-we will go into some details elided there. First of all, the distinction between
-heap-allocated memory, stack objects, and global variables. The latter are tagged
-based on their identifiers, while heap- and stack-objects are tagged dynamically
-using unique colors.
+%Memarian et al. \cite{???} propose two memory models that aim to capture this
+%de facto standard, support the common low-level idioms, yet still place sufficient
+%restrictions on programs that it remains sound to use alias analysis in optimizations.
+%The first of these is {\it PVI} (provenanace via integer), in which pointers remain valid
+%when they are cast to integers, subjected to the full range of arithmetic operations, and
+%cast back. Memarian et al. do not propose to enforce PVI, merely to use it as an alternative to the
+%C standard. But its relative permissiveness makes it a great target for enforcement in Tagged C!
 %
 \begin{align*}
   \tau ::= & \mathit{glob} ~ id & id \in \mathit{ident} \\
@@ -1177,7 +1066,7 @@ returned from {\tt read\_and\_parse} and the output to the log.
 In our treatment of this example, we will describe a policy tailored to this particular
 set of security classes.
 
-\paragraph*{SIF Example Policy 1}
+\paragraph*{Basic SIF Confidentiality}
 
 Let's assume that {\tt read\_and\_parse} is an {\em external} function---that is, we will not
 model its internal behavior, so we know nothing about the value it returns. We can therefore
@@ -1527,7 +1416,7 @@ written \(\vtaint{\overline{\sigma}}\). The PC Tag tracks the current function i
 association list of labels and sources. Each pair \((L, \sigma)\) in the association list indicates
 that until reaching label \(L\), the state itself has been influenced by \(\sigma\).
 
-\[  \color{blue}
+\[\color{blue}
 \begin{aligned}
   \tau ::= & \vtaint{\overline{id}} \\
   & \pctaint{f}{ets}{\overline{(L,id)}} \\
@@ -1578,73 +1467,33 @@ we must both check that the value being passed or returned is not tainted by a f
 source, and then add the new source to its taint. Recall that we want the first argument to
 the {\tt sanitize} function to ``forget'' the influence of {\tt name}.
 
-\begin{minipage}[t]{.49\textwidth}
-  \[\begin{aligned}
-  \truledef{\argt}
-  \assert{\PCT \sqcup \vt \sqsubseteq (f, x)}
-  \letin{\vt_1 := \vt - \{\mathtt{santize(src)}\}}
-  \letin{\vt_2 := \vt_1 \sqcup \vtaint{\{f(x)\}}}
-  \settag{\vt'}{\vt_2}
-  \settag{\PCT'}{\PCT}
-  \settag{\lts}{\left[\N\right]}
-  \end{aligned}\]
-\end{minipage}
-\begin{minipage}[t]{.49\textwidth}
-  \[\begin{aligned}
-  \truledef{\rett}
-  \assert{\PCT \sqcup \vt \subseteq \sink{(f.ret)}}
-  \letin{\vt_1 := \vt - \{\sigma \mid \sigma / f.ret \in I \}}
-  \letin{\vt_2 := \vt_1 \sqcup \mathit{tainted} ~ \{f.ret\}}
-  \settag{\vt'}{\vt_2}
-  \settag{\PCT'}{\PCT}
-  \end{aligned}\]
-\end{minipage}
+\begin{tikzpicture}
+  \argtruleblock{\(\mathbf{assert ~ \PCT \sqcup \vt \sqsubseteq (f, x)}\)}{}
+\end{tikzpicture}
+\begin{tikzpicture}
+  \rettruleblock{\(\mathbf{assert} ~ \PCT \sqcup \vt \subseteq \)}{}{}
+\end{tikzpicture}
 
-\paragraph{Dynamic Sinks and Globals}
+%\paragraph*{PC Tag Taint}
 
-One scenario that does not really match the others is when the sink is dynamically allocated
-memory. In this case, we need to tag the memory at allocation-time with the forbidden
-sources. Global variables are also possible sources or sinks, so we initialize their
-tags to carry this information.
+%It now becomes slightly more complicated to keep track of the join-point labels
+%associated with various sources. [TODO: fix the alignment here.]
 
-\begin{minipage}[t]{0.49\textwidth}
-\[\begin{aligned}
-\truledef{\malloct}
-\settag{\pt}{\PCT \sqcup \vtaint{\emptyset}}
-\settagopt{\vt}{\vtaint{\emptyset}}
-\settagopt{\overline{\lt}}{\left[\sink{f.m}\right]}
-\settag{\PCT'}{\PCT}
-\end{aligned}\]
-\end{minipage}
-\begin{minipage}[t]{0.49\textwidth}
-\[\begin{aligned}
-\truledef{\globalt}
-\settag{\pt}{\vtaint{\emptyset}}
-\settag{\vt}{\vtaint{\{id\}}}
-\settag{\overline{\lt}}{\left[\sink{id}\right]}
-\end{aligned}\]
-\end{minipage}
-
-\paragraph*{PC Tag Taint}
-
-It now becomes slightly more complicated to keep track of the join-point labels
-associated with various sources. [TODO: fix the alignment here.]
-
-\begin{minipage}[t]{.25\textwidth}
-\[\begin{aligned}
-\truledef{\splitt}
-\letin{\pctaint{f}{\overline{(L,\sigma)}} := \PCT}
-\letin{\vtaint{\sigma} := \vt}
-\settag{\PCT'}{\pctaint{f}{(\overline{(L,\sigma)} \cup (L,\sigma))}}
-\end{aligned}\]
-\end{minipage}
-\begin{minipage}[t]{.7\textwidth}
-\[\begin{aligned}
-\truledef{\labelt}
-\letin{\pctaint{f}{\overline{(L,\sigma)}} := \PCT}
-\settag{\PCT'}{\pctaint{f}{\{(L',\sigma) \mid (L',\sigma) \in \overline{(L,\sigma)} \land L \not = L'\}}}
-\end{aligned}\]
-\end{minipage}
+%\begin{minipage}[t]{.25\textwidth}
+%\[\begin{aligned}
+%\truledef{\splitt}
+%\letin{\pctaint{f}{\overline{(L,\sigma)}} := \PCT}
+%\letin{\vtaint{\sigma} := \vt}
+%\settag{\PCT'}{\pctaint{f}{(\overline{(L,\sigma)} \cup (L,\sigma))}}
+%\end{aligned}\]
+%\end{minipage}
+%\begin{minipage}[t]{.7\textwidth}
+%\[\begin{aligned}
+%\truledef{\labelt}
+%\letin{\pctaint{f}{\overline{(L,\sigma)}} := \PCT}
+%\settag{\PCT'}{\pctaint{f}{\{(L',\sigma) \mid (L',\sigma) \in \overline{(L,\sigma)} \land L \not = L'\}}}
+%\end{aligned}\]
+%\end{minipage}
 
 The branching constructs are rather complicated, involving multiple steps
 and manipulations of the continuation that are not that relevant to their control
