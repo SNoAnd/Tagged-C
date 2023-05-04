@@ -344,7 +344,7 @@ Example \ref{fig:ex3} adds a new wrinkle: some addresses have special behavior a
 So we extend our tagging with an additional ``location tag'' on any memory location. By convention
 we will write \(\lt\) for such tags and \(\vt\) for tags associated with values (\(\pt\) if the value
 is a pointer.) In this case we will tag {\tt mm} with a special tag \(\M\) designated it to be
-memory-mapped. The \(\storename\) tag rule now checks the tag on the value being written against
+memory-mapped. The \(\storetname\) tag rule now checks the tag on the value being written against
 the location tag and will failstop rather than write a \(\PT\) value to an \(M\) location.
 
 \begin{tikzpicture}[every text node part/.style={align=left}]
