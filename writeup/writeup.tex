@@ -329,12 +329,12 @@ but {\tt mm} will be tagged \low. The most interesting rules are:
 \end{align*}
 \[\storet = \begin{cases}
   \fail & \textnormal{if } \PCT = \high \textnormal { or } \vt_2 = \high \textnormal{ and } \lt = \low \\
-  \low & \textnormal{if } \PCT = \vt_2 = \low \\
-  \high & \textnormal{otherwise} \\
+  \low, \high & \textnormal{if } \PCT = \vt_2 = \low \\
+  \high, \high & \textnormal{otherwise} \\
 \end{cases}\]
 \[\argtname(\vt, f, id) = \begin{cases} \fail & \textnormal{if } f=\mathtt{printi} \textnormal{ and } \vt = \high \\
-  \high & \textnormal{if } f=\mathtt{g} \textnormal{ and } id = \mathtt{pwd} \\
-  \vt & \textnormal{otherwise} \\
+  \high, \high & \textnormal{if } f=\mathtt{g} \textnormal{ and } id = \mathtt{pwd} \\
+  \vt, \high & \textnormal{otherwise} \\
 \end{cases}\]
 
 In this case, \(\splittname\) will set the PC Tag to \high, as it branches on a value derived from {\tt pwd}.
