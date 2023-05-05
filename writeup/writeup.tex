@@ -128,353 +128,218 @@ how the overall state has been influenced by {\tt pwd}.
 \begin{figure}
   \begin{subfigure}[t]{0.49\textwidth}
 \begin{verbatim}
-void main(int pwd) {
+void f(int pwd) {
   int x = pwd;
   printf("%d", x);
 }
-
 \end{verbatim}
 \caption{}
 \label{fig:ex1}
-  \end{subfigure}
+  \end{subfigure}  
   \begin{subfigure}[t]{0.49\textwidth}
 \begin{verbatim}
-void main(int pwd) {
-  printf(pwd+5);
-}
-\end{verbatim}
-\caption{}
-\label{fig:ex2}
-  \end{subfigure}
-  
-  \begin{subfigure}[t]{0.49\textwidth}
-\begin{verbatim}
-void main(int pwd) {
-  int x = pwd;
-  mm = x;
-}
-\end{verbatim}
-\caption{}
-\label{fig:ex3}
-  \end{subfigure}
-  \begin{subfigure}[t]{0.49\textwidth}
-\begin{verbatim}
-void main(int pwd) {
-  for (int i; i<pwd; i++) {
+volatile int mm;
+
+void g(int pwd) {
+  if (pwd > 128) {
     mm = i;
   }
 }
 \end{verbatim}
 \caption{}
-\label{fig:ex4}
+\label{fig:ex2}
   \end{subfigure}
 
   \caption{Examples of leaking {\tt pwd}}
   \label{fig:exampleleak}
 \end{figure}
 
-
-Lets examine the state at various points in example \ref{fig:ex1}.
-At first, the temporary environment maps {\tt pwd} to 42, and the value of  {\tt x} in memory
-is undefined. We perform the assignment to {\tt x}, and then step to a special \(\mathit{Call}\)
-state where we marshall the arguments before stepping into {\tt printf}.
-
-\begin{tikzpicture}[every text node part/.style={align=left}]
-  \node[matrix, ampersand replacement=\&, anchor=west]
-       {
-         \node (l1) {\tt void main(int pwd) \{}; \\
-         \node (l2) {\tt ~ ~ int x = pwd;}; \\
-         \node (l3) {\tt ~ ~ printf("\%d", x);}; \\
-         \node {\tt \}}; \\
-       };
-
-       \node[node distance=20em, right=of l1.west, draw=black, anchor=north]           (te1)     {\(\mathtt{pwd} \mapsto 42\)};
-       \node[node distance=1em, right=of te1, draw=black]                        (p1)      {\(\vundef\)};
-       \node[node distance=0.5em, above=of p1.west]                              (pname1)  {\tt x};
-
-       \node[node distance=20em, right=of l2.west, draw=black, anchor=north]           (te2)     {\(\mathtt{pwd} \mapsto 42\)};
-       \node[node distance=1em, right=of te2, draw=black]                        (p2)      {\(42\)};
-
-
-       \node[node distance=1em, below=of l3.east, draw=black, anchor=north]                        (call)    {\(\mathit{Call} ~ \mathtt{printf} ~ (\texttt{"\%d"}, 42)\)};
-       
-       \path[{Circle}-]
-       (l1.south) edge (te1)
-       (l2.south) edge (te2);
-
-       \draw[{Circle}-]
-       (l3.east)  -- (call);
-
-\end{tikzpicture}
-
-We can dynamically track the confidential status of {\tt pwd} by associating metadata with its
-value; namely, that it originates in {\tt pwd}. We will write this ``tagged'' value \(42 @ \PT\),
-with the \(@\) symbol denoting a value tagged with metadata.
-All other values will be tagged \(\N\), for ``not {\tt pwd}.''
-Then when we copy {\tt pwd} into {\tt x}, we need to come up with a tag for the result.
-We do so by consulting the {\em tag rule} \(\storetname\), which tells us to transmit \(\PT\).
-Likewise, when we pass {\tt x}, we consult the \(\argtname\) rule to determine if it
-gets a new tag. However, a tag rule may also refuse to proceed, causing the system
-to failstop. In this case, because we are trying to pass a value tagged \(\PT\) to
-an output function, \(\argtname\) should failstop, indicated by the red arrow.
+Lets examine the program state at various points as we execute example \ref{fig:ex1}.
+Let the value of \(\mathit{pwd}\) be represented by the variable \(i\). We consider this
+value to be high-security, and wish to track it as it moves through the system, distinguishing
+it from other, low-security values. These security levels, which we will write \high 
+and \low, form our set of {\em tags} that represent important metadata about
+a value in the program. On entry to {\tt f}, we assign tags to both the parameter {\tt pwd}
+and the local variable {\tt x}, based on the \(\argtname\) and \(\localtname\) tag rules,
+respectively. We will call these \(\vt_1\) and \(\vt_2\), as they are tags on values.
+\(\localtname\) takes as its parameter the identity of the function being entered, and \(\argtname\)
+takes the tag \(\vt_0\) on the value being passed into {\tt f} as well as the identities of both the
+function and the argument. Next, we load \(i\) from {\tt pwd} and store it in {\tt x}, and we need to
+consult tag rules, \(\loadtname\) and \(\storetname\). Finally, when we make the call to
+{\tt printi}, we once again consult \(\argtname\).
 
 \begin{tikzpicture}[every text node part/.style={align=left}]
-  \node[matrix, ampersand replacement=\&, anchor=west]
+  \node[matrix, ampersand replacement=\&, anchor=west] (code)
        {
-         \node (l1) {\tt void main(int pwd) \{}; \\
-         \node (l2) {\tt ~ ~ int x = pwd;}; \\
-         \node (l3) {\tt ~ ~ printf("\%d", x);}; \\
+         \node (l1) {\tt void f(int pwd) \{}; \\         
+         \node (l2) {\tt ~ ~ int x = pwd+5;}; \\
+         \node (l3) {\tt ~ ~ printi(x);}; \\
          \node {\tt \}}; \\
        };
-
-       \node[matrix, node distance=18em, right=of l1.west, column sep=0em, inner sep=0.1em,
-         draw=black, ampersand replacement=\&, anchor=north] (te1)
-            {\node {\(\mathtt{pwd} \mapsto 42@\)}; \& \node (t1) {\(\PT\)}; \\};
-
-       \node[matrix, node distance=1em, right=of te1, column sep=0em, inner sep=0.1em,
-         draw=black, ampersand replacement=\&] (p1)
-            {\node {\(\vundef@\)}; \& \node (t2) {\(\N\)}; \\};
-            
-       \node[node distance=0.5em, above=of p1.west]                              (pname1)  {\tt x};
-
-       \node[node distance=4em, below=of te1, draw=black, anchor=north]     (te2)     {\(\mathtt{pwd} \mapsto 42@\PT\)};
-       \node[matrix, node distance=1em, right=of te2, column sep=0em, inner sep=0.1em,
-         draw=black, ampersand replacement=\&] (p2)
-            {\node {\(42@\)}; \& \node (t3) {\(\PT\)}; \\};
-
-       \node[node distance=0.5em, above=of p2.west]                              (pname2)  {\tt x};
-
-
-        \node[matrix, node distance=8em, below=of l3.east, column sep=0em, inner sep=0.1em,
-         draw=black, ampersand replacement=\&, anchor=north] (call)
-            {\node {\(\mathit{Call} ~ \mathtt{printf} ~ (\texttt{"\%d"}, 42 @\)}; \& \node (t4) {\(\color{blue} \square\))}; \\};
-
-       \node[node distance=2em, below=of te1.east, draw=blue] (trule1) {\(\storetname\)};
-       \node[node distance=2em, below=of te2.east, draw=blue] (trule2) {\(\argtname\)};
-
-       \draw[-{Triangle},thick,draw=blue]
-       (t1.south) -- (trule1);
-
-       \draw[-{Triangle},thick,draw=blue]
-       (t2.south) -- (trule1);
-
-       \draw[-{Triangle},thick,draw=blue]
-       (trule1) -- (t3);
-
-       \draw[-{Triangle},thick,draw=blue]
-       (t3.south) -- (trule2);
-
-       \draw[-{Triangle},thick,draw=red]
-       (trule2) -- (t4);
        
-       \draw[{Circle}-]
-       (l1.south) -- (te1);
+  \node[matrix, ampersand replacement=\&, node distance=6em, right=of l1.north,draw,anchor=west] (table1)
+       {
+         \node[anchor=north] {\(f\)}; \&
+         \node[anchor=north] {\(\mathtt{x} \mapsto \vundef @ \vt_1\) \\ \(\mathtt{pwd} \mapsto i @ \vt_2\)}; \&
+         \node[anchor=north] {\(\vt_1 \leftarrow \localtname(f)\) \\ \(\vt_2 \leftarrow \argtname(\vt_0,f,pwd)\)};\\
+       };
 
-       \draw[{Circle}-]
-       (l2.south) -| (te2);
+  \node[matrix, ampersand replacement=\&, node distance=4.5em, below=of table1.west,draw,anchor=west] (table2)
+       {
+         \node[anchor=north] {\(f\)}; \&
+         \node[anchor=north] {\(\mathtt{x} \mapsto (i+5) @ \vt_5\) \\ \(\mathtt{pwd} \mapsto i @ \vt_2\)}; \&
+         \node[anchor=north] {\(\vt_3 \leftarrow \loadtname(\vt_2)\) \\
+           \(\vt_4 \leftarrow \binoptname(+,\vt_3,\constt)\) \\
+           \(\vt_5 \leftarrow \storetname(\vt_4)\)}; \\
+       };
 
-       \draw[{Circle}-]
-       (l3.east)  -- (call);
+  \node[matrix, ampersand replacement=\&, node distance=4.5em, below=of table2.west,draw,anchor=west] (table3)  
+       {
+         \node[anchor=north] {\(\mathit{printi}\)}; \&
+         \node[anchor=north] {\(\mathtt{a} \mapsto i @ \vt_7\)}; \&
+         \node[anchor=north] {\(\vt_6 \leftarrow \loadtname(\vt_5)\) \\
+           \(\vt_7 \leftarrow \argtname(\vt_6, \mathit{printi}, a)\)}; \\
+       };
+
+  \draw[Circle-]
+  (l1.south) -| (table1.west);
+
+  \draw[Circle-]
+  (l2.south) -| (table2.west);
+
+  \draw[Circle-]
+  (l3.south) |- (table3.west);  
+
 \end{tikzpicture}
 
 These points at which the tags are checked and either propagated or updated by tag rules are termed
-{\em control points}. Collectively, the tag rules form a {\em policy}.
+{\em control points}. Collectively, the tag rules form a {\em policy}. Now we define a
+``don't print {\tt pwd}'' policy that tracks the influence of {\tt pwd} and failstops if it would
+leak. The tag set, as previously noted, consists of the high and low tags, and we define our critical
+tag rules as follows.
 
-In example \ref{fig:ex2}, we update {\tt pwd} in place, and the \(\binoptname\) tag rule
-checks the tags on both it and the constant being added to it. Since one side of the
-expression is tagged \(\PT\), that must be propagated, even though the other side is \(\N\).
-Once again, \(\argtname\) will failstop.
+\begin{minipage}{0.3\textwidth}
+  \begin{align*}
+  \tau::=\high | \low \\
+  \constt = \low \\
+  \localtname(f) = \low \\
+  \loadtname(\vt) = \vt \\
+  \storetname(\vt) = \vt \\
+  \end{align*}
+\end{minipage}
+\begin{minipage}{0.6\textwidth}
+\begin{align*}
+  \binoptname(\oplus,\vt_1,\vt_2) = \begin{cases} \low & \textnormal{if } \vt_1 = \vt_2 = \low \\
+    \high & \textnormal{otherwise} \end{cases}\\
+  \argtname(\vt, f, id) = \begin{cases} \fail & \textnormal{if } f=\mathtt{printi} \textnormal{ and } \vt = \high \\
+    \high & \textnormal{if } f=\mathtt{f} \textnormal{ and } id = \mathtt{pwd} \\
+    \vt & \textnormal{otherwise} \\
+  \end{cases} \\
+\end{align*}
+\end{minipage}
 
-\begin{tikzpicture}[every text node part/.style={align=left}]
-  \node[matrix, ampersand replacement=\&, anchor=west]
-       {
-         \node (l1) {\tt void main(int pwd) \{}; \\
-         \node (l2) {\tt ~ ~ pwd+=5;}; \\
-         \node (l3) {\tt ~ ~ printf("\%d", x);}; \\
-         \node {\tt \}}; \\
-       };
+As we see, most of the tagrules simply move tags around. The most interesting ones are \(\binoptname\),
+which combines two tags, setting the result of a binary operation \(\high\) if either of its arguments are,
+and \(\argt\). \(\argt\) checks whether the function being called is {\tt printi} and fails if it is
+and the value being passed is tagged \high. It also always tagged {\tt pwd} \high, and otherwise it just maintains
+the security level of the input it is given. So, in this example, we will be unable to generate a tag
+\(\vt_7\), and the tag processor will throw a failstop rather than allow execution to continue.
 
-       \node[matrix, node distance=18em, right=of l1.west, column sep=0em, inner sep=0.1em,
-         draw=black, ampersand replacement=\&, anchor=north] (te1)
-            {\node {\(\mathtt{pwd} \mapsto 42@\)}; \& \node (t1) {\(\PT\)}; \\};
-
-       \node[right=of te1] (t2) {5@\(\N\)};
-            
-       \node[matrix, node distance=4em, below=of te1, column sep=0em, inner sep=0.1em,
-         draw=black, ampersand replacement=\&, anchor=north] (te2)
-            {\node {\(\mathtt{pwd} \mapsto 47@\)}; \& \node (t3) {\(\PT\)}; \\};
-
-        \node[matrix, node distance=8em, below=of l3.east, column sep=0em, inner sep=0.1em,
-         draw=black, ampersand replacement=\&, anchor=north] (call)
-            {\node {\(\mathit{Call} ~ \mathtt{printf} ~ (\texttt{"\%d"}, 42 @\)}; \& \node (t4) {\(\color{blue} \square\))}; \\};
-
-       \node[node distance=1em, above=of t2, draw=blue] (trule0) {\(\consttname\)};
-       \node[node distance=2em, below=of te1.east, draw=blue] (trule1) {\(\binoptname\)};
-       \node[node distance=2em, below=of te2.east, draw=blue] (trule2) {\(\argtname\)};
-
-       \draw[-{Triangle},thick,draw=blue]
-       (trule0) -- (t2);
-       
-       \draw[-{Triangle},thick,draw=blue]
-       (t1.south) -- (trule1);
-
-       \draw[-{Triangle},thick,draw=blue]
-       (t2.south) -- (trule1);
-
-       \draw[-{Triangle},thick,draw=blue]
-       (trule1) -- (t3);
-
-       \draw[-{Triangle},thick,draw=blue]
-       (t3.south) -- (trule2);
-
-       \draw[-{Triangle},thick,draw=red]
-       (trule2) -- (t4);
-       
-       \draw[{Circle}-]
-       (l1.south) -- (te1);
-
-       \draw[{Circle}-]
-       (l2.south) -| (te2);
-
-       \draw[{Circle}-]
-       (l3.east)  -- (call);
-\end{tikzpicture}
-
-Example \ref{fig:ex3} adds a new wrinkle: some addresses have special behavior associated with them.
-So we extend our tagging with an additional ``location tag'' on any memory location. By convention
-we will write \(\lt\) for such tags and \(\vt\) for tags associated with values (\(\pt\) if the value
-is a pointer.) In this case we will tag {\tt mm} with a special tag \(\M\) designated it to be
-memory-mapped. The \(\storetname\) tag rule now checks the tag on the value being written against
-the location tag and will failstop rather than write a \(\PT\) value to an \(M\) location.
+Example \ref{fig:ex2} adds two new wrinkles: we need to keep track of metadata associated with
+addresses and with the program's control-flow state. If the volatile variable {\tt mm} represents
+mmapped memory that can be seen publicly, we want to avoid storing the password there. And, by
+branching on the password, we risk leaking information that could eventually compromise it even
+if we never print it directly (an {\em implicit flow}.) So we extend our state with additional
+``location tags'' on memory locations, which we will range over with \(\lt\) by convention.
+Meanwhile, pointers, including those that are the static addresses of local or global variables,
+will be given tags ranged over by \(\pt\). Finally, to track metadata associated with the program's
+control flow, we maintain a special global tag called the PC Tag, ranged over by \(\PCT\).
 
 \begin{tikzpicture}[every text node part/.style={align=left}]
-  \node[matrix, ampersand replacement=\&, anchor=west]
+  \node[matrix, ampersand replacement=\&, anchor=west] (code)
        {
          \node {\tt volatile int mm;}; \\
-         \node (l1) {\tt void main(int pwd) \{}; \\
-         \node (l2) {\tt ~ ~ mm = pwd;}; \\
+         \node (l1) {\tt void g(int pwd) \{}; \\
+         \node (l2) {\tt ~ ~ if(pwd > 0)}; \\
+         \node (l3) {\tt ~ ~ ~ ~ mm = 1;}; \\
          \node {\tt \}}; \\
        };
 
-       \node[matrix, node distance=18em, right=of l1.west, column sep=0em, inner sep=0.1em,
-         draw=black, ampersand replacement=\&, anchor=north] (te1)
-            {\node {\(\mathtt{pwd} \mapsto 42@\)}; \& \node (t1) {\(\PT\)}; \\};
-
-       \node[matrix, node distance=1em, right=of te1, column sep=0em, inner sep=0.2em,
-         draw=black, ampersand replacement=\&] (p1)
-            {\node {\(\vundef@\)}; \& \node (t2) {\(\N\)}; \& \node[draw=black] (t3) {@ \(\M\)}; \\ };
-            
-       \node[node distance=1em, above=of p1.west]                              (pname1)  {\tt mm};
-
-       \node[node distance=4em, below=of te1, draw=black, anchor=north]     (te2)     {\(\mathtt{pwd} \mapsto 42@\PT\)};
-       \node[matrix, node distance=1em, right=of te2, column sep=0em, inner sep=0.1em,
-         draw=black, ampersand replacement=\&] (p2)
-            {\node {\(42@\)}; \& \node (t4) {\(\square\)}; \\};
-
-       \node[node distance=0.5em, above=of p2.west]                              (pname2)  {\tt mm};
-
-       \node[node distance=2em, below=of te1.east, draw=blue] (trule1) {\(\storetname\)};
-
-       \draw[-{Triangle},thick,draw=blue]
-       (t1.south) -- (trule1);
-
-       \draw[-{Triangle},thick,draw=blue]
-       (t2.south) -- (trule1);
-       
-       \draw[-{Triangle},thick,draw=blue]
-       (t3.south) -- (trule1);
-
-
-       \draw[-{Triangle},thick,draw=red]
-       (trule1) -- (t4);
-       
-       \draw[{Circle}-]
-       (l1.south) -- (te1);
-
-       \draw[{Circle}-]
-       (l2.south) -| (te2);
-
-\end{tikzpicture}
-
-Finally, we may be concerned with implicit leaks, such as the one in
-example \ref{fig:ex4}. In order to prevent this,
-we must keep track of the privilege of the current context, by carrying
-an additional tag associated with the global state. This is called the PC Tag,
-written \(\PCT\). When we perform the check to enter the for loop, {\tt i<pwd},
-the resulting value is tagged \(\PT\) (due to the \(\binoptname\) rule above.)
-We consult the \(\splittname\) tag rule, and it tells us that \(\PCT\) should
-be \(\PT\) as well (abbreviated \(\PCT'\) for space.)
-We extend \(\storetname\) to check the PC Tag as well
-as the value being written, and failstop if either is \(\PT\) and the memory
-location is \(\M\).
-
-\begin{tikzpicture}[every text node part/.style={align=left}]
-  \node[matrix, ampersand replacement=\&, anchor=west]
+  \node[matrix, ampersand replacement=\&, node distance=6em, right=of l1.north,draw,anchor=west] (table1)  
        {
-         \node {\tt volatile int mm;}; \\
-         \node (l0) {\tt void main(int pwd) \{}; \\
-         \node (l1) {\tt ~ ~ for (int i=0; i<pwd; i++)}; \\
-         \node (l2) {\tt ~ ~ ~ ~  mm = i;}; \\
-         \node {\tt \}}; \\
+         \node[anchor=north] {\(g @ \PCT_1\)}; \&
+         \node[anchor=north] {\(\mathtt{mm} @ \pt_1 \mapsto \vundef @ \vt_1 @ \lt_1\) \\
+         \(\mathtt{pwd} @ \pt_2 \mapsto i @ \vt_2 @ \lt_2\)}; \&
+         \node[anchor=north] {\(\pt_1, \vt_1,\lt_1 \leftarrow \globaltname(mm)\) \\
+           \(\pt_2, \vt_2, \lt_2 \leftarrow \argtname(\vt_0,g,pwd)\) \\
+           \(\PCT_1 \leftarrow \calltname(\PCT_0, g)\)}; \\
        };
-
-       \node[matrix, node distance=16em, right=of l2.west, column sep=0em, inner sep=0.1em,
-         draw=black, ampersand replacement=\&] (te1)
-            {\node {\(\mathtt{pwd} \mapsto 42@\)}; \& \node (t1) {\(\PT\)}; \\
-              \node {\(\mathtt{i} \mapsto 0@\)}; \& \node (t1) {\(\N\)}; \\
-            };
-
-       \node[state, node distance=1em, left=of te1, draw=black] (pct1)
-            {\(\PCT'\)};
-       \node[state, node distance=1em, above=of pct1, draw=black] (pct0)
-            {\(\N\)};
-
-       \node[matrix, node distance=1em, right=of te1, column sep=0em, inner sep=0.2em,
-         draw=black, ampersand replacement=\&] (p1)
-            {\node {\(\vundef@\)}; \& \node (t2) {\(\N\)}; \& \node[draw=black] (t3) {@ \(\M\)}; \\ };
-            
-       \node[node distance=1em, above=of p1.west]                              (pname1)  {\tt mm};
-
-       \node[node distance=4em, below=of te1, draw=black, anchor=north]     (te2)     {\(\mathtt{pwd} \mapsto 42@\PT\)};
-       \node[matrix, node distance=1em, right=of te2, column sep=0em, inner sep=0.1em,
-         draw=black, ampersand replacement=\&] (p2)
-            {\node {\(42@\)}; \& \node (t4) {\(\square\)}; \& \node[draw=black] (t5) {@ \(\square\)}; \\};
-
-       \node[node distance=0.5em, above=of p2.west]                              (pname2)  {\tt mm};
-
-       \node[node distance=2em, below=of te1.east, draw=blue] (trule1) {\(\storetname\)};
-       \node[node distance=2em, right=of pct0.east, draw=blue] (trule0) {\(\splittname\)};
-
-       \node[state, node distance=1em, left=of te2, draw=black] (pct2)
-            {\(\square\)};
-
-       \draw[-{Triangle},thick,draw=blue]
-       (t1.south) -- (trule1);
-       \draw[-{Triangle},thick,draw=blue]
-       (t2.south) -- (trule1);
-       \draw[-{Triangle},thick,draw=blue]
-       (t3.south) -- (trule1);
-       \draw[-{Triangle},thick,draw=blue]
-       (pct1.south) -- (trule1);
-       \draw[-{Triangle},thick,draw=blue]
-       (pct0) -- (trule0);
-       \draw[-{Triangle},thick,draw=blue]
-       (trule0) -- (pct1);
-
-       \draw[-{Triangle},thick,draw=red]
-       (trule1) -- (t4);
-       \draw[-{Triangle},thick,draw=red]
-       (trule1) -- (t5);
-       \draw[-{Triangle},thick,draw=red]
-       (trule1) -- (pct2);
        
-       \draw[{Circle}-]
-       (l1.south) -- (pct1);
+ \node[matrix, ampersand replacement=\&, node distance=5em, below=of table1.west,draw,anchor=west] (table2)         
+      {
+        \node[anchor=north] {\(g @ \PCT_2\)}; \&
+        \node[anchor=north] {\(\mathtt{mm} @ \pt_1 \mapsto \vundef @ \vt_1 @ \lt_1\) \\
+          \(\mathtt{pwd} @ \pt_2 \mapsto i @ \vt_2 @ \lt_2\)}; \&
+        \node[anchor=north] {\(\vt_3 \leftarrow \loadtname(\PCT_1,\pt_2,\vt_2,\lt_2)\) \\
+          \(\vt_4 \leftarrow \binoptname(>,\vt_3,\constt)\) \\ 
+          \(\PCT_2 \leftarrow \splittname(\PCT_1, \vt_4)\)}; \\
+      };
 
-       \draw[{Circle}-]
-       (l2.south) |- (pct2);
+ \node[matrix, ampersand replacement=\&, node distance=4.5em, below=of table2.west,draw,anchor=west] (table3)         
+      {
+        \node[anchor=north] {\(g @ \PCT_2\)}; \&
+        \node[anchor=north] {\(\mathtt{mm} @ \pt_1 \mapsto 1 @ \vt_4 @ \lt_3\) \\
+          \(\mathtt{pwd} @ \pt_2 \mapsto i @ \vt_2 @ \lt_2\)}; \&
+        \node[anchor=north] {\(\vt_4,\lt_3 \leftarrow \storetname(\PCT_2,\pt_1,\vt_2,\constt,\lt_1)\)}; \\
+      };
+
+  \draw[Circle-]
+  (l1.south) -| (table1.west);
+
+  \draw[Circle-]
+  (l2.south) -| (table2.west);
+
+  \draw[Circle-]
+  (l3.south) |- (table3.west);  
 
 \end{tikzpicture}
+
+Here, we initialize the tags on {\tt mm} with the \(\globaltname\) rule. The PC Tag
+at the point of call, \(\PCT_0\), is fed to the \(\calltname\) rule to determine a new PC Tag
+inside of {\tt g}. And the if-statement consults the \(\splittname\) rule to update the PC Tag
+inside of its branch based on the value-tag of the expression {\tt pwd < 0}. Once inside the
+loop, we perform the store, taking into account all of the additional tags.
+
+To upgrade our ``don't print the password'' policy to ``don't leak the password,'' we can
+keep most of our rules the same, or extend them in natural ways. Crucially, we will tag memory
+locations \high by default, indicating that they are allowed to contain \high-tagged values,
+but {\tt mm} will be tagged \low. The most interesting rules are:
+
+\begin{align*}
+  \globaltname(id) =
+  \begin{cases}
+    \low, \low, \low & \textnormal{if } id = \mathtt{mm} \\
+    \low, \low, \high & \textnormal{otherwise} \\
+  \end{cases} &
+  \splittname(\PCT,\vt) =
+  \begin{cases}
+    \low & \textnormal{if } \vt = \PCT = \low \\
+    \high & \textnormal{otherwise} \\
+  \end{cases} \\
+\end{align*}
+\[\storet = \begin{cases}
+  \fail & \textnormal{if } \PCT = \high \textnormal { or } \vt_2 = \high \textnormal{ and } \lt = \low \\
+  \low & \textnormal{if } \PCT = \vt_2 = \low \\
+  \high & \textnormal{otherwise} \\
+\end{cases}\]
+\[\argtname(\vt, f, id) = \begin{cases} \fail & \textnormal{if } f=\mathtt{printi} \textnormal{ and } \vt = \high \\
+  \high & \textnormal{if } f=\mathtt{g} \textnormal{ and } id = \mathtt{pwd} \\
+  \vt & \textnormal{otherwise} \\
+\end{cases}\]
+
+In this case, \(\splittname\) will set the PC Tag to \high, as it branches on a value derived from {\tt pwd}.
+Then, when it comes time to write to {\tt mm}, \(\storetname\) will fail rather than write to a low address
+in a high context.
 
 \section{The Language, Informally}
 
@@ -614,6 +479,45 @@ Our set of tags consists of
 (\(\PCT\)) tracks the next color to allocate, so it's initialized to \(\tagz\), and everything else is \(N\).
 \(N\) is the default for constants.
 
+\begin{tikzpicture}[every text node part/.style={align=left}]
+  \node[matrix, ampersand replacement=\&, anchor=west]
+       {
+         \node (l0) {\tt void overflow() \{}; \\
+         \node (l1) {\tt ~ ~ int[3] x; int y;}; \\
+         \node (l2) {\tt ~ ~ *x = 0;}; \\
+         \node (l3) {\tt ~ ~ *(x+3) = 0;}; \\
+         \node {\tt \}}; \\
+       };
+
+       \node[state, node distance=1em, draw=black] (pct1)
+            {\(\PCT\)};
+
+       \node[node distance=0.5em, right=of pct1] (zero) {\(0 @ \N\)};
+            
+       \node[matrix, node distance=1em, right=of zero, column sep=0em, inner sep=0.2em,
+         draw=black, ampersand replacement=\&] (p1)
+            {\node {\(\vundef@\)}; \& \node (t2) {\(\N\)}; \& \node[draw=black] (t3) {@ \(\M\)}; \\ };
+            
+       \node[node distance=1em, above=of p1.west]                              (pname1)  {\tt mm};
+
+       \node[matrix, node distance=6em, below=of p1, column sep=0em, inner sep=0.1em,
+         draw=black, ampersand replacement=\&] (p2)
+            {\node {\(42@\)}; \& \node (t4) {\(\square\)}; \& \node[draw=black] (t5) {@ \(\square\)}; \\};
+
+       \node[node distance=0.5em, above=of p2.west]                              (pname2)  {\tt mm};
+
+       \node[node distance=4em, above=of p2.west, draw=blue] (trule1) {\(\storet\)};
+
+       \node[state, node distance=1em, left=of p2, draw=black] (pct2)
+            {\(\square\)};
+       
+       \draw[{Circle}-]
+       (l1.south) -- (pct1);
+
+       \draw[{Circle}-]
+       (l2.south) |- (pct2);
+
+\end{tikzpicture}
 
 %The call to malloc allocates the region from 1000 to 1039, and returns a pointer to the base
 %address, 1000. We consult the policy to determine (1) the tag on the resulting value,
@@ -665,14 +569,11 @@ Our set of tags consists of
 %       };       
 %\end{tikzpicture}
 
-Next, the program stores a 0 to address 1000\apt{92(?)}. The constant 0
-takes on the default tag, \(I\)\apt{??}. The policy needs to check that
+The policy needs to check that
 this store is valid, in addition to determining the tags on the value that is stored.
-This check is performed by comparing the tag on the pointer to the tags on memory---each
-byte being written, in case the pointer is misaligned.\apt{unclear} Then the tag on the value being stored
+This check is performed by comparing the tag on the pointer to the tags on memory.
+Then the tag on the value being stored
 is propagated with it into memory, unchanged.
-\apt{explain what StoreT means}
-[TODO: arrows aren't pointing to quite the right places right now, but one can imagine.]
   
 \vspace{\abovedisplayskip}
 
@@ -1190,8 +1091,8 @@ Every statement that branches carries an optional label indicating its correspon
 join point, if it has one---a function with multiple returns might not, in which case
 once the PC Tag is tainted, it must remain so until a return.
 
-\begin{figure}
-  \begin{subfigure}{0.4\textwidth}
+\begin{figure}[t]
+  \begin{subfigure}{0.49\textwidth}
 \begin{verbatim}
 int f(bool secret) {
     int public1, public2;
@@ -1207,31 +1108,31 @@ J:  public2 = 42;
     return public2;
 }
 \end{verbatim}
+\caption{Leaking via if statements}
+\label{fig:ifthenelse}
   \end{subfigure}
-  \begin{subfigure}{0.5\textwidth}
-    \begin{tikzpicture}
-      [ initial text={}, initial distance=4em,
-        accepting/.style=accepting by arrow,
-        accepting distance=4em
-      ]
-      \node[state,initial]    (S)                        {$S$};
-      \node[state]            (b_1) [above right=of S]   {$b_1$};
-      \node[state]            (b_2) [below right=of S]   {$b_2$};
-      \node[state,accepting]  (J)   [below right=of b_1] {$J$};
-
-      \path[->] (S)   edge              node  {}  (b_1)
-                      edge              node  {}  (b_2)
-                (b_1) edge              node  {}  (J)
-                (b_2) edge              node  {}  (J);
-    \end{tikzpicture}
-  \end{subfigure}
-  
-  \caption{Leaking via if statements}
-  \label{fig:ifthenelse}
-\end{figure}
-
-\begin{figure}
-  \begin{subfigure}{0.4\textwidth}
+%  \begin{subfigure}{0.5\textwidth}
+%    \begin{tikzpicture}
+%      [ initial text={}, initial distance=4em,
+%        accepting/.style=accepting by arrow,
+%        accepting distance=4em
+%      ]
+%      \node[state,initial]    (S)                        {$S$};
+%      \node[state]            (b_1) [above right=of S]   {$b_1$};
+%      \node[state]            (b_2) [below right=of S]   {$b_2$};
+%      \node[state,accepting]  (J)   [below right=of b_1] {$J$};
+%
+%      \path[->] (S)   edge              node  {}  (b_1)
+%                      edge              node  {}  (b_2)
+%                (b_1) edge              node  {}  (J)
+%                (b_2) edge              node  {}  (J);
+%    \end{tikzpicture}
+%  \end{subfigure}
+%  
+%\end{figure}
+%
+%\begin{figure}
+  \begin{subfigure}{0.49\textwidth}
 \begin{verbatim}
 int f(bool secret) {
     int public1=1;
@@ -1247,133 +1148,133 @@ J:  public2 = 42;
     return public2;
 }
 \end{verbatim}
-  \end{subfigure}
-  \begin{subfigure}{0.5\textwidth}
-    \begin{tikzpicture}
-      [ initial text={}, initial distance=4em,
-        accepting/.style=accepting by arrow,
-        accepting distance=4em
-      ]
-      \node[state,initial]    (S)                        {$S$};
-      \node[state]            (b_1) [above right=of S]   {$b_1$};
-      \node[state,accepting]  (J)   [below right=of b_1] {$J$};
-
-      \path[->] (S)   edge               node  {}  (b_1)
-                      edge               node  {}  (J)
-                (b_1) edge [bend right] node  {}  (S);
-    \end{tikzpicture}
-  \end{subfigure}
-  
   \caption{Leaking via while statements}
   \label{fig:while}
-\end{figure}
-
-\begin{figure}
-  \begin{subfigure}{0.25\textwidth}
-\begin{verbatim}
-int f(bool secret) {
-    int public1, public2;
-
-    while (secret) {
-        goto b1;
-    }
-
-b2: public1 = 1;
-    goto J;
-
-b1: public1 = 1;
-
-J:  public2 = 42;
-    return public2;
-}
-\end{verbatim}
   \end{subfigure}
-  \begin{subfigure}{0.74\textwidth}
-    \begin{tikzpicture}
-      [ initial text={}, initial distance=3em,
-        accepting/.style=accepting by arrow,
-        accepting distance=3em
-      ]
-      \node[state,initial]    (S)                              {$S$};
-      \node[state]            (inside) [above right=of S]      {};
-      \node[state]            (b_2)    [below right=of inside] {$b_2$};
-      \node[state]            (b_1)    [right=of b_2]          {$b_1$};
-      \node[state,accepting]  (J)      [right=of b_1]          {$J$};
+%  \begin{subfigure}{0.5\textwidth}
+%    \begin{tikzpicture}
+%      [ initial text={}, initial distance=4em,
+%        accepting/.style=accepting by arrow,
+%        accepting distance=4em
+%      ]
+%      \node[state,initial]    (S)                        {$S$};
+%      \node[state]            (b_1) [above right=of S]   {$b_1$};
+%      \node[state,accepting]  (J)   [below right=of b_1] {$J$};
 
-      \path[->] (S)   edge              node  {}  (inside)
-                      edge              node  {}  (b_2)
-                (inside) edge [bend left] node {} (b_1)
-                (b_1) edge              node  {}  (J)
-                (b_2) edge [bend right] node  {}  (J);
-    \end{tikzpicture}
-  \end{subfigure}
+%      \path[->] (S)   edge               node  {}  (b_1)
+%                      edge               node  {}  (J)
+%                (b_1) edge [bend right] node  {}  (S);
+%    \end{tikzpicture}
+%  \end{subfigure}
   
-  \caption{Cheating with go-tos}
-  \label{fig:forbreak}
 \end{figure}
-\begin{figure}
-  \begin{subfigure}{0.3\textwidth}
-    \begin{tikzpicture}
-      [ initial text={}, initial distance=1em,
-        accepting/.style=accepting by arrow,
-        accepting distance=1em
-      ]
-      \node[state,initial]    (do)                             {do};
-      \node[state,accepting]  (S) [right=of do]                {\(S\):test};
 
-      \path[->] (do)   edge              node  {}  (S)
-                (S)    edge [bend left]  node  {}  (do);
-    \end{tikzpicture}
-    \subcaption{Do-while}
-  \end{subfigure}
-  \begin{subfigure}{0.3\textwidth}
-    \begin{tikzpicture}
-      [ initial text={}, initial distance=1em,
-        accepting/.style=accepting by arrow,
-        accepting distance=1em
-      ]
-      \node[state,initial]    (init)                             {init};
-      \node[state,accepting]  (S)    [right=of init]             {\(S\):test};
-      \node[state]            (do)   [above=of S]                {do};
-      \node[state]            (post) [left=of do]                {post};
+%\begin{figure}
+%  \begin{subfigure}{0.25\textwidth}
+%\begin{verbatim}
+%int f(bool secret) {
+%    int public1, public2;
+
+%    while (secret) {
+%        goto b1;
+%    }
+
+%b2: public1 = 1;
+%    goto J;
+
+%b1: public1 = 1;
+
+%J:  public2 = 42;
+%    return public2;
+%}
+%\end{verbatim}
+%  \end{subfigure}
+%  \begin{subfigure}{0.74\textwidth}
+%    \begin{tikzpicture}
+%      [ initial text={}, initial distance=3em,
+%        accepting/.style=accepting by arrow,
+%        accepting distance=3em
+%      ]
+%      \node[state,initial]    (S)                              {$S$};
+%      \node[state]            (inside) [above right=of S]      {};
+%      \node[state]            (b_2)    [below right=of inside] {$b_2$};
+%      \node[state]            (b_1)    [right=of b_2]          {$b_1$};
+%      \node[state,accepting]  (J)      [right=of b_1]          {$J$};
+
+%      \path[->] (S)   edge              node  {}  (inside)
+%                      edge              node  {}  (b_2)
+%                (inside) edge [bend left] node {} (b_1)
+%                (b_1) edge              node  {}  (J)
+%                (b_2) edge [bend right] node  {}  (J);
+%    \end{tikzpicture}
+%  \end{subfigure}
+  
+%  \caption{Cheating with go-tos}
+%  \label{fig:forbreak}
+%\end{figure}
+%\begin{figure}
+%  \begin{subfigure}{0.3\textwidth}
+%    \begin{tikzpicture}
+%      [ initial text={}, initial distance=1em,
+%        accepting/.style=accepting by arrow,
+%        accepting distance=1em
+%      ]
+%      \node[state,initial]    (do)                             {do};
+%      \node[state,accepting]  (S) [right=of do]                {\(S\):test};
+
+%      \path[->] (do)   edge              node  {}  (S)
+%                (S)    edge [bend left]  node  {}  (do);
+%    \end{tikzpicture}
+%    \subcaption{Do-while}
+%  \end{subfigure}
+%  \begin{subfigure}{0.3\textwidth}
+%    \begin{tikzpicture}
+%      [ initial text={}, initial distance=1em,
+%        accepting/.style=accepting by arrow,
+%        accepting distance=1em
+%      ]
+%      \node[state,initial]    (init)                             {init};
+%      \node[state,accepting]  (S)    [right=of init]             {\(S\):test};
+%      \node[state]            (do)   [above=of S]                {do};
+%      \node[state]            (post) [left=of do]                {post};
       
-      \path[->] (init)   edge              node  {}  (S)
-                (S)      edge              node  {}  (do)
-                (do)     edge              node  {}  (post)
-                (post)   edge              node  {}  (S);
-    \end{tikzpicture}
-    \subcaption{For}
-  \end{subfigure}
-  \begin{subfigure}{0.3\textwidth}
-    \center
-    \begin{tikzpicture}
-      [ initial text={}, initial distance=1em, initial above,
-        accepting/.style=accepting by arrow,
-        accepting distance=1em, node distance=2em, inner sep=1pt
-      ]
-      \node[state,initial]    (switch)                           {\(S\):switch};
-      \node[state]            (case1)    [below left=of switch]  {};
-      \node[state]            (case2)    [right=of case1]        {};
-      \node[state]            (default)  [right=of case2]        {def};
-      \node                   (after)    [right=of default]      {};
+%      \path[->] (init)   edge              node  {}  (S)
+%                (S)      edge              node  {}  (do)
+%                (do)     edge              node  {}  (post)
+%                (post)   edge              node  {}  (S);
+%    \end{tikzpicture}
+%    \subcaption{For}
+%  \end{subfigure}
+%  \begin{subfigure}{0.3\textwidth}
+%    \center
+%    \begin{tikzpicture}
+%      [ initial text={}, initial distance=1em, initial above,
+%        accepting/.style=accepting by arrow,
+%        accepting distance=1em, node distance=2em, inner sep=1pt
+%      ]
+%      \node[state,initial]    (switch)                           {\(S\):switch};
+%      \node[state]            (case1)    [below left=of switch]  {};
+%      \node[state]            (case2)    [right=of case1]        {};
+%      \node[state]            (default)  [right=of case2]        {def};
+%      \node                   (after)    [right=of default]      {};
 
-      \path[->] (switch)  edge              node  {}  (case1)
-                          edge              node  {}  (case2)
-                          edge              node  {}  (default)
-                (default) edge              node  {}  (after)
-                (case1)   edge [bend right] node  {}  (after)
-                (case2)   edge [bend right] node  {}  (after);
+%      \path[->] (switch)  edge              node  {}  (case1)
+%                          edge              node  {}  (case2)
+%                          edge              node  {}  (default)
+%                (default) edge              node  {}  (after)
+%                (case1)   edge [bend right] node  {}  (after)
+%                (case2)   edge [bend right] node  {}  (after);
 
-      \path[dotted,->] (case1) edge              node  {}  (case2)
-                (case2) edge              node  {}  (default);
+%      \path[dotted,->] (case1) edge              node  {}  (case2)
+%                (case2) edge              node  {}  (default);
                          
-    \end{tikzpicture}
-    \subcaption{Switch}
-  \end{subfigure}
+%    \end{tikzpicture}
+%    \subcaption{Switch}
+%  \end{subfigure}
   
-  \caption{Remaining Branch Statements}
-  \label{fig:rest}
-\end{figure}
+%  \caption{Remaining Branch Statements}
+%  \label{fig:rest}
+%\end{figure}
 
 \paragraph*{Intransitive SIF}
 
@@ -1407,72 +1308,83 @@ we wish to allow {\tt name} to influence the result of {\tt sanitize}, naturally
 of {\tt sanitize} to influence the value passed to {\tt sql\_query}, but we do not wish for
 {\tt name} to influence {\tt sql\_query} directly.
 
-In this context, we consider the functions {\tt scanf} and {\tt sanitize} as sources of
-information, and the input to {\tt sanitize} and {\tt sql\_query} as information ``sinks.''
+In this context, we consider the function {\tt scanf} to be our information source,
+{\tt sql\_query} as the ``sink'' that we don't want it to flow to, and {\tt sanitize} as
+clearing the taint off of data it touches.
 
-Let \(\Sigma\) be the set of these three identifiers, ranged over by \(\sigma\). A value may be tainted
-any subset of \(\Sigma\),
-written \(\vtaint{\overline{\sigma}}\). The PC Tag tracks the current function identifier and an
-association list of labels and sources. Each pair \((L, \sigma)\) in the association list indicates
-that until reaching label \(L\), the state itself has been influenced by \(\sigma\).
+Tags are similar to our previous example, except for removing \(\vol\). The PC Tag tracks the current function
+identifier, a stack of expression taints \(ets\), and a set of labels, \(sts\).
+\(ets\) tracks how many defered expression evaluations depend on tainted values. [TODO: slightly off].
+Each label \(L\) in \(sts\) indicates that until reaching label \(L\), the state itself has been
+influenced by {\tt scanf}.
 
 \[\color{blue}
 \begin{aligned}
-  \tau ::= & \vtaint{\overline{id}} \\
-  & \pctaint{f}{ets}{\overline{(L,id)}} \\
+  \tau ::= & \vtaint{} \\
+  & \pctaint{f}{ets}{\overline{L}} & ets \in \mathbb{N} \\
   & \N \\
 \end{aligned}\]
 
-We define the join operation in this new setting, as well as the {\em minus} operation (\(\gentag_1 - \gentag_2\)).
-%
+We define the {\em join} operation again.
+
 \[\gentag_1 \sqcup \gentag_2 \triangleq
 \begin{cases}
-  \vtaint{(\overline{\sigma}_1 \cup \overline{\sigma}_2)} &
-  \textnormal{if } \gentag_1 = \vtaint{\overline{\sigma}_1} \textnormal{ and }
-  \gentag_2 = \vtaint{\overline{\sigma}_2}\\
-  \vtaint{(\overline{\sigma}_2 \cup \{\sigma \mid (L,\sigma) \in \overline{(L,\sigma)}_1\})} &
-  \textnormal{if } \gentag_1 = \pctaint{f}{ets}{\overline{(L,\sigma)}_1} \textnormal{ and }
-  \gentag_2 = \vtaint{\overline{\sigma}_2}\\
-  \vtaint{(\overline{\sigma}_1 \cup \{\sigma \mid (L,\sigma) \in \overline{(L,\sigma)}_2\})} &
-  \textnormal{if } \gentag_2 = \pctaint{f}{ets}{\overline{(L,\sigma)}_2} \textnormal{ and }
-  \gentag_1 = \vtaint{\overline{\sigma}_1}\\
-  \bot & \textnormal{otherwise} \\
+  \vtaint{} &
+  \textnormal{if } \gentag_1 = \vtaint{} \textnormal{ or }
+  \gentag_2 = \vtaint{} \\
+  \vtaint{} &
+  \textnormal{if } \gentag_1 = \pctaint{f}{ets}{sts} \textnormal{ and either }
+  ets > 0 \textnormal{ or } |sts| > 0\\
+  \vtaint{} &
+  \textnormal{if } \gentag_2 = \pctaint{f}{ets}{sts} \textnormal{ and either }
+  ets > 0 \textnormal{ or } |sts| > 0\\
+  \N & \textnormal{otherwise} \\
 \end{cases}\]
 %
-\[\gentag - \sigma \triangleq
-\begin{cases}
-  \vtaint{\overline{\sigma} - \sigma} &
-  \textnormal{if } \gentag = \vtaint ~ \overline{\sigma} \\
-  \bot & \textnormal{otherwise} \\
-\end{cases}\]
 
 And once again we wish to define the ``no-higher-than'' relation. In this case,
-recall that we want to avoid the {\tt name} argument flowing to {\tt sql\_query}.
-So we will define that \(\mathtt{sql\_query(query)}\), as a sink, is strictly
-higher security than \(\mathtt{sql\_query(name)}\), and every other combination is fine.
+we want to avoid user input from {\tt scanf} flowing to {\tt sql\_query}.
+So we will define that a PC Tag in the function \(\mathtt{sql\_query}\), is strictly
+higher security than anything tainted.
 
-\[\gentag_1 \sqsubseteq (\gentag_2,\gentag_3) \triangleq
+\[\gentag_1 \sqsubseteq \gentag_2 \triangleq
 \begin{cases}
-  \mathbf{f} & \textnormal{if } \gentag_1 = \vtaint{\overline{\sigma}},
-  \gentag_2 = \mathtt{sql\_query}, \gentag_3 = \mathtt{query}, \textnormal{ and }
-  \mathtt{name} \in \overline{\sigma} \\
+  \mathbf{f} & \textnormal{if } \gentag_1 = \vtaint{}
+  \textnormal{ and } \gentag_2 = \pctaint{\mathtt{query}}{\_}{\_} \\
   \mathbf{t} & \textnormal{otherwise} \\
 \end{cases}\]
 
-\paragraph{Tainting and Checking Arguments and Returns}
+\paragraph{Tainting and Cleaning Memory}
 
-A function argument or return value can be either a source or a sink.
-So, when they are processed by the argument and return rules,
-we must both check that the value being passed or returned is not tainted by a forbidden
-source, and then add the new source to its taint. Recall that we want the first argument to
-the {\tt sanitize} function to ``forget'' the influence of {\tt name}.
+In this version of the policy we care primarily about loads and stores.
+External data are first tainted by {\tt scanf} when they are stored into memory,
+then (ideally) {\tt sanitize} processes them and stores a clean version into its
+destination buffer. Finally, if {\tt sql\_query} is exposed to tainted data, it will be
+by loading from memory.
+
+%A function argument or return value can be either a source or a sink.
+%So, when they are processed by the argument and return rules,
+%we must both check that the value being passed or returned is not tainted by a forbidden
+%source, and then add the new source to its taint. Recall that we want the first argument to
+%the {\tt sanitize} function to ``forget'' the influence of {\tt name}.
 
 \begin{tikzpicture}
-  \argtruleblock{\(\mathbf{assert ~ \PCT \sqcup \vt \sqsubseteq (f, x)}\)}{}
+  \storetruleblock{let \(\vt' = \PCT \sqcup \vt \sqcup \pt\) in}{\(\PCT\)}
+                  {\(\left\lbrace \begin{tabular}{l r}
+                      \(\vtaint{}\) & if \(f = \mathtt{scanf}\) \\
+                      \(\N\) & if \(f = \mathtt{sanitize}\) \\
+                      \(\vt'\) & otherwise \\
+                    \end{tabular} \right.\)}
+                  {\(\lts\)}
 \end{tikzpicture}
+
 \begin{tikzpicture}
-  \rettruleblock{\(\mathbf{assert} ~ \PCT \sqcup \vt \subseteq \)}{}{}
+  \loadtruleblock{\(\mathbf{assert} ~ \PCT \sqcup \vt \sqcup \pt \sqsubseteq \PCT\)}
+                 {\(\vt\)}
+                
 \end{tikzpicture}
+
+The remainder of the policy resembles our first SIF example.
 
 %\paragraph*{PC Tag Taint}
 
@@ -1495,12 +1407,12 @@ the {\tt sanitize} function to ``forget'' the influence of {\tt name}.
 %\end{aligned}\]
 %\end{minipage}
 
-The branching constructs are rather complicated, involving multiple steps
-and manipulations of the continuation that are not that relevant to their control
-points. Rather than give their semantics in full, it suffices to identify which
-transitions contain \(\mathbf{SplitT}\) control points. In \cref{fig:rest}, these
-are the transitions from the state marked \(S\). Their semantics are given in full
-in the appendix.
+%The branching constructs are rather complicated, involving multiple steps
+%and manipulations of the continuation that are not that relevant to their control
+%points. Rather than give their semantics in full, it suffices to identify which
+%transitions contain \(\mathbf{SplitT}\) control points. In \cref{fig:rest}, these
+%are the transitions from the state marked \(S\). Their semantics are given in full
+%in the appendix.
 
 \paragraph*{Realizing IFC}
 
@@ -1525,28 +1437,29 @@ declare that there are no secrets to lower when it is reached.
 \section{Implementing Tagged C with PIPE}
 \label{sec:optionals}
 
-In \cref{Chhak21:Tagine}, Chhak et al. introduce a verified compiler from a toy
+Chhak et al. \cite{Chhak21:Tagine} introduce a verified compiler from a toy
 high-level language with tags
 to a control-flow-graph-based intermediate representation of a PIPE-based
 ISA. It is a proof-of-concept of compilation from a source language's tag policy to
 realistic hardware. Everything in a PIPE system carries tags, including instructions. 
-Instruction tags are statically determined at compile-time and they add data about source-level
-control points in the corresponding assembly. Tagged C is designed in the same way with 
-the extra requirement of basic control-flow protection in the backend to ensure tag rules
- can be soundly transmited from source to assembly. 
-In the case of a PIPE-based backend, a basic stack-and-function-pointer-safety policy would be run in parallel 
-with the user's Tagged C policy. \amn{automatically run?}
+Instruction tags are statically determined at compile-time, so they can carry data about source-level
+control points in the corresponding assembly. This means that PIPE can emulate any given Tagged C
+policy by running two policies in parallel: a basic stack-and-function-pointer-safety policy to mimic Tagged C's
+high-level control-flow, and the source-level policy as written.
+\amn{automatically run?} \sna{I don't understand the question, but perhaps this edit helps?}
 
-Chhak et al. \cite{Chhak21:Tagine} give a general strategy for mapping Tagged C's tag rules
-onto instructions in a PIPE target. However, translating tag rules in full generality
-requires adding extra instructions that may be unnecessary for some policies. A Tagged-C control point
+Chhak et al.'s general strategy for mapping Tagged C's tag rules sometimes requires adding extra
+instructions to the generated code. A Tagged-C control point
 may require a tag from a location that is not read under a normal compilation scheme, or must update tags
-in locations that would otherwise not be written.
+in locations that would otherwise not be written. Such instructions are unnecessary overhead if the policy
+doesn't meaningfully use the relevant tags.
 
 To mitigate this, control points whose compilation would add potentially extraneous instructions
 take optional parameters or return optional results. We will explain how the rule should be
-implemented in the target if the options are used.  Optional inputs
-and outputs are marked with \(\optional{boxes}\). If a policy does not make use of the options, it will
+implemented in the target if the options are used.
+\sna{I think we have been leaning toward doing so in more detail here, not threaded through the
+  rest of the paper. So that's a TODO.}
+Optional inputs and outputs are marked with \(\optional{boxes}\). If a policy does not make use of the options, it will
 be sound to compile without the extra instructions.
 
 \section{Evaluation}
