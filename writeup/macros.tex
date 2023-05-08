@@ -8,7 +8,6 @@
 
 % !!! PLEASE DON'T CHANGE THESE !!! INSTEAD DEFINE YOUR OWN texdirectives.tex !!!
 \makeatletter \@input{texdirectives} \makeatother
-\newcommand{\tagcolor}{C}
 
 \newcommand{\gentag}{\mathit{\color{blue} t}}
 \newcommand{\vt}{\mathit{\color{blue} vt}}
@@ -18,11 +17,11 @@
 \newcommand{\nt}{\mathit{\color{blue} nt}}
 \newcommand{\PCT}{\mathcal{\color{blue} P}}
 
-\newcommand{\FN}[1][f]{\mathit{FN(#1)}}
-\newcommand{\AN}[1][f,x]{\mathit{AN(#1)}}
-\newcommand{\GN}[1][x]{\mathit{GN(#1)}}
-\newcommand{\LN}[1][L]{\mathit{LN(#1)}}
-\newcommand{\TN}[1][ty]{\mathit{TN(#1)}}
+\newcommand{\FN}[1][f]{{\color{blue} \textnormal{\sc f}_{#1}}}
+\newcommand{\AN}[1][f,x]{{\color{blue} \textnormal{\sc a}_{#1}}}
+\newcommand{\GN}[1][x]{{\color{blue} \textnormal{\sc g}_{#1}}}
+\newcommand{\LN}[1][L]{{\color{blue} \textnormal{\sc l}_{#1}}}
+\newcommand{\TN}[1][ty]{{\color{blue} \textnormal{\sc t}_{#1}}}
 
 \newcommand{\apt}[1]{\ifdraft\textcolor{orange}{{[APT:~#1]}}\fi}
 \newcommand{\sna}[1]{\ifdraft\textcolor{green!100}{{[SNA:~#1]}}\fi}
@@ -58,129 +57,10 @@
 \newcommand{\assert}[1]{& & & \multispan{2} \(\mathbf{assert} ~ #1\) \hfill \\}
 \newcommand{\letin}[1]{& & & \multispan{2} \(\mathit{let} ~ #1 ~ \mathit{in}\) \\}
 
-\newcommand{\caseof}[1]{\textnormal{case } #1 \textnormal{ of}}
-\newcommand{\caseentry}[2]{& & & #1 \Rightarrow #2}
-
 \newcommand{\optional}[1]{\fcolorbox{black}{gray!20}{#1}}
 \newcommand{\settag}[2]{\boldsymbol{#1} & \longleftarrow & & \mathit{#2}\\}
 \newcommand{\settagopt}[2]{\optional{\(\boldsymbol{#1}\)} & \longleftarrow & & \mathit{#2}\\}
 
-%%% Tag Rules %%%
-\newcommand{\loadtname}{\color{blue} \mathbf{LoadT}}
-\newcommand{\loadtargs}{\PCT, \pt, \vt, \overline{\lt}}
-\newcommand{\loadtres}{\vt'}
-\newcommand{\loadt}{\loadtname(\loadtargs)}
-
-\newcommand{\storetname}{\color{blue} \mathbf{StoreT}}
-\newcommand{\storetargs}{\PCT, \pt, \vt_1, \vt_2, \overline{\lt}}
-\newcommand{\storetres}{\PCT',\vt',\overline{\lt}'}
-\newcommand{\storet}{\storetname(\storetargs)}
-
-\newcommand{\consttname}{\color{blue} \mathbf{ConstT}}
-\newcommand{\consttres}{\vt}
-\newcommand{\constt}{\consttname}
-
-\newcommand{\unoptname}{\color{blue} \mathbf{UnopT}}
-\newcommand{\unoptargs}{\odot, \PCT, \vt}
-\newcommand{\unoptres}{\vt}
-\newcommand{\unopt}{\unoptname(\unoptargs)}
-
-\newcommand{\binoptname}{\color{blue} \mathbf{BinopT}}
-\newcommand{\binoptargs}{\oplus, \PCT, \vt_1, \vt_2}
-\newcommand{\binoptres}{\vt'}
-\newcommand{\binopt}{\binoptname(\binoptargs)}
-
-\newcommand{\globaltname}{\color{blue} \mathbf{GlobalT}}
-\newcommand{\globaltargs}{GN(x), TN(ty)}
-\newcommand{\globaltres}{\pt,\vt,\overline{\lt}}
-\newcommand{\globalt}{\globaltname(\globaltargs)}
-
-\newcommand{\localtname}{\color{blue} \mathbf{LocalT}}
-\newcommand{\localtargs}{\PCT, TN(ty)}
-\newcommand{\localtres}{\pt,\vt,\overline{\lt}}
-\newcommand{\localt}{\localtname(\localtargs)}
-
-\newcommand{\dealloctname}{\color{blue} \mathbf{DeallocT}}
-\newcommand{\dealloctargs}{\PCT, TN(ty)}
-\newcommand{\dealloctres}{\vt,\overline{\lt}}
-\newcommand{\dealloct}{\dealloctname(\dealloctargs)}
-
-\newcommand{\malloctname}{\color{blue} \mathbf{MallocT}}
-\newcommand{\malloctargs}{\PCT, \vt}
-\newcommand{\malloctres}{\PCT',\pt,\optional{\(\vt,\overline{\lt}\)}}
-\newcommand{\malloct}{\malloctname(\malloctargs)}
-
-\newcommand{\freetname}{\color{blue} \mathbf{FreeT}}
-\newcommand{\freetargs}{\PCT, \vt}
-\newcommand{\freetres}{\PCT',\pt,\optional{\(\vt,\overline{\lt}\)}}
-\newcommand{\freet}{\freetname(\freetargs)}
-
-\newcommand{\picasttname}{\color{blue} \mathbf{PICastT}}
-\newcommand{\picasttargs}{\PCT, \pt, \optional{\(\vt, \overline{\lt}\)}}
-\newcommand{\picasttres}{\vt}
-\newcommand{\picastt}{\picasttname(\picasttargs)}
-
-\newcommand{\ipcasttname}{\color{blue} \mathbf{IPCastT}}
-\newcommand{\ipcasttargs}{\PCT, \vt_1, \optional{\(\vt_2, \overline{\lt}\)}}
-\newcommand{\ipcasttres}{\pt}
-\newcommand{\ipcastt}{\ipcasttname(\ipcasttargs)}
-
-\newcommand{\ppcasttname}{\color{blue} \mathbf{PPCastT}}
-\newcommand{\ppcasttargs}{\PCT, \pt, \optional{\(\vt, \overline{\lt}\)}}
-\newcommand{\ppcasttres}{\pt'}
-\newcommand{\ppcastt}{\ppcasttname(\ppcasttargs)}
-
-\newcommand{\iicasttname}{\color{blue} \mathbf{IICastT}}
-\newcommand{\iicasttargs}{\PCT, \vt_1}
-\newcommand{\iicasttres}{\pt}
-\newcommand{\iicastt}{\iicasttname(\iicasttargs)}
-
-\newcommand{\splittname}{\color{blue} \mathbf{SplitT}}
-\newcommand{\splittargs}{\PCT, \vt, \optional{\(L\)}}
-\newcommand{\splittres}{\PCT'}
-\newcommand{\splitt}{\splittname(\splittargs)}
-
-\newcommand{\exprsplittname}{\color{blue} \mathbf{ExprSplitT}}
-\newcommand{\exprsplittargs}{\PCT, \vt}
-\newcommand{\exprsplittres}{\PCT'}
-\newcommand{\exprsplitt}{\exprsplittname(\exprsplittargs)}
-
-\newcommand{\exprjointname}{\color{blue} \mathbf{ExprJoinT}}
-\newcommand{\exprjointargs}{\PCT, \PCT', \vt}
-\newcommand{\exprjointres}{\PCT'', \vt'}
-\newcommand{\exprjoint}{\exprjointname(\exprjointargs)}
-
-\newcommand{\labeltname}{\color{blue} \mathbf{LabelT}}
-\newcommand{\labeltargs}{\PCT, LN(L)}
-\newcommand{\labeltres}{\PCT'}
-\newcommand{\labelt}{\labeltname(\labeltargs)}
-
-\newcommand{\calltname}{\color{blue} \mathbf{CallT}}
-\newcommand{\calltargs}{\PCT, FN(f), FN(f')}
-\newcommand{\calltres}{\PCT'}
-\newcommand{\callt}{\calltname(\calltargs)}
-
-\newcommand{\argtname}{\color{blue} \mathbf{ArgT}}
-\newcommand{\argtargs}{\PCT, \vt, FN(f), AN(x), TN(ty)}
-\newcommand{\argtres}{\PCT', \pt, \vt',\lts}
-\newcommand{\argt}{\argtname(\argtargs)}
-
-\newcommand{\rettname}{\color{blue} \mathbf{RetT}}
-\newcommand{\rettargs}{\PCT_{CLE}, \PCT_{CLR}, \vt, FN(f)}
-\newcommand{\rettres}{\PCT',\vt'}
-\newcommand{\rett}{\rettname(\rettargs)}
-
-\newcommand{\extcalltname}{\color{blue} \mathbf{ExtCallT}}
-\newcommand{\extcalltargs}{\PCT, FN(f), FN(f'), \overline{\vt}}
-\newcommand{\extcalltres}{\PCT'}
-\newcommand{\extcallt}{\extcalltname(\extcalltargs)}
-
-\newcommand{\fieldtname}{\color{blue} \mathbf{FieldT}}
-\newcommand{\fieldtargs}{\pt, TN(ty), GN(x)}
-\newcommand{\fieldtres}{\pt'}
-\newcommand{\fieldt}{\fieldtname(\fieldtargs)}
-
-%%%%%%%%%%%%%%%%%
 
 %%% Continuations, States, Values %%%
 

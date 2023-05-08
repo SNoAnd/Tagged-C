@@ -17,9 +17,9 @@
 \begin{document}
 
 \input{macros.tex}
+\input{tagrules.tex}
 \input{semantics.tex}
 \input{memorygraphics.tex}
-\input{tagrules.tex}
 
 \maketitle
 
@@ -428,7 +428,8 @@ following constructions and identify them as follows:
 \label{sec:PVI}
 
 Our first policy is a form of memory safety that uses the ``provenance via integer'' (PVI) memory model
-of Memarian et al. \cite{}. Variations of memory safety have been enforced in PIPE already, but usually using
+of Memarian et al. \cite{Memarian19:ExploringCSemantics}.
+Variations of memory safety have been enforced in PIPE already, but usually using
 an ad hoc memory model. PVI has the virtue of giving definition to many memory UBs in which a pointer is
 cast to an integer, subjected to various arithmetic operations, and cast back to a pointer.
 Their second memory model, {\it PNVI} (provenance not via integer), is even more permissive.
@@ -440,7 +441,7 @@ not failstop on any program that is defined in PVI, and that it should failstop 
 reaches undefined behavior. So, in the following examples, we would like {\tt mark} to proceed without
 failing, while {\tt overflow} should failstop.
 
-\begin{minipage}{0.7\textwidth}
+\begin{minipage}{0.65\textwidth}
 \begin{verbatim}
 int mark(uintptr ptr) {
   if (!(ptr & 0x00000001))
@@ -450,240 +451,141 @@ int mark(uintptr ptr) {
 }
 \end{verbatim}
 \end{minipage}
-\begin{minipage}{0.29\textwidth}
+\begin{minipage}{0.34\textwidth}
 \begin{verbatim}
 void overflow() {
   int[3] x;
   int y;
-  *x = 0;
-  *(x+10) = 0;
+  *x = 222222;
+  *(x+10) = 333333;
 }
 \end{verbatim}
 \end{minipage}
 
 Both code snippets are undefined behavior in C, but {\tt mark} is a common low-level
-idiom seen in, for example, implementations of Cheney's algorithm for garbage collection.
+idiom \cite{Memarian16:DeFacto}, seen for example in implementations of Cheney's garbage collection algorithm.
 Taking advantage of the fact that objects in memory are four-aligned, it
 uses the lower-order bits of the pointer to store a flag. In this case, it first checks
 the flag, and if it is not set, it zeroes the memory and then sets it. This is generally
 considered to be harmless, in contrast to {\tt overflow}, where {\tt y} is being overwritten
-due to being adjacent in memory to {\tt x}.
-
-We can prevent situations like this using a {\em memory safety} policy. In brief, whenever
-an object is allocated, it is assigned a unique ``color,'' and its memory locations as well
-as its pointer are tagged with that color. Pointers maintain their tags under arithmetic
-operations, and loads and stores are legal if the pointer matches the target memory location.
-
-Our set of tags consists of
-\(N\), for non-pointers, and pointer ``colors'' \(c \in \mathbb{N}\). The PC Tag
-(\(\PCT\)) tracks the next color to allocate, so it's initialized to \(\tagz\), and everything else is \(N\).
-\(N\) is the default for constants.
+due to being adjacent in memory to {\tt x}. Here we show the state of the local environment
+(mapping identifiers to addresses and pointer tags) and memory:
 
 \begin{tikzpicture}[every text node part/.style={align=left}]
-  \node[matrix, ampersand replacement=\&, anchor=west]
+  \node[matrix, ampersand replacement=\&, anchor=west] (code)
        {
          \node (l0) {\tt void overflow() \{}; \\
          \node (l1) {\tt ~ ~ int[3] x; int y;}; \\
-         \node (l2) {\tt ~ ~ *x = 0;}; \\
-         \node (l3) {\tt ~ ~ *(x+3) = 0;}; \\
+         \node (l2) {\tt ~ ~ *x = 222222;}; \\
+         \node (l3) {\tt ~ ~ *(x+3) = 333333;}; \\
          \node {\tt \}}; \\
        };
 
-       \node[state, node distance=1em, draw=black] (pct1)
-            {\(\PCT\)};
+  \node[matrix, ampersand replacement=\&, node distance=4em, right=of l1.east,draw,anchor=west] (table1)
+       {
+         \node[anchor=north]{\(\mathit{overflow} @ \PCT_2\)}; \&
+         \node[anchor=north]{\(\mathtt{x}\mapsto \underline{84} @ \pt_1)\) \\ \(\mathtt{y} \mapsto \underline{96} @ \pt_2\)}; %\&
+         %         \node[anchor=north] {\(\vt_1 \leftarrow \localtname(f)\) \\ \(\vt_2 \leftarrow \argtname(\vt_0,f,pwd)\)};
+         \\
+       };
 
-       \node[node distance=0.5em, right=of pct1] (zero) {\(0 @ \N\)};
-            
-       \node[matrix, node distance=1em, right=of zero, column sep=0em, inner sep=0.2em,
-         draw=black, ampersand replacement=\&] (p1)
-            {\node {\(\vundef@\)}; \& \node (t2) {\(\N\)}; \& \node[draw=black] (t3) {@ \(\M\)}; \\ };
-            
-       \node[node distance=1em, above=of p1.west]                              (pname1)  {\tt mm};
+  \node[matrix, ampersand replacement=\&, column sep=-1em, node distance=4em, below=of l3.west,anchor=west] (table2)
+       {
+         \node[anchor=north] {\hspace{1em}}; \&
+         \node[anchor=north] {\memory{\(84\)}{\(\vundef\)}{\(\vt_1\)}{\(\lt_1\)}}; \&
+         \node[anchor=north] {\memory{\(88\)}{\(\vundef\)}{\(\vt_1\)}{\(\lt_1\)}}; \&
+         \node[anchor=north] {\memory{\(92\)}{\(\vundef\)}{\(\vt_1\)}{\(\lt_1\)}}; \&
+         \node[anchor=north] {\memory{\(96\)}{\(\vundef\)}{\(\vt_2\)}{\(\lt_2\)}};
+         \\
+       };
 
-       \node[matrix, node distance=6em, below=of p1, column sep=0em, inner sep=0.1em,
-         draw=black, ampersand replacement=\&] (p2)
-            {\node {\(42@\)}; \& \node (t4) {\(\square\)}; \& \node[draw=black] (t5) {@ \(\square\)}; \\};
+  \node[matrix, ampersand replacement=\&, column sep=-1em, node distance=4em, below=of table2.west,anchor=west] (table3)
+       {
+         \node[anchor=north] {\hspace{1em}}; \&
+         \node[anchor=north] {\memory{\(84\)}{\(222222\)}{\(\vt_3\)}{\(\lt_3\)}}; \&
+         \node[anchor=north] {\memory{\(88\)}{\(\vundef\)}{\(\vt_1\)}{\(\lt_1\)}}; \&
+         \node[anchor=north] {\memory{\(92\)}{\(\vundef\)}{\(\vt_1\)}{\(\lt_1\)}}; \&
+         \node[anchor=north] {\memory{\(96\)}{\(333333\)}{\(\vt_4\)}{\(\lt_4\)}};
+         \\
+       };
 
-       \node[node distance=0.5em, above=of p2.west]                              (pname2)  {\tt mm};
-
-       \node[node distance=4em, above=of p2.west, draw=blue] (trule1) {\(\storet\)};
-
-       \node[state, node distance=1em, left=of p2, draw=black] (pct2)
-            {\(\square\)};
        
-       \draw[{Circle}-]
-       (l1.south) -- (pct1);
-
-       \draw[{Circle}-]
-       (l2.south) |- (pct2);
-
 \end{tikzpicture}
 
-%The call to malloc allocates the region from 1000 to 1039, and returns a pointer to the base
-%address, 1000. We consult the policy to determine (1) the tag on the resulting value,
-%(2) the updated tags on the allocated memory region, and (3) the updated PC Tag.
-%Specifically, we invoke the \(\malloctname\) tag rule, which takes the PC Tag and the tag on
-%the size argument and returns these three updated tags.
+We now show separate location tags on each of the four bytes in each word. In the inputs and outputs
+of a tag rule, we write this \(\lts\), indicating that the rule consumes and produces multiple locations tags.
+If the PC Tag is \(\PCT_0\) when we enter the function,
+our initial tags come from \(\PCT_1,\pt_1,\vt_1,\lts_1 \leftarrow \localtname(\PCT_0,\TN[int])\)
+followed by \(\PCT_2,\pt_2,\vt_2,\lts_2 \leftarrow \localtname(\PCT_1,\TN[int])\).
 
-%\begin{tikzpicture}[]
-%  \node[matrix, ampersand replacement=\&, column sep=-0.6em]  (mem)
-%       {
-%         \node[outer ysep=-5pt] (a) {\(\underbrace{\memory{1000}{\(\vundef\)}{\N}{\tagz}}\)};\\ %\&
-%         \node {\memory{\(1004\)}{\(\vundef\)}{\(\N\)}{\(\N\)}}; \&
-%         \node {\memory{\(1008\)}{\(\vundef\)}{\(\N\)}{\(\N\)}}; \\
-%       };
+The write to {\tt *(x+3)} is of particular interest. We tag the result of {\tt x+3}
+with \(\pt' \leftarrow \binoptname(\PCT_2, \pt_1, \constt)\); then for the store itself,
+we use the rule \(\vt_4, \lts_4 \leftarrow \storetname(\PCT_2, \pt', \vt_2, \constt, \lts_2)\).
+
+We can prevent overflows like this using a {\em memory safety} policy. In brief, whenever
+an object is allocated, it is assigned a unique ``color,'' and its memory locations as well
+as its pointer are tagged with that color. Pointers maintain their tags under arithmetic
+operations, and loads and stores are legal if the pointer matches the target memory location.
+The rules for the \(PVI\) memory safety policy are given in \cref{fig:pvi}. In this case, we will
+have \(\pt_1 = \lt_1 = \tagz\) and \(\pt_2 = \lt_2 = \tagone\). When we try to write to {\tt x+3},
+we compare \(\pt' = \tagz\) with \(\lt_2\), and failstop because they differ.
+
+\sna{Talk about globals here?}
+
+\begin{figure}
+  \color{blue}
+  \begin{align*}
+    \tau ::= & \clr & \clr \in \mathbb{N} \\
+    & \N \\
+  \end{align*}
   
-%  \node (state) [node distance=1.2em, above=of a]
-%        {\(\sstate{\PCT'=\tagone}{\mem}{\expr=p @ \pt}{}\)};
+  \scriptsize
+  \begin{minipage}[t]{0.3\textwidth}
+    \vspace{-2.5em}
+    \binoptruleblock{
+      \caseofthree
+          {\((\vt_1,~ \vt_2)\)}
+          {\((\gentag,\N)\)}{\(\vt' := \gentag\)}
+          {\((\N,\gentag)\)}{\(\vt' := \gentag\)}
+          {\((\clr_1, \clr_2)\)}{\(\vt' := \N\)}
+    }
+    \unoptruleblock{\(\vt' := \vt\)}
 
-  
-%  \malloctruleblock{}{\(\PCT+1\)}{\(\PCT\)}{\(\N\)}{\(\left[\PCT\right]\)}
+  \end{minipage}
+  \begin{minipage}[t]{0.25\textwidth}
+    \vspace{-2.5em}
+    \localtruleblock
+        {\(\PCT' := \PCT+1\);
+          \(\pt := \PCT\)\\
+          \(\vt := \N\);
+          \(\lts := \left[ \PCT \right]\)
+        }
+    \malloctruleblock
+        {\(\PCT' := \PCT+1\);
+          \(\pt := \PCT\) \\
+          \(\vt := \N\);
+          \(\lts := \left[ \PCT \right]\)
+        }
+  \end{minipage}
+  \begin{minipage}[t]{0.3\textwidth}
+    \vspace{-2.5em}
+    \loadtruleblock{\(\mathbf{assert} ~ \forall \lt \in \overline{\lt} . \pt = \lt\) \\ \(\vt' := \vt\)}
 
-%  \draw[->]
-%  (pctout.north) |- (state.east);
+    \storetruleblock{\(\mathbf{assert} ~ \forall \lt \in \lts . \pt = \lt\) \\
+      \(\PCT' := \PCT\);
+      \(\vt' := \vt_2\); 
+      \(\lts' := \lts\)}
+  \end{minipage}
 
-%  \draw[->]
-%  (ptout.west) -- (state.south);
+  \caption{PVI Memory Safety Policy}
+  \label{fig:pvi}
+\end{figure}
 
-%  \draw[->]
-%  (vtout.west) -- (a.east);
-  
-%  \draw[->]
-%  (ltsout) -| (a.south);
-%\end{tikzpicture}
-
-%In this case, we tag the pointer and the memory region with the current count, and then
-%increment the count. Once the pointer is stored in {\tt x}, our memory is:
-
-%We do the same for allocating {\tt y}, to get the memory:
-
-%\begin{tikzpicture}[]
-%  \node[matrix, ampersand replacement=\&, column sep=-0.6em]  (mem)
-%       {
-%         \node (a) {\memory{\(1000\)}{\(\vundef\)}{\(\N\)}{\(\tagz\)}}; \&
-%         \node {\memory{\(1004\)}{\(\vundef\)}{\(\N\)}{\(\tagone\)}}; \&
-%         \node {\memory{\(1008\)}{\(\vundef\)}{\(\N\)}{\(\N\)}}; \&
-%         \node[anchor=north] {\(~ ~\dots ~ ~\)}; \&
-%         \node {\memory{\(1092\)}{\(1004\)}{\(\tagone\)}{\(\N\)}}; \&
-%         \node {\memory{\(1096\)}{\(1000\)}{\(\tagz\)}{\(\N\)}}; \\
-%       };       
-%\end{tikzpicture}
-
-The policy needs to check that
-this store is valid, in addition to determining the tags on the value that is stored.
-This check is performed by comparing the tag on the pointer to the tags on memory.
-Then the tag on the value being stored
-is propagated with it into memory, unchanged.
-  
-\vspace{\abovedisplayskip}
-
-Next, on the last line, we add 1 to {\tt x}, which invokes the \(\binoptname\) tag rule
-to combine the tags on the arguments. \(\binoptname\) takes as argument the operation \(\oplus\).
-In memory safety terms, we can add a pointer to a non-pointer in either order, and we can subtract
-a non-pointer from a pointer (but not the reverse), to yield a pointer to the same object. We can
-subtract two pointers to the same object from one another to yield a non-pointer, the offset between them.
-All other binary operations are only permitted between non-pointers.
-
-\begin{tikzpicture}
-  \binoptruleblock{}{\(\PCT\)}
-                  {\(\left\lbrace \begin{tabular}{l r l}
-                      \(c\) & when \((\oplus,~ \vt_1,~ \vt_2)\) is & \(+, c, \N \mid +, \N, c \mid -, c, \N\) \\
-                      \(\N\) & is & \(-, c, c \mid \_,\N,\N\) \\
-                      \(\fail\) & is & otherwise \\
-                    \end{tabular} \right.\)}
-\end{tikzpicture}
-
-So, when we try to write through the address \(96@\tagone\), we compare its tag to that of the memory
-locations, which are tagged \(\tagz\). Therefore the policy must failstop on the store.
-
-
-The simple memory safety policy described above is too restrictive to run many real-world
-C programs, because they contain undefined behavior that is nevertheless part of the
-``de facto standard'' \cite{???}. These low-level idioms are one reason that we might
-settle for isolating risky code in a compartment instead of enforcing full memory safety.
-
-%Memarian et al. \cite{???} propose two memory models that aim to capture this
-%de facto standard, support the common low-level idioms, yet still place sufficient
-%restrictions on programs that it remains sound to use alias analysis in optimizations.
-%The first of these is {\it PVI} (provenanace via integer), in which pointers remain valid
-%when they are cast to integers, subjected to the full range of arithmetic operations, and
-%cast back. Memarian et al. do not propose to enforce PVI, merely to use it as an alternative to the
-%C standard. But its relative permissiveness makes it a great target for enforcement in Tagged C!
-%
-\begin{align*}
-  \tau ::= & \mathit{glob} ~ id & id \in \mathit{ident} \\
-  & \mathit{dyn} ~ \tagcolor & \tagcolor \in \mathbb{N} \\
-\end{align*}
-
-When initializing program memory, before any execution, each global \(id\) has its
-memory locations and its pointer in the global environment tagged with \(\mathit{glob} ~ id\).
-
-In our previous memory safety example, we began with the active stack frame already allocated.
-When it is allocated at runtime, its tags are initialize by the \(\localtname\) rule.
-Stack-allocated locals and heap-allocated objects are both tagged with unique colors;
-the PC Tag carries a counter of the dynamic objects allocated so far, and it is incremented
-each time.
-
-\begin{tikzpicture}[every text node part/.style={align=center}]
-  \localtruleblock{}{\(\PCT+1\)}
-                  {\(\mathit{dyn ~ \PCT}\)}
-                  {\(\N\)}
-                  {\(\left[ \mathit{dyn} ~ \PCT \right]\)}
-\end{tikzpicture}
-\begin{tikzpicture}[every text node part/.style={align=center}]
-  \malloctruleblock{}{\(\PCT+1\)}
-                   {\(\mathit{dyn ~ \PCT}\)}
-                   {\(\N\)}
-                   {\(\left[ \mathit{dyn} ~ \PCT \right]\)}
-\end{tikzpicture}
-
-\paragraph*{Color Checking}
-
-As in the basic policy, when we perform a memory load or store, we check that the pointer tag
-on the left hand of the assignment matches the location tag on all of the bytes being loaded or stored.
-
-\begin{minipage}{0.49\textwidth}
-  \begin{tikzpicture}[every text node part/.style={align=center}]
-    \loadtruleblock{\(\mathbf{assert} ~ \forall \lt \in \overline{\lt} . \pt = \lt\)}{\(\vt\)}
-  \end{tikzpicture}
-\end{minipage}
-\begin{minipage}{0.49\textwidth}
-  \begin{tikzpicture}[every text node part/.style={align=center}]
-    \storetruleblock{\(\mathbf{assert} ~ \forall \lt \in \lts . \pt = \lt\)}{\(\PCT\)}{\(\vt_2\)}{\(\lts\)}
-  \end{tikzpicture}
-\end{minipage}
-
-%[Not sure how important this is.]
-%There are two other expressions that load from memory, and which therefore invoke
-%this same rule, {\it assignop} and {\it postincr}. Note that the C spec has the order
-%of evaluation for {\it assignop} ``unsequenced''; we follow CompCert \cite{Leroy09:CompCert}
-%in evaluating both the left
-%and right completely before performing the load. Intuitively, assignment-with-an-operator is
-%classed along with the standard assignment in the spec, so it is appropriate that it be ordered
-%in the same way.
-
-\paragraph*{Color Propagation}
-
-In our example memory safety policy, we placed significant restrictions on the
-ways that pointer-tagged values could be subject to integer operations.
-In PVI, this is not the case: all unary operations maintain the tag on their
-input, and all binary operations where exactly one argument is tagged as a pointer
-propagate that tag to their result. Performing an operation with two pointer-tagged values
-sets the tag on the result to \(\N\). It can still
-be used as an integer, but if cast back to a pointer it will be invalid.
-
-\begin{tikzpicture}[every text node part/.style={align=center}]
-  \unoptruleblock{}{\(\PCT\)}{\(\vt\)}
-\end{tikzpicture}
-\begin{tikzpicture}[every text node part/.style={align=center}]
-  \binoptruleblock{}{\(\PCT\)}
-                  {\(\left\lbrace \begin{tabular}{l r l}
-                      \(\gentag\) & when \((\oplus,~ \vt_1,~ \vt_2)\) is & \((\_,\gentag,\N)\) \\
-                      \(\gentag\) & is & \((\_,\N,\gentag)\) \\
-                      \(\N\) & is & \(-,\mathit{dyn ~ n_1},\mathit{dyn ~ n_2}\) \\
-                      \(\fail\) & is & otherwise \\
-                    \end{tabular} \right.\)}
-\end{tikzpicture}
+The cast rules, meanwhile, have no effect on the tag of the value being cast at all. So,
+we can cast a pointer to a scalar value, perform any operation that is defined on that type
+on it, and cast it back, and it will retain its pointer tag. As long as it ends up pointing
+at the same object, loads and stores will be successful. Function pointers are an exception:
+Tagged C's underlying control-flow protections prevent them from being tampered with.
 
 \subsection{Compartmentalization}
 \label{sec:comp}
@@ -691,18 +593,19 @@ be used as an integer, but if cast back to a pointer it will be invalid.
 In a perfect world, all C programs would be memory safe. But it is unfortunately common
 for a codebase to contain undefined behavior that will not be fixed, including memory undefined
 behavior. This may occur because developers intentionally use low-level idioms that are UB
-\cite{DeFacto}.
-Or the cost and potential risk of regressions may make it undesirable to fix bugs in older code,
+\cite{Memarian16:DeFacto}, or because the cost and risk of regressions may make it
+undesirable to fix bugs in older code,
 as opposed to code under active development that is held to a higher standard \cite{Bessey10:Coverity}.
 
 A compartmentalization policy isolates potentially risky code, such as code with known UB,
 from safety-critical code, minimizing the damage that can be done if a vulnerability is exploited.
-This is a very common form of protection that can be implemented at many levels. It is often built
+It may also contain restricts on how code in one part of the system may interact with another
+even in the absence of language-level errors---ideally, restricting each component to the
+{\em least privilege} necessary to complete its task.
+This common form of protection can be implemented at many levels. It is often built
 into a system's fundamental design, like a web browser sandbox untrusted javascript.
 But for our use-case, we consider a compartmentalization scheme being added to the system
 after the fact.
-
-[TODO: a few words about least privilege, the other main compartmentalization use.]
 
 Let's assume that we have a set of compartment identifiers, ranged over by \(C\), and a mapping
 from function identifiers to compartments, \(\mathit{comp}(f)\). This mapping must be provided by
@@ -725,12 +628,13 @@ compartment. To do that, we need to keep track of which compartment we're in, us
 
 Calls and returns each take two steps: first to an intermediate call or return state, and
 then to the normal execution state, as shown in \cref{fig:functions} with some function \(f\)
-calling \(f'\). Three of these steps feature control points. In the initial call step, \(\calltname\)
+calling \(f'\). In the initial call step, \(\calltname\)
 uses the name-tags of the caller and callee to update the PC Tag. Then, in the step from the call
 state, we place the function arguments in the temp environment, tagging their values with
 the results of \(\argtname\), and we allocate our stack locals, tagging their values and locations
-with the results of \(\localtname\). And on return, \(\rettname\) updates both the PC Tag and
-the tag on the returned value.
+with the results of \(\localtname\). And on return, we deallocate locals and update their location
+tags with \(\dealloctname\) when stepping to a return state, and from there \(\rettname\) updates both
+the PC Tag and the tag on the returned value.
 
 \begin{figure}
   \begin{tikzpicture}[]
@@ -741,7 +645,7 @@ the tag on the returned value.
     
     \path[->]
     (f)    edge [bend left] node [pos=0.5,above left] {\(\calltres \leftarrow \callt\)}       (call)
-    (call) edge [bend left] node [pos=0.25,above right] {\(\argtres \leftarrow \argtname(\PCT, \vt, f', x)\)}
+    (call) edge [bend left] node [pos=0.25,above right] {\(\argtres \leftarrow \argt\)}
     node [pos=0.75,above right] {\(\localtres \leftarrow \localt\)} (g)
     (g)    edge [bend left] node [pos=0.5,below right] {\(\dealloctres \leftarrow \dealloct\)}  (ret)
     (ret)  edge [bend left] node [pos=0.5,below left] {\(\rettres \leftarrow \rett\)}  (f);
@@ -751,37 +655,37 @@ the tag on the returned value.
   \label{fig:functions}
 \end{figure}
 
-In our compartmentalization policy, we define a tag to be a compartment identifier or
-the default \(\N\) tag.
-%
-\[\color{blue} \tau ::= C | \N\]
-%
-At any given time, the PC Tag carries the compartment of the active function.
-This is kept up to date by the \(\calltname\) and \(\rettname\) rules. Note that
-Tagged C automatically keeps track of the PC Tag at the time of a call, so that
-it can be used as a parameter in the return.
+In our compartmentalization policy (\cref{fig:compartments}), we define a tag to be a compartment
+identifier or the default \(\N\) tag. At any given time, the PC Tag carries the compartment of the
+active function, kept up to date by the \(\calltname\) and \(\rettname\) rules.
 
-\begin{tikzpicture}[every text node part/.style={align=center}]
-  \calltruleblock{\(\mathit{let} ~ C := \mathit{comp}(f') ~ \mathit{in}\)}{\(\PCT\)}
-\end{tikzpicture}
-\begin{tikzpicture}[every text node part/.style={align=center}]
-  \rettruleblock{}{\(\PCT_{CLR}\)}{\(\vt\)}
-\end{tikzpicture}
+\begin{figure}
+  \begin{minipage}[t]{0.4\textwidth}
+    \vspace{-3em}
+    \[\color{blue} \tau ::= C | \N\]
 
-Now that we know which compartment we're in, we can make sure that its memory is protected.
-This will essentially work just like the basic memory safety policy, except that coarse-grained
-protection means that the ``color'' we assign to an allocation is the active compartment.
-And during a load or store, we compare the memory tags to the PC Tag, not the pointer.
+    \calltruleblock{\(\PCT' := \mathit{comp}(f')\)}
+  
+    \rettruleblock{\(\PCT' := \PCT_{CLR};\vt':=\vt\)}
+  \end{minipage}
+  \begin{minipage}[t]{0.25\textwidth}
+    \malloctruleblock{\(\PCT' := \PCT; \pt := \N;\) \\ \(\vt := \N; \lts := \left[ \PCT \right]\)}
+    \localtruleblock{\(\PCT' := \PCT; \pt := \N;\) \\ \(\vt := \N; \lts := \left[ \PCT \right]\)}
+  \end{minipage}
+  \begin{minipage}[t]{0.25\textwidth}
+    \loadtruleblock{\(\mathbf{assert} ~ \forall \lt \in \overline{\lt} . \PCT = \lt\) \\ \(\vt' := \vt\)}
+    
+    \storetruleblock{\(\mathbf{assert} ~ \forall \lt \in \overline{\lt} . \lt = \PCT\) \\
+      \(\PCT' := \PCT; \vt' := \N; \lts' := \lts\)}
+  \end{minipage}
+    
+  \caption{Compartmentalization Policy}
+  \label{fig:compartments}
+\end{figure}
 
-\begin{tikzpicture}[every text node part/.style={align=center}]
-  \malloctruleblock{}{\(\N\)}{\(\N\)}{\(\left[\PCT\right]\)}{\(\PCT\)}
-\end{tikzpicture}
-\begin{tikzpicture}[every text node part/.style={align=center}]
-  \loadtruleblock{\(\mathbf{assert} ~ \forall \lt \in \overline{\lt} . \PCT = \lt\)}{\(\vt\)}
-\end{tikzpicture}
-\begin{tikzpicture}[every text node part/.style={align=center}]
-  \storetruleblock{\(\mathbf{assert} ~ \forall \lt \in \overline{\lt} . \lt = \PCT\)}{\(\PCT\)}{\(\N\)}{\(\lts\)}
-\end{tikzpicture}
+The remainder of the policy works much like memory safety, except that coarse-grained
+protection means that the ``color'' we assign to an allocation is the active compartment,
+and during a load or store, we compare the location tags to the PC Tag, not the pointer.
 
 \paragraph{Sharing Memory}
 
@@ -813,51 +717,88 @@ provided the caller provides the buffers from which to set or get the hostname.
   }
 \end{verbatim}
 
-[TODO: update this section for the new example code]
-
 The literature contains two main approaches to this problem:
 {\em mandatory access control} and {\em capabilities}. The former explicitly
 enumerates the access rights of each compartment, while the latter turns passed
 pointers into unforgeable tokens of privilege, so that the act of passing one
 implicitly grants the recipient access.
 
-We can handle a mix of allocations that will be passed and those that will not
-by creating a variant identifier for {\tt malloc}, {\tt malloc\_share}. This
-identifier maps to the same address (i.e., it is still calling the same function)
+Tagged C can enforce either; here we will demonstrate a capability approach
+in which we delineate allocations that may be passed and those that must not.
+At the syntactic level we separate these by creating a variant identifier for {\tt malloc},
+{\tt malloc\_share}. This identifier maps to the same address (i.e., it is still calling the same function)
 but its name tag differs and can therefore parameterize the tag rule. The source
 must have the malloc name changed for every allocation that might be shared.
 The annotation could be performed manually, or perhaps automatically using some form
 of escape analysis.
 
-\paragraph{Mandatory Access Control}
+Seen in \cref{fig:sharing}, the policy works by gluing compartmentalization and memory safety
+together. The PC Tag carries the current compartment and the next color for shared allocations,
+and \(\malloctname\) uses the function tag to determine which to attach to the pointer and allocated
+region. During loads and stores, the location tag of the target address
+determines whether access is restricted via the identity of the active compartment or
+the validity of the pointer.
 
-Mandatory access control works by associating objects in memory with the compartments that
-are allowed to access them. 
+%\paragraph{Mandatory Access Control}
 
-\paragraph{Memory Shared by Capability}
+%Mandatory access control works by associating objects in memory with the compartments that
+%are allowed to access them. 
 
-Mandatory access control requires the policy designer to identity every pair of object
-and compartment that it will be shared with. This may require too much analysis if
-objects are shared widely throughout the system. Conversely, it does not
-distinguish between accesses via a valid pointer and those that are the result of
-UB.
+%Mandatory access control requires the policy designer to identity every pair of object
+%and compartment that it will be shared with. This may require too much analysis if
+%objects are shared widely throughout the system. Conversely, it does not
+%distinguish between accesses via a valid pointer and those that are the result of
+%UB.
 
-A capability model resolves both issues by treating shared pointers as tokens of privilege.
-If a compartment can obtain a shared pointer, we assume that it is allowed to access the associated
-memory. But the access must be performed using that pointer, ruling out other methods such as pointer
-forging.
+%If a compartment can obtain a shared pointer, we assume that it is allowed to access the associated
+%memory. But the access must be performed using that pointer, ruling out other methods such as pointer
+%forging.
 
-\[\color{blue}
-\begin{split}
-  \tau ::= & \N \\
-  & \mathit{glob} ~ C \\
-  & \mathit{dyn\_local} ~ C \\
-  & \mathit{dyn\_share} ~ c \\
-  & \mathit{comp} ~ C ~ c \\
-\end{split}\]
+\begin{figure}
+  \begin{minipage}[t]{0.6\textwidth}
+    \malloctruleblock
+        {let \((C,\clr) := \PCT\) in \\
+          \caseoftwo{f'}
+                    {\(\mathit{malloc}\)}{\(\PCT' := \PCT; \pt := C;\) \\ & & \(\vt := \N; \lts := \left[ C \right]\)}
+                    {\(\mathit{malloc\_share}\)}{\(\PCT':= (C,\clr+1); \\ & & \(\pt := \clr; \vt := \N';\) \\ & & \lts := \left[ \clr \right]}
 
-We define a predicate \(\mathit{cap}\) that holds when the target address is local to the active
-compartment or is shared and accessed through an appropriate capability.
+        }
+`  \storetruleblock
+        {let \((C,\clr) := \PCT\) in \\
+          \(\mathbf{assert} ~ \exists \lt' . \forall \lt \in \lts . \lt = \lt'\) \\
+          \caseoftwo{\(\lt'\)}
+                    {\(C'\)}{\(\mathbf{assert} ~ C = C'\) \\
+                      & &  \(\PCT' := \PCT; \vt' := \vt_2; \lts := \left[ C \right]\)}
+                    {\(\clr\)}{\(\mathbf{assert} ~ \pt = \clr\) \\
+                      & & \(\PCT':= \PCT; \vt' := \vt_2; \lts := \left[ \clr \right]\)}}
+
+  \end{minipage}
+  \begin{minipage}[t]{0.4\textwidth}
+    \vspace{-5em}
+      \[\color{blue}
+      \tau ::= \N | C | \clr | (C,\clr)\]
+    \loadtruleblock
+        {let \((C,\clr) := \PCT\) in \\
+          \(\mathbf{assert} ~ \exists \lt' . \forall \lt \in \lts . \lt = \lt'\) \\
+          \caseoftwo{\(\lt'\)}
+                    {\(C'\)}{\(\mathbf{assert} ~ C = C'\) \\
+                      & &  \(\vt' := \vt\)}
+                    {\(\clr\)}{\(\mathbf{assert} ~ \pt = \clr\) \\
+                      & & \(\vt' := \vt\)}}
+    \binoptruleblock{
+      \caseofthree
+          {\((\vt_1,~ \vt_2)\)}
+          {\((\gentag,\N)\)}{\(\vt' := \gentag\)}
+          {\((\N,\gentag)\)}{\(\vt' := \gentag\)}
+          {\((\clr_1, \clr_2)\)}{\(\vt' := \N\)}
+    }
+
+  \end{minipage}
+
+  
+  \caption{Compartmentalization with Shared Capabilities}
+  \label{fig:sharing}
+\end{figure}
 
 %\paragraph{Avoiding Confused Deputies}
 %
@@ -1000,9 +941,9 @@ At the same time, all external calls must check that they aren't leaking a taint
 \truledef{\extcallt}
 \assert{\forall \vt \in \overline{\vt} . \vt = \N \land \PCT = \N}
 \settag{\PCT'}{\PCT}
-\settag{\vt'}{\caseof{f}}
-\caseentry{read\_and\_parse}{\vtaint{}} \\
-\caseentry{\_}{\vt} \\
+%\settag{\vt'}{\caseof{f}}
+%\caseentry{read\_and\_parse}{\vtaint{}} \\
+%\caseentry{\_}{\vt} \\
 \end{aligned}\]
 \end{minipage}
 
@@ -1034,16 +975,12 @@ That can happen when the value is passed as an argument to an external function,
 saw above, or when it is stored to volatile memory (typically representing a file or external
 device that might be read or might transfer.
 
-\begin{tikzpicture}
-  \binoptruleblock{}{\(\PCT\)}{\(\vt_1 \sqcup \vt_2\)}
-\end{tikzpicture}
+\binoptruleblock{}{\(\vt_1 \sqcup \vt_2\)}
   
-\begin{tikzpicture}
-  \storetruleblock{\(\mathbf{assert} ~ \forall \lt \in \lts . \PCT \sqcup \pt \sqcup \vt_2 \sqsubseteq \lt\)}
-                  {\(\PCT\)}
-                  {\(\PCT \sqcup \pt \sqcup \vt_2\)}
-                  {\(\lts\)}
-\end{tikzpicture}
+\storetruleblock{\(\mathbf{assert} ~ \forall \lt \in \lts . \PCT \sqcup \pt \sqcup \vt_2 \sqsubseteq \lt\)}
+                {\(\PCT\)}
+                {\(\PCT \sqcup \pt \sqcup \vt_2\)}
+                {\(\lts\)}
 
 Things become trickier when we consider that the program's control-flow itself can be tainted.
 This can occur in any of our semantics' steps that can produce different statements and continuations
@@ -1085,7 +1022,7 @@ tag rules by performing a code transformation. This can be done completely autom
 for each split point in the code, the control-flow graph identifies its join point statement,
 and the transformation must wrap that statement in a fresh label.
 
-to implement the policy, we must first transform our program
+To implement the policy, we must first transform our program
 by adding labels at the join point of each conditional.
 Every statement that branches carries an optional label indicating its corresponding
 join point, if it has one---a function with multiple returns might not, in which case
@@ -1368,21 +1305,17 @@ by loading from memory.
 %source, and then add the new source to its taint. Recall that we want the first argument to
 %the {\tt sanitize} function to ``forget'' the influence of {\tt name}.
 
-\begin{tikzpicture}
-  \storetruleblock{let \(\vt' = \PCT \sqcup \vt \sqcup \pt\) in}{\(\PCT\)}
-                  {\(\left\lbrace \begin{tabular}{l r}
-                      \(\vtaint{}\) & if \(f = \mathtt{scanf}\) \\
-                      \(\N\) & if \(f = \mathtt{sanitize}\) \\
-                      \(\vt'\) & otherwise \\
-                    \end{tabular} \right.\)}
-                  {\(\lts\)}
-\end{tikzpicture}
+\storetruleblock{let \(\vt' = \PCT \sqcup \vt \sqcup \pt\) in}{\(\PCT\)}
+                {\(\left\lbrace \begin{tabular}{l r}
+                    \(\vtaint{}\) & if \(f = \mathtt{scanf}\) \\
+                    \(\N\) & if \(f = \mathtt{sanitize}\) \\
+                    \(\vt'\) & otherwise \\
+                  \end{tabular} \right.\)}
+                {\(\lts\)}
 
-\begin{tikzpicture}
-  \loadtruleblock{\(\mathbf{assert} ~ \PCT \sqcup \vt \sqcup \pt \sqsubseteq \PCT\)}
-                 {\(\vt\)}
+\loadtruleblock{\(\mathbf{assert} ~ \PCT \sqcup \vt \sqcup \pt \sqsubseteq \PCT\) \\
+  \(\vt' := \vt\)}
                 
-\end{tikzpicture}
 
 The remainder of the policy resembles our first SIF example.
 
