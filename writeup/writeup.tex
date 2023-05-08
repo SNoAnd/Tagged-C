@@ -760,10 +760,10 @@ the validity of the pointer.
         {let \((C,\clr) := \PCT\) in \\
           \caseoftwo{f'}
                     {\(\mathit{malloc}\)}{\(\PCT' := \PCT; \pt := C;\) \\ & & \(\vt := \N; \lts := \left[ C \right]\)}
-                    {\(\mathit{malloc\_share}\)}{\(\PCT':= (C,\clr+1); \\ & & \(\pt := \clr; \vt := \N';\) \\ & & \lts := \left[ \clr \right]}
+                    {\(\mathit{malloc\_share}\)}{\(\PCT':= (C,\clr+1);\) \\ & & \(\pt := \clr; \vt := \N';\) \\ & & \(\lts := \left[ \clr \right]\)}
 
         }
-`  \storetruleblock
+  \storetruleblock
         {let \((C,\clr) := \PCT\) in \\
           \(\mathbf{assert} ~ \exists \lt' . \forall \lt \in \lts . \lt = \lt'\) \\
           \caseoftwo{\(\lt'\)}
