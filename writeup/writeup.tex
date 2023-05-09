@@ -707,9 +707,9 @@ provided the caller provides the buffers from which to set or get the hostname.
 \begin{verbatim}
   void configure_enterprise(char* intended_name) {
     int ret = 0;
-    char curr_name = malloc(HOST_NAME_MAX + 1);
+    char* curr_name = malloc(HOST_NAME_MAX + 1);
     ret = gethostname( &curr_name, HOST_NAME_MAX + 1 );
-    if (! ret && curr_name != intended_name) { // !ret == (ret==0)
+    if (! ret && !(strcmp(curr_name, intended_name))) {
       ret = sethostname(intended_name), strlen(intended_name);
       ....
     }
@@ -758,7 +758,7 @@ the validity of the pointer.
   \begin{minipage}[t]{0.6\textwidth}
     \malloctruleblock
         {let \((C,\clr) := \PCT\) in \\
-          \caseoftwo{f'}
+          \caseoftwo{\(f'\)}
                     {\(\mathit{malloc}\)}{\(\PCT' := \PCT; \pt := C;\) \\ & & \(\vt := \N; \lts := \left[ C \right]\)}
                     {\(\mathit{malloc\_share}\)}{\(\PCT':= (C,\clr+1);\) \\ & & \(\pt := \clr; \vt := \N';\) \\ & & \(\lts := \left[ \clr \right]\)}
 
@@ -775,8 +775,8 @@ the validity of the pointer.
   \end{minipage}
   \begin{minipage}[t]{0.4\textwidth}
     \vspace{-5em}
-      \[\color{blue}
-      \tau ::= \N | C | \clr | (C,\clr)\]
+    \[\color{blue}
+    \tau ::= \N \mid C \mid \clr \mid (C,\clr)\]
     \loadtruleblock
         {let \((C,\clr) := \PCT\) in \\
           \(\mathbf{assert} ~ \exists \lt' . \forall \lt \in \lts . \lt = \lt'\) \\
@@ -897,10 +897,31 @@ The {\tt checked\_div} function sometimes writes its arguments to a log,
 which is reasonable enough, except when it's called with a key as an argument!
 Suddenly we have keys being written to an unexpected and probably unprotected file.
 
-This is an instance of problematic information-flow. The solution is to implement
-a {\em secure information flow} (SIF) policy in Tagged C. SIF is a variant of
-{\em information flow control} (IFC) described in the venerable Denning and Denning
-\cite{Denning77:SecureInformationFlow}. At its simplest, if we classify inputs and outputs to
+On the flip side, we have this code, where a malformed user input is accidentally appended
+to an sql query without sanitization:
+
+\begin{verbatim}
+void sanitize(buf);
+char* sql_query(char* query);
+
+void get_data() {
+  char[20] name;
+  char[100] query = "select address where name =";
+
+  scanf("%19f", name);
+  sanitize(name);
+  strncat(query, name, strlen(name));
+  
+  sprintf(buf, sql_query(query));
+  return;
+}
+\end{verbatim}
+
+These are both instances of problematic ``information-flow'' that can be prevented
+using a {\em secure information flow} (SIF) policy in Tagged C, similar to our very
+first example. SIF is described in the venerable Denning and Denning
+\cite{Denning77:SecureInformationFlow}, and part of a larger family of policies
+known as {\em information flow control} (IFC.) At its simplest, if we classify inputs and outputs to
 the program into secure (``high'') and public (``low'') classifications, then the
 high inputs do not influence the low outputs. This generalizes to an arbitrary set
 of security classes, but out first example is concerned with just two: the value
@@ -935,16 +956,6 @@ At the same time, all external calls must check that they aren't leaking a taint
     & \pctaint{f}{ets}{\overline{L}} \\
     & \vol \\
 \end{align*} }
-\end{minipage}
-\begin{minipage}{0.74\textwidth}
-\[\begin{aligned}
-\truledef{\extcallt}
-\assert{\forall \vt \in \overline{\vt} . \vt = \N \land \PCT = \N}
-\settag{\PCT'}{\PCT}
-%\settag{\vt'}{\caseof{f}}
-%\caseentry{read\_and\_parse}{\vtaint{}} \\
-%\caseentry{\_}{\vt} \\
-\end{aligned}\]
 \end{minipage}
 
 When two values are combined with a binary operation, the resulting value is tainted
@@ -1217,22 +1228,6 @@ J:  public2 = 42;
 
 Our second example involves information from outside of the system ending up somewhere it isn't supposed to.
 
-\begin{verbatim}
-void sanitize(buf);
-char* sql_query(char* query);
-
-void get_data() {
-  char[20] name;
-  char[100] query = "select address where name =";
-
-  scanf("%19f", name);
-  sanitize(name);
-  strncat(query, name, strlen(name));
-  
-  sprintf(buf, sql_query(query));
-  return;
-}
-\end{verbatim}
 
 This function sanitizes its input {\tt name}, then appends the result to an appropriate SQL
 query, storing the result in {\tt buf}. But, in the default case, the programmer has accidentally
@@ -1462,8 +1457,6 @@ We realize it as an interpreter with the reference monitor built in, and envisio
 eventually compiling to PIPE-equipped hardware. An inlining compiler would also be plausible.
 As a result of this choice, our abstract reference monitor uses a PIPE-esque notion of
 tags.
-
-\paragraph{PIPE Backend Implementation}
 
 \paragraph{Aspect Oriented Programming}
 
