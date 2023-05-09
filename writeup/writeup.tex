@@ -171,7 +171,7 @@ consult tag rules, \(\loadtname\) and \(\storetname\). Finally, when we make the
 \begin{tikzpicture}[every text node part/.style={align=left}]
   \node[matrix, ampersand replacement=\&, anchor=west] (code)
        {
-         \node (l1) {\tt void f(int pwd) \{}; \\         
+         \node (l1) {\tt void f(int pwd) \{}; \\
          \node (l2) {\tt ~ ~ int x = pwd+5;}; \\
          \node (l3) {\tt ~ ~ printi(x);}; \\
          \node {\tt \}}; \\
@@ -269,9 +269,9 @@ control flow, we maintain a special global tag called the PC Tag, ranged over by
        {
          \node[anchor=north] {\(g @ \PCT_1\)}; \&
          \node[anchor=north] {\(\mathtt{mm} @ \pt_1 \mapsto \vundef @ \vt_1 @ \lt_1\) \\
-         \(\mathtt{pwd} @ \pt_2 \mapsto i @ \vt_2 @ \lt_2\)}; \&
+         \(\mathtt{pwd} @ \pt_2 \mapsto i @ \vt_2\)}; \&
          \node[anchor=north] {\(\pt_1, \vt_1,\lt_1 \leftarrow \globaltname(mm)\) \\
-           \(\pt_2, \vt_2, \lt_2 \leftarrow \argtname(\vt_0,g,pwd)\) \\
+           \(\pt_2, \vt_2 \leftarrow \argtname(\vt_0,g,pwd)\) \\
            \(\PCT_1 \leftarrow \calltname(\PCT_0, g)\)}; \\
        };
        
@@ -280,17 +280,18 @@ control flow, we maintain a special global tag called the PC Tag, ranged over by
         \node[anchor=north] {\(g @ \PCT_2\)}; \&
         \node[anchor=north] {\(\mathtt{mm} @ \pt_1 \mapsto \vundef @ \vt_1 @ \lt_1\) \\
           \(\mathtt{pwd} @ \pt_2 \mapsto i @ \vt_2 @ \lt_2\)}; \&
-        \node[anchor=north] {\(\vt_3 \leftarrow \loadtname(\PCT_1,\pt_2,\vt_2,\lt_2)\) \\
-          \(\vt_4 \leftarrow \binoptname(>,\vt_3,\constt)\) \\ 
+        \node[anchor=north] {\(\vt_3 \leftarrow \constt\) \\
+          \(\vt_4 \leftarrow \binoptname(>,\vt_2,\vt_3)\) \\ 
           \(\PCT_2 \leftarrow \splittname(\PCT_1, \vt_4)\)}; \\
       };
 
  \node[matrix, ampersand replacement=\&, node distance=4.5em, below=of table2.west,draw,anchor=west] (table3)         
       {
         \node[anchor=north] {\(g @ \PCT_2\)}; \&
-        \node[anchor=north] {\(\mathtt{mm} @ \pt_1 \mapsto 1 @ \vt_4 @ \lt_3\) \\
+        \node[anchor=north] {\(\mathtt{mm} @ \pt_1 \mapsto 1 @ \vt_5 @ \lt_3\) \\
           \(\mathtt{pwd} @ \pt_2 \mapsto i @ \vt_2 @ \lt_2\)}; \&
-        \node[anchor=north] {\(\vt_4,\lt_3 \leftarrow \storetname(\PCT_2,\pt_1,\vt_2,\constt,\lt_1)\)}; \\
+        \node[anchor=north] {\(\vt_4 \leftarrow \constt\) \\
+          \(\vt_5,\lt_3 \leftarrow \storetname(\PCT_2,\pt_1,\vt_1,\vt_4,\lt_1)\)}; \\
       };
 
   \draw[Circle-]
@@ -529,8 +530,6 @@ operations, and loads and stores are legal if the pointer matches the target mem
 The rules for the \(PVI\) memory safety policy are given in \cref{fig:pvi}. In this case, we will
 have \(\pt_1 = \lt_1 = \tagz\) and \(\pt_2 = \lt_2 = \tagone\). When we try to write to {\tt x+3},
 we compare \(\pt' = \tagz\) with \(\lt_2\), and failstop because they differ.
-
-\sna{Talk about globals here?}
 
 \begin{figure}
   \color{blue}
