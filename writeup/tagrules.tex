@@ -217,20 +217,65 @@
 \newcommand{\splittres}{\PCT'}
 \newcommand{\splitt}{\splittname(\splittargs)}
 
+\newcommand{\splittruleblock}[1]
+           {
+             \colorbox{blue!10}{
+               \begin{tabular}{l}
+                 \(\splittname(\PCT,\vt,L)\) \\
+                 #1 \\
+                 \{ \(\splittres\) \} \\
+               \end{tabular}
+             }
+           }
+
 \newcommand{\exprsplittname}{\color{blue} \mathbf{ExprSplitT}}
 \newcommand{\exprsplittargs}{\PCT, \vt}
 \newcommand{\exprsplittres}{\PCT'}
 \newcommand{\exprsplitt}{\exprsplittname(\exprsplittargs)}
+
+\newcommand{\exprsplittruleblock}[1]
+           {
+             \colorbox{blue!10}{
+               \begin{tabular}{l}
+                 \(\exprsplitt\) \\
+                 #1 \\
+                 \{ \(\exprsplittres\) \} \\
+               \end{tabular}
+             }
+           }
+
 
 \newcommand{\exprjointname}{\color{blue} \mathbf{ExprJoinT}}
 \newcommand{\exprjointargs}{\PCT, \PCT', \vt}
 \newcommand{\exprjointres}{\PCT'', \vt'}
 \newcommand{\exprjoint}{\exprjointname(\exprjointargs)}
 
+\newcommand{\exprjointruleblock}[1]
+           {
+             \colorbox{blue!10}{
+               \begin{tabular}{l}
+                 \(\exprjoint\) \\
+                 #1 \\
+                 \{ \(\exprjointres\) \} \\
+               \end{tabular}
+             }
+           }
+
 \newcommand{\labeltname}{\color{blue} \mathbf{LabelT}}
-\newcommand{\labeltargs}{\PCT, LN(L)}
+\newcommand{\labeltargs}{\PCT, \LN}
 \newcommand{\labeltres}{\PCT'}
 \newcommand{\labelt}{\labeltname(\labeltargs)}
+
+\newcommand{\labeltruleblock}[1]
+           {
+             \colorbox{blue!10}{
+               \begin{tabular}{l}
+                 \(\labelt\) \\
+                 #1 \\
+                 \{ \(\labeltres\) \} \\
+               \end{tabular}
+             }
+           }
 
 \newcommand{\extcalltname}{\color{blue} \mathbf{ExtCallT}}
 \newcommand{\extcalltargs}{\PCT, \FN, \FN[f'], \overline{\vt}}

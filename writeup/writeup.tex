@@ -871,45 +871,27 @@ the validity of the pointer.
 \subsection{Secure Information Flow}
 \label{sec:SIF}
 
-Memory safety and compartmentalization both either prevent or mitigate memory errors.
-But programs can be memory safe and still do insecure things! Consider the
-following code, in which we have some error-handling code that writes to a log.
-[TODO: more realistic example]
+Our final example policy will be a more realistic version of our first:
+{\em secure information flow (SIF)}. SIF is described in the venerable Denning and Denning
+\cite{Denning77:SecureInformationFlow}, and part of a larger family of policies
+known as {\em information flow control} (IFC.) This family of policies deal entirely with enforcing
+higher-level security concerns, regardless of whether the code that they protect contains
+errors or undefined behaviors. We will give an example of a single policy in the family.
+Our introductory example was an instance of {\em confidentiality}, so now we will discuss
+{\em integrity}: preventing insecure input from influencing secure behavior.
+In this code, a malformed user input is accidentally appended to an sql query without sanitization:
 
 \begin{verbatim}
-int checked_div(int a, int b) {
-  if (a % b == 0) {
-    return a / b;
-  } else {
-    fprintf(log, "%d should divide %d but doesn't\n", b, a);
-    return 0;
-  }
-}
-
-void main(int factor) {
-  int key = read_and_parse(keyfile);
-  int dividend = checked_div(key, factor);
-  if (!dividend) { ... } else { ... }
-}
-\end{verbatim}
-
-The {\tt checked\_div} function sometimes writes its arguments to a log,
-which is reasonable enough, except when it's called with a key as an argument!
-Suddenly we have keys being written to an unexpected and probably unprotected file.
-
-On the flip side, we have this code, where a malformed user input is accidentally appended
-to an sql query without sanitization:
-
-\begin{verbatim}
-void sanitize(buf);
+void sanitize(char* in, char* out);
 char* sql_query(char* query);
 
 void get_data() {
   char[20] name;
+  char[20] name_san;
   char[100] query = "select address where name =";
 
   scanf("%19f", name);
-  sanitize(name);
+  sanitize(name, name_san);
   strncat(query, name, strlen(name));
   
   sprintf(buf, sql_query(query));
@@ -917,127 +899,87 @@ void get_data() {
 }
 \end{verbatim}
 
-These are both instances of problematic ``information-flow'' that can be prevented
-using a {\em secure information flow} (SIF) policy in Tagged C, similar to our very
-first example. SIF is described in the venerable Denning and Denning
-\cite{Denning77:SecureInformationFlow}, and part of a larger family of policies
-known as {\em information flow control} (IFC.) At its simplest, if we classify inputs and outputs to
-the program into secure (``high'') and public (``low'') classifications, then the
-high inputs do not influence the low outputs. This generalizes to an arbitrary set
-of security classes, but out first example is concerned with just two: the value
-returned from {\tt read\_and\_parse} and the output to the log.
-In our treatment of this example, we will describe a policy tailored to this particular
-set of security classes.
+This function sanitizes its input {\tt name}, then appends the result to an appropriate SQL
+query, storing the result in {\tt buf}. But, in the default case, the programmer has accidentally
+used the unsanitized string! This creates the opportunity for an SQL injection attack: a caller
+to this function could (presumably at the behest of an outside user) call it with {\tt field} of
+3 and {\tt name} of ``Bobby; drop table;''.
 
-\paragraph*{Basic SIF Confidentiality}
+The fact that the input can be sanitized also makes this an {\em intransitive} policy:
+information may flow from {\tt scanf} to {\tt sanitize}, and from {\tt sanitize} to
+{\tt sql\_query}, but not directly from {\tt scanf} to {\tt sql\_query}.
 
-Let's assume that {\tt read\_and\_parse} is an {\em external} function---that is, we will not
-model its internal behavior, so we know nothing about the value it returns. We can therefore
-treat that value as an input, and track its influence through the system.
+\begin{figure}
 
-For this initial, simplified policy, we will assume that it is the only input that we care about,
-so we have four classes of tags. The default tag \(\N\) represents values that are not tainted
-by the sensitive input, the tag \(\vtaint{}\) represents values that have been influenced by
-{\tt read\_and\_parse}, and the tag \(\pctaint{f}{ets}{\overline{L}}\) carries a set of labels
-representing that the current control-flow of the program is tainted (we will discuss this in detail
-below.) Lastly, the tag \(\vol\) marks the memory locations of {\em volatile} global variables.
-Volatile variables represent mmapped regions or memory that for other reasons is accessible
-outside the process.
+  \begin{minipage}{0.3\textwidth}
+    \color{blue}
+    \begin{align*}
+      \tau ::= & \high \\
+      & \low \\
+      & \pctaint{f}{e}{\overline{L}} & e \in \mathit{list} ~ \mathbb{B} \\
+    \end{align*}
+  \end{minipage}
+  \begin{minipage}{0.69\textwidth}
+    \[|\gentag| \triangleq
+    \begin{cases}
+      \low & \textnormal{if } \gentag = \low \textnormal{ or } \gentag = \pctaint{f}{e}{\emptyset}
+      \textnormal{ where every } b \in e \textnormal{ is } \mathbf{f} \\
+      \high & \textnormal{otherwise} \\
+    \end{cases}\]
+    %
+    \[\gentag_1 \sqcup \gentag_2 \triangleq
+    \begin{cases}
+      \low & \textnormal{if } |\gentag_1| = |\gentag_2| = \low \\
+      \high & \textnormal{otherwise} \\
+    \end{cases}\]
+  \end{minipage}
 
-Initially, the PC Tag is \(\pctaint{f}{\emptyset}{\emptyset}\), and all values and memory locations are
-tagged \(\N\). The taint tags are introduced at the external call to {\tt read\_and\_parse}.
-At the same time, all external calls must check that they aren't leaking a tainted value!
+  \begin{minipage}{0.54\textwidth}
+    \storetruleblock
+        {let \(\pctaint{f}{ets}{\overline{L}} := \PCT\) in \\
+          \caseofthree{\(f\)}
+                      {\(\mathit{scanf}\)}{\high}
+                      {\(\mathit{sanitize}\)}{\low}
+                      {\(\underline{\hspace{3em}}\)}
+                      {\(\PCT' := \PCT\) \\
+                        \(\vt' := \PCT \sqcup \vt \sqcup \pt\) \\
+                        \(\lts' := \lts\)}}
+  \end{minipage}
+  \begin{minipage}{0.45\textwidth}
+    \loadtruleblock
+        {let \(\pctaint{f}{ets}{\overline{L}} := \PCT\) in \\
+          \caseoftwo{\(f\)}
+                    {\(\mathit{sql\_query}\)}{\(\mathbf{assert} ~ \vt \sqcup \pt = \low\) \\ & & \(\vt' := \vt\)}
+                    {\(\underline{\hspace{3em}}\)}{\(\vt' := \vt\)}}
 
-\begin{minipage}{0.25\textwidth}
-{ \color{blue}
-  \begin{align*}
-    \tau ::= & \N \\
-    & \vtaint{} \\
-    & \pctaint{f}{ets}{\overline{L}} \\
-    & \vol \\
-\end{align*} }
-\end{minipage}
+    \binoptruleblock{\(\vt' := \vt_1 \sqcup \vt_2\)}
+  \end{minipage}
 
-When two values are combined with a binary operation, the resulting value is tainted
-if either of them was. We define this as the {\em join} or {\em least-upper-bound}
-operator, \(\sqcup\). We will then compare tags according to a partial order, the
-{\em no-higher-than} operator, \(\sqsubseteq\). In this case, \(a \sqsubseteq b\)
-means that \(a\) does not have higher privilege than \(b\), and so information is
-allowed to flow from \(a\) to \(b\).
+\caption{SIF Policy: Tags and Selected Rules}
+\label{fig:sif1}
+\end{figure}
 
-\begin{minipage}[t]{.49\textwidth}
-\[t_1 \sqcup t_2 \triangleq
-\begin{cases}
-  \vtaint{} & \textnormal{if } t_1 = \vtaint{} \\
-  \vtaint{} & \textnormal{if } t_2 = \vtaint{} \\
-  \N & \textnormal{otherwise} \\
-\end{cases}\]
-\end{minipage}
-\begin{minipage}[t]{.49\textwidth}
-\[t_1 \sqsubseteq t_2 \triangleq
-\begin{cases}
-  \mathbf{false} & \textnormal{if } t_1 = \vtaint{} \textnormal{ and } t_2 = \vol \\
-  \mathbf{true} & \textnormal{otherwise} \\
-\end{cases}\]
-\end{minipage}
+Since we care about a single source, we can once again use the standard division of \(\high\)
+and \(\low\). We additionally need to carry significant information on the PC Tag. First, we
+track the current function identifier. Beyond that, we need two pieces of information to deal
+with {\em implicit flows}, situations where the control-flow of the program is influenced by a secret.
+In our initial example we simplified these. To keep track of tainted scopes, the
+PC Tag carries a list of booleans, \(e\), and a set of label identifiers, \(L\).
+We will discuss these in detail below. Initially, the PC Tag is \(\pctaint{f}{\varepsilon}{\emptyset}\),
+and all values and memory locations are tagged \(\low\).
 
-The policy needs to failstop if a tainted value becomes visible to the outside world.
-That can happen when the value is passed as an argument to an external function, as we
-saw above, or when it is stored to volatile memory (typically representing a file or external
-device that might be read or might transfer.
+The detailed tag rules for expressions are given in \cref{fig:sif1}. We define two operators on tags:
+the ``join'' operator \(\sqcup\) takes the higher of two security levels, and the ``reduce''
+operator \(| \cdot |\) converts a PC Tag into a security level, \(\high\) or \(\low\).
+The function {\tt scanf} taints all of its writes by marking them \(\high\). This extends to
+its return value in \(\rettname\) as well (not shown.) By the same token, all outputs of
+{\tt sanitize} are tagged \(\low\), so that when it copies \(\high\)-tagged data into its
+output buffer, we consider those data safe.
 
-\binoptruleblock{}{\(\vt_1 \sqcup \vt_2\)}
-  
-\storetruleblock{\(\mathbf{assert} ~ \forall \lt \in \lts . \PCT \sqcup \pt \sqcup \vt_2 \sqsubseteq \lt\)}
-                {\(\PCT\)}
-                {\(\PCT \sqcup \pt \sqcup \vt_2\)}
-                {\(\lts\)}
+In this scenario, our policy aims to prevent {\tt sql\_query} from recieving tainted data.
+For this reason, we failstop if {\tt sql\_query} would load a tainted value.
 
-Things become trickier when we consider that the program's control-flow itself can be tainted.
-This can occur in any of our semantics' steps that can produce different statements and continuations
-depending on the tained value. At that point, any change to the machine state constitutes
-an information flow. This is termed an {\em implicit flow}.
-
-Implicit flows become much more complex outside of expressions, when we have more
-complex control flow. This time the taint is carried on the PC Tag itself.
-When the PC Tag is tainted, all stores to memory and all updates to environments must
-also be tainted until all branches eventually rejoin, which might be at any point.
-We term the point at which it is safe to remove taint a {\it join point}.
-In terms of the program's control-flow graph, the
-join point of a branch is its immediate post-dominator \cite{}.
-[TODO: this is the Denning cited in Bay and Askarov]
-
-In many simple programs, the join point of a conditional or loop is obvious:
-the point at which the chosen branch is complete, or the loop has ended.
-Such a simple example can be seen in \cref{fig:ifthenelse}; {\tt public1} must be
-tagged with the taint tag of {\tt secret}, while it is safe to tag {\tt public2}
-\(\N\), because that is after the join point, {\tt J}. The same goes for \cref{fig:while},
-if we are in a {\em termination-insensitive} setting \cite{Askarov08:TINILeaks}.
-In termination-insensitive noninterference, we allow
-an observer to glean information by the termination or non-termination of
-the program. So, it is safe to assume that the post-dominator \(J\)
-of the while loop is reached.
-
-[TODO: implicit flow rules for statements]
-
-But in the presence of unrestricted go-to statements, a join point may not be
-local (and sometimes may not exist within the function, assuming that we have not
-consolidated return points.) Consider \cref{fig:forbreak}, which
-uses go-to statements to create an approximation of an if-statement whose join-point
-is far removed from the for-loop. The label {\tt J} now has nothing to do with the
-semantics of any particular statement.
-
-Luckily this can be determined statically from a function's full control-flow graph,
-so we can implement it as long as we're willing to deviate from our purely syntax-based
-tag rules by performing a code transformation. This can be done completely automatically;
-for each split point in the code, the control-flow graph identifies its join point statement,
-and the transformation must wrap that statement in a fresh label.
-
-To implement the policy, we must first transform our program
-by adding labels at the join point of each conditional.
-Every statement that branches carries an optional label indicating its corresponding
-join point, if it has one---a function with multiple returns might not, in which case
-once the PC Tag is tainted, it must remain so until a return.
+\paragraph*{Implicit Flows}
 
 \begin{figure}[t]
   \begin{subfigure}{0.49\textwidth}
@@ -1052,53 +994,116 @@ b2:     public1 = 0;
     }
 
 J:  public2 = 42;
-
     return public2;
 }
 \end{verbatim}
-\caption{Leaking via if statements}
-\label{fig:ifthenelse}
   \end{subfigure}
-%  \begin{subfigure}{0.5\textwidth}
-%    \begin{tikzpicture}
-%      [ initial text={}, initial distance=4em,
-%        accepting/.style=accepting by arrow,
-%        accepting distance=4em
-%      ]
-%      \node[state,initial]    (S)                        {$S$};
-%      \node[state]            (b_1) [above right=of S]   {$b_1$};
-%      \node[state]            (b_2) [below right=of S]   {$b_2$};
-%      \node[state,accepting]  (J)   [below right=of b_1] {$J$};
-%
-%      \path[->] (S)   edge              node  {}  (b_1)
-%                      edge              node  {}  (b_2)
-%                (b_1) edge              node  {}  (J)
-%                (b_2) edge              node  {}  (J);
-%    \end{tikzpicture}
-%  \end{subfigure}
-%  
-%\end{figure}
-%
-%\begin{figure}
-  \begin{subfigure}{0.49\textwidth}
-\begin{verbatim}
-int f(bool secret) {
-    int public1=1;
-    int public2;
+  \begin{subfigure}{0.5\textwidth}
+    \begin{tikzpicture}
+      [ initial text={}, initial distance=4em,
+        accepting/.style=accepting by arrow,
+        accepting distance=4em
+      ]
+      \node[state,initial]    (S)                        {$S$};
+      \node[state]            (b_1) [above right=of S]   {$b_1$};
+      \node[state]            (b_2) [below right=of S]   {$b_2$};
+      \node[state,accepting]  (J)   [below right=of b_1] {$J$};
 
-S:  while (secret) {
-b1:     public1 = 1;
-        secret = false;
+      \path[->] (S)   edge              node  {}  (b_1)
+                      edge              node  {}  (b_2)
+                (b_1) edge              node  {}  (J)
+                (b_2) edge              node  {}  (J);
+    \end{tikzpicture}
+  \end{subfigure}
+\caption{Leaking via if statements}
+\label{fig:ifthenelse}  
+\end{figure}
+
+Things become trickier when we consider that the program's control-flow itself can be tainted.
+This can occur in any conditional, including loops, conditional statements, and conditional expressions.
+In general, anytime a ``split'' is conditioned on a tainted value, subsequent assignments must also be tainted.
+An example can be seen in \cref{fig:ifthenelse}, where labels in the code indicate the split
+point, branches, and {\em join point} \(J\).
+
+A join point is the node in the program's control-flow graph where all possible routes
+from the split to a return have re-converged; its its immediate post-dominator \cite{}.
+[TODO: this is the Denning cited in Bay and Askarov] At this point, an observer can no
+longer deduce which path execution took, except through the assignments that happened
+in \(b_1\) or \(b_2\), which are already tainted. It is therefore safe to tag future
+assignments \(\low\). In the example, {\tt public1} should be tagged \(\high\), while
+{\tt public2} is tagged \(\low\).
+
+We assume a {\em termination-insensitive} setting \cite{Askarov08:TINILeaks}, in which
+we allow an observer to glean information by the termination or non-termination of
+the program. This is a necessary limitation of an enforcement mechanism that halts
+execution. Having accepted this limitation, we may apply the same analysis to loops
+as well as conditionals.
+
+\Cref{fig:SIFconditionals} gives the tag rules for handling conditionals and loops.
+All branching statements are governed by the same \(\splittname\) rule, and their join points
+by the \(\labeltname\) rule when the label is placed on a join point. Branching expressions
+are likewise handled by the \(\exprsplittname\) rule, and the \(\exprjointname\) rule.
+This last needs no label, due to the predictable structure of nested expressions.
+
+\begin{figure}
+  \begin{minipage}{0.5\textwidth}
+    \splittruleblock{
+      let \(\pctaint{f}{e}{\overline{L}} := \PCT\) in \\
+      \caseoftwo{\(\vt\)}
+                {\(\high\)}{\(\PCT' := \pctaint{f}{e}{(L \cup \overline{L})}\)}
+                {\(\low\)}{\(\PCT' := \PCT\)}
+    }
+    \labeltruleblock{
+      let \(\pctaint{f}{e}{\overline{L}} := \PCT\) in \\
+      \(\PCT' := \pctaint{f}{e}{\overline{L} - L}\)
+    }
+  \end{minipage}
+  \begin{minipage}{0.49\textwidth}
+    \exprsplittruleblock{
+      let \(\pctaint{f}{e}{\overline{L}} := \PCT\) in \\
+      \caseoftwo{\(\vt\)}
+                {\(\high\)}{\(\PCT' := \pctaint{f}{\mathbf{t}::e}{\overline{L})}\)}
+                {\(\low\)}{\(\PCT' := \pctaint{f}{(\mathbf{f}::e}{\overline{L})}\)}
     }
 
-J:  public2 = 42;
+    \exprjointruleblock{
+      let \(\pctaint{f}{b::e}{\overline{L}} := \PCT\) in \\
+      \(\PCT' := \pctaint{f}{e}{\overline{L}}\)
+    }
+  \end{minipage}
+  
+  \caption{SIF Conditionals}
+  \label{fig:SIFconditional Rules}
+\end{figure}
 
-    return public2;
-}
-\end{verbatim}
-  \caption{Leaking via while statements}
-  \label{fig:while}
-  \end{subfigure}
+Of course, code does not generally come with labeled join points, and they must be associated
+with their split points. We introduce additional forms of the if, while, do-while, for, and switch
+statements which carry an additional label, and perform some preprocessing to associate these
+with new labels in the source code. This preprocessing step generates the program's
+control flow graph and, for each branch, identifies its immediate post-dominator. That
+node is labeled with  a fresh identifier, and the same identifier is added to the original
+conditional statement.
+
+%\begin{figure}
+%  \begin{subfigure}{0.49\textwidth}
+%\begin{verbatim}
+%int f(bool secret) {
+%    int public1=1;
+%    int public2;
+%
+%S:  while (secret) {
+%b1:     public1 = 1;
+%        secret = false;
+%    }
+%
+%J:  public2 = 42;
+%
+%    return public2;
+%}
+%\end{verbatim}
+%  \caption{Leaking via while statements}
+%  \label{fig:while}
+%  \end{subfigure}
 %  \begin{subfigure}{0.5\textwidth}
 %    \begin{tikzpicture}
 %      [ initial text={}, initial distance=4em,
@@ -1114,8 +1119,8 @@ J:  public2 = 42;
 %                (b_1) edge [bend right] node  {}  (S);
 %    \end{tikzpicture}
 %  \end{subfigure}
-  
-\end{figure}
+%  
+%\end{figure}
 
 %\begin{figure}
 %  \begin{subfigure}{0.25\textwidth}
@@ -1224,143 +1229,6 @@ J:  public2 = 42;
 %  \label{fig:rest}
 %\end{figure}
 
-\paragraph*{Intransitive SIF}
-
-Our second example involves information from outside of the system ending up somewhere it isn't supposed to.
-
-
-This function sanitizes its input {\tt name}, then appends the result to an appropriate SQL
-query, storing the result in {\tt buf}. But, in the default case, the programmer has accidentally
-used the unsanitized string! This creates the opportunity for an SQL injection attack: a caller
-to this function could (presumably at the behest of an outside user) call it with {\tt field} of
-3 and {\tt name} of ``Bobby; drop table;''.
-
-In this example, we want to implement an {\it intransitive integrity} SIF policy:
-we wish to allow {\tt name} to influence the result of {\tt sanitize}, naturally, and the result
-of {\tt sanitize} to influence the value passed to {\tt sql\_query}, but we do not wish for
-{\tt name} to influence {\tt sql\_query} directly.
-
-In this context, we consider the function {\tt scanf} to be our information source,
-{\tt sql\_query} as the ``sink'' that we don't want it to flow to, and {\tt sanitize} as
-clearing the taint off of data it touches.
-
-Tags are similar to our previous example, except for removing \(\vol\). The PC Tag tracks the current function
-identifier, a stack of expression taints \(ets\), and a set of labels, \(sts\).
-\(ets\) tracks how many defered expression evaluations depend on tainted values. [TODO: slightly off].
-Each label \(L\) in \(sts\) indicates that until reaching label \(L\), the state itself has been
-influenced by {\tt scanf}.
-
-\[\color{blue}
-\begin{aligned}
-  \tau ::= & \vtaint{} \\
-  & \pctaint{f}{ets}{\overline{L}} & ets \in \mathbb{N} \\
-  & \N \\
-\end{aligned}\]
-
-We define the {\em join} operation again.
-
-\[\gentag_1 \sqcup \gentag_2 \triangleq
-\begin{cases}
-  \vtaint{} &
-  \textnormal{if } \gentag_1 = \vtaint{} \textnormal{ or }
-  \gentag_2 = \vtaint{} \\
-  \vtaint{} &
-  \textnormal{if } \gentag_1 = \pctaint{f}{ets}{sts} \textnormal{ and either }
-  ets > 0 \textnormal{ or } |sts| > 0\\
-  \vtaint{} &
-  \textnormal{if } \gentag_2 = \pctaint{f}{ets}{sts} \textnormal{ and either }
-  ets > 0 \textnormal{ or } |sts| > 0\\
-  \N & \textnormal{otherwise} \\
-\end{cases}\]
-%
-
-And once again we wish to define the ``no-higher-than'' relation. In this case,
-we want to avoid user input from {\tt scanf} flowing to {\tt sql\_query}.
-So we will define that a PC Tag in the function \(\mathtt{sql\_query}\), is strictly
-higher security than anything tainted.
-
-\[\gentag_1 \sqsubseteq \gentag_2 \triangleq
-\begin{cases}
-  \mathbf{f} & \textnormal{if } \gentag_1 = \vtaint{}
-  \textnormal{ and } \gentag_2 = \pctaint{\mathtt{query}}{\_}{\_} \\
-  \mathbf{t} & \textnormal{otherwise} \\
-\end{cases}\]
-
-\paragraph{Tainting and Cleaning Memory}
-
-In this version of the policy we care primarily about loads and stores.
-External data are first tainted by {\tt scanf} when they are stored into memory,
-then (ideally) {\tt sanitize} processes them and stores a clean version into its
-destination buffer. Finally, if {\tt sql\_query} is exposed to tainted data, it will be
-by loading from memory.
-
-%A function argument or return value can be either a source or a sink.
-%So, when they are processed by the argument and return rules,
-%we must both check that the value being passed or returned is not tainted by a forbidden
-%source, and then add the new source to its taint. Recall that we want the first argument to
-%the {\tt sanitize} function to ``forget'' the influence of {\tt name}.
-
-\storetruleblock{let \(\vt' = \PCT \sqcup \vt \sqcup \pt\) in}{\(\PCT\)}
-                {\(\left\lbrace \begin{tabular}{l r}
-                    \(\vtaint{}\) & if \(f = \mathtt{scanf}\) \\
-                    \(\N\) & if \(f = \mathtt{sanitize}\) \\
-                    \(\vt'\) & otherwise \\
-                  \end{tabular} \right.\)}
-                {\(\lts\)}
-
-\loadtruleblock{\(\mathbf{assert} ~ \PCT \sqcup \vt \sqcup \pt \sqsubseteq \PCT\) \\
-  \(\vt' := \vt\)}
-                
-
-The remainder of the policy resembles our first SIF example.
-
-%\paragraph*{PC Tag Taint}
-
-%It now becomes slightly more complicated to keep track of the join-point labels
-%associated with various sources. [TODO: fix the alignment here.]
-
-%\begin{minipage}[t]{.25\textwidth}
-%\[\begin{aligned}
-%\truledef{\splitt}
-%\letin{\pctaint{f}{\overline{(L,\sigma)}} := \PCT}
-%\letin{\vtaint{\sigma} := \vt}
-%\settag{\PCT'}{\pctaint{f}{(\overline{(L,\sigma)} \cup (L,\sigma))}}
-%\end{aligned}\]
-%\end{minipage}
-%\begin{minipage}[t]{.7\textwidth}
-%\[\begin{aligned}
-%\truledef{\labelt}
-%\letin{\pctaint{f}{\overline{(L,\sigma)}} := \PCT}
-%\settag{\PCT'}{\pctaint{f}{\{(L',\sigma) \mid (L',\sigma) \in \overline{(L,\sigma)} \land L \not = L'\}}}
-%\end{aligned}\]
-%\end{minipage}
-
-%The branching constructs are rather complicated, involving multiple steps
-%and manipulations of the continuation that are not that relevant to their control
-%points. Rather than give their semantics in full, it suffices to identify which
-%transitions contain \(\mathbf{SplitT}\) control points. In \cref{fig:rest}, these
-%are the transitions from the state marked \(S\). Their semantics are given in full
-%in the appendix.
-
-\paragraph*{Realizing IFC}
-
-In order to implement an IFC policy, we need to specify the rules that it needs to enforce.
-The positive here is that the rules are not dependent on one another (with the exception of
-declassification rules), and default to permissiveness when no rule is given. We assume that
-the user would supply a separate file consisting of a list of triples: the source, the sink,
-and the type of rule. This is then translated into the policy.
-
-The other implementation detail to consider are the label tags. These resemble
-instruction tags, and that is exactly how they would be implemented: as a special instruction
-tag on the appropriate instruction, which might be an existing instruction or a specially
-added no-op, that the processor handles by introducing a tag corresponding to that label.
-
-It remains to generate those labels. For purposes of an IFC policy, we first generate the program's
-control flow graph. Then, for each if, while, do-while, for, and switch statement, we identify the
-immediate post-dominator in the graph, and wrap it in a label statement with a fresh identifier.
-That identifier is also added as a field in the original conditional statement. The tags
-associated with the labels are initialized at program state---in the case of IFC, these defaults
-declare that there are no secrets to lower when it is reached.
 
 \section{Implementing Tagged C with PIPE}
 \label{sec:optionals}
@@ -1374,7 +1242,6 @@ Instruction tags are statically determined at compile-time, so they can carry da
 control points in the corresponding assembly. This means that PIPE can emulate any given Tagged C
 policy by running two policies in parallel: a basic stack-and-function-pointer-safety policy to mimic Tagged C's
 high-level control-flow, and the source-level policy as written.
-\amn{automatically run?} \sna{I don't understand the question, but perhaps this edit helps?}
 
 Chhak et al.'s general strategy for mapping Tagged C's tag rules sometimes requires adding extra
 instructions to the generated code. A Tagged-C control point
