@@ -26,70 +26,80 @@
 \begin{abstract}
 Today's computing infrastructure is built atop layers of legacy C code, often
 insecure, poorly understood, and/or difficult to maintain.
-These foundations may be shored up with dynamic security enforcement,
-which spares legacy code owners from having to modify their code.
+These foundations may be shored up with dynamic security enforcement.
 % and potentially introduce regressions.
-Tagged C is a C variant with a built-in {\em tag-based reference monitor} for use in expressing
-a variety of dynamic security policies and enforcing them with compiler and hardware support.
+Tagged C is a C variant with a built-in {\em tag-based reference monitor}.
+It can express a variety of dynamic security policies and enforce them with
+compiler and/or hardware support.
 
-Tagged C is comprehensive in the policies that it can support. In this paper we will discuss
-{\em memory safety}, {\em compartmentalization}, and {\em secure information flow} (SIF)
-policies. It is flexible in covering the tradeoff between conservative policies that may
-halt too many programs and more permissive ones. And as a source language, it should be
-more accessible to C programmers than existing assembly-level tag-based reference monitors.
-
+Tagged C expresses security policies at the level familiar to C developers: that
+of the C source code rather than the ISA. It is comprehensive in supporting different
+approaches to security as well as more or less restrictive policies. We demonstrate
+this range by providing examples of {\em memory safety}, {\em compartmentalization},
+and {\em secure information flow} (SIF) policies. We also give a semantics and reference
+interpreter for Tagged C.
 \end{abstract}
 
 \section{Introduction}
 Many essential technologies rely on new and old C code. 
-Operating systems (Linux, Windows, OSX, BSD), databases (Oracle, sqlite3), the internet \&
-web (Apache, NGNIX, NetBSD, Cisco IOS), the Internet of Things (IoT), and the 
+Operating systems (Linux, Windows, OSX, BSD), databases (Oracle, sqlite3), the internet
+(Apache, NGNIX, NetBSD, Cisco IOS), the Internet of Things (IoT), and the 
 embedded devices that run our homes and hospitals are built in and on C \cite{Munoz:PoweredbyC}. 
 C is not a relic; more than a third of professional programmers report active developing
-in C today \cite{stackoverflow22:dev-survey}. The safety of public and private systems we depend on every day
-in turn depends on the security of their underlying C codebases. Insecurity might take the form
-of undefined behavior such as memory errors, of logic errors such as sql injection or other
-input-sanitization flaws, or of larger-scale architectural flaws that over-provision components of the
-system with privilege.
+in C today \cite{stackoverflow22:dev-survey}. The safety of these essential technologies
+depends on the security of their underlying C codebases. Insecurity might take the form of
+%(1)
+undefined behavior such as memory errors (e.g. buffer overflows, heap leaks, double-free),
+%(2)
+logic errors (e.g. sql injection, input-sanitization flaws), or
+%(3)
+larger-scale architectural flaws (e.g. over-provisioning access rights.)
 
 Although static analyses can detect and mitigate many C insecurities, the last line of defense against
-undetected or unfixable vulnerabilities is dynamic enforcement at runtime. Ideally an engineer can
-tune enforcement to the security needs of the system, rather than apply one-size-fits-all conservative
-restrictions. To allows developers to define flexible security policies in terms of a familiar source language,
-we introduce Tagged C: a general-purpose dynamic tag-based enforcement language.
-Applications of Tagged C include giving precise definition to undefined behaviors (UBs) involving memory,
-specifying detailed information flow policies, and enforcing arbitrary mandatory access control tables.
-Importantly, a security policy can be modified without recompilation unless it is optimized as described in
-\cref{sec:optionals}.
+undetected or unfixable vulnerabilities is runtime enforcement. Ideally an engineer can
+tune enforcement to the security needs of the system, rather than apply conservative, one-size-fits-all 
+restrictions. 
+We introduce Tagged C: a general-purpose dynamic tag-based enforcement language
+that allows developers to define flexible security policies in terms of a familiar source language.
+Applications of Tagged C include defining undefined behaviors (UBs) involving memory,
+specifying detailed information flow policies, and enforcing arbitrary mandatory access control rules. % OK to still say this when we aren't showing it?
+%Importantly, a security policy can be modified without recompilation unless it is optimized as described in
+%\cref{sec:optionals}.
 
-The novelty of Tagged C is that it is a \emph{general-purpose} scheme for specifying security
-policies at the source level, using a tag-based reference monitor.
-This style of monitor associates a metadata tag with the data in the underlying system,
-and throughout execution it updates these tags according to a set a predefined rules, or halts if
-the program would violate a rule. This is the underlying concept of PIPE, an ISA extension that
-implements a reference monitor in hardware, as well as similar systems such as ARM MTE and
-[that thing from Binghamton]. While our scheme is general and could be implemented in software,
-we are motivated by PIPE and aim for compatibility with it as a likely hardware target.
+Tagged C's novel approach is that it is a \emph{general-purpose} scheme for specifying security
+policies at the \emph{source level}, using a tag-based reference monitor.
+This style of monitor associates a metadata tag with the data in the underlying system.
+Throughout execution it updates these tags according to a set a predefined rules, or halts if
+the program would violate a rule. We are motivated by PIPE (Programmable Interlocks for Policy Enforcement)
+\cite{}, an ISA extension that implements such a reference monitor in hardware. 
+While our scheme is general and could be implemented in software, we aim for compatibility
+with PIPE as a likely hardware target. PIPE is notable among similar systems such as ARM MTE
+and [that thing from Binghamton] in that its tags are very large---typically the size of words
+in the underlying ISA. This makes PIPE extremely flexible and able to run multiple policies at once.
+TODO: non-recompilation?]
 
 Tagged C consists of an underlying semantics that establishes the baseline concrete behavior of programs
-with no policies, and a set of {\em control points} at which the semantics consult a user defined set of
+with no policies, and a set of {\em control points} at which the semantics consult a user-defined set of
 {\em tag rules}. For convenience we build our underlying semantics on the CompCert C semantics, which are formalized 
 as part of the CompCert verified compiler \cite{Leroy09:CompCert}. We provide a reference interpreter
-also based on that of CompCert, for use executing prototype policies.
+also based on that of CompCert, for executing prototype policies. Tag rules are written directly as Gallina
+functions.
 
 \paragraph{Contributions}
 
 We offer the following contributions:
 
 \begin{itemize}
-\item A full formal semantic definition for Tagged C, formalized in Coq
 \item The design of a comprehensive set of {\em control points} at which the language interfaces with the policy
-\item A Tagged C interpreter, implemented in Coq and extracted to Ocaml
 \item Tagged C policies implementing (1) compartmentalization,
   (2) a realistic, permissive memory model from the literature (PVI),
   and (3) Secure Information Flow (SIF)
+\item A full formal semantic definition for Tagged C, formalized in Coq, describing how the control points
+  interact with programs
+\item A Tagged C interpreter, implemented in Coq and extracted to Ocaml
 \end{itemize}
 
+[TODO: rework]
 In the next section, we give a high-level introduction of metadata-tagging: how it works,
 and how its use can improve security. Then in \cref{sec:semantics}, we briefly discuss the
 language as a whole, before moving into policies in \cref{sec:policies}. Finally, in
@@ -98,9 +108,10 @@ which the design meets our goals of flexibility and applicability to realistic
 security concerns.
 
 \section{What is Metadata Tagging?}
-  
-Consider a very simple security requirement: ``do not leak the password.''
-For simplicity, we will suppose that {\tt pwd} is an integer in this case, and consider
+
+[TODO: lots of work]
+Consider a seemingly straightforward security requirement: ``do not leak the password.''
+For simplicity, we will suppose that {\tt passkey} is an integer in this case, and consider
 a number of ways that it might be leaked (\cref{fig:exampleleak}).
 In example (a), we store it in a local variable, then pass it to {\tt printf}.
 In (b), we perform some arithmetic on it before printing it, but an observer could
@@ -342,6 +353,7 @@ Then, when it comes time to write to {\tt mm}, \(\storetname\) will fail rather 
 in a high context.
 
 \section{The Language, Informally}
+\label{sec:language}
 
 Tagged C uses the full syntax of CompCert C \cite{Leroy09:CompCert} with minimal modification (\cref{fig:syntax}).
 There are two notable syntactical differences in the language, relative to CompCert C:
@@ -367,13 +379,25 @@ The choice of control points and their associations with tag rules, as well as t
 signatures, are a crucial design element. Our proposed design is sufficient for the three classes of
 policy that we explore in this paper, but it may not be complete.
 
-\section{Tags and Policies}
-\label{sec:policies}
+\paragraph*{Parts of a policy}
 
-Tagged C can enforce a wide range of policies, as follows.
-A policy consists of a tag type \(\tau\), a default tag inhabiting that type, and an instantiation
-of each tag rule identified in \cref{fig:controlpoints}. Tags in gray boxes are optional, as discussed
-in \cref{sec:optionals}.
+A policy consists of instantiations of the tag type
+and each of the tag rules associated with control points in the semantics. Table \cref{figcontrolpoints}
+identifies the full collection of control points, their tag rules, and the inputs and outputs of the tag rules.
+The tag type \(\tau\) must be inhabited by a default tag.
+
+\paragraph*{Identifiers}
+
+Identifiers are a C source-level construct, and a policy designer might want to operate on them,
+so we embed them in tags. These are called {\em name tags}. We give name tags to the
+following constructions and identify them as follows:
+\begin{itemize}
+\item Function identifiers, \(\FN\)
+\item Function arguments, \(\AN\)
+\item Global variables, \(\GN\)
+\item Labels, \(\LN\)
+\item Types, \(\TN\)
+\end{itemize}
 
 \begin{table}[t]
   \begin{tabular}{|l|l|l|l|}
@@ -410,25 +434,26 @@ in \cref{sec:optionals}.
   \label{fig:controlpoints}
 \end{table}
 
-\paragraph*{Name Tags}
 
-When we want to define a per-program policy, we need to be able to attach tags to the program's
-functions, globals, and so on. We do this by automatically embedding their identifiers in tags,
-which are available to all policies. These are called {\em name tags}. We give name tags to the
-following constructions and identify them as follows:
-\begin{itemize}
-\item Function identifiers, \(\FN\)
-\item Function arguments, \(\AN\)
-\item Global variables, \(\GN\)
-\item Labels, \(\LN\)
-\item Types, \(\TN\)
-\end{itemize}
+\section{Tags and Policies}
+\label{sec:policies}
+
+The heart of Tagged C is in its security policies. Using the control points shown in \cref{sec:language},
+we will walk through three example policies: PVI memory safety, compartmentalization, and
+secure information flow.
+
+[TODO: discussion of combining policies]
 
 \subsection{PVI Memory Safety}
 \label{sec:PVI}
 
-Our first policy is a form of memory safety that uses the ``provenance via integer'' (PVI) memory model
-of Memarian et al. \cite{Memarian19:ExploringCSemantics}.
+Memory safety is defined relative to a {\em memory model}---a formal or informal description of
+how a high-level language handles memory. The memory model associated with the C standard leaves
+many behavior undefined, including some that are in use in practice \cite{Memarian16:DeFacto}.
+Memarian et al. have proposed two alternatives that define useful subsets of these behaviors
+\cite{Memarian19:ExploringCSemantics}. We choose their ``provenance via integer'' (PVI) memory model
+as our example. 
+
 Variations of memory safety have been enforced in PIPE already, but usually using
 an ad hoc memory model. PVI has the virtue of giving definition to many memory UBs in which a pointer is
 cast to an integer, subjected to various arithmetic operations, and cast back to a pointer.
@@ -436,40 +461,14 @@ Their second memory model, {\it PNVI} (provenance not via integer), is even more
 We can also enforce it in Tagged C, though its security value is questionable, and we will
 not describe it in this paper.
 
-When we say that we want to enforce this specific memory model, we mean that our policy should
-not failstop on any program that is defined in PVI, and that it should failstop if and when a program
-reaches undefined behavior. So, in the following examples, we would like {\tt mark} to proceed without
-failing, while {\tt overflow} should failstop.
-
-\begin{minipage}{0.65\textwidth}
-\begin{verbatim}
-int mark(uintptr ptr) {
-  if (!(ptr & 0x00000001))
-    *(int*) (ptr | 0x11111110) = 0;
-
-  return ((uintptr) ptr | 0x00000001);
-}
-\end{verbatim}
-\end{minipage}
-\begin{minipage}{0.34\textwidth}
-\begin{verbatim}
-void overflow() {
-  int[3] x;
-  int y;
-  *x = 222222;
-  *(x+10) = 333333;
-}
-\end{verbatim}
-\end{minipage}
-
-Both code snippets are undefined behavior in C, but {\tt mark} is a common low-level
-idiom \cite{Memarian16:DeFacto}, seen for example in implementations of Cheney's garbage collection algorithm.
-Taking advantage of the fact that objects in memory are four-aligned, it
-uses the lower-order bits of the pointer to store a flag. In this case, it first checks
-the flag, and if it is not set, it zeroes the memory and then sets it. This is generally
-considered to be harmless, in contrast to {\tt overflow}, where {\tt y} is being overwritten
-due to being adjacent in memory to {\tt x}. Here we show the state of the local environment
-(mapping identifiers to addresses and pointer tags) and memory:
+For a policy to enforce PVI, it should not failstop on any program that is defined in PVI.
+However, it should failstop if and when a program reaches UB. For example, low-level code
+that uses the lower-order bits of a pointer to store a flag (\cref{fig:mark}) should
+execute successfully. This idiom appears often in code where a pointer is associated with a flag,
+such as Cheney's garbage collection algorithm \cite{} and is generally considered harmless.
+But violations such as buffer overflows (\cref{fig:overflow}) in which a load, store, or free would
+occur outside of the proper range are undefined in PVI and must failstop. In \cref{fig:overflow},
+memory is arranged so that the overflow ends up overwriting the variable {\tt y}.
 
 \begin{tikzpicture}[every text node part/.style={align=left}]
   \node[matrix, ampersand replacement=\&, anchor=west] (code)
@@ -508,15 +507,15 @@ due to being adjacent in memory to {\tt x}. Here we show the state of the local 
          \node[anchor=north] {\memory{\(96\)}{\(333333\)}{\(\vt_4\)}{\(\lt_4\)}};
          \\
        };
-
-       
 \end{tikzpicture}
 
-We now show separate location tags on each of the four bytes in each word. In the inputs and outputs
-of a tag rule, we write this \(\lts\), indicating that the rule consumes and produces multiple locations tags.
-If the PC Tag is \(\PCT_0\) when we enter the function,
-our initial tags come from \(\PCT_1,\pt_1,\vt_1,\lts_1 \leftarrow \localtname(\PCT_0,\TN[int])\)
-followed by \(\PCT_2,\pt_2,\vt_2,\lts_2 \leftarrow \localtname(\PCT_1,\TN[int])\).
+%We now show separate location tags on each of the four bytes in each word. In the inputs and outputs
+%of a tag rule, we write this \(\lts\), indicating that the rule consumes and produces multiple locations tags.
+
+\Cref{fig:overflow} shows the initial state of memory on entry to {\tt overflow} and the state after
+the assignment to {\tt *(x+3)}, assuming that the PC Tag is \(\PCT_0\) at the call. The tags associated
+with {\tt x} (\(\PCT_1,\pt_1,\vt_1,\lts_1\)) come from \(\localtname(\PCT_0,\TN[int])\) and those
+associated with {\tt y} come from \(\localtname(\PCT_1,\TN[int])\).
 
 The write to {\tt *(x+3)} is of particular interest. We tag the result of {\tt x+3}
 with \(\pt' \leftarrow \binoptname(\PCT_2, \pt_1, \constt)\); then for the store itself,
@@ -1254,7 +1253,7 @@ take optional parameters or return optional results. We will explain how the rul
 implemented in the target if the options are used.
 \sna{I think we have been leaning toward doing so in more detail here, not threaded through the
   rest of the paper. So that's a TODO.}
-Optional inputs and outputs are marked with \(\optional{boxes}\). If a policy does not make use of the options, it will
+Optional inputs and outputs are marked with boxes. If a policy does not make use of the options, it will
 be sound to compile without the extra instructions.
 
 \section{Evaluation}
