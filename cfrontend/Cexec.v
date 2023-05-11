@@ -801,8 +801,10 @@ Inductive reduction: Type :=
 | Lred (rule: string) (l': expr) (m': mem)
 | Rred (rule: string) (pct': tag) (r': expr) (m': mem) (t: trace)
 | Callred (rule: string) (fd: fundef) (args: list atom) (tyres: type) (m': mem)
-| Stuckred
-| Failstopred
+| Stuckred (*anaaktge enters impossible state or would have to take impossible step. 
+              think like a /0 *)
+| Failstopred 
+           (* anaaktge - for tag fail stops add things here. dont add it to stuck *)
 .
 
 Section EXPRS.
@@ -1060,9 +1062,9 @@ Fixpoint step_expr (k: kind) (pct: tag) (a: expr) (m: mem): reducts expr :=
       match is_loc l1, is_val r2 with
       | Some (ofs, pt1, bf, ty1), Some(v2, vt2, ty2) =>
           check type_eq ty1 ty;
-          do w',t,vvt,lts <- do_deref_loc w ty m ofs pt1 bf; 
-          let (v1,vt1) := vvt in
-          trule vt' <- LoadT pct pt1 vt1 lts;
+          do w',t,vvt,lts <- do_deref_loc w ty m ofs pt1 bf; (* anaaktge assn op *)
+          let (v1,vt1) := vvt in (* grabbing tag *)
+          trule vt' <- LoadT pct pt1 vt1 lts; (* invoking the loadT rule *)
           let r' := Eassign (Eloc ofs pt1 bf ty1)
                            (Ebinop op (Eval (v1,vt') ty1) (Eval (v2,vt2) ty2) tyres) ty1 in
           topred (Rred "red_assignop" pct r' m t)
@@ -2264,7 +2266,17 @@ Definition do_step (w: world) (s: Csem.state) : list transition :=
   | State f pct Sskip (Ktag rule k) e m =>
       match rule pct with
       | Some pct' => ret "step_tag_ok" (State f pct' Sskip k e m)
-      | None => ret "step_tag_fail" (Failstop)
+      | None => ret "step_tag_fail" (Failstop) (* anaaktge see rule being invoked 
+              this is a control point. you can see it called on pc tag, comes back
+              with new pc tag or none 
+              return failstop w/ info 
+              call to rule needs to return something 
+              where in the program it occured ?
+              yes and i want the rule
+              module fn interact that returns 
+              API 
+              
+              rule from ktag is the ifjoint at line 2219*)
       end
 
   | State f pct (Sifthenelse a s1 s2) k e m =>

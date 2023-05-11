@@ -11,6 +11,9 @@
 (* *********************************************************************)
 
 (* Interpreting CompCert C sources *)
+(* anaaktge - code in cexec invoked from here 
+  do step fn 
+*)
 
 open Format
 open Camlcoq
@@ -557,9 +560,9 @@ let do_step p prog ge time s w =
       then begin
         pp_set_max_boxes p 1000;
         if s = Csem.Failstop 
-        then begin
+        then begin (* anaaktge printing in the failstop *)
                 fprintf p "@[<hov 2>Failstop@]@.";
-                exit 0
+                exit 0 (* anaaktge *)
         end
         else begin
                 fprintf p "@[<hov 2>Stuck state: %a@]@." print_state (prog, ge, s);

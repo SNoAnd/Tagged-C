@@ -623,7 +623,7 @@ Inductive state: Type :=
     (k: cont)
     (m: mem) : state
 | Stuckstate                          (**r undefined behavior occurred *)
-| Failstop.                           (**r tag failure occured *)
+| Failstop.                           (**r tag failure occured  anaaktge might be adding it here*)
 
 (** Find the statement and manufacture the continuation
   corresponding to a label. *)

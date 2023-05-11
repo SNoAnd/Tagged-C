@@ -6,7 +6,17 @@ Require Import Values.
 
 Require Import List. Import ListNotations.
 
-Module Type Policy.
+Module Type Policy. (*anaaktge this is the interface for rules
+                      probably want sucess with option
+                      fail w/ reason 
+                      None is probably not ok. 
+                      start with where 
+                      rule itself might not be structured
+                      want something to convert tags to string
+                      dont want it used in galina 
+                      terrible hack - give trival def,
+                      then mod the ocaml code yourself 
+                       *)
 
   Parameter tag : Type.
   Parameter tag_eq_dec : forall (t1 t2:tag), {t1 = t2} + {t1 <> t2}.
