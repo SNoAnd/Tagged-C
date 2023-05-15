@@ -545,26 +545,23 @@ Tagged C's underlying control-flow protections prevent them from being tampered 
 \subsection{Compartmentalization}
 \label{sec:comp}
 % notes ended up below, in the coarse grained section
-In a perfect world, all C programs would be memory safe. But it is unfortunately common
-for a codebase to contain undefined behavior that will not be fixed, including memory undefined
-behavior. This may occur because developers intentionally use low-level idioms that are UB
-\cite{Memarian16:DeFacto}, or because the cost and risk of regressions may make it
-undesirable to fix bugs in older code,
-as opposed to code under active development that is held to a higher standard \cite{Bessey10:Coverity}.
+In a perfect world, all C programs would be memory safe. This world is imperfect and it is common
+for a codebase to contain undefined behavior that will not be fixed. Developers intentionally use 
+low-level idioms that are UB \cite{Memarian16:DeFacto}, or the cost and risk of regressions may make it
+undesirable to fix bugs in older code \cite{Bessey10:Coverity}.
 
-A compartmentalization policy isolates potentially risky code, such as code with known UB,
-from safety-critical code, minimizing the damage that can be done if a vulnerability is exploited.
-It may also contain restricts on how code in one part of the system may interact with another
-even in the absence of language-level errors---ideally, restricting each component to the
+A compartmentalization policy can isolate potentially risky code, such as code with known UB,
+from safety-critical code, and enforce the principle of least privledge. 
+It limits the possible damage from exploitation to the containing compartment.
+It may also restrict how code in one compartment may interact with another
+even in the absence of language-level errors. Ideally, each component has only the
 {\em least privilege} necessary to complete its task.
-This common form of protection can be implemented at many levels. It is often built
+This popular defense can be implemented at many levels. It is often built
 into a system's fundamental design, like a web browser sandbox untrusted javascript.
-But for our use-case, we consider a compartmentalization scheme being added to the system
-after the fact.
-
-Let's assume that we have a set of compartment identifiers, ranged over by \(C\), and a mapping
-from function identifiers to compartments, \(\mathit{comp}(f)\). This mapping must be provided by
-a security engineer.
+For our use-case, we consider a compartmentalization scheme being added to the system
+after development and we have a set of identifiers and a map provided by 
+a security engineer. The compartmetn identiifers are ranged over by \(C\), and function identifiers
+are mapped to compartments by \(\mathit{comp}(f)\). 
 
 \paragraph{Coarse-grained Protection}
 
@@ -577,9 +574,9 @@ a security engineer.
 %   else cannot be shared. unique colors to defeat forced pointer arthimetic. hybrid system
 %   roughly the effect of containing things, but wihtout the issues of the MAC
 %
-The core of a compartmentalization scheme is once again memory protection. For the simplest version,
-we will enforce that memory allocated by a function is only accessible by functions that share its
-compartment. To do that, we need to keep track of which compartment we're in, using the PC Tag.
+The core of a compartmentalization scheme is typicall memory protection. In the simplest version, 
+memory allocated by a function is only accessible by functions within its
+compartment. Thus the system keeps track of the active compartment, using the PC tag.
 
 Calls and returns each take two steps: first to an intermediate call or return state, and
 then to the normal execution state, as shown in \cref{fig:functions} with some function \(f\)
