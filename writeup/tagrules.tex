@@ -1,3 +1,12 @@
+\newcommand{\truleblock}[2]
+           {
+             \colorbox{blue!10}{
+             \begin{tabular}{l}
+               #1 \\
+               #2 \\
+             \end{tabular}}
+           }
+
 \newcommand{\malloctname}{\color{blue} \mathbf{MallocT}}
 \newcommand{\malloctargs}{\PCT, \FN, \FN[f'], \vt}
 \newcommand{\malloctres}{\PCT',\pt,\vt,\overline{\lt}}
@@ -5,12 +14,7 @@
 
 \newcommand{\malloctruleblock}[1]
            {
-             \colorbox{blue!10}{
-             \begin{tabular}{l}
-               \(\malloct\) \\
-               #1 \\
-               \{ \(\PCT', \pt, \vt, \lts\) \}\\
-             \end{tabular}}
+             \truleblock{\(\malloct\)}{#1}
            }
 
 \newcommand{\localtname}{\color{blue} \mathbf{LocalT}}
@@ -20,17 +24,19 @@
 
 \newcommand{\localtruleblock}[1]
            {
-             \colorbox{blue!10}{
-               \begin{tabular}{l}
-                 \(\localt\) \\
-                 % body
-                 #1 \\
-                 % outputs
-                 \{ \(\localtres\) \} \\
-               \end{tabular}
-             }
+             \truleblock{\(\localt\)}{#1} \\
            }
-           
+
+\newcommand{\accesstname}{\color{blue} \mathbf{AccessT}}
+\newcommand{\accesstargs}{\PCT,\vt}
+\newcommand{\accesstres}{\vt'}
+\newcommand{\accesst}{\accesstname(\accesstargs)}
+
+\newcommand{\accesstruleblock}[1]
+           {
+             \truleblock{\(\accesst\)}{#1}
+           }
+
 \newcommand{\loadtname}{\color{blue} \mathbf{LoadT}}
 \newcommand{\loadtargs}{\PCT, \pt, \vt, \overline{\lt}}
 \newcommand{\loadtres}{\vt'}
@@ -38,33 +44,27 @@
 
 \newcommand{\loadtruleblock}[1]
            {
-             \colorbox{blue!10}{
-               \begin{tabular}{l}
-                 \(\loadt\) \\
-                 % body
-                 #1 \\
-                 % output
-                 \{ \(\loadtres\) \} \\
-               \end{tabular}
-             }
+             \truleblock{\(\loadt\)}{#1}
            }
 
+\newcommand{\assigntname}{\color{blue} \mathbf{AssignT}}
+\newcommand{\assigntargs}{\PCT,\vt_1,\vt_2}
+\newcommand{\assigntres}{\PCT',\vt'}
+\newcommand{\assignt}{\assigntname(\assigntargs)}
+
+\newcommand{\assigntruleblock}[1]
+           {
+             \truleblock{\(\assignt\)}{#1}
+           }
+           
 \newcommand{\storetname}{\color{blue} \mathbf{StoreT}}
-\newcommand{\storetargs}{\PCT, \pt, \vt_1, \vt_2, \overline{\lt}}
-\newcommand{\storetres}{\PCT',\vt',\overline{\lt}'}
+\newcommand{\storetargs}{\PCT, \pt, \vt, \lt}
+\newcommand{\storetres}{\PCT',\vt',\lt'}
 \newcommand{\storet}{\storetname(\storetargs)}
 
 \newcommand{\storetruleblock}[1]
            {
-             \colorbox{blue!10}{
-               \begin{tabular}{l}
-                 \(\storet\) \\
-                 % body
-                 #1 \\
-                 % outputs
-                 \{ \(\storetres\) \} \\
-               \end{tabular}
-             }
+             \truleblock{\(\storet\)}{#1}
            }
 
 \newcommand{\unoptname}{\color{blue} \mathbf{UnopT}}
@@ -92,13 +92,7 @@
 
 \newcommand{\binoptruleblock}[1]
            {
-             \colorbox{blue!10}{
-               \begin{tabular}{l}
-                 \(\binopt\) \\
-                 #1 \\
-                 \{ \(\binoptres\) \} \\
-               \end{tabular}
-             }
+             \truleblock{\(\binopt\)}{#1}
            }
 
 \newcommand{\calltname}{\color{blue} \mathbf{CallT}}
@@ -124,15 +118,9 @@
 \newcommand{\argtres}{\PCT', \pt, \vt',\lts}
 \newcommand{\argt}{\argtname(\argtargs)}
 
-\newcommand{\argtruleblock}[2]
+\newcommand{\argtruleblock}[1]
            {
-             \colorbox{blue!10}{
-               \begin{tabular}{l}
-                 \(\argt\) \\
-                 #1 \\
-                 \{ \(\argtres\) \} \\
-               \end{tabular}
-             }
+             \truleblock{\(\argt\)}{#1}
            }
            
 \newcommand{\rettname}{\color{blue} \mathbf{RetT}}
@@ -151,36 +139,24 @@
              }
            }
 
-\newcommand{\caseofthree}[7]
-           {
-             \begin{tabular}{l c l}
-               \multicolumn{3}{l}{\textnormal{case } #1 \textnormal{ of}} \\
-               #2 & \(\Rightarrow\) & #3 \\
-               #4 & \(\Rightarrow\) & #5 \\
-               #6 & \(\Rightarrow\) & #7 \\
-             \end{tabular}
-           }
-
-\newcommand{\caseoftwo}[5]
-           {
-             \begin{tabular}{l c l}
-               \multicolumn{3}{l}{\textnormal{case } #1 \textnormal{ of}} \\
-               #2 & \(\Rightarrow\) & #3 \\
-               #4 & \(\Rightarrow\) & #5 \\
-             \end{tabular}
-           }
-
-           
-%%% Tag Rules %%%
-
 \newcommand{\consttname}{\color{blue} \mathbf{ConstT}}
 \newcommand{\consttres}{\vt}
 \newcommand{\constt}{\consttname}
+
+\newcommand{\consttruleblock}[1]
+           {
+             \truleblock{\(\constt\)}{#1}
+           }
 
 \newcommand{\globaltname}{\color{blue} \mathbf{GlobalT}}
 \newcommand{\globaltargs}{\GN, \TN}
 \newcommand{\globaltres}{\pt,\vt,\overline{\lt}}
 \newcommand{\globalt}{\globaltname(\globaltargs)}
+
+\newcommand{\globaltruleblock}[1]
+           {
+             \truleblock{\(\globalt\)}{#1}
+           }
 
 \newcommand{\dealloctname}{\color{blue} \mathbf{DeallocT}}
 \newcommand{\dealloctargs}{\PCT, \TN}
@@ -219,13 +195,7 @@
 
 \newcommand{\splittruleblock}[1]
            {
-             \colorbox{blue!10}{
-               \begin{tabular}{l}
-                 \(\splittname(\PCT,\vt,L)\) \\
-                 #1 \\
-                 \{ \(\splittres\) \} \\
-               \end{tabular}
-             }
+             \truleblock{\(\splitt\)}{#1}
            }
 
 \newcommand{\exprsplittname}{\color{blue} \mathbf{ExprSplitT}}
@@ -288,3 +258,22 @@
 \newcommand{\fieldt}{\fieldtname(\fieldtargs)}
 
 %%%%%%%%%%%%%%%%%
+
+\newcommand{\caseofthree}[7]
+           {
+             \begin{tabular}{l c l}
+               \multicolumn{3}{l}{\textnormal{case } #1 \textnormal{ of}} \\
+               #2 & \(\Rightarrow\) & #3 \\
+               #4 & \(\Rightarrow\) & #5 \\
+               #6 & \(\Rightarrow\) & #7 \\
+             \end{tabular}
+           }
+
+\newcommand{\caseoftwo}[5]
+           {
+             \begin{tabular}{l c l}
+               \multicolumn{3}{l}{\textnormal{case } #1 \textnormal{ of}} \\
+               #2 & \(\Rightarrow\) & #3 \\
+               #4 & \(\Rightarrow\) & #5 \\
+             \end{tabular}
+           }
