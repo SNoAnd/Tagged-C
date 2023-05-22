@@ -135,22 +135,24 @@ tag rules.
        {
          \node[anchor=north] {\(f\)}; \&
          \node[anchor=north] {\(\mathtt{x} \mapsto \vundef @ \vt_1\) \\ \(\mathtt{psk} \mapsto i @ \vt_2\)}; \&
-         \node[anchor=north] {\(\vt_1 \leftarrow \localtname(f)\) \\ \(\vt_2 \leftarrow \argtname(\vt_0,f,psk)\)};\\
+         \node[anchor=north] {\(\vt_1 \leftarrow \localtname(f)\) \\ \(\vt_2 \leftarrow \argtname(\vt_0,\FN,\AN[psk])\)};\\
        };
 
   \node[matrix, ampersand replacement=\&, node distance=4.5em, below=of table1.west,draw,anchor=west] (table2)
        {
          \node[anchor=north] {\(f\)}; \&
-         \node[anchor=north] {\(\mathtt{x} \mapsto (i+5) @ \vt_4\) \\ \(\mathtt{psk} \mapsto i @ \vt_2\)}; \&
-         \node[anchor=north] {\(\vt_3 \leftarrow \constt\) \\
-           \(\vt_4 \leftarrow \binoptname(+,\vt_2,\vt_3)\)}; \\
+         \node[anchor=north] {\(\mathtt{x} \mapsto (i+5) @ \vt_6\) \\ \(\mathtt{psk} \mapsto i @ \vt_2\)}; \&
+         \node[anchor=north] {\(\vt_3 \leftarrow \accesstname(\vt_2)\), \(\vt_4 \leftarrow \constt\) \\
+           \(\vt_5 \leftarrow \binoptname(+,\vt_3,\vt_4)\) \\
+           \(\vt_6 \leftarrow \assigntname(\vt_2,\vt_5) \)
+         }; \\
        };
 
   \node[matrix, ampersand replacement=\&, node distance=4.5em, below=of table2.west,draw,anchor=west] (table3)  
        {
          \node[anchor=north] {\(\mathit{printi}\)}; \&
-         \node[anchor=north] {\(\mathtt{a} \mapsto i @ \vt_5\)}; \&
-         \node[anchor=north] {\(\vt_5 \leftarrow \argtname(\vt_4, \mathit{printi}, a)\)}; \\
+         \node[anchor=north] {\(\mathtt{a} \mapsto i @ \vt_7\)}; \&
+         \node[anchor=north] {\(\vt_7 \leftarrow \argtname(\vt_6, \FN[\mathit{printi}], \AN[a])\)}; \\
        };
 
   \draw[Circle-]
@@ -169,64 +171,73 @@ tag rules.
 Going step-by-step: the initial tag on {\tt x}, \(\vt_1\), comes from the \(\localtname\) tag rule,
 which can be specialized by the identity of the current function. The tag on {\tt psk}
 comes from \(\argtname\), which is parameterized by the tag on the argument value (\(\vt_0\)) and
-the identities of both the function and the argument. Next, {\tt x} is assigned {\tt psk+5}, and the
-tag on this value comes from the \(\binoptname\) rule. \(\binoptname\) takes the identity of the operation
-and the tags on its inputs. In this case, the tag on the constant {\tt 5} comes from a tag rule as well,
-{\tt constt}. After the final step, the execution is in the function {\tt printi}, where it consults
+the identities of both the function and the argument. Next, {\tt x} is assigned {\tt psk+5}.
+There are four total tag rules invoked during this statement: \(\accesstname\) when reading
+from {\tt psk}, \(\consttname\) for the tag on the constant, \(\binoptname\) for the addition,
+and finally \(\assigntname\) for the assignment into {\tt x}. \(\binoptname\) is parameterized
+by the identity of the operation in addition to the tags on its inputs.
+After the final step, the execution is in the function {\tt printi}, where it consults
 \(\argtname\) a second time.
 
 The system can prevent the program from outputting {\tt psk} by instantiating these tag rules with
 functions that implement {\em secure information flow}. For the tag rules seen so far, the policy given in
 \cref{fig:example1rules} would do the trick. It defines two tags, \(\high\) and \(\low\), for high
-security ({\tt psk} and things derived from it) and low security (everything else.)
+security ({\tt psk} and things derived from it) and low security (everything else.) In tag rules,
+the assignment operator := denotes an assignment to the named tag-rule output. ``Case'' statements
+may be abbreviated by assuming that any input that doesn't match a case causes a failstop.
 
-These points at which the tags are checked and either propagated or updated by tag rules are termed
-{\em control points}. Collectively, the tag rules form a {\em policy}. Now we define a
-``don't print {\tt psk}'' policy that tracks the influence of {\tt psk} and failstops if it would
-leak. The tag set, as previously noted, consists of the high and low tags, and we define our critical
-tag rules as follows.
+\begin{figure}
+  \begin{minipage}{0.5\textwidth}
+    \consttruleblock{\(\vt := \low\)}
+    \localtruleblock{\(\vt := \low\)}
+    \accesstruleblock{\(\vt' := \vt\)}
+    \assigntruleblock{\(\vt' := \vt_2\)}
 
-\begin{minipage}{0.3\textwidth}
-  \begin{align*}
-  \tau::=\high | \low \\
-  \constt = \low \\
-  \localtname(f) = \low \\
-  \loadtname(\vt) = \vt \\
-  \storetname(\vt) = \vt \\
-  \end{align*}
-\end{minipage}
-\begin{minipage}{0.6\textwidth}
-\begin{align*}
-  \binoptname(\oplus,\vt_1,\vt_2) = \begin{cases} \low & \textnormal{if } \vt_1 = \vt_2 = \low \\
-    \high & \textnormal{otherwise} \end{cases}\\
-  \argtname(\vt, f, id) = \begin{cases} \fail & \textnormal{if } f=\mathtt{printi} \textnormal{ and } \vt = \high \\
-    \high & \textnormal{if } f=\mathtt{f} \textnormal{ and } id = \mathtt{psk} \\
-    \vt & \textnormal{otherwise} \\
-  \end{cases} \\
-\end{align*}
-\end{minipage}
+    \binoptruleblock
+        {\caseoftwo{\((\vt_1,\vt_2)\)}
+          {(\(\low,\low\))}{\(\vt':=\low\)}
+          {\(\underline{~~~}\)}{\(\vt':=\high\)}}
+  \end{minipage}
+  \begin{minipage}{0.4\textwidth}
+    \[\tau::=\high | \low\]
+    \argtruleblock
+        {\caseofthree{\((f,x,\vt)\)}
+          {(\(\mathtt{printi},\underline{~~},\high\))}{\(\fail\)}
+          {(\(\mathtt{f},\mathtt{psk},\underline{~~}\))}{\(\vt':=\high\)}
+          {\(\underline{~~~}\)}{\(\vt':=\vt\)}}
+  \end{minipage}
 
-As we see, most of the tagrules simply move tags around. The most interesting ones are \(\binoptname\),
-which combines two tags, setting the result of a binary operation \(\high\) if either of its arguments are,
-and \(\argt\). \(\argt\) checks whether the function being called is {\tt printi} and fails if it is
-and the value being passed is tagged \high. It also always tagged {\tt psk} \high, and otherwise it just maintains
-the security level of the input it is given. So, in this example, we will be unable to generate a tag
-\(\vt_7\), and the tag processor will throw a failstop rather than allow execution to continue.
+  \caption{Secure Information Flow (pt. 1)}
+  \label{fig:example1rules}
+\end{figure}
+
+The interesting rules are \(\binoptname\) and \(\argtname\). \(\binoptname\)
+combines two tags, setting the result of a binary operation \(\high\) if either of its arguments are.
+\(\argtname\) is parameterized by the identifier of the function argument being processed.
+It tags {\tt psk} \(\high\), and maintains the security level of all other arguments.
+But if a \(\high\) value is being passed to a parameter of {\tt printi}, the rule will fail.
+So, in this example, we will be unable to generate a tag
+\(\vt_5\), and the tag processor will throw a failstop rather than allow execution to continue.
 
 Example \ref{fig:ex2} adds two new wrinkles: we need to keep track of metadata associated with
-addresses and with the program's control-flow state. If the volatile variable {\tt mm} represents
+addresses and with the program's control-flow state. If the variable {\tt mm} represents
 mmapped memory that can be seen publicly, we want to avoid storing the password there. And, by
 branching on the password, we risk leaking information that could eventually compromise it even
-if we never print it directly (an {\em implicit flow}.) So we extend our state with additional
-``location tags'' on memory locations, which we will range over with \(\lt\) by convention.
-Meanwhile, pointers, including those that are the static addresses of local or global variables,
-will be given tags ranged over by \(\pt\). Finally, to track metadata associated with the program's
-control flow, we maintain a special global tag called the PC Tag, ranged over by \(\PCT\).
+if we never print it directly (an {\em implicit flow}.)
 
+Global variables like {\tt mm} are always kept in memory, as are locals with reference types like arrays.
+Other parameters and locals are placed in memory if they have their addresses taken.
+Objects in memory have additional ``location tags'' that are notionally associated with the memory
+itself, which we will range over with \(\lt\) by convention. The store maps their identifier
+to their address, along with its own ``pointer tag'' which we will distinguish with the
+metavariable \(\pt\). To track metadata about the overall system state, we also add
+a special global tag called the PC Tag, ranged over by \(\PCT\).
+
+\begin{figure}
 \begin{tikzpicture}[every text node part/.style={align=left}]
   \node[matrix, ampersand replacement=\&, anchor=west] (code)
        {
-         \node {\tt volatile int mm;}; \\
+         \node {\tt int mm;}; // mmapped \\
          \node (l1) {\tt void g(int psk) \{}; \\
          \node (l2) {\tt ~ ~ if(psk > 0)}; \\
          \node (l3) {\tt ~ ~ ~ ~ mm = 1;}; \\
@@ -236,8 +247,10 @@ control flow, we maintain a special global tag called the PC Tag, ranged over by
   \node[matrix, ampersand replacement=\&, node distance=6em, right=of l1.north,draw,anchor=west] (table1)  
        {
          \node[anchor=north] {\(g @ \PCT_1\)}; \&
-         \node[anchor=north] {\(\mathtt{mm} @ \pt_1 \mapsto \vundef @ \vt_1 @ \lt_1\) \\
-         \(\mathtt{psk} @ \pt_2 \mapsto i @ \vt_2\)}; \&
+         \node[anchor=north] {\(\mathtt{mm} \mapsto p @ \pt_1 \) \\
+           \(\mathtt{psk} \mapsto i @ \vt_2\) \\
+           \(p:\fbox{\(\vundef @ \vt_1 @ \lt_1\)}\)
+         }; \&
          \node[anchor=north] {\(\pt_1, \vt_1,\lt_1 \leftarrow \globaltname(mm)\) \\
            \(\pt_2, \vt_2 \leftarrow \argtname(\vt_0,g,psk)\) \\
            \(\PCT_1 \leftarrow \calltname(\PCT_0, g)\)}; \\
@@ -246,20 +259,25 @@ control flow, we maintain a special global tag called the PC Tag, ranged over by
  \node[matrix, ampersand replacement=\&, node distance=5em, below=of table1.west,draw,anchor=west] (table2)         
       {
         \node[anchor=north] {\(g @ \PCT_2\)}; \&
-        \node[anchor=north] {\(\mathtt{mm} @ \pt_1 \mapsto \vundef @ \vt_1 @ \lt_1\) \\
-          \(\mathtt{psk} @ \pt_2 \mapsto i @ \vt_2 @ \lt_2\)}; \&
-        \node[anchor=north] {\(\vt_3 \leftarrow \constt\) \\
-          \(\vt_4 \leftarrow \binoptname(>,\vt_2,\vt_3)\) \\ 
-          \(\PCT_2 \leftarrow \splittname(\PCT_1, \vt_4)\)}; \\
+        \node[anchor=north] {\(\mathtt{mm} \mapsto p @ \pt_1\) \\
+          \(\mathtt{psk} \mapsto i @ \vt_2\) \\
+           \(p:\fbox{\(\vundef @ \vt_1 @ \lt_1\)}\)
+        }; \&
+        \node[anchor=north] {\(\vt_3 \leftarrow \accesstname(\vt_2)\), \(\vt_4 \leftarrow \constt\) \\
+          \(\vt_5 \leftarrow \binoptname(>,\vt_3,\vt_4)\) \\ 
+          \(\PCT_2 \leftarrow \splittname(\PCT_1, \vt_5)\)}; \\
       };
 
- \node[matrix, ampersand replacement=\&, node distance=4.5em, below=of table2.west,draw,anchor=west] (table3)         
+ \node[matrix, ampersand replacement=\&, node distance=6em, below=of l3,draw,anchor=west] (table3)         
       {
         \node[anchor=north] {\(g @ \PCT_2\)}; \&
-        \node[anchor=north] {\(\mathtt{mm} @ \pt_1 \mapsto 1 @ \vt_5 @ \lt_3\) \\
-          \(\mathtt{psk} @ \pt_2 \mapsto i @ \vt_2 @ \lt_2\)}; \&
-        \node[anchor=north] {\(\vt_4 \leftarrow \constt\) \\
-          \(\vt_5,\lt_3 \leftarrow \storetname(\PCT_2,\pt_1,\vt_1,\vt_4,\lt_1)\)}; \\
+        \node[anchor=north] {\(\mathtt{mm} \mapsto p @ \pt_1\) \\
+          \(\mathtt{psk} @ \pt_2 \mapsto i @ \vt_2 @ \lt_2\) \\
+           \(p:\fbox{\(\vundef @ \vt_1 @ \lt_1\)}\)
+        }; \&
+        \node[anchor=north] {\(\vt_6 \leftarrow \constt\) \\
+          \(\vt_7 \leftarrow \assigntname(\PCT_2,\vt_1,\vt_6)\) \\
+          \(\vt_8,\lt_3 \leftarrow \storetname(\PCT_2,\pt_1,\vt_7,\lt_1)\)}; \\
       };
 
   \draw[Circle-]
@@ -272,39 +290,43 @@ control flow, we maintain a special global tag called the PC Tag, ranged over by
   (l3.south) |- (table3.west);  
 
 \end{tikzpicture}
+\caption{Implicit Flows and Memory}
+\label{fig:ex2}
+\end{figure}
 
-Here, we initialize the tags on {\tt mm} with the \(\globaltname\) rule. The PC Tag
-at the point of call, \(\PCT_0\), is fed to the \(\calltname\) rule to determine a new PC Tag
+Tagged C initializes the tags on {\tt mm} with the \(\globaltname\) rule. The PC Tag
+at the point of call, \(\PCT_0\), is fed to \(\calltname\) to determine a new PC Tag
 inside of {\tt g}. And the if-statement consults the \(\splittname\) rule to update the PC Tag
 inside of its branch based on the value-tag of the expression {\tt psk < 0}. Once inside the
-loop, we perform the store, taking into account all of the additional tags.
+conditional, when the program assigns to {\tt mm}, it must consult both the
+\(\assigntname\) rule as normal and the \(\storetname\) rule because it is storing
+to memory.
 
 To upgrade our ``don't print the password'' policy to ``don't leak the password,'' we can
 keep most of our rules the same, or extend them in natural ways. Crucially, we will tag memory
-locations \high by default, indicating that they are allowed to contain \high-tagged values,
-but {\tt mm} will be tagged \low. The most interesting rules are:
+locations \(\high\) by default, indicating that they are allowed to contain \(\high\)-tagged values,
+but {\tt mm} will be tagged \(\low\). The most interesting rules are:
 
-\begin{align*}
-  \globaltname(id) =
-  \begin{cases}
-    \low, \low, \low & \textnormal{if } id = \mathtt{mm} \\
-    \low, \low, \high & \textnormal{otherwise} \\
-  \end{cases} &
-  \splittname(\PCT,\vt) =
-  \begin{cases}
-    \low & \textnormal{if } \vt = \PCT = \low \\
-    \high & \textnormal{otherwise} \\
-  \end{cases} \\
-\end{align*}
-\[\storet = \begin{cases}
-  \fail & \textnormal{if } \PCT = \high \textnormal { or } \vt_2 = \high \textnormal{ and } \lt = \low \\
-  \low, \high & \textnormal{if } \PCT = \vt_2 = \low \\
-  \high, \high & \textnormal{otherwise} \\
-\end{cases}\]
-\[\argtname(\vt, f, id) = \begin{cases} \fail & \textnormal{if } f=\mathtt{printi} \textnormal{ and } \vt = \high \\
-  \high, \high & \textnormal{if } f=\mathtt{g} \textnormal{ and } id = \mathtt{psk} \\
-  \vt, \high & \textnormal{otherwise} \\
-\end{cases}\]
+\begin{figure}
+  \globaltruleblock{
+    \(\vt:=\low\) \\
+    \(\pt:=\low\) \\
+    \caseoftwo{x}
+              {\tt mm}{\(\lt:=\low\)}
+              {\(\underline{~~~}\)}{\(\lt:=\high\)}}
+  \truleblock{\(\splittname(\PCT,\vt)\)}{
+    \caseoftwo{(\(\PCT,\vt\))}
+              {(\(\low,\low\))}{\(\PCT':=\low\)}
+              {\(\underline{~~~}\)}{\(\PCT':=\high\)}
+  }
+  \storetruleblock{
+    \(\lt':=\lt\) \\
+    \caseofthree{(\(\PCT,\vt,\lt\))}
+                {(\(\underline{~~},\underline{~~},\high\))}{\(\vt':=\vt\)}
+                {(\(\low,\low,\low\))}{\(\vt':=\vt\)}
+                {\(\underline{~~~}\)}{\(\fail\)}
+  }
+\end{figure}
 
 In this case, \(\splittname\) will set the PC Tag to \high, as it branches on a value derived from {\tt psk}.
 Then, when it comes time to write to {\tt mm}, \(\storetname\) will fail rather than write to a low address
