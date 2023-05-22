@@ -211,15 +211,8 @@ tag rules.
 
   \end{tikzpicture}
 
-  \caption{Example 1}
-  \label{fig:ex1}
-\end{figure}
-
-\apt{Why is {\tt x} described before {\tt psk}??}
-The initial tag on {\tt x}, \(\vt_1\), comes from the \(\localtname\) tag rule; all locals for a given function
-name (which is a parameter to the rule) get the same tag. \apt{Not at all obvious to me (or the reader) why {\tt x} gets an initial
-value and tag at all. (Indeed, should it, since it cannot be accessed before it acquires a proper initial value?) Needs an explanation at least, although this is muddying the waters.}
-  The tag on {\tt psk}
+Going step-by-step: the initial tag on {\tt x}, \(\vt_1\), comes from the \(\localtname\) tag rule,
+which can be specialized by the identity of the current function. The tag on {\tt psk}
 comes from \(\argtname\), which is parameterized by the tag on the argument value (\(\vt_0\)) and
 the names of both the function and the argument. Next, {\tt x} is assigned {\tt psk+5}.
 Four tag rules are invoked during this statement: \(\accesstname\) when reading
@@ -1180,32 +1173,23 @@ of a high-level language. How well have we achieved this aim?
   from the literature
 \end{itemize}
 
-\subsection{Limitations}
+\subsection{Known Limitations}
 
 By committing to a tag-based mechanism, we do restrict the space of policies that Tagged C
 can enforce. In general, a reference monitor can enforce any policy that constitutes a
 {\em safety property}---any policy whose violation can be demonstrated by a single finite
 trace. This class includes such policies as ``no integer overflow'' and ``pointers are always in-bounds,''
 which depend on the values of variables. Tag-based monitors cannot enforce any policy that
-depends on the value of a variable rather than its tags. \apt{But perhaps note that tag-based
-  policies can express some trace properties more easily than value-based policies could, essentially
-  because tags can summarize the relevant parts of the trace history.}
-
-\apt{Something about malloc tagging, and type-based tagging in general.}
+depends on the value of a variable rather than its tags.
 
 Due to our approach to tagging memory uniformly at allocation time, Tagged C cannot easily
 enforce substructural memory safety. Versions of memory safety that protect fields of a
 struct from overflows within the same struct would be very useful, but currently enforcing
 them will require manual initialization.
 
-Beyond these, there is always the possibility that we have missed some control point
-that would enable interesting security policies outside of the areas we have considered.
-How hard would it be to add control points, or extend the ones that exist? That depends
-whether the extension in question would impact compilation strategies. For instance,
-we have avoided control points that allow updates to their operand tags, although
-this could be useful in enforcing policies that attempt to maintain the uniqueness of tags,
-because tag-based hardware is unlikely to support linear tags, so any such updates would
-need the compiler to generate extra instructions.
+\subsection{Unknown Limitations}
+
+[TODO]
 
 \section{Related Work}
 
