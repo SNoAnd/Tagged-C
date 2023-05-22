@@ -167,7 +167,7 @@ tag rules.
 \end{tikzpicture}
 
 Going step-by-step: the initial tag on {\tt x}, \(\vt_1\), comes from the \(\localtname\) tag rule,
-which can be specialized by the indentity of the current function. The tag on {\tt psk}
+which can be specialized by the identity of the current function. The tag on {\tt psk}
 comes from \(\argtname\), which is parameterized by the tag on the argument value (\(\vt_0\)) and
 the identities of both the function and the argument. Next, {\tt x} is assigned {\tt psk+5}, and the
 tag on this value comes from the \(\binoptname\) rule. \(\binoptname\) takes the identity of the operation
@@ -1225,7 +1225,7 @@ of a high-level language. How well have we achieved this aim?
   from the literature
 \end{itemize}
 
-\subsection{Limitations of the Tag Mechanism}
+\subsection{Known Limitations}
 
 By committing to a tag-based mechanism, we do restrict the space of policies that Tagged C
 can enforce. In general, a reference monitor can enforce any policy that constitutes a
@@ -1233,6 +1233,15 @@ can enforce. In general, a reference monitor can enforce any policy that constit
 trace. This class includes such policies as ``no integer overflow'' and ``pointers are always in-bounds,''
 which depend on the values of variables. Tag-based monitors cannot enforce any policy that
 depends on the value of a variable rather than its tags.
+
+Due to our approach to tagging memory uniformly at allocation time, Tagged C cannot easily
+enforce substructural memory safety. Versions of memory safety that protect fields of a
+struct from overflows within the same struct would be very useful, but currently enforcing
+them will require manual initialization.
+
+\subsection{Unknown Limitations}
+
+[TODO]
 
 \section{Related Work}
 
