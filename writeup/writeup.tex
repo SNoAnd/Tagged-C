@@ -145,32 +145,23 @@ security concerns.
 
 \section{Metadata Tags and Policies, by Example}
 
-Consider a straightforward security requirement: ``do not leak high-security values to low-security channels.''
-In the example in \cref{fig:ex1}, assume that {\tt psk} is a high-security value and {\tt printi} prints to a low-security
-channel, so this code indirectly performs a leak via the local variable {\tt x}.  We now explain how we would use Tagged C
-to define a security policy that would prevent this leak. \apt{A whole explanation of
-  the basic ideas is missing here: values carry tags, tags are checked at control points, rules are to be instantiated below, etc., etc.} 
-\apt{And I think that you need first to explain informally how you want tag checking to work, along the lines of
-  ``We have two tags, H and L; the value of psk gets tagged H by virtue of a specific rule on f; the tag is propagated through the arithmetic by a general rule,
-  and is caught at the printi by virtue of a specific rule on printi.''  The other control points are mainly distractions, especially
-  AccessT and AssignT; perhaps it is best to leave these out of these initial examples.}
-\Cref{fig:ex1} maps each of three points
-in the execution of {\tt f} to a description of the program state at that point,
-with the input value and all tags treated symbolically. Let \(i\) be the value passed to {\tt psk}
-and \(\vt_0\) the corresponding tag. \apt{Subscripts should be blue too}. In each state, the first column
-shows the active function, the second gives the symbolic values and tags
-of variables in the local environment, and the third shows the flow of those tags though
-tag rules.
-
-\begin{figure}
-  \begin{tikzpicture}[every text node part/.style={align=left}]
-    \node[matrix, ampersand replacement=\&, anchor=west] (code)
-         {
-           \node (l1) {\tt void f(int psk) \{}; \\
-           \node (l2) {\tt ~ ~ int x = psk+5;}; \\
-           \node (l3) {\tt ~ ~ printi(x);}; \\
-           \node {\tt \}}; \\
-         };
+Consider a seemingly straightforward security requirement: ``do not leak the passkey, {\tt psk}.''
+In the following example, {\tt psk} is passed to {\tt f} as an argument, copied to
+a local variable, and then printed---clearly a leak of {\tt psk}. We can examine the states in {\tt f} at
+three points to see how its input value \(i\) moves through the system. In the figure below, 
+the first column
+of each state shows the active function, the second gives the symbolic values (and tags)
+of variables in the local environment, and the third shows the origins of those tags in
+tag rules. \amn{ Missing a table with columns here? }
+\amn{diagram needs a title/caption/name. How does it relate to missing table?}
+\begin{tikzpicture}[every text node part/.style={align=left}]
+  \node[matrix, ampersand replacement=\&, anchor=west] (code)
+       {
+         \node (l1) {\tt void f(int psk) \{}; \\
+         \node (l2) {\tt ~ ~ int x = psk+5;}; \\
+         \node (l3) {\tt ~ ~ printi(x);}; \\
+         \node {\tt \}}; \\
+       };
 
     \node[node distance=4em, right=of code.north] (mid1) {};
   
@@ -211,7 +202,9 @@ tag rules.
 
   \end{tikzpicture}
 
-Going step-by-step: the initial tag on {\tt x}, \(\vt_1\), comes from the \(\localtname\) tag rule,
+Going step-by-step through the example code above: \amn{Shouldn't we start with f and printi at the top 
+of the diagram? }
+the initial tag on {\tt x}, \(\vt_1\), comes from the \(\localtname\) tag rule,
 which can be specialized by the identity of the current function. The tag on {\tt psk}
 comes from \(\argtname\), which is parameterized by the tag on the argument value (\(\vt_0\)) and
 the names of both the function and the argument. Next, {\tt x} is assigned {\tt psk+5}.
@@ -1173,7 +1166,7 @@ of a high-level language. How well have we achieved this aim?
   from the literature
 \end{itemize}
 
-\subsection{Known Limitations}
+\subsection{Limitations of the Tag Mechanism}
 
 By committing to a tag-based mechanism, we do restrict the space of policies that Tagged C
 can enforce. In general, a reference monitor can enforce any policy that constitutes a
@@ -1181,15 +1174,6 @@ can enforce. In general, a reference monitor can enforce any policy that constit
 trace. This class includes such policies as ``no integer overflow'' and ``pointers are always in-bounds,''
 which depend on the values of variables. Tag-based monitors cannot enforce any policy that
 depends on the value of a variable rather than its tags.
-
-Due to our approach to tagging memory uniformly at allocation time, Tagged C cannot easily
-enforce substructural memory safety. Versions of memory safety that protect fields of a
-struct from overflows within the same struct would be very useful, but currently enforcing
-them will require manual initialization.
-
-\subsection{Unknown Limitations}
-
-[TODO]
 
 \section{Related Work}
 
