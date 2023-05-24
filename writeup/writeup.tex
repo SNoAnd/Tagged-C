@@ -109,14 +109,15 @@ security concerns.
 
 \section{What is Metadata Tagging?}
 
-Consider a seemingly straightforward security requirement: ``do not leak the passkey.''
+Consider a seemingly straightforward security requirement: ``do not leak the passkey, {\tt psk}.''
 In the following example, {\tt psk} is passed to {\tt f} as an argument, copied to
-a local variable, and then printed---clearly a violation. We can examine the states at
-three points to see how its input value \(i\) moves through the system. The first column
+a local variable, and then printed---clearly a leak of {\tt psk}. We can examine the states in {\tt f} at
+three points to see how its input value \(i\) moves through the system. In the figure below, 
+the first column
 of each state shows the active function, the second gives the symbolic values (and tags)
 of variables in the local environment, and the third shows the origins of those tags in
-tag rules.
-
+tag rules. \amn{ Missing a table with columns here? }
+\amn{diagram needs a title/caption/name. How does it relate to missing table?}
 \begin{tikzpicture}[every text node part/.style={align=left}]
   \node[matrix, ampersand replacement=\&, anchor=west] (code)
        {
@@ -168,8 +169,10 @@ tag rules.
 
 \end{tikzpicture}
 
-Going step-by-step: the initial tag on {\tt x}, \(\vt_1\), comes from the \(\localtname\) tag rule,
-which can be specialized by the indentity of the current function. The tag on {\tt psk}
+Going step-by-step through the example code above: \amn{Shouldn't we start with f and printi at the top 
+of the diagram? }
+the initial tag on {\tt x}, \(\vt_1\), comes from the \(\localtname\) tag rule,
+which can be specialized by the identity of the current function. The tag on {\tt psk}
 comes from \(\argtname\), which is parameterized by the tag on the argument value (\(\vt_0\)) and
 the identities of both the function and the argument. Next, {\tt x} is assigned {\tt psk+5}.
 There are four total tag rules invoked during this statement: \(\accesstname\) when reading
