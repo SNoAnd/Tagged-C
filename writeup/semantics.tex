@@ -390,6 +390,14 @@
     \Rightarrow_\rh
     (\PCT,\mem,\val{v'}{\vt'})\)}}
 
+\newcommand{\binopsteptagless}
+{\judgmentbr{\(v_1 \left\langle \oplus \right\rangle v_2 = v'\)}
+  {\(\expr = \binop{\oplus}{v_1}{v_2}\)}
+  {\((\mem,\expr)
+    \Rightarrow_\rh
+    (\mem,\val{v'}{\vt'})\)}}
+
+
 % rred_cast
 \newcommand{\iicaststep}
 {\judgmentthree{\(\neg \mathit{isptr}(\type_1)\)}
