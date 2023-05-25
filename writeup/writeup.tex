@@ -109,66 +109,70 @@ security concerns.
 
 \section{What is Metadata Tagging?}
 
-Consider a seemingly straightforward security requirement: ``do not leak the passkey.''
-In the following example, {\tt psk} is passed to {\tt f} as an argument, copied to
-a local variable, and then printed---clearly a violation. We can examine the states at
-three points to see how its input value \(i\) moves through the system. The first column
-of each state shows the active function, the second gives the symbolic values (and tags)
+Consider a seemingly straightforward security requirement: ``do not leak the passkey, {\tt psk}.''
+In the example in \cref{fig:ex1}, {\tt psk} is passed to {\tt f} as an argument, copied to
+a local variable, and then printed---clearly a leak of {\tt psk}. \Cref{fig:ex1} maps three
+points in the execution of {\tt f} to a table showing the contents of the program state,
+with the input value and all tags treated symbolically. Let \(i\) be the value passed to {\tt psk}
+and \(\vt_0\) the corresponding tag. In each state, the first column
+shows the active function, the second gives the symbolic values and tags
 of variables in the local environment, and the third shows the origins of those tags in
 tag rules.
 
-\begin{tikzpicture}[every text node part/.style={align=left}]
-  \node[matrix, ampersand replacement=\&, anchor=west] (code)
-       {
-         \node (l1) {\tt void f(int psk) \{}; \\
-         \node (l2) {\tt ~ ~ int x = psk+5;}; \\
-         \node (l3) {\tt ~ ~ printi(x);}; \\
-         \node {\tt \}}; \\
-       };
+\begin{figure}
+  \begin{tikzpicture}[every text node part/.style={align=left}]
+    \node[matrix, ampersand replacement=\&, anchor=west] (code)
+         {
+           \node (l1) {\tt void f(int psk) \{}; \\
+           \node (l2) {\tt ~ ~ int x = psk+5;}; \\
+           \node (l3) {\tt ~ ~ printi(x);}; \\
+           \node {\tt \}}; \\
+         };
 
-  \node[draw, node distance=0em, above=of code] (genv) {\(\mathtt{f} \mapsto \alpha @ \FN[f]\) \\
-    \(\mathtt{printi} \mapsto \beta @ \FN[printi]\)};
-
-  \node[node distance=1em, right=of genv] (mid1) {};
+    \node[node distance=4em, right=of code.north] (mid1) {};
   
-  \node[matrix, ampersand replacement=\&, node distance=2em, right=of genv,draw] (table1)
-       {
-         \node[anchor=north] {\(f\)}; \&
-         \node[anchor=north] {\(\mathtt{x} \mapsto \vundef @ \vt_1\) \\ \(\mathtt{psk} \mapsto i @ \vt_2\)}; \&
-         \node[anchor=north] {\(\vt_1 \leftarrow \localtname(f)\) \\ \(\vt_2 \leftarrow \argtname(\vt_0,\FN,\AN[psk])\)};\\
-       };
+    \node[matrix, ampersand replacement=\&, node distance=6em, right=of code.north,draw] (table1)
+         {
+           \node[anchor=north] {\(f\)}; \&
+           \node[anchor=north] {\(\mathtt{x} \mapsto \vundef @ \vt_1\) \\ \(\mathtt{psk} \mapsto i @ \vt_2\)}; \&
+           \node[anchor=north] {\(\vt_1 \leftarrow \localtname(f)\) \\ \(\vt_2 \leftarrow \argtname(\vt_0,\FN,\AN[psk])\)};\\
+         };
 
-  \node[matrix, ampersand replacement=\&, node distance=4.5em, below=of table1.west,draw,anchor=west] (table2)
-       {
-         \node[anchor=north] {\(f\)}; \&
-         \node[anchor=north] {\(\mathtt{x} \mapsto (i+5) @ \vt_6\) \\ \(\mathtt{psk} \mapsto i @ \vt_2\)}; \&
-         \node[anchor=north] {\(\vt_3 \leftarrow \accesstname(\vt_2)\), \(\vt_4 \leftarrow \constt\) \\
-           \(\vt_5 \leftarrow \binoptname(+,\vt_3,\vt_4)\) \\
-           \(\vt_6 \leftarrow \assigntname(\vt_2,\vt_5) \)
-         }; \\
-       };
+    \node[matrix, ampersand replacement=\&, node distance=4.5em, below=of table1.west,draw,anchor=west] (table2)
+         {
+           \node[anchor=north] {\(f\)}; \&
+           \node[anchor=north] {\(\mathtt{x} \mapsto (i+5) @ \vt_6\) \\ \(\mathtt{psk} \mapsto i @ \vt_2\)}; \&
+           \node[anchor=north] {\(\vt_3 \leftarrow \accesstname(\vt_2)\), \(\vt_4 \leftarrow \constt\) \\
+             \(\vt_5 \leftarrow \binoptname(+,\vt_3,\vt_4)\) \\
+             \(\vt_6 \leftarrow \assigntname(\vt_2,\vt_5) \)
+           }; \\
+         };
 
-  \node[matrix, ampersand replacement=\&, node distance=4.5em, below=of table2.west,draw,anchor=west] (table3)  
-       {
-         \node[anchor=north] {\(\mathit{printi}\)}; \&
-         \node[anchor=north] {\(\mathtt{a} \mapsto i @ \vt_7\)}; \&
-         \node[anchor=north] {\(\vt_7 \leftarrow \argtname(\vt_6, \FN[\mathit{printi}], \AN[a])\)}; \\
-       };
+    \node[matrix, ampersand replacement=\&, node distance=4.5em, below=of table2.west,draw,anchor=west] (table3)  
+         {
+           \node[anchor=north] {\(\mathit{printi}\)}; \&
+           \node[anchor=north] {\(\mathtt{a} \mapsto i @ \vt_7\)}; \&
+           \node[anchor=north] {\(\vt_7 \leftarrow \argtname(\vt_6, \FN[\mathit{printi}], \AN[a])\)}; \\
+         };
 
-  \draw[Circle-]
-  (l1.south) -| (mid1.center);
-  \draw
-  (mid1.center) -- (table1.west);
+    \draw[Circle-]
+    (l1.south) -| (mid1.center);
+    \draw
+    (mid1.center) -- (table1.west);
 
-  \draw[Circle-]
-  (l2.south) -| (table2.west);
+    \draw[Circle-]
+    (l2.south) -| (table2.west);
 
-  \draw[Circle-]
-  (l3.south) |- (table3.west);  
+    \draw[Circle-]
+    (l3.south) |- (table3.west);  
 
-\end{tikzpicture}
+  \end{tikzpicture}
 
-Going step-by-step: the initial tag on {\tt x}, \(\vt_1\), comes from the \(\localtname\) tag rule,
+  \caption{Example 1}
+  \label{fig:ex1}
+\end{figure}
+
+The initial tag on {\tt x}, \(\vt_1\), comes from the \(\localtname\) tag rule,
 which can be specialized by the identity of the current function. The tag on {\tt psk}
 comes from \(\argtname\), which is parameterized by the tag on the argument value (\(\vt_0\)) and
 the identities of both the function and the argument. Next, {\tt x} is assigned {\tt psk+5}.
