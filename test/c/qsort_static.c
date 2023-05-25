@@ -1,7 +1,7 @@
 //#include <stdlib.h>
 //#include <stdio.h>
 //#include <string.h>
-
+//anaaktge mem safe version
 void quicksort(int lo, int hi, int base[])
 { 
   int i,j;
