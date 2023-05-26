@@ -441,10 +441,9 @@ as our example.
 Variations of memory safety have been enforced in PIPE already, but usually using
 an ad hoc memory model. PVI has the virtue of giving definition to many memory UBs in which a pointer is
 cast to an integer, subjected to various arithmetic operations, and cast back to a pointer.
-Their second memory model, {\it PNVI} (provenance not via integer), is even more permissive.
+Memarian et al.'s second memory model, {\it PNVI} (provenance not via integer), is even more permissive.
 We can also enforce it in Tagged C, though its security value is questionable, and we will
 not describe it in this paper.
-
 For a policy to enforce PVI, it should not failstop on any program that is defined in PVI.
 However, it should failstop if and when a program reaches UB. For example, low-level code
 that uses the lower-order bits of a pointer to store a flag (\cref{fig:mark}) should
@@ -676,7 +675,7 @@ compromising critical code and deprives potential attackers of ROP gadgets and o
 tools if there is an exploit in the critical code.
 
 To allow intentional sharing of memory across compartments, a more flexible policy is needed. 
-Suppose for example the hostname needs to conform to an expected pattern, 
+For example, the hostname needs to conform to an expected pattern, 
 such as in an enterprise network, to differentiate between different classes of
 computers (employee, server, contractor, etc). The standard library, 
 over in its own compartment, has helpful functions, 
@@ -688,7 +687,7 @@ provided the caller provides the buffers from which to set or get the hostname.
     char* curr_name = malloc(HOST_NAME_MAX + 1);
     ret = gethostname( &curr_name, HOST_NAME_MAX + 1 );
     if (! ret && !(strcmp(curr_name, intended_name))) {
-      ret = sethostname(intended_name), strlen(intended_name);
+      ret = sethostname(intended_name, strlen(intended_name));
       ....
     }
     ....
@@ -850,8 +849,8 @@ the validity of the pointer.
 \label{sec:SIF}
 
 Our final example policy will be a more realistic version of our first:
-{\em secure information flow (SIF)}. SIF is described in the venerable Denning and Denning
-\cite{Denning77:SecureInformationFlow}, and part of a larger family of policies
+{\em secure information flow (SIF)}. SIF is described in Denning and Denning
+\cite{Denning77:SecureInformationFlow}, and is part of a larger family of policies
 known as {\em information flow control} (IFC.) This family of policies deal entirely with enforcing
 higher-level security concerns, regardless of whether the code that they protect contains
 errors or undefined behaviors. We will give an example of a single policy in the family.
