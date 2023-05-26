@@ -345,7 +345,9 @@ in a high context.
     \hline
     Rule Name & Inputs & Outputs & Control Points \\
     \hline
+    \(\accesstname\)    & \(\accesstargs\)       & \(\accesstres\)    & Variable Accesses \\
     \(\loadtname\)      & \(\loadtargs\)         & \(\loadtres\)      & Memory Loads \\
+    \(\assigntname\)    & \(\assigntargs\)       & \(\assigntres\)    & Variable Assignments \\
     \(\storetname\)     & \(\storetargs\)        & \(\storetres\)     & Memory Stores \\
     \(\unoptname\)      & \(\unoptargs\)         & \(\unoptres\)      & Unary Operation \\
     \(\binoptname\)     & \(\binoptargs\)        & \(\binoptres\)     & Binary Operation \\
@@ -477,63 +479,63 @@ We can also enforce it in Tagged C, though its security value is questionable, a
 not describe it in this paper.
 For a policy to enforce PVI, it should not failstop on any program that is defined in PVI.
 However, it should failstop if and when a program reaches UB. For example, low-level code
-that uses the lower-order bits of a pointer to store a flag (\cref{fig:mark}) should
-execute successfully. This idiom appears often in code where a pointer is associated with a flag,
+that uses the lower-order bits of a pointer to store a flag% (\cref{fig:mark})
+should execute successfully. This idiom appears often in code where a pointer is associated with a flag,
 such as Cheney's garbage collection algorithm \cite{} and is generally considered harmless.
-But violations such as buffer overflows (\cref{fig:overflow}) in which a load, store, or free would
-occur outside of the proper range are undefined in PVI and must failstop. In \cref{fig:overflow},
-memory is arranged so that the overflow ends up overwriting the variable {\tt y}.
+But violations such as buffer overflows in which a load, store, or free would
+occur outside of the proper range are undefined in PVI and must failstop. In \cref{fig:overrun},
+we see an example of such a program, and a possible memory layout in which
+the overflow ends up overwriting the variable {\tt y}.
 
-\begin{tikzpicture}[every text node part/.style={align=left}]
-  \node[matrix, ampersand replacement=\&, anchor=west] (code)
-       {
-         \node (l0) {\tt void overflow() \{}; \\
-         \node (l1) {\tt ~ ~ int[3] x; int y;}; \\
-         \node (l2) {\tt ~ ~ *x = 222222;}; \\
-         \node (l3) {\tt ~ ~ *(x+3) = 333333;}; \\
-         \node {\tt \}}; \\
-       };
+\begin{figure}
+  \begin{tikzpicture}[every text node part/.style={align=left}]
+    \node[matrix, ampersand replacement=\&, anchor=west] (code)
+         {
+           \node (l0) {\tt void overrun() \{}; \\
+           \node (l1) {\tt ~ ~ int[2] x; int y;}; \\
+           \node (l3) {\tt ~ ~ *(x+2) = 42;}; \\
+           \node {\tt \}}; \\
+         };
 
-  \node[matrix, ampersand replacement=\&, node distance=4em, right=of l1.east,draw,anchor=west] (table1)
-       {
-         \node[anchor=north]{\(\mathit{overflow} @ \PCT_2\)}; \&
-         \node[anchor=north]{\(\mathtt{x}\mapsto \underline{84} @ \pt_1\) \\ \(\mathtt{y} \mapsto \underline{96} @ \pt_2\)}; %\&
-         %         \node[anchor=north] {\(\vt_1 \leftarrow \localtname(f)\) \\ \(\vt_2 \leftarrow \argtname(\vt_0,f,psk)\)};
-         \\
-       };
+    \node[matrix, ampersand replacement=\&, column sep=-1em, node distance=4.5em, below=of l3.west,anchor=west] (table2)
+         {
+           \node[anchor=north] {\hspace{1em}}; \&
+           \node[anchor=north] {\memory{\hspace{-2.5em} \(\mathtt{x}\mapsto 84 @ \pt_1\)}{\(\vundef\)}{\(\vt_1\)}{\(\lt_1\)}}; \&
+           \node[anchor=north] {\memory{\(88\)}{\(\vundef\)}{\(\vt_1\)}{\(\lt_1\)}}; \&
+           \node[anchor=north] {\memory{\hspace{-2.5em} \(\mathtt{y}\mapsto 92 @ \pt_2\)}{\(\vundef\)}{\(\vt_2\)}{\(\lt_2\)}};
+           \\
+         };
 
-  \node[matrix, ampersand replacement=\&, column sep=-1em, node distance=4em, below=of l3.west,anchor=west] (table2)
-       {
-         \node[anchor=north] {\hspace{1em}}; \&
-         \node[anchor=north] {\memory{\(84\)}{\(\vundef\)}{\(\vt_1\)}{\(\lt_1\)}}; \&
-         \node[anchor=north] {\memory{\(88\)}{\(\vundef\)}{\(\vt_1\)}{\(\lt_1\)}}; \&
-         \node[anchor=north] {\memory{\(92\)}{\(\vundef\)}{\(\vt_1\)}{\(\lt_1\)}}; \&
-         \node[anchor=north] {\memory{\(96\)}{\(\vundef\)}{\(\vt_2\)}{\(\lt_2\)}};
-         \\
-       };
-
-  \node[matrix, ampersand replacement=\&, column sep=-1em, node distance=4em, below=of table2.west,anchor=west] (table3)
-       {
-         \node[anchor=north] {\hspace{1em}}; \&
-         \node[anchor=north] {\memory{\(84\)}{\(222222\)}{\(\vt_3\)}{\(\lt_3\)}}; \&
-         \node[anchor=north] {\memory{\(88\)}{\(\vundef\)}{\(\vt_1\)}{\(\lt_1\)}}; \&
-         \node[anchor=north] {\memory{\(92\)}{\(\vundef\)}{\(\vt_1\)}{\(\lt_1\)}}; \&
-         \node[anchor=north] {\memory{\(96\)}{\(333333\)}{\(\vt_4\)}{\(\lt_4\)}};
-         \\
-       };
-\end{tikzpicture}
+    \node[matrix, ampersand replacement=\&, node distance=1em, right=of table2.east,anchor=west,draw] (tableside)
+         {
+           \node[] {\(\PCT_1, \vt_1,\pt_1,\lt_1 \leftarrow \localtname(\PCT_0)\)}; \\
+           \node[] {\(\PCT_2, \vt_2,\pt_2,\lt_2 \leftarrow \localtname(\PCT_1)\)}; \\
+           \node[] {\(\vt_3 \leftarrow \constt\)}; \\
+           \node[] {\(\pt_2 \leftarrow \binoptname(+,\pt_1,\vt_3)\)}; \\
+           \node[] {\(\vt_4 \leftarrow \assigntname(\PCT_2,\vt_2)\)}; \\
+           \node[] {\(\PCT_3,\vt_5,\lt_3 \leftarrow \storetname(\PCT_3,\pt_2,\vt_5,\lt_3)\)}; \\
+         };
+    
+    \node[matrix, ampersand replacement=\&, column sep=-1em, node distance=4em, below=of table2.west,anchor=west] (table3)
+         {
+           \node[anchor=north] {\hspace{1em}}; \&
+           \node[anchor=north] {\memory{\(84\)}{\(\vundef\)}{\(\vt_1\)}{\(\lt_1\)}}; \&
+           \node[anchor=north] {\memory{\(88\)}{\(\vundef\)}{\(\vt_1\)}{\(\lt_1\)}}; \&
+           \node[anchor=north] {\memory{\(92\)}{\(~ ~ ~42\)}{\(\vt_4~ ~ ~\)}{\(\lt_4\)}}; \\
+         };
+  \end{tikzpicture}
+  \caption{Buffer Overflow in Action}
+  \label{fig:overrun}
+\end{figure}
 
 %We now show separate location tags on each of the four bytes in each word. In the inputs and outputs
 %of a tag rule, we write this \(\lts\), indicating that the rule consumes and produces multiple locations tags.
 
-\Cref{fig:overflow} shows the initial state of memory on entry to {\tt overflow} and the state after
-the assignment to {\tt *(x+3)}, assuming that the PC Tag is \(\PCT_0\) at the call. The tags associated
-with {\tt x} (\(\PCT_1,\pt_1,\vt_1,\lts_1\)) come from \(\localtname(\PCT_0,\TN[int])\) and those
-associated with {\tt y} come from \(\localtname(\PCT_1,\TN[int])\).
-
-The write to {\tt *(x+3)} is of particular interest. We tag the result of {\tt x+3}
-with \(\pt' \leftarrow \binoptname(\PCT_2, \pt_1, \constt)\); then for the store itself,
-we use the rule \(\vt_4, \lts_4 \leftarrow \storetname(\PCT_2, \pt', \vt_2, \constt, \lts_2)\).
+\Cref{fig:overrun} shows the initial state of memory on entry to {\tt overflow} and the state after
+the assignment to {\tt *(x+2)}, assuming that the PC Tag is \(\PCT_0\) at the call.
+The central tag rules are \(\binoptname\) and \(\storetname\): the former computes the tag
+on the pointer that will be used to access {\tt x+2} in memory, and the latter decides if the
+store will be allowed.
 
 We can prevent overflows like this using a {\em memory safety} policy. In brief, whenever
 an object is allocated, it is assigned a unique ``color,'' and its memory locations as well
@@ -541,7 +543,7 @@ as its pointer are tagged with that color. Pointers maintain their tags under ar
 operations, and loads and stores are legal if the pointer matches the target memory location.
 The default tag \(N\) indicates that there is currently no color.
 The rules for the \(PVI\) memory safety policy are given in \cref{fig:pvi}. In this case, we will
-have \(\pt_1 = \lt_1 = \tagz\) and \(\pt_2 = \lt_2 = \tagone\). When we try to write to {\tt x+3},
+have \(\pt_1 = \lt_1 = \tagz\) and \(\pt_2 = \lt_2 = \tagone\). When we try to write to {\tt x+2},
 we compare \(\pt' = \tagz\) with \(\lt_2\), and failstop because they differ.
 
 \begin{figure}
@@ -570,23 +572,23 @@ we compare \(\pt' = \tagz\) with \(\lt_2\), and failstop because they differ.
         {\(\PCT' := \PCT+1\);
           \(\pt := \PCT\)\\
           \(\vt := \N\);
-          \(\lts := \left[ \PCT \right]\)
+          \(\lt := \left[ \PCT \right]\)
         }
     \malloctruleblock
         {\(\PCT' := \PCT+1\);
           \(\pt := \PCT\) \\
           \(\vt := \N\);
-          \(\lts := \left[ \PCT \right]\)
+          \(\lt := \left[ \PCT \right]\)
         }
   \end{minipage}
   \begin{minipage}[t]{0.3\textwidth}
     \vspace{-2.5em}
     \loadtruleblock{\(\mathbf{assert} ~ \forall \lt \in \overline{\lt} . \pt = \lt\) \\ \(\vt' := \vt\)}
 
-    \storetruleblock{\(\mathbf{assert} ~ \forall \lt \in \lts . \pt = \lt\) \\
+    \storetruleblock{\(\mathbf{assert} ~ \forall \lt \in \lt . \pt = \lt\) \\
       \(\PCT' := \PCT\);
       \(\vt' := \vt_2\); 
-      \(\lts' := \lts\)}
+      \(\lt' := \lt\)}
   \end{minipage}
 
   \caption{PVI Memory Safety Policy}
@@ -637,13 +639,14 @@ compartment. The system keeps track of the active compartment using the PC tag.
 In the Tagged C semantics, calls and returns each take two steps: first to an intermediate call
 or return state, and
 then to the normal execution state, as shown in \cref{fig:functions} with some function \(f\)
-calling \(f'\). In the initial call step, \(\calltname\)
-uses the name-tags of the caller and callee to update the PC Tag. Then, in the step from the call
-state, we place the function arguments in the temp environment, tagging their values with
-the results of \(\argtname\), and we allocate our stack locals, tagging their values and locations
-with the results of \(\localtname\). And on return, we deallocate locals and update their location
-tags with \(\dealloctname\) when stepping to a return state, and from there \(\rettname\) updates both
-the PC Tag and the tag on the returned value.
+calling \(f'\). In the initial call step, \(\calltname\) uses the tag on the function pointer
+(typically derived from \(\FN\)) to update the PC Tag. Then, in the step from the call
+state, the function arguments are placed in the local store, tagged with
+the results of \(\argtname\), and stack locals are allocated. Non-address-taken locals go in the
+store as well, tagged with \(\constt\), while locals that must be stack-allocated have memory
+allocated and tagged with the results of \(\localtname\). On return, locals are deallocate, their locations
+updated by \(\dealloctname\), and \(\rettname\) updates both the PC Tag and the tag on the returned value,
+with access to the original caller's PC Tag.
 
 \begin{figure}
   \begin{tikzpicture}[]
@@ -678,14 +681,14 @@ active function, kept up to date by the \(\calltname\) and \(\rettname\) rules.
     \rettruleblock{\(\PCT' := \PCT_{CLR};\vt':=\vt\)}
   \end{minipage}
   \begin{minipage}[t]{0.25\textwidth}
-    \malloctruleblock{\(\PCT' := \PCT; \pt := \N;\) \\ \(\vt := \N; \lts := \left[ \PCT \right]\)}
-    \localtruleblock{\(\PCT' := \PCT; \pt := \N;\) \\ \(\vt := \N; \lts := \left[ \PCT \right]\)}
+    \malloctruleblock{\(\PCT' := \PCT; \pt := \N;\) \\ \(\vt := \N; \lt := \PCT\)}
+    \localtruleblock{\(\PCT' := \PCT; \pt := \N;\) \\ \(\vt := \N; \lt := \PCT\)}
   \end{minipage}
   \begin{minipage}[t]{0.25\textwidth}
     \loadtruleblock{\(\mathbf{assert} ~ \forall \lt \in \overline{\lt} . \PCT = \lt\) \\ \(\vt' := \vt\)}
     
     \storetruleblock{\(\mathbf{assert} ~ \forall \lt \in \overline{\lt} . \lt = \PCT\) \\
-      \(\PCT' := \PCT; \vt' := \N; \lts' := \lts\)}
+      \(\PCT' := \PCT; \vt' := \N; \lt' := \lt\)}
   \end{minipage}
     
   \caption{Compartmentalization Policy}
@@ -726,10 +729,11 @@ provided the caller provides the buffers from which to set or get the hostname.
   }
 \end{verbatim}
 
-The literature contains two main approaches to this problem:
-{\em mandatory access control} and {\em capabilities}. The former explicitly
-enumerates the access rights of each compartment, while the latter turns passed
-pointers into unforgeable tokens of privilege, so that the act of passing one
+The literature contains two main approaches to shared memory:
+{\em mandatory access control} (MAC) and {\em capabilities}. MAC explicitly
+enumerates the access rights of each compartment, which can include giving two
+compartments access to the same memory. Capability systems treat
+pointers as unforgeable tokens of privilege, so that the act of passing one
 implicitly grants the recipient access.
 
 Tagged C can enforce either; here we will demonstrate a capability approach
@@ -768,18 +772,18 @@ the validity of the pointer.
     \malloctruleblock
         {let \((C,\clr) := \PCT\) in \\
           \caseoftwo{\(f'\)}
-                    {\(\mathit{malloc}\)}{\(\PCT' := \PCT; \pt := C;\) \\ & & \(\vt := \N; \lts := \left[ C \right]\)}
-                    {\(\mathit{malloc\_share}\)}{\(\PCT':= (C,\clr+1);\) \\ & & \(\pt := \clr; \vt := \N';\) \\ & & \(\lts := \left[ \clr \right]\)}
+                    {\(\mathit{malloc}\)}{\(\PCT' := \PCT; \pt := C;\) \\ & & \(\vt := \N; \lt := C\)}
+                    {\(\mathit{malloc\_share}\)}{\(\PCT':= (C,\clr+1);\) \\ & & \(\pt := \clr; \vt := \N';\) \\ & & \(\lt := \clr\)}
 
         }
   \storetruleblock
         {let \((C,\clr) := \PCT\) in \\
-          \(\mathbf{assert} ~ \exists \lt' . \forall \lt \in \lts . \lt = \lt'\) \\
+          \(\mathbf{assert} ~ \exists \lt' . \forall \lt \in \lt . \lt = \lt'\) \\
           \caseoftwo{\(\lt'\)}
                     {\(C'\)}{\(\mathbf{assert} ~ C = C'\) \\
-                      & &  \(\PCT' := \PCT; \vt' := \vt_2; \lts := \left[ C \right]\)}
+                      & &  \(\PCT' := \PCT; \vt' := \vt_2; \lt := C\)}
                     {\(\clr\)}{\(\mathbf{assert} ~ \pt = \clr\) \\
-                      & & \(\PCT':= \PCT; \vt' := \vt_2; \lts := \left[ \clr \right]\)}}
+                      & & \(\PCT':= \PCT; \vt' := \vt_2; \lt := \clr\)}}
 
   \end{minipage}
   \begin{minipage}[t]{0.4\textwidth}
@@ -788,7 +792,7 @@ the validity of the pointer.
     \tau ::= \N \mid C \mid \clr \mid (C,\clr)\]
     \loadtruleblock
         {let \((C,\clr) := \PCT\) in \\
-          \(\mathbf{assert} ~ \exists \lt' . \forall \lt \in \lts . \lt = \lt'\) \\
+          \(\mathbf{assert} ~ \exists \lt' . \forall \lt \in \lt . \lt = \lt'\) \\
           \caseoftwo{\(\lt'\)}
                     {\(C'\)}{\(\mathbf{assert} ~ C = C'\) \\
                       & &  \(\vt' := \vt\)}
@@ -892,27 +896,28 @@ In this code, a malformed user input is accidentally appended to an sql query wi
 
 \begin{verbatim}
 void sanitize(char* in, char* out);
-char* sql_query(char* query);
+void sql_query(char* query, char* res);
 
 void get_data() {
   char[20] name;
   char[20] name_san;
   char[100] query = "select address where name =";
+  char[100] res;
 
-  scanf("%19f", name);
+  scanf("%19", name);
   sanitize(name, name_san);
   strncat(query, name, strlen(name));
   
-  sprintf(buf, sql_query(query));
-  return;
+  sql_query(query, res);
+  printf(res);
 }
 \end{verbatim}
 
 This function sanitizes its input {\tt name}, then appends the result to an appropriate SQL
-query, storing the result in {\tt buf}. But, in the default case, the programmer has accidentally
+query, storing the query's result in {\tt buf}. But the programmer has accidentally
 used the unsanitized string! This creates the opportunity for an SQL injection attack: a caller
-to this function could (presumably at the behest of an outside user) call it with {\tt field} of
-3 and {\tt name} of ``Bobby; drop table;''.
+to this function could (presumably at the behest of an outside user) call it with a
+{\tt name} of ``Bobby; drop table;''.
 
 The fact that the input can be sanitized also makes this an {\em intransitive} policy:
 information may flow from {\tt scanf} to {\tt sanitize}, and from {\tt sanitize} to
@@ -925,73 +930,73 @@ information may flow from {\tt scanf} to {\tt sanitize}, and from {\tt sanitize}
     \begin{align*}
       \tau ::= & \high \\
       & \low \\
-      & \pctaint{f}{e}{\overline{L}} & e \in \mathit{list} ~ \mathbb{B} \\
+      & \pctaint{f}{d}{Ls} & d \in \mathbb{N}, ~ Ls \in \mathit{list} ~ id \\
     \end{align*}
   \end{minipage}
   \begin{minipage}{0.69\textwidth}
     \[|\gentag| \triangleq
     \begin{cases}
-      \low & \textnormal{if } \gentag = \low \textnormal{ or } \gentag = \pctaint{f}{e}{\emptyset}
-      \textnormal{ where every } b \in e \textnormal{ is } \mathbf{f} \\
-      \high & \textnormal{otherwise} \\
+      \high & \textnormal{if } \gentag = \high \textnormal{ or } \gentag = \pctaint{f}{0}{\varepsilon} \\
+      \low & \textnormal{otherwise} \\
     \end{cases}\]
     %
-    \[\gentag_1 \sqcup \gentag_2 \triangleq
+    \[\gentag_1 \sqcap \gentag_2 \triangleq
     \begin{cases}
-      \low & \textnormal{if } |\gentag_1| = |\gentag_2| = \low \\
-      \high & \textnormal{otherwise} \\
+      \high & \textnormal{if } |\gentag_1| = |\gentag_2| = \high \\
+      \low & \textnormal{otherwise} \\
     \end{cases}\]
   \end{minipage}
 
   \begin{minipage}{0.54\textwidth}
     \storetruleblock
-        {let \(\pctaint{f}{ets}{\overline{L}} := \PCT\) in \\
+        {let \(\pctaint{f}{d}{Ls} := \PCT\) in \\
+          \(\PCT' := \PCT\) \\
+          \(\lt' := \lt\) \\
           \caseofthree{\(f\)}
-                      {\(\mathit{scanf}\)}{\high}
-                      {\(\mathit{sanitize}\)}{\low}
+                      {\(\mathit{scanf}\)}{\(\vt':=\low\)}
+                      {\(\mathit{sanitize}\)}{\(\vt':=\high\)}
                       {\(\underline{\hspace{3em}}\)}
-                      {\(\PCT' := \PCT\) \\
-                        \(\vt' := \PCT \sqcup \vt \sqcup \pt\) \\
-                        \(\lts' := \lts\)}}
+                      {\(\vt' := \PCT \sqcap \vt \sqcap \pt\)}}
   \end{minipage}
   \begin{minipage}{0.45\textwidth}
     \loadtruleblock
-        {let \(\pctaint{f}{ets}{\overline{L}} := \PCT\) in \\
+        {let \(\pctaint{f}{d}{Ls} := \PCT\) in \\
           \caseoftwo{\(f\)}
-                    {\(\mathit{sql\_query}\)}{\(\mathbf{assert} ~ \vt \sqcup \pt = \low\) \\ & & \(\vt' := \vt\)}
+                    {\(\mathit{sql\_query}\)}{\(\mathbf{assert} ~ \vt \sqcap \pt = \high\) \\ & & \(\vt' := \vt\)}
                     {\(\underline{\hspace{3em}}\)}{\(\vt' := \vt\)}}
 
-    \binoptruleblock{\(\vt' := \vt_1 \sqcup \vt_2\)}
+    \binoptruleblock{\(\vt' := \vt_1 \sqcap \vt_2\)}
   \end{minipage}
 
 \caption{SIF Policy: Tags and Selected Rules}
 \label{fig:sif1}
 \end{figure}
 
-Since we care about a single source, we can once again use the standard division of \(\high\)
-and \(\low\). We additionally need to carry significant information on the PC Tag. First, we
-track the current function identifier. Beyond that, we need two pieces of information to deal
-with {\em implicit flows}, situations where the control-flow of the program is influenced by a secret.
-In our initial example we simplified these. To keep track of tainted scopes, the
-PC Tag carries a list of booleans, \(e\), and a set of label identifiers, \(L\).
-We will discuss these in detail below. Initially, the PC Tag is \(\pctaint{f}{\varepsilon}{\emptyset}\),
-and all values and memory locations are tagged \(\low\).
+Since we care about a single source, we can once again use a pair of \(\high\)
+and \(\low\) tags, although in this case we aim to prevent \(\low\)-integrity
+data from flowing to \(\high\)-integrity locations.
+We additionally need to carry significant information on the PC Tag,
+so we define a third type of tag with the constructor {\sc \color{blue} pc},
+which carries (1) the current function identifier, (2) a natural number to record
+a count of tainted expression scopes, and (3) a stack of label identifiers to record
+the join points of tainted statement scopes. We will discuss (2) and (3) in detail below.
+Initially, the PC Tag is \(\pctaint{f}{0}{\varepsilon}\).
 
-The detailed tag rules for expressions are given in \cref{fig:sif1}. We define two operators on tags:
-the ``join'' operator \(\sqcup\) takes the higher of two security levels, and the ``reduce''
+Selected tag rules for expressions are given in \cref{fig:sif1}. We define two operators on tags:
+the ``join'' operator \(\sqcap\) takes the higher of two security levels, and the ``reduce''
 operator \(| \cdot |\) converts a PC Tag into a security level, \(\high\) or \(\low\).
-The function {\tt scanf} taints all of its writes by marking them \(\high\). This extends to
+The function {\tt scanf} taints all of its writes by marking them \(\low\). This extends to
 its return value in \(\rettname\) as well (not shown.) By the same token, all outputs of
 {\tt sanitize} are tagged \(\low\), so that when it copies \(\high\)-tagged data into its
 output buffer, we consider those data safe.
 
 In this scenario, our policy aims to prevent {\tt sql\_query} from recieving tainted data.
-For this reason, we failstop if {\tt sql\_query} would load a tainted value.
+For this reason, we failstop if {\tt sql\_query} would load a \(\low\) value.
 
 \paragraph*{Implicit Flows}
 
 \begin{figure}[t]
-  \begin{subfigure}{0.49\textwidth}
+  \begin{subfigure}{0.4\textwidth}
 \begin{verbatim}
 int f(bool secret) {
     int public1, public2;
@@ -1007,7 +1012,7 @@ J:  public2 = 42;
 }
 \end{verbatim}
   \end{subfigure}
-  \begin{subfigure}{0.5\textwidth}
+  \begin{subfigure}{0.6\textwidth}
     \begin{tikzpicture}
       [ initial text={}, initial distance=4em,
         accepting/.style=accepting by arrow,
@@ -1039,8 +1044,28 @@ from the split to a return have re-converged; its its immediate post-dominator \
 [TODO: this is the Denning cited in Bay and Askarov] At this point, an observer can no
 longer deduce which path execution took, except through the assignments that happened
 in \(b_1\) or \(b_2\), which are already tainted. It is therefore safe to tag future
-assignments \(\low\). In the example, {\tt public1} should be tagged \(\high\), while
-{\tt public2} is tagged \(\low\).
+assignments \(\low\). In the example, {\tt public1} should be tagged \(\low\), while
+{\tt public2} is tagged \(\high\).
+
+This is where the other components of the PC Tag come into play. We perform a program
+transformation introducing the labels of all join points explicitly, so that in
+\cref{fig:ifthenelse}, {\tt J} is an explicit label in the code, if it wasn't already.
+We introduce an internal form of each conditional statement
+(if, switch, while, do-while, and for) that takes as an extra parameter the label of
+that conditional's join point. As seen in \cref{fig:SIFconditionals}, the
+\(\splittname\) tag rule takes this label as an optional parameter and, if
+the conditional branches on a low value, pushes the join point to the stack.
+Then the \(\labeltname\) rule checks if execution has reached a join point and
+if it has, removes it from the stack. A PC Tag can only reduce to \(\high\)
+if its stack is empty.
+
+Branching expressions work similarly, except that the join point occurs at a different
+internal expression form: the parenthetical expression. For example, the expression
+{\tt 1 ? a : b} reduces to the parenthetical {\tt (a)}. The \(\exprjointname\) rule
+applies when {\tt a} is fully reduced and the semantics throw away the parentheses.
+Because expressions are nested, we only need to keep track of how deep execution has
+gone since the first time it branched on a \(\low\) value, by incrementing and decrementing
+the depth \(d\). \(\exprjointname\) also tags the result of the expression.
 
 We assume a {\em termination-insensitive} setting \cite{Askarov08:TINILeaks}, in which
 we allow an observer to glean information by the termination or non-termination of
@@ -1048,41 +1073,39 @@ the program. This is a necessary limitation of an enforcement mechanism that hal
 execution. Having accepted this limitation, we may apply the same analysis to loops
 as well as conditionals.
 
-\Cref{fig:SIFconditionals} gives the tag rules for handling conditionals and loops.
-All branching statements are governed by the same \(\splittname\) rule, and their join points
-by the \(\labeltname\) rule when the label is placed on a join point. Branching expressions
-are likewise handled by the \(\exprsplittname\) rule, and the \(\exprjointname\) rule.
-This last needs no label, due to the predictable structure of nested expressions.
-
 \begin{figure}
-  \begin{minipage}{0.5\textwidth}
+  \begin{minipage}{0.55\textwidth}
     \splittruleblock{
-      let \(\pctaint{f}{e}{\overline{L}} := \PCT\) in \\
-      \caseoftwo{\(\vt\)}
-                {\(\high\)}{\(\PCT' := \pctaint{f}{e}{(L \cup \overline{L})}\)}
-                {\(\low\)}{\(\PCT' := \PCT\)}
+      \caseoftwo{\(\PCT, \vt\)}
+                {\(\pctaint{f}{d}{Ls}, \low\)}{\(\PCT' := \pctaint{f}{e}{(L::Ls)}\)}
+                {\(\underline{~~~}, \high\)}{\(\PCT' := \PCT\)}
     }
     \labeltruleblock{
-      let \(\pctaint{f}{e}{\overline{L}} := \PCT\) in \\
-      \(\PCT' := \pctaint{f}{e}{\overline{L} - L}\)
+      \caseoftwo{\(\PCT\)}
+                {\(\pctaint{f}{d}{Ls}\)}{
+                  let \({\color{blue} Ls'} = \mathit{pop\_all} ~ {\color{blue} \LN ~ Ls}\) in \\
+                  & &      \(\PCT' := \pctaint{f}{d}{Ls'}\)
+                }
+                {\(\underline{~~~}\)}{\(\PCT' := \PCT\)}
     }
   \end{minipage}
-  \begin{minipage}{0.49\textwidth}
+  \begin{minipage}{0.35\textwidth}
     \exprsplittruleblock{
-      let \(\pctaint{f}{e}{\overline{L}} := \PCT\) in \\
-      \caseoftwo{\(\vt\)}
-                {\(\high\)}{\(\PCT' := \pctaint{f}{\mathbf{t}::e}{\overline{L})}\)}
-                {\(\low\)}{\(\PCT' := \pctaint{f}{(\mathbf{f}::e}{\overline{L})}\)}
+      \caseoftwo{\(\PCT, \vt\)}
+                {\(\pctaint{f}{d}{Ls}, \low\)}{\(\PCT' := \pctaint{f}{(d+1)}{Ls}\)}
+                {\(\underline{~~~}, \high\)}{\(\PCT' := \PCT\)}
     }
 
     \exprjointruleblock{
-      let \(\pctaint{f}{b::e}{\overline{L}} := \PCT\) in \\
-      \(\PCT' := \pctaint{f}{e}{\overline{L}}\)
+      \(\vt' := \vt \sqcap \PCT\) \\
+      \caseoftwo{\(\PCT\)}
+                {\(\pctaint{f}{(d+1)}{Ls}\)}{\(\PCT' := \pctaint{f}{d}{Ls}\)}
+                {\(\underline{~~~}\)}{\(\PCT' := \PCT\)}
     }
   \end{minipage}
   
   \caption{SIF Conditionals}
-  \label{fig:SIFconditional Rules}
+  \label{fig:SIFconditionals}
 \end{figure}
 
 Of course, code does not generally come with labeled join points, and they must be associated
@@ -1261,8 +1284,6 @@ doesn't meaningfully use the relevant tags.
 To mitigate this, control points whose compilation would add potentially extraneous instructions
 take optional parameters or return optional results. We will explain how the rule should be
 implemented in the target if the options are used.
-\sna{I think we have been leaning toward doing so in more detail here, not threaded through the
-  rest of the paper. So that's a TODO.}
 Optional inputs and outputs are marked with boxes. If a policy does not make use of the options, it will
 be sound to compile without the extra instructions.
 
@@ -1282,7 +1303,7 @@ of a high-level language. How well have we achieved this aim?
   from the literature
 \end{itemize}
 
-\subsection{Known Limitations}
+\subsection{Limitations}
 
 By committing to a tag-based mechanism, we do restrict the space of policies that Tagged C
 can enforce. In general, a reference monitor can enforce any policy that constitutes a
@@ -1296,9 +1317,14 @@ enforce substructural memory safety. Versions of memory safety that protect fiel
 struct from overflows within the same struct would be very useful, but currently enforcing
 them will require manual initialization.
 
-\subsection{Unknown Limitations}
-
-[TODO]
+Beyond these, there is always the possibility that we have missed some control point
+that would enable interesting security policies outside of the areas we have considered.
+How hard would it be to add control points, or extend the ones that exist? That depends
+whether the extension in question would impact compilation strategies. For instance,
+we have avoided control points that allow updates to their operand tags, although
+this could be useful in enforcing policies that attempt to maintain the uniqueness of tags,
+because tag-based hardware is unlikely to support linear tags, so any such updates would
+need the compiler to generate extra instructions.
 
 \section{Related Work}
 
@@ -1605,60 +1631,61 @@ And finally, we have the return rules.
 \retvalstep
 \retnovalstep
 
-\section{Moved from Intro}
+%\section{Moved from Intro}
 
-\sna{I'm organizing our diss tracks into paragraphs that we can cut or move as needed}
-\paragraph*{Why Dynamic?}
+%\sna{I'm organizing our diss tracks into paragraphs that we can cut or move as needed}
+%\paragraph*{Why Dynamic?}
   
-  Unfortunately, it is not always possible to fully secure C code before run-time.
-  Ideally, bugs would be quickly identified and then fixed promptly. 
-  That is not always possible for a variety of reasons: bugs may escape detection, 
-  require significant effort to diagnose, or be impractical to fix. 
-  There are many techniques for finding bugs, but there is a shared stumbling block: C is not 
-  well defined. We cannot always agree on when something is a bug in C, especially code using
-   Undefined Behaviors (UB) \cite{defactoC}. Confusion around expected behavior is no small problem. 
-  There are 191 undefined behaviors and 52 unspecified behaviors in the C99 
-  specification \cite{Csmith}. Sometimes these behaviors are benign and skillfully 
-  used by the developer, other times they are unintended and highly dangerous. 
-  Unfortunately the distinction between the two is easily lost. 
-  Discerning expert code review is considered best practice, although it is 
-  rarely perfectly successful \cite{} % https://dl.acm.org/doi/10.1007/978-3-642-36563-8_14 }
-  even if an expert is available at all. Even when there is both consensus 
-  and detection of a bug\apt{??} \amn{we can find it at and we can agree its a problem that should be fixed}, 
-  changing the code may not be possible because  
-  it is in proprietary 3rd party libraries and drivers, or because
-  regulations prohibit changes \cite{Bessey10:Coverity}.
+%  Unfortunately, it is not always possible to fully secure C code before run-time.
+%  Ideally, bugs would be quickly identified and then fixed promptly. 
+%  That is not always possible for a variety of reasons: bugs may escape detection, 
+%  require significant effort to diagnose, or be impractical to fix. 
+%  There are many techniques for finding bugs, but there is a shared stumbling block: C is not 
+%  well defined. We cannot always agree on when something is a bug in C, especially code using
+%  Undefined Behaviors (UB) \cite{defactoC}. Confusion around expected behavior is no small problem. 
+%  There are 191 undefined behaviors and 52 unspecified behaviors in the C99 
+%  specification \cite{Csmith}. Sometimes these behaviors are benign and skillfully 
+%  used by the developer, other times they are unintended and highly dangerous. 
+%  Unfortunately the distinction between the two is easily lost. 
+%  Discerning expert code review is considered best practice, although it is 
+%  rarely perfectly successful \cite{} % https://dl.acm.org/doi/10.1007/978-3-642-36563-8_14 }
+%  even if an expert is available at all. Even when there is both consensus 
+%  and detection of a bug\apt{??} \amn{we can find it at and we can agree its a problem that should be fixed}, 
+%  changing the code may not be possible because  
+%  it is in proprietary 3rd party libraries and drivers, or because
+%  regulations prohibit changes \cite{Bessey10:Coverity}.
 
-  \apt{last clause is mysterious} \amn {
-    for example FDA approval used to forbid patching because you'd have to go through recertification. 
-    So healthcare wouldn't patch. SNA pointed out the coverity paper comments on this as a reason for 
-    bugs not getting fixed}
+%  \apt{last clause is mysterious} \amn {
+%    for example FDA approval used to forbid patching because you'd have to go through recertification. 
+%    So healthcare wouldn't patch. SNA pointed out the coverity paper comments on this as a reason for 
+%    bugs not getting fixed}
 
-  \paragraph*{Why C-Level?}
-  Tag-based enforcement in general has a significant body of work at the assembly level, especially
-  PIPE (Programmable Interlocks for Policy Enforcement) \cite{}. However, even at the assembly-level
-  these systems need the compiler to be in the trusted computing base (TCB), as many policies require
-  knowledge of source-level constructs, even ones that do not depend on detailed knowledge of the program's
-  behavior [cite Nick and Andre; anyone else?]. Moving policy-definition to the source level therefore
-  does not expand the TCB and allows C developers to reason about policies in terms of the language that
-  they program in regularly.
+%  \paragraph*{Why C-Level?}
+%  Tag-based enforcement in general has a significant body of work at the assembly level, especially
+%  PIPE (Programmable Interlocks for Policy Enforcement) \cite{}. However, even at the assembly-level
+%  these systems need the compiler to be in the trusted computing base (TCB), as many policies require
+%  knowledge of source-level constructs, even ones that do not depend on detailed knowledge of the program's
+%  behavior [cite Nick and Andre; anyone else?]. Moving policy-definition to the source level therefore
+%  does not expand the TCB and allows C developers to reason about policies in terms of the language that
+%  they program in regularly.
 
-  \paragraph*{Notations}
-  Values are ranged over by \(v\), variable identifiers by \(x\), and function identifiers by \(f\).
-Tags use a number of metavariables: \(t\) ranges over all tags, while we will use
-\(\vt\) to refer to the tags associated with values, \(\pt\) for tags on pointer values
-and memory-location expressions, \(\lt\) for tags associated with memory locations themselves,
-\(\nt\) for ``name tags'' automatically derived from identifiers, \(\PCT\) for the
-global ``program counter tag'' or PC Tag.
-An {\it atom} is a pair of a value and a tag, \(\val{v}{\vt}\); the @ symbol should be read
-as a pair in general, and is used when the second object in the pair is a tag.
-Expressions are ranged over by \(\expr\), statements by \(\stmt\), and continuations by \(\cont\).
-The continuations are defined in \cref{app:continuations}, and step rules in \cref{app:rules}.
+%  \paragraph*{Notations}
+%  Values are ranged over by \(v\), variable identifiers by \(x\), and function identifiers by \(f\).
+%Tags use a number of metavariables: \(t\) ranges over all tags, while we will use
+%\(\vt\) to refer to the tags associated with values, \(\pt\) for tags on pointer values
+%and memory-location expressions, \(\lt\) for tags associated with memory locations themselves,
+%\(\nt\) for ``name tags'' automatically derived from identifiers, \(\PCT\) for the
+%global ``program counter tag'' or PC Tag.
+%An {\it atom} is a pair of a value and a tag, \(\val{v}{\vt}\); the @ symbol should be read
+%as a pair in general, and is used when the second object in the pair is a tag.
+%Expressions are ranged over by \(\expr\), statements by \(\stmt\), and continuations by \(\cont\).
+%The continuations are defined in \cref{app:continuations}, and step rules in \cref{app:rules}.
 
-A memory is an array of bytes, where each byte is part of an atom.
-Each byte is also associated with a ``location tag'' \(\lt\). When a contiguous region of \(s\) bytes
-starting at location \(l\) comprise an atom \(v@\vt\), and their locations tags comprise the list \(\lts\),
-we write \(\mem[l]_s = v@\vt @\lts\). Likewise, \(\mem[l \dots l + s \mapsto v@\vt @ \lts]_s\)
-denotes storing that many bytes. Visually, we will represent whole atoms in memory as condensed boxes,
-with their location tags separate.
+%A memory is an array of bytes, where each byte is part of an atom.
+%Each byte is also associated with a ``location tag'' \(\lt\). When a contiguous region of \(s\) bytes
+%starting at location \(l\) comprise an atom \(v@\vt\), and their locations tags comprise the list \(\lts\),
+%we write \(\mem[l]_s = v@\vt @\lts\). Likewise, \(\mem[l \dots l + s \mapsto v@\vt @ \lts]_s\)
+%denotes storing that many bytes. Visually, we will represent whole atoms in memory as condensed boxes,
+%with their location tags separate.
+
 \end{document}
