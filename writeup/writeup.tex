@@ -256,8 +256,8 @@ a special global tag called the PC Tag, ranged over by \(\PCT\).
            \(p:\fbox{\(\vundef @ \vt_1 @ \lt_1\)}\)
          }; \&
          \node[anchor=north] {\(\pt_1, \vt_1,\lt_1 \leftarrow \globaltname(mm)\) \\
-           \(\pt_2, \vt_2 \leftarrow \argtname(\vt_0,g,psk)\) \\
-           \(\PCT_1 \leftarrow \calltname(\PCT_0, g)\)}; \\
+           \(\pt_2, \vt_2 \leftarrow \argtname(\vt_0,\FN[g],\AN[psk])\) \\
+           \(\PCT_1 \leftarrow \calltname(\PCT_0, \FN[g])\)}; \\
        };
        
  \node[matrix, ampersand replacement=\&, node distance=5em, below=of table1.west,draw,anchor=west] (table2)         
@@ -306,8 +306,9 @@ conditional, when the program assigns to {\tt mm}, it must consult both the
 \(\assigntname\) rule as normal and the \(\storetname\) rule because it is storing
 to memory.
 
-To upgrade our ``don't print the password'' policy to ``don't leak the password,'' we can
-keep most of our rules the same, or extend them in natural ways. Crucially, we will tag memory
+Because ``don't print the password'' is so similar to ``don't leak the password,'' we can
+implement the latter with the same tag type, duplicating most of the rules. We just need to
+deal with memory tags and the PC Tag. We will tag memory
 locations \(\high\) by default, indicating that they are allowed to contain \(\high\)-tagged values,
 but {\tt mm} will be tagged \(\low\). The most interesting rules are:
 
@@ -338,50 +339,6 @@ in a high context.
 
 \section{The Language, Informally}
 \label{sec:language}
-
-Tagged C uses the full syntax of CompCert C \cite{Leroy09:CompCert} with minimal modification (\cref{fig:syntax}).
-There are two notable syntactical differences in the language, relative to CompCert C:
-conditionals and loops take an optional {\em join point} label, and parenthetical expressions
-an optional ``context tag.''
-
-Our semantics are a small-step reduction semantics which differ from CompCert C's in
-two key respects. These are given in full in the appendix. First, Tagged C's semantics contain
-{\em control points}: hooks within the
-operational semantics at which the tag policy is consulted and either tags are updated, or the system
-failstops. (Control points resemble ``advice points'' in aspect-oriented programming, but narrowly
-focused on the manipulation of tags.) A control point consists of the name of a {\em tag rule}
-and the bindings of its inputs and outputs; a tag rule is a partial function. The names and
-signatures of the tag rules, and their corresponding control points, are listed in \Cref{fig:controlpoints}.
-
-Second, there is no memory-undefined behavior: the source semantics reflect a
-concrete target-level view of memory as a flat address space. Without memory safety, programs
-that exhibit memory-undefined behavior will act as their compiled equivalents would, potentially
-corrupting memory; we expect that a memory safety policy will be a standard default, but that the
-strictness of the policy may need to be tuned for programs that use low-level idioms.
-
-The choice of control points and their associations with tag rules, as well as the tag rules'
-signatures, are a crucial design element. Our proposed design is sufficient for the three classes of
-policy that we explore in this paper, but it may not be complete.
-
-\paragraph*{Parts of a policy}
-
-A policy consists of instantiations of the tag type
-and each of the tag rules associated with control points in the semantics. Table \cref{figcontrolpoints}
-identifies the full collection of control points, their tag rules, and the inputs and outputs of the tag rules.
-The tag type \(\tau\) must be inhabited by a default tag.
-
-\paragraph*{Identifiers}
-
-Identifiers are a C source-level construct, and a policy designer might want to operate on them,
-so we embed them in tags. These are called {\em name tags}. We give name tags to the
-following constructions and identify them as follows:
-\begin{itemize}
-\item Function identifiers, \(\FN\)
-\item Function arguments, \(\AN\)
-\item Global variables, \(\GN\)
-\item Labels, \(\LN\)
-\item Types, \(\TN\)
-\end{itemize}
 
 \begin{table}[t]
   \begin{tabular}{|l|l|l|l|}
@@ -418,6 +375,82 @@ following constructions and identify them as follows:
   \label{fig:controlpoints}
 \end{table}
 
+Tagged C uses the full syntax of CompCert C \cite{Leroy09:CompCert},
+an elaboration of the C standard into a formal operational semantics,
+with minimal modification, with the exception of inline assembly.
+Our semantics (given in full in the appendix) are a small-step reduction
+semantics which differ from CompCert C's in two key respects. First, Tagged C's semantics contain
+{\em control points}: hooks within the
+operational semantics at which the tag policy is consulted and either tags are updated, or the system
+failstops. (Control points resemble ``advice points'' in aspect-oriented programming, but narrowly
+focused on the manipulation of tags.) A control point consists of the name of a {\em tag rule}
+and the bindings of its inputs and outputs. Take, for example, the expression step reduction
+for binary operations, below. On the left, the ``tagless'' version of the rule reduces a
+binary operation on two input values to a single value by applying the operation.
+On the left, the Tagged C version adds tags to the operands and the result, with the result tag
+derived from the \(\binoptname\) rule.
+
+\begin{minipage}[t]{0.37\textwidth}
+  \binopsteptagless
+\end{minipage}
+\begin{minipage}[t]{0.6\textwidth}
+  \binopstep
+\end{minipage}
+
+The tag rule itself is instantiated as a partial function; if a policy leaves a tag rule
+undefined on some inputs, then those inputs are considered to violate the policy, sending
+execution into a special failstop state. The names and signatures of the tag rules,
+and their corresponding control points, are listed in \Cref{fig:controlpoints}.
+
+The choice of control points and their associations with tag rules, as well as the tag rules'
+signatures, are a crucial design element. Our proposed design is sufficient for the three classes of
+policy that we explore in this paper, but it may not be complete.
+
+The second major semantic distinction between Tagged C and CompCert C is that Tagged C has no
+memory-undefined behavior. CompCert C models memory as a collection of blocks of offsets,
+and treats all variables as having their own block. Tagged C instead follows Concrete C
+\cite{} [Need something to cite!] in separating variables into public and private data.
+Public data (all heap data, globals, arrays, and address taken locals) share a single flat address
+space, where its behavior is implementation defined. \sna{Technically right?}
+Private data (non-address-taken locals and parameters) have a separate store.
+
+%Without memory safety, programs
+%that exhibit memory-undefined behavior will act as their compiled equivalents would, potentially
+%corrupting memory; we expect that a memory safety policy will be a standard default, but that the
+%strictness of the policy may need to be tuned for programs that use low-level idioms.
+
+\paragraph*{Parts of a policy}
+
+A policy consists of instantiations of the tag type
+and each of the tag rules associated with control points in the semantics. Table \cref{figcontrolpoints}
+identifies the full collection of control points, their tag rules, and the inputs and outputs of the tag rules.
+The tag type \(\tau\) must be inhabited by a default tag.
+
+\paragraph*{Identifiers}
+
+Identifiers are a C source-level construct, and a policy designer might want to operate on them,
+so we embed them in tags. These are called {\em name tags}. We give name tags to the
+following constructions and identify them as follows:
+\begin{itemize}
+\item Function identifiers, \(\FN\)
+\item Function arguments, \(\AN\)
+\item Global variables, \(\GN\)
+\item Labels, \(\LN\)
+\item Types, \(\TN\)
+\end{itemize}
+
+\paragraph*{Combining Policies}
+
+Multiple policies can be enforced in parallel. If policy \(A\) has tag type \(\tau_A\)
+and policy \(B\) has \(\tau_B\), then policy \(A \times B\) should have tag type
+\(\tau = \tau_A \times \tau_B\). Its tag rules should apply the rules of \(A\) to
+the left projection of all inputs and the rules of \(B\) to the right projection
+to generate the components of the new tag. If either side failstops, the entire
+rule should failstop.
+
+This process can be applied to any number of different policies, allowing for instance
+a combination of a baseline memory safety policy with several more targeted
+information-flow policies.
 
 \section{Tags and Policies}
 \label{sec:policies}
@@ -425,8 +458,6 @@ following constructions and identify them as follows:
 The heart of Tagged C is in its security policies. Using the control points shown in \cref{sec:language},
 we will walk through three example policies: PVI memory safety, compartmentalization, and
 secure information flow.
-
-[TODO: discussion of combining policies]
 
 \subsection{PVI Memory Safety}
 \label{sec:PVI}
@@ -466,7 +497,7 @@ memory is arranged so that the overflow ends up overwriting the variable {\tt y}
   \node[matrix, ampersand replacement=\&, node distance=4em, right=of l1.east,draw,anchor=west] (table1)
        {
          \node[anchor=north]{\(\mathit{overflow} @ \PCT_2\)}; \&
-         \node[anchor=north]{\(\mathtt{x}\mapsto \underline{84} @ \pt_1)\) \\ \(\mathtt{y} \mapsto \underline{96} @ \pt_2\)}; %\&
+         \node[anchor=north]{\(\mathtt{x}\mapsto \underline{84} @ \pt_1\) \\ \(\mathtt{y} \mapsto \underline{96} @ \pt_2\)}; %\&
          %         \node[anchor=north] {\(\vt_1 \leftarrow \localtname(f)\) \\ \(\vt_2 \leftarrow \argtname(\vt_0,f,psk)\)};
          \\
        };
@@ -508,6 +539,7 @@ We can prevent overflows like this using a {\em memory safety} policy. In brief,
 an object is allocated, it is assigned a unique ``color,'' and its memory locations as well
 as its pointer are tagged with that color. Pointers maintain their tags under arithmetic
 operations, and loads and stores are legal if the pointer matches the target memory location.
+The default tag \(N\) indicates that there is currently no color.
 The rules for the \(PVI\) memory safety policy are given in \cref{fig:pvi}. In this case, we will
 have \(\pt_1 = \lt_1 = \tagz\) and \(\pt_2 = \lt_2 = \tagone\). When we try to write to {\tt x+3},
 we compare \(\pt' = \tagz\) with \(\lt_2\), and failstop because they differ.
@@ -525,7 +557,7 @@ we compare \(\pt' = \tagz\) with \(\lt_2\), and failstop because they differ.
     \binoptruleblock{
       \caseofthree
           {\((\vt_1,~ \vt_2)\)}
-          {\((\gentag,\N)\)}{\(\vt' := \gentag\)}
+          {\((\clr,\N)\)}{\(\vt' := \clr\)}
           {\((\N,\gentag)\)}{\(\vt' := \gentag\)}
           {\((\clr_1, \clr_2)\)}{\(\vt' := \N\)}
     }
@@ -575,18 +607,17 @@ for a codebase to contain undefined behavior that will not be fixed. Developers 
 low-level idioms that are UB \cite{Memarian16:DeFacto}, or the cost and risk of regressions may make it
 undesirable to fix bugs in older code \cite{Bessey10:Coverity}.
 
-A compartmentalization policy can isolate potentially risky code, such as code with known UB,
-from safety-critical code, and enforce the principle of least privledge. 
+A compartmentalization policy can isolate potentially risky code, such as code with intentional
+or unfixed UB, from safety-critical code, and enforce the principle of least privledge. 
 It limits the possible damage from exploitation to the containing compartment.
 It may also restrict how code in one compartment may interact with another
 even in the absence of language-level errors. Ideally, each component has only the
 {\em least privilege} necessary to complete its task.
 This popular defense can be implemented at many levels. It is often built
-into a system's fundamental design, like a web browser sandbox untrusted javascript.
+into a system's fundamental design, like a web browser sandbox for untrusted javascript.
 For our use-case, we consider a compartmentalization scheme being added to the system
-after development and we have a set of identifiers and a map provided by 
-a security engineer. The compartmetn identiifers are ranged over by \(C\), and function identifiers
-are mapped to compartments by \(\mathit{comp}(f)\). 
+after development. A set of compartment identifiers are ranged over by \(C\),
+and function and global identifiers are mapped to compartments by \(\mathit{comp}(id)\). 
 
 \paragraph{Coarse-grained Protection}
 
@@ -599,11 +630,12 @@ are mapped to compartments by \(\mathit{comp}(f)\).
 %   else cannot be shared. unique colors to defeat forced pointer arthimetic. hybrid system
 %   roughly the effect of containing things, but wihtout the issues of the MAC
 %
-The core of a compartmentalization scheme is typicall memory protection. In the simplest version, 
-memory allocated by a function is only accessible by functions within its
-compartment. Thus the system keeps track of the active compartment, using the PC tag.
+The core of a compartmentalization policy is memory protection. In the simplest version, 
+a function's stack frame and any heap-allocated regions are only accessible by functions within its
+compartment. The system keeps track of the active compartment using the PC tag.
 
-Calls and returns each take two steps: first to an intermediate call or return state, and
+In the Tagged C semantics, calls and returns each take two steps: first to an intermediate call
+or return state, and
 then to the normal execution state, as shown in \cref{fig:functions} with some function \(f\)
 calling \(f'\). In the initial call step, \(\calltname\)
 uses the name-tags of the caller and callee to update the PC Tag. Then, in the step from the call
