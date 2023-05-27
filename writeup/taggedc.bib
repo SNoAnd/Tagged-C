@@ -65,16 +65,17 @@ series = {CPP 2021}
 }
 
 @techreport{Anderson72:PlanningStudy,
-  added-at = {2014-05-27T19:25:15.000+0200},
   author = {Anderson, James P.},
-  biburl = {https://www.bibsonomy.org/bibtex/25573401b3a88058a07c519b6b6e19bde/privtec},
+  title = {Computer security technology planning study},
+  type = {Technical Report},
+  number = {ESD-TR-73-51},
   institution = {U.S. Air Force Electronic Systems Division},
-  month = {10},
-  title = {{C}omputer {S}ecurity {T}echnology {P}lanning {S}tudy},
-  volume = 2,
-  year = 1972
+  month = oct,
+  year = {1972},
+  url = {http://csrc.nist.gov/publications/history/ande72.pdf},
 }
 
+                  
 @inproceedings{Goguen82:SecurityPolicies,
   added-at = {2016-06-15T00:00:00.000+0200},
   author = {Goguen, Joseph A. and Meseguer, José},
@@ -174,7 +175,7 @@ lastaccessed ={April 11, 2023},
 }
 
  @online{stackoverflow22:dev-survey,
-author ={Stack Overflow},
+author ={{Stack Overflow}},
 year = {2022},
 title ={2022 Stack Overflow Annual Developer Survey},
 url ={https://survey.stackoverflow.co/2022/},
@@ -236,3 +237,142 @@ articleno = 67,
 numpages = 32,
 keywords = {C}
 }
+
+
+@misc{arm-mte,
+key="arm",
+title= "Armv8.5-A Memory Tagging Extension White Paper",
+url="https://developer.arm.com/-/media/Arm\%20Developer\%20Community/PDF/Arm_Memory_Tagging_Extension_Whitepaper.pdf"                  
+}
+                  
+@INPROCEEDINGS {Gollapudi+23,
+author = {R. Gollapudi and G. Yuksek and D. Demicco and M. Cole and G. N. Kothari and R. H. Kulkarni and X. Zhang and K. Ghose and A. Prakash and Z. Umrigar},
+booktitle = {2023 IEEE Symposium on Security and Privacy (SP)},
+title = {Control Flow and Pointer Integrity Enforcement in a Secure Tagged Architecture},
+year = {2023},
+volume = {},
+issn = {},
+pages = {2974-2989},
+abstract = {Control flow attacks exploit software vulnerabilities to divert the flow of control into unintended paths to ultimately execute attack code. This paper explores the use of instruction and data tagging as a general means of thwarting such control flow attacks, including attacks that rely on violating pointer integrity. Using specific types of narrow-width data tags along with narrow-width instruction tags embedded within the binary facilitates the security policies required to protect against such attacks, leading to a practically viable solution. Co-locating instruction tags close to their corresponding instructions within cache lines eliminates the need for separate mechanisms for instruction tag accesses. Information gleaned from the analysis phase of a compiler is augmented and used to generate the instruction and data tags. A full-stack implementation that consists of a modified LLVM compiler, modified Linux OS support for tags and a FPGA-implemented CPU hardware prototype for enforcing CFI, data pointer and code pointer integrity is demonstrated. With a modest hardware enhancement, the execution time of benchmark applications on the prototype system is shown to be limited to low, single-digit percentages of a baseline system without tagging.},
+keywords = {control-flow-integrity,-hardware-security,-pointer-integrity,-security-architectures,-security-and-privacy-policies},
+doi = {10.1109/SP46215.2023.00102},
+url = {https://doi.ieeecomputersociety.org/10.1109/SP46215.2023.00102},
+publisher = {IEEE Computer Society},
+address = {Los Alamitos, CA, USA},
+month = {may}
+}
+
+
+
+@inproceedings{Dhawan+15,
+ author = {Dhawan, Udit and Hritcu, Catalin and Rubin, Raphael and Vasilakis, Nikos and Chiricescu, Silviu and Smith, Jonathan M. and Knight,Jr., Thomas F. and Pierce, Benjamin C. and DeHon, Andre},
+ title = {Architectural Support for Software-Defined Metadata Processing},
+ booktitle = {Proceedings of the Twentieth International Conference on Architectural Support for Programming Languages and Operating Systems},
+ series = {ASPLOS '15},
+ year = {2015},
+ isbn = {978-1-4503-2835-7},
+ location = {Istanbul, Turkey},
+ pages = {487--502},
+ numpages = {16},
+ url = {http://doi.acm.org/10.1145/2694344.2694383},
+ doi = {10.1145/2694344.2694383},
+ acmid = {2694383},
+ publisher = {ACM},
+ address = {New York, NY, USA},
+ keywords = {CFI, memory safety, metadata, security, tagged architecture, taint tracking},
+}
+@article{Azevedo+16,
+  author    = {Arthur {Azevedo de Amorim} and
+               Nathan Collins and
+               Andr{\'{e}} DeHon and
+               Delphine Demange and
+               Catalin Hritcu and
+               David Pichardie and
+               Benjamin C. Pierce and
+               Randy Pollack and
+               Andrew Tolmach},
+  title     = {A verified information-flow architecture},
+  journal   = {Journal of Computer Security},
+  volume    = {24},
+  number    = {6},
+  pages     = {689--734},
+  year      = {2016},
+  url       = {http://dx.doi.org/10.3233/JCS-15784},
+  doi       = {10.3233/JCS-15784},
+  timestamp = {Thu, 08 Dec 2016 18:00:27 +0100},
+  biburl    = {http://dblp.uni-trier.de/rec/bib/journals/jcs/AmorimCDDHPPPT16},
+  bibsource = {dblp computer science bibliography, http://dblp.org}
+}
+
+@inproceedings{Azevedo+15,
+  title = {Micro-Policies: Formally Verified, Tag-Based Security Monitors},
+  author = {Arthur {Azevedo de Amorim} and Maxime Dénès and Nick Giannarakis and Catalin Hritcu and Benjamin C. Pierce and Antal Spector-Zabusky and Andrew P. Tolmach},
+  year = {2015},
+  doi = {10.1109/SP.2015.55},
+  url = {http://dx.doi.org/10.1109/SP.2015.55},
+  researchr = {https://researchr.org/publication/AmorimDGHPST15},
+  cites = {0},
+  citedby = {0},
+  pages = {813-830},
+  booktitle = {2015 IEEE Symposium on Security and Privacy, SP 2015, San Jose, CA, USA, May 17-21, 2015},
+  publisher = {IEEE Computer Society},
+  isbn = {978-1-4673-6949-7},
+}
+                  
+@inproceedings{Dhawan+14,
+    title = {{PUMP: A Programmable Unit for Metadata Processing}},
+    year = {2014},
+    booktitle = {Proceedings of the Third Workshop on Hardware and Architectural Support for Security and Privacy},
+    author = {Dhawan, Udit and Vasilakis, Nikos and Rubin, Raphael and Chiricescu, Silviu and Smith, Jonathan M and Knight Jr., Thomas F and Pierce, Benjamin C and DeHon, André},
+    pages = {8:1–8:8},
+    series = {HASP '14},
+    publisher = {ACM},
+    url = {http://doi.acm.org/10.1145/2611765.2611773},
+    address = {New York, NY, USA},
+    isbn = {978-1-4503-2777-0},
+    doi = {10.1145/2611765.2611773},
+    keywords = {control-flow integrity, memory safety, metadata, security, tagged architecture, taint tracking}
+}
+
+@misc{Dover20,
+author="{Dover Microsystems}",
+title="Coreguard Overview",
+url="https://www.dovermicrosystems.com/solutions/coreguard/"
+}
+
+@InProceedings{Dover16,
+  author =	 {
+  Andr\'{e} DeHon and
+    Eli Boling and
+    Rishiyur Nikhil and
+    Darius Rad and
+    Julie Schwarz and
+    Niraj Sharma and
+    Joseph Stoy and
+    Greg Sullivan and
+    Andrew Sutherland
+  },
+  title =	 {{DOVER}: {A} {M}etadata-{E}xtended {RISC-V}},
+  month =	 jan,
+  year =	 2016,
+  url = {http://riscv.org/wp-content/uploads/2016/01/Wed1430-dover_riscv_jan2016_v3.pdf},
+  booktitle =	 {RISC-V Workshop},
+  note = {Accompanying talk at \url{http://youtu.be/r5dIS1kDars}}
+}
+
+
+@inproceedings{RoesslerD18,
+  author    = {Nick Roessler and
+               Andr{\'{e}} DeHon},
+  title     = {Protecting the Stack with Metadata Policies and Tagged Hardware},
+  booktitle = {2018 {IEEE} Symposium on Security and Privacy, {SP} 2018, Proceedings,
+               21-23 May 2018, San Francisco, California, {USA}},
+  pages     = {478--495},
+  year      = {2018},
+  url       = {https://doi.org/10.1109/SP.2018.00066},
+  doi       = {10.1109/SP.2018.00066},
+  timestamp = {Wed, 16 Oct 2019 14:14:51 +0200},
+  biburl    = {https://dblp.org/rec/bib/conf/sp/RoesslerD18},
+  bibsource = {dblp computer science bibliography, https://dblp.org}
+}
+
