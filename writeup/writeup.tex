@@ -1009,7 +1009,7 @@ higher-level security concerns, regardless of whether the code that they protect
 errors or undefined behaviors. We will give an example of a single policy in the family.
 Our introductory example was an instance of {\em confidentiality}, so now we will discuss
 {\em integrity}: preventing insecure input from influencing secure behavior.
-In this code, a malformed user input is accidentally appended to an sql query without sanitization:
+In this code, a malformed user input is accidentally appended to an SQL query without first being sanitized:
 
 \begin{verbatim}
 void sanitize(char* in, char* out);
@@ -1018,25 +1018,27 @@ void sql_query(char* query, char* res);
 void get_data() {
   char[20] name;
   char[20] name_san;
-  char[100] query = "select address where name =";
+  char[100] query = "select address where name = \"";
   char[100] res;
 
   scanf("%19", name);
   sanitize(name, name_san);
   strncat(query, name, strlen(name));
-  
+  strncat(query, "\"",1);
+
   sql_query(query, res);
   printf(res);
 }
 \end{verbatim}
 
 This function sanitizes its input {\tt name}, then appends the result to an appropriate SQL
-query, storing the query's result in {\tt buf}. But the programmer has accidentally
-used the unsanitized string! This creates the opportunity for an SQL injection attack: a caller
-to this function could (presumably at the behest of an outside user) call it with a
-{\tt name} of ``Bobby; drop table;''.
+query, storing the query's result in {\tt res}. But the programmer has accidentally
+used the unsanitized string {\tt name} reather than {\tt name\_san}!
+This creates the opportunity for an SQL injection attack\cite{??}: a user
+of this function could (presumably at the behest of an outside user) pass it a 
+{\tt name} containing ``{\tt Bobby"; drop table;}''.
 
-The fact that the input can be sanitized also makes this an {\em intransitive} policy:
+The fact that the input can be sanitized also makes this\apt{what? haven't described the policy yet}  an {\em intransitive} policy:
 information may flow from {\tt scanf} to {\tt sanitize}, and from {\tt sanitize} to
 {\tt sql\_query}, but not directly from {\tt scanf} to {\tt sql\_query}.
 
@@ -1089,11 +1091,11 @@ information may flow from {\tt scanf} to {\tt sanitize}, and from {\tt sanitize}
 \label{fig:sif1}
 \end{figure}
 
-Since we care about a single source, we can once again use a pair of \(\high\)
+Since we care about a single source\apt{??}, we can once again use a pair of \(\high\)
 and \(\low\) tags, although in this case we aim to prevent \(\low\)-integrity
 data from flowing to \(\high\)-integrity locations.
 We additionally need to carry significant information on the PC Tag,
-so we define a third type of tag with the constructor {\sc \color{blue} pc},
+so we define a third type of tag, written using the constructor {\sc \color{blue} pc},
 which carries (1) the current function identifier, (2) a natural number to record
 a count of tainted expression scopes, and (3) a stack of label identifiers to record
 the join points of tainted statement scopes. We will discuss (2) and (3) in detail below.
@@ -1102,13 +1104,17 @@ Initially, the PC Tag is \(\pctaint{f}{0}{\varepsilon}\).
 Selected tag rules for expressions are given in \cref{fig:sif1}. We define two operators on tags:
 the ``join'' operator \(\sqcap\) takes the higher of two security levels, and the ``reduce''
 operator \(| \cdot |\) converts a PC Tag into a security level, \(\high\) or \(\low\).
-The function {\tt scanf} taints all of its writes by marking them \(\low\). This extends to
-its return value in \(\rettname\) as well (not shown.) By the same token, all outputs of
-{\tt sanitize} are tagged \(\low\), so that when it copies \(\high\)-tagged data into its
-output buffer, we consider those data safe.
+The function {\tt scanf} taints all of its writes by marking them \(\low\). \apt{I thought we'd agreed
+  that this was an overly heavy-handed way to make {\tt scanf} taint the input. However...} This extends to
+its return value in \(\rettname\) as well (not shown).\apt{But it doesn't have a return value! And how would we express
+  that it should taint its (second) argument?}
+Similarly, all outputs of {\tt sanitize} are tagged \(\low\), so that when it copies \(\high\)-tagged data into its
+output buffer, we consider those data safe.\apt{But again, how is this expressed in a policy? For examples, baybe better to avoid
+passing data back via args (although of course we should have a story for that).}
 
 In this scenario, our policy aims to prevent {\tt sql\_query} from recieving tainted data.
-For this reason, we failstop if {\tt sql\_query} would load a \(\low\) value.
+For this reason, we failstop if {\tt sql\_query} would load a \(\low\) value.\apt{Ditto on this being
+  a heavy-handed and indirect scheme. Just want to say that the {\tt query} is $\low$.}
 
 \paragraph*{Implicit Flows}
 
@@ -1162,11 +1168,13 @@ from the split to a return have re-converged; its its immediate post-dominator \
 longer deduce which path execution took, except through the assignments that happened
 in \(b_1\) or \(b_2\), which are already tainted. It is therefore safe to tag future
 assignments \(\low\). In the example, {\tt public1} should be tagged \(\low\), while
-{\tt public2} is tagged \(\high\).
+{\tt public2} is tagged \(\high\).\apt{This is confusing integrity and confidentiality.}
 
 This is where the other components of the PC Tag come into play. We perform a program
 transformation introducing the labels of all join points explicitly, so that in
-\cref{fig:ifthenelse}, {\tt J} is an explicit label in the code, if it wasn't already.
+\cref{fig:ifthenelse}, {\tt J} is an explicit label in the code, if it wasn't already.\apt{
+  Clarify that this ``transformation'' is strictly internal/conceptual; maybe put forward pointer to para at end of this section
+  (or more that here)?}
 We introduce an internal form of each conditional statement
 (if, switch, while, do-while, and for) that takes as an extra parameter the label of
 that conditional's join point. As seen in \cref{fig:SIFconditionals}, the
@@ -1178,11 +1186,13 @@ if its stack is empty.
 
 Branching expressions work similarly, except that the join point occurs at a different
 internal expression form: the parenthetical expression. For example, the expression
-{\tt 1 ? a : b} reduces to the parenthetical {\tt (a)}. The \(\exprjointname\) rule
+{\tt 1 ? a : b} reduces to the parenthetical {\tt (a)}.\apt{This requires a much deeper understanding
+  of reduction semantics than anything else in the paper -- can that be avoided?} The \(\exprjointname\) rule
 applies when {\tt a} is fully reduced and the semantics throw away the parentheses.
 Because expressions are nested, we only need to keep track of how deep execution has
 gone since the first time it branched on a \(\low\) value, by incrementing and decrementing
-the depth \(d\). \(\exprjointname\) also tags the result of the expression.
+the depth \(d\). \apt{This is obscure.} \(\exprjointname\) also tags the result of the expression.\apt{This
+  seems too trivial to note in the text. Except: what \emph{is} the reason for joining with P in the paritcular rule shown?}
 
 We assume a {\em termination-insensitive} setting \cite{Askarov08:TINILeaks}, in which
 we allow an observer to glean information by the termination or non-termination of
@@ -1194,7 +1204,7 @@ as well as conditionals.
   \begin{minipage}{0.55\textwidth}
     \splittruleblock{
       \caseoftwo{\(\PCT, \vt\)}
-                {\(\pctaint{f}{d}{Ls}, \low\)}{\(\PCT' := \pctaint{f}{e}{(L::Ls)}\)}
+                {\(\pctaint{f}{d}{Ls}, \low\)}{\(\PCT' := \pctaint{f}{d}{(L::Ls)}\)}
                 {\(\underline{~~~}, \high\)}{\(\PCT' := \PCT\)}
     }
     \labeltruleblock{
@@ -1427,7 +1437,11 @@ can enforce. In general, a reference monitor can enforce any policy that constit
 {\em safety property}---any policy whose violation can be demonstrated by a single finite
 trace. This class includes such policies as ``no integer overflow'' and ``pointers are always in-bounds,''
 which depend on the values of variables. Tag-based monitors cannot enforce any policy that
-depends on the value of a variable rather than its tags.
+depends on the value of a variable rather than its tags. \apt{But perhaps note that tag-based
+  policies can express some trace properties more easily than value-based policies could, essentially
+  because tags can summarize the relevant parts of the trace history.}
+
+\apt{Something about malloc tagging, and type-based tagging in general.}
 
 Due to our approach to tagging memory uniformly at allocation time, Tagged C cannot easily
 enforce substructural memory safety. Versions of memory safety that protect fields of a
@@ -1447,12 +1461,11 @@ need the compiler to generate extra instructions.
 
 \paragraph{Reference Monitors}
 
-The concept of a reference monitor was first introduced fifty years ago in \cite{Anderson72:PlanningStudy}:
-a tamper-proof and verifiable subsystem that checks every security-relevant operation in a system to
-ensure that it conforms to a security {\em policy} (a general specification of acceptable behavior;
-see \cite{Goguen82:SecurityPolicies}.)
+The concept of a reference monitor was first introduced fifty years ago~\cite{Anderson72:PlanningStudy}
+as a tamper-proof and verifiable subsystem that checks every security-relevant operation in a system to
+ensure that it conforms to a security {\em policy} (a general specification of acceptable behavior~\cite{Goguen82:SecurityPolicies}).
 
-A reference monitor can be implemented at any level of a system. An {\em inline reference monitor}
+A reference monitor can be implemented at any level of a system. An {\em inline reference monitor}\cite{??}
 is a purely compiler-based system that inserts checks at appropriate places in the code.
 Alternatively, a reference monitor might be embedded in the operating system, or in an interpreted
 language's runtime. A {\em hardware reference monitor} instead provides primitives at the ISA-level
@@ -1466,7 +1479,7 @@ decide whether the instruction is legal and, if so, determine which tags to plac
 PIPE tags are large relative to other tag-based hardware, giving it the flexibility
 to implement complex policies with structured tags, and even run multiple policies at once.
 
-Other hardware monitors include Arm MTE, [Binghamton], and CHERI.
+Other hardware monitors include Arm MTE, STAR, and CHERI.
 Arm MTE aims to enforce a narrow form of memory safety using 4-bit tags, which distinguish adjacent objects
 in memory from one another, preventing buffer overflows, but not necessarily other memory violations.
 [TODO: read the Binghamton paper, figure out where they sit here.] 
@@ -1484,7 +1497,7 @@ In this paper, we describe a programming language with an abstract reference mon
 We realize it as an interpreter with the reference monitor built in, and envision
 eventually compiling to PIPE-equipped hardware. An inlining compiler would also be plausible.
 As a result of this choice, our abstract reference monitor uses a PIPE-esque notion of
-tags.
+tags.\apt{A grot-esque coinage.}
 
 \paragraph{Aspect Oriented Programming}
 
@@ -1498,10 +1511,11 @@ We have presented the language and a reference interpreter, built on top of the 
 
 \paragraph{Compilation}
 
-An interpreter is all well and good, but a compiler would be preferable for many reasons.
+An interpreter is all well and good\apt{too informal}, but a compiler would be preferable for many reasons.
 A compiled Tagged C could use the hardware acceleration of a PIPE target, and could more easily
 support linked libraries, including linking against code written in other languages.
-The ultimate goal would be a fully verified compiler, but that is a very long way off.
+The ultimate goal would be a fully verified compiler, but that is a very long way off\apt{too informal}.
+
 
 \paragraph{Language Proofs}
 
