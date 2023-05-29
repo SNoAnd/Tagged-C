@@ -1529,6 +1529,50 @@ language to make it easier to write Tagged C policies.
 
 \section{Syntax}
 
+Tagged C has the full complement of typical C expressions (\cref{fig:expr}). \(\val{v}{\vt}\),
+\(\loc{p}{\pt}\), and \(\paren{\expr}{\type}\) are internal forms.
+A constant \(c\) in the concrete syntax is transformed into \(\val{c}{\constt}\),
+and in general \(\val{v}{\vt}\) is a fully-reduced right-hand value. \(\loc{p}{\pt}\)
+is a fully-reduced left-hand value that represents the address of a variable.
+\(\paren{\expr}{\type}\) is the result of a conditional or shortcutting
+expression, with \(\ty\) being a type annotation in case the result needs to
+be cast.
+
+\begin{figure}
+  \[\begin{aligned}
+  \expr ::= & \val{v}{\vt} & \textnormal{Value} \\
+  | & \var{x} & \textnormal{Variable} \\
+  | & \field{\expr}{id} & \textnormal{Field} \\
+  | & \valof{\expr} & \textnormal{Load from Object} \\
+  | & \deref{\expr} & \textnormal{Dereference Pointer} \\
+  | & \addrof{\expr} & \textnormal{Address of Object} \\
+  | & \unop{\odot}{\expr} & \textnormal{Unary Operator} \\
+  | & \binop{\oplus}{\expr_1}{\expr_2} & \textnormal{Binary Operator} \\
+  | & \cast{\expr}{ty} & \textnormal{Cast} \\
+  | & \condition{\expr_1}{\expr_2}{\expr_3} & \textnormal{Conditional} \\
+  | & \sizeof{ty} & \textnormal{Size of Type} \\
+  | & \alignof{ty} & \textnormal{Alignment of Type} \\
+  | & \assign{\expr_1}{\expr_2} & \textnormal{Assignment} \\
+  | & \assignop{\oplus}{\expr_1}{\expr_2} & \textnormal{Operator Assignment} \\
+  | & \postinc{\oplus}{\expr} & \textnormal{Post-Increment/Decrement} \\
+  | & \comma{\expr_1}{\expr_2} & \textnormal{Expression Sequence} \\
+  | & \call{\expr_f}{\overline{\expr}_{args}} & \textnormal{Function Call} \\
+  | & \loc{l}{\lt} & \textnormal{Memory Location} \\
+  | & \paren{\expr}{ty}{\gentag} & \textnormal{Parenthetical with Optional Cast} \\
+  \end{aligned}\]
+  \caption{Expression Syntax}
+  \label{fig:expr}
+\end{figure}
+
+Some common C expressions are derived forms. An array index expression,
+\(\expr_1[\expr_2]\) expands to \(\deref{\binop{+}{\expr_1}{\expr_2}}.
+The pre-increment  expression \(++\expr\) expands to
+\(\assign{\expr}{\binop{+}{\expr}{1@\constt}}\), and likewise for pre-decrement.
+
+Similarly, statements cover the full C standard. Conditional statements
+carry optional labels as internal forms, so that an if statement in the
+concrete syntax becomes \(\sifthenelse{\expr}{\stmt_1}{\stmt_2}{\bot}\).
+
 \begin{figure}
   \begin{subfigure}[t]{0.3\textwidth}
     \[\begin{aligned}
@@ -1548,34 +1592,50 @@ language to make it easier to write Tagged C policies.
     \end{aligned}\]
   \end{subfigure}
   \begin{subfigure}[t]{0.69\textwidth}
-    \[\begin{aligned}
-    \expr ::= & \val{v}{\vt} & \textnormal{Value} \\
-    | & \var{x} & \textnormal{Variable} \\
-    | & \field{\expr}{id} & \textnormal{Field} \\
-    | & \valof{\expr} & \textnormal{Load from Object} \\
-    | & \deref{\expr} & \textnormal{Dereference Pointer} \\
-    | & \addrof{\expr} & \textnormal{Address of Object} \\
-    | & \unop{\odot}{\expr} & \textnormal{Unary Operator} \\
-    | & \binop{\oplus}{\expr_1}{\expr_2} & \textnormal{Binary Operator} \\
-    | & \cast{\expr}{ty} & \textnormal{Cast} \\
-    | & \condition{\expr_1}{\expr_2}{\expr_3} & \textnormal{Conditional} \\
-    | & \sizeof{ty} & \textnormal{Size of Type} \\
-    | & \alignof{ty} & \textnormal{Alignment of Type} \\
-    | & \assign{\expr_1}{\expr_2} & \textnormal{Assignment} \\
-    | & \assignop{\oplus}{\expr_1}{\expr_2} & \textnormal{Operator Assignment} \\
-    | & \postinc{\oplus}{\expr} & \textnormal{Post-Increment/Decrement} \\
-    | & \comma{\expr_1}{\expr_2} & \textnormal{Expression Sequence} \\
-    | & \call{\expr_f}{\overline{\expr}_{args}} & \textnormal{Function Call} \\
-    | & \loc{l}{\lt} & \textnormal{Memory Location} \\
-    | & \paren{\expr}{ty}{\gentag} & \textnormal{Parenthetical with Optional Cast} \\
-    \end{aligned}\]
   \end{subfigure}
   \caption{Tagged C Abstract Syntax}
   \label{fig:syntax}
 \end{figure}
 
-\section{Continuations}
+\section{States}
+
+States can be of several kinds, denoted by their script prefix: a {\em general state} \(\mathcal{S}(\dots)\),
+an {\em expression state} \(\mathcal{E}(\dots)\), a {\em call state} \(\mathcal{C}(\dots)\), or a
+{\em return state} \(\mathcal{R}(\dots)\). Finally, the special state {\em failstop} (\(\mathcal{F}(\dots)\))
+represents a tag failure, and carries the state that produced the failure.
+[Allison: to whatever degree you've figured out what is useful here by publication-time, we can
+  tune this to be more specific.]
+
+In the below definition, memories are ranged over by \(\mem\), local environments by
+\(\lenv\), and continuations by \(\cont\).
+
+\[\begin{aligned}
+S ::= & \sstate{\PCT}{\mem}{\stmt}{\cont} \\
+| & \estate{\PCT}{\mem}{\expr}{\cont} \\
+| & \cstate{f}{\PCT}{\mem}{\lenv}{f'}{\overline{\val{v}{\vt}}}{\cont} \\
+| & \rstate{\PCT}{\mem}{\genv}{\lenv}{\val{v}{\vt}}{\cont} \\
+| & \fstate{S} \\
+\end{aligned}\]
+
+
+States in general contain a memory, a local environment, and a continuation.
+
+\subsection{Memories}
+
+\subsection{Environments}
+
+\subsection{Continuations}
 \label{app:continuations}
+
+A continuation acts like a stack of pending operations. The base of the stack is
+\(\kemp\). \(\mathit{Kdo}\) indicates that a do statement is evaluating an expression.
+\(\mathit{Kseq}\) with parameter \(\stmt\) indicates that, after the current statement
+is done executing, \(\stmt\) is next. \(\mathit{Kif}\) means that execution is evaluating
+the test expression of an if statement, and its parameters are the branches of the
+if. Similarly, the test continuations for while, do-while, and for loops indicate that
+the test expression is being evaluated. The associated loop continuations indicate that
+execution is in the loop body. They continuations carry all of the information of the original
+loop.
 
 \[\begin{split}
 \cont ::= & \kemp \\
@@ -1590,22 +1650,6 @@ language to make it easier to write Tagged C policies.
 | & \kforpost{\expr}{\stmt_2}{\stmt_3}{L}{\cont} \\
 \end{split}\]
 
-\section{States}
-
-States can be of several kinds, denoted by their script prefix: a {\em general state} \(\mathcal{S}(\dots)\),
-an {\em expression state} \(\mathcal{E}(\dots)\), a {\em call state} \(\mathcal{C}(\dots)\), or a
-{\em return state} \(\mathcal{R}(\dots)\). Finally, the special state {\em failstop} (\(\mathcal{F}(\dots)\))
-represents a tag failure, and carries the state that produced the failure.
-[Allison: to whatever degree you've figured out what is useful here by publication-time, we can
-  tune this to be more specific.]
-
-\[\begin{aligned}
-S ::= & \sstate{\PCT}{\mem}{\stmt}{\cont} \\
-| & \estate{\PCT}{\mem}{\expr}{\cont} \\
-| & \cstate{f}{\PCT}{\mem}{\lenv}{f'}{\overline{\val{v}{\vt}}}{\cont} \\
-| & \rstate{\PCT}{\mem}{\genv}{\lenv}{\val{v}{\vt}}{\cont} \\
-| & \fstate{S} \\
-\end{aligned}\]
 
 \section{Initial State}
 
@@ -1648,58 +1692,61 @@ The parameter \(b\) marks the start of the global region.
 \subsection{Contexts}
 \label{app:contexts}
 
-Our expression semantics are contextual. A context \(\mathit{ctx}\) is a function from an
-expression to an expression and a tag. We identify a valid context using the \(\mathit{context}\)
-relation over a ``kind'' (left-hand or right-hand, \(\lh\) or \(\rh\)),
-and an expression.
+Our expression semantics are contextual. A context \(\ctx[\expr]_k\) is a function from an
+expression to an expression, with a ``kind'' flag \(k\) (left-hand or right-hand, \(\lh\) or \(\rh\)).
 
 \[\begin{aligned}
-\mathit{context} & ~ k ~ \ctx{\expr} ::= \\
-| & \mathit{context} ~ k ~ \lambda \expr.\expr & \\ % ctx_top
-| & \mathit{context} ~ \lh ~ \lambda \expr.\deref{\ctx{\expr}} &
-\textnormal{where } \mathit{context} ~  \rh ~ \ctx{\expr} \\ % ctx_deref
-| & \mathit{context} ~ \lh ~ \lambda \expr.\field{\ctx{\expr}}{id} &
-\textnormal{where } \mathit{context} ~  \rh ~ \ctx{\expr} \\ % ctx_field
-| & \mathit{context} ~ \rh ~ \lambda \expr.\valof{\ctx{\expr}} &
-\textnormal{where } \mathit{context} ~  \lh ~ \ctx{\expr} \\ % ctx_rvalof
-| & \mathit{context} ~ \rh ~ \lambda \expr.\addrof{\ctx{\expr}} & \textnormal{where } \mathit{context} ~  \lh ~ \ctx{\expr} \\ % ctx_addrof
-| & \mathit{context} ~ \rh ~ \lambda \expr.\unop{\odot}{\ctx{\expr}} & \textnormal{where } \mathit{context} ~  \rh ~ \ctx{\expr} \\ % ctx_unop
-| & \mathit{context} ~ \rh ~ \lambda \expr.\binop{\oplus}{\ctx{\expr_1}}{\expr_2} & \textnormal{where } \mathit{context} ~  \rh ~ \ctx{\expr_1} \\ % ctx_binop_left
-| & \mathit{context} ~ \rh ~ \lambda \expr.\binop{\oplus}{\expr_1}{\ctx{\expr_2}} & \textnormal{where } \mathit{context} ~  \rh ~ \ctx{\expr_2} \\ % ctx_binop_right
-| & \mathit{context} ~ \rh ~ \lambda \expr.\cast{\ctx{\expr}}{\type} & \textnormal{where } \mathit{context} ~  \rh ~ \ctx{\expr} \\ % ctx_cast
-| & \mathit{context} ~ \rh ~ \lambda \expr.\seqand{\ctx{\expr_1}}{\expr_2} & \textnormal{where } \mathit{context} ~  \rh ~ \ctx{\expr_1} \\ % ctx_seqand
-| & \mathit{context} ~ \rh ~ \lambda \expr.\seqor{\ctx{\expr_1}}{\expr_2} & \textnormal{where } \mathit{context} ~  \rh ~ \ctx{\expr_1} \\ % ctx_seqor
-| & \mathit{context} ~ \rh ~ \lambda \expr.\condition{\ctx{\expr_1}}{\expr_2}{\expr_3} & \textnormal{where } \mathit{context} ~  \rh ~ \ctx{\expr_1} \\ % ctx_condition
-| & \mathit{context} ~ \rh ~ \lambda \expr.\assign{\ctx{\expr_1}}{\expr_2} & \textnormal{where } \mathit{context} ~  \lh ~ \ctx{\expr_1} \\ % ctx_assign_left
-| & \mathit{context} ~ \rh ~ \lambda \expr.\assign{\expr_1}{\ctx{\expr_2}} & \textnormal{where } \mathit{context} ~  \rh ~ \ctx{\expr_2} \\ % ctx_assign_right
-| & \mathit{context} ~ \rh ~ \lambda \expr.\assignop{\oplus}{\ctx{\expr_1}}{\expr_2} & \textnormal{where } \mathit{context} ~ \lh ~ \ctx{\expr_1} \\ % ctx_assignop_left
-| & \mathit{context} ~ \rh ~ \lambda \expr.\assignop{\oplus}{\expr_1}{\ctx{\expr_2}} & \textnormal{where } \mathit{context} ~ \rh ~ \ctx{\expr_2} \\ % ctx_assignop_right
-| & \mathit{context} ~ \rh ~ \lambda \expr.\postinc{\oplus}{\ctx{\expr}} & \textnormal{where } \mathit{context} ~  \lh ~ \ctx{\expr} \\ % ctx_postinc
-| & \mathit{context} ~ \rh ~ \lambda \expr.\call{\ctx{\expr_1}}{\overline{\expr_2}} & \textnormal{where } \mathit{context} ~  \rh ~ \ctx{\expr_1} \\ % ctx_call_left
-| & \mathit{context} ~ \rh ~ \lambda \expr.\call{\expr_1}{\ctx{\overline{\expr_2}}} & \textnormal{where } \mathit{context} ~  \rh ~ \ctx{\expr} \textnormal{ for } \expr \in \overline{\expr_2} \\ % ctx_call_right
-% skipped builtins
-| & \mathit{context} ~ \rh ~ \lambda \expr.\comma{\ctx{\expr_1}}{\expr_2} & \textnormal{where } \mathit{context} ~  \rh ~ \ctx{\expr_1} \\ % ctx_comma
-| & \mathit{context} ~ \rh ~ \lambda \expr.\paren{\ctx{\expr}}{\type}{} & \textnormal{where } \mathit{context} ~  \rh ~ \ctx{\expr} \\ % ctx_paren
-| & \mathit{context} ~ \rh ~ \lambda \expr.\paren{\ctx{\expr}}{\type}{\gentag} & \textnormal{where } \mathit{context} ~ \rh ~ \ctx{\expr} \\ % ctx_paren
+\ctx{\expr}_\lh ::= \\
+| & \expr & \\ % ctx_top
+| & \deref{\ctx{\expr}_\rh} \\ % ctx_deref
+| & \field{\ctx{\expr}_\rh}{id} \\ % ctx_field
 \end{aligned}\]
 
-Next, we define a notion of expression reduction. A left-hand reduction relates an expression to an expression.
-A right-hand reduction relates a triple of PC Tag, memory, and expression to another such triple.
+\[\begin{aligned}
+\ctx{\expr}_\rh ::= \\
+| & \expr & \\ % ctx_top
+| & \valof{\ctx{\expr}_\lh} \\ % ctx_rvalof
+| & \addrof{\ctx{\expr}_\lh} \\ % ctx_addrof
+| & \unop{\odot}{\ctx{\expr}_\rh} \\ % ctx_unop
+| & \binop{\oplus}{\ctx{\expr_1}_\rh}{\expr_2} \\ % ctx_binop_left
+| & \binop{\oplus}{\expr_1}{\ctx{\expr_2}_\rh} \\ % ctx_binop_right
+| & \cast{\ctx{\expr}_\rh}{\type} \\ % ctx_cast
+| & \seqand{\ctx{\expr_1}_\rh}{\expr_2} \\ % ctx_seqand
+| & \seqor{\ctx{\expr_1}_\rh}{\expr_2} \\ % ctx_seqor
+| & \condition{\ctx{\expr_1}_\rh}{\expr_2}{\expr_3} \\ % ctx_condition
+| & \assign{\ctx{\expr_1}_\lh}{\expr_2} \\ % ctx_assign_left
+| & \assign{\expr_1}{\ctx{\expr_2}_\rh} \\ % ctx_assign_right
+| & \assignop{\oplus}{\ctx{\expr_1}_\lh}{\expr_2} \\ % ctx_assignop_left
+| & \assignop{\oplus}{\expr_1}{\ctx{\expr_2}_\rh} \\ % ctx_assignop_right
+| & \postinc{\oplus}{\ctx{\expr}_\lh} \\ % ctx_postinc
+| & \call{\ctx{\expr_1}_\rh}{\overline{\expr_2}} \\ % ctx_call_left
+| & \call{\expr_1}{\ctx{\overline{\expr_2}}_\rh} \\ % ctx_call_right
+% skipped builtins
+| & \comma{\ctx{\expr_1}_\rh}{\expr_2} \\ % ctx_comma
+| & \paren{\ctx{\expr}_\rh}{\type}{} \\ % ctx_paren
+\end{aligned}\]
+
+A left-hand reduction \(\expr \Rightarrow_\lh \expr'\)
+relates an expression to an expression. A right-hand reduction
+\((\PCT,\mem,\expr) \Rightarrow_\rh (\PCT',\mem',\expr')\)
+relates a triple of PC Tag, memory, and expression to another such triple.
+Given these reduction relations, we construct step rules for contexts in
+expressions.
 
 %triple of a memory, an expression, and a tag
 %might reduces to another such triple as a left-hand, right-hand, or call reduction, written
 %\((\mem, \expr, \PCT) \Rightarrow_k (\mem', \expr', \PCT')\),
 %based on rules given below. These reductions are embedded in states as follows.
 
-\judgmenttwo{\(\mathit{context} ~ \lh ~ \ctx{\expr}\)}
+\judgmenttwo{\(\ctx{\expr}_\lh\)}
             {\(\expr \Rightarrow_\lh \expr'\)}
-            {\(\defestate{\ctx{\expr}} \longrightarrow \defestate{\ctx{\expr}}\)}
+            {\(\defestate{\ctx{\expr}} \longrightarrow \defestate{\ctx{\expr'}}\)}
 
-\judgmenttwo{\(\mathit{context} ~ \rh ~ \ctx{\expr}\)}
+\judgmenttwo{\(\ctx{\expr}_\rh\)}
             {\((\PCT, \mem, \expr) \Rightarrow_\rh (\PCT', \mem', \expr')\)}
-            {\(\defestate{\ctx{\expr}} \longrightarrow \estate{\PCT'}{\mem'}{\ctx{\expr}}{\cont}\)}
+            {\(\defestate{\ctx{\expr}} \longrightarrow \estate{\PCT'}{\mem'}{\ctx{\expr'}}{\cont}\)}
             
-\subsection{Expression Rules}
+All that remains is to give the expression reductions themselves.
 
 \expressions
 
