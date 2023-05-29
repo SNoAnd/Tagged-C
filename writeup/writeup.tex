@@ -45,88 +45,76 @@ interpreter for Tagged C.
 Many essential technologies rely on new and old C code. 
 Operating systems (Linux, Windows, OSX, BSD), databases (Oracle, sqlite3), the internet
 (Apache, NGNIX, NetBSD, Cisco IOS), the Internet of Things (IoT), and the 
-vembedded devices that run our homes and hospitals are built in and on C \cite{Munoz:PoweredbyC}. 
-C is not a relic; more than a third of professional programmers report active developing
-in C today \cite{stackoverflow22:dev-survey}. \apt{That sentence seems off topic of ``essential technologies.''}
+embedded devices that run our homes and hospitals are built in and on C \cite{Munoz:PoweredbyC}. 
+%C is not a relic; more than a third of professional programmers report active developing
+%in C today \cite{stackoverflow22:dev-survey}. \apt{That sentence seems off topic of ``essential technologies.''}
 The safety of these essential technologies
 depends on the security of their underlying C codebases. Insecurity might take the form of
-%(1)
 undefined behavior such as memory errors (e.g. buffer overflows, heap leaks, double-free),
-%(2)
 logic errors (e.g. sql injection, input-sanitization flaws), or
-%(3)
 larger-scale architectural flaws (e.g. over-provisioning access rights).
 
-\apt{The flow of the introduction was still very abrupt and
-  unmotivated.  I've sketched a different structure, which could still
-  be filled out more, esp. with relevant citations.}  Although static
+[TODO: Fill out more, esp. with relevant cituations.] Although static
 analyses can detect and mitigate many C insecurities, the last line of
 defense against undetected or unfixable vulnerabilities is runtime
-enforcement of security policies using a reference
-monitor~{\cite{Anderson72:PlanningStudy}. In particular, a large class
-  of interesting policies can be specified as \emph{information flow}
-  constraints based on \emph{metadata tags} attached to the underlying
-  data to carry information like type, provenance, ownership, or
-  security classification.  During execution, these tags are checked
-  and updated according to some set of rules; if a rule violation is
-  encountered, the program failstops.  Tags can support policies
-  including fine-grained memory safety, secure information flow,
-  mandatory access control, and combinations thereof.  These policies
-  can be enforced either in software or---more promisingly---with the
-  aid of hardware extensions such as ARM MTE~\cite{arm-mte},
-  STAR~\cite{Gollapudi+23}, and
-  PIPE~\cite{Dhawan+15,Azevedo+16,Azevedo+15}.  PIPE (Processor
-  Interlocks for Policy Enforcement),\footnote{ Variants of PIPE have
-  also been called PUMP~\cite{Dhawan+14,Dhawan+15},
-  SDMP~\cite{Dover16,RoesslerD18}) or CoreGuard~\cite{Dover20}.}
-  which has been the specific motivator for our work, is particularly
-  flexible: it supports arbitrary software-defined flow rules over
-  large (word-sized) tags with arbitrary structure. This flexibility
-  should allow an engineer to tune security enforcement to the
-  particular needs of the system, rather than apply conservative,
-  one-size-fits-all restrictions.\apt{Would be good to expand on why
-    this flexibility is useful.} But PIPE tags and rules are defined
-  in terms of individual machine instructions and ISA-level
-  concepts, and in practice are based on reverse engineering the behavior
-  of specific compilers, which makes them difficult for a C engineer to write.
-  Moreover, some security policies can only be expressed in terms of high-level code
-  features that are not preserved at machine level, such as function
-  arguments, structured types, and structured control flow.
+enforcement of {\em security policies} using a reference
+monitor~\cite{Anderson72:PlanningStudy}. A large class of useful policies
+can be specified as \emph{data-flow} constraints based on \emph{metadata tags},
+which attach to the underlying data to carry information like type, provenance,
+ownership, or security classification. The policy takes the form of a set of
+rules that check and update the metadata during execution; if a rule violation is
+encountered, the program failstops. The class of policies that can be implemented
+in this way includes fine-grained memory safety, secure information flow,
+and mandatory access control, all of which are important security requirements
+from the literature.
 
-  To address these problems, we introduce a \emph{source-level} specification framework called \emph{Tagged C},
-  which allows engineers to describe policies in terms of familiar C-level concepts, with tags attached to
-  C functions, variables and data values, and rules triggered at \emph{control points} that correspond to
-  significant execution events, such as function calls, expression evaluation, and pointer-based memory accesses. 
-  In previous work~\cite{Chhak21:Tagine} we outlined such a framework for a toy
-  source language and showed how high-level policies could be compiled to ISA-level policies and 
-  enforced using PIPE-like hardware.  In the present work, we extend this approach to handle
-  the full, real C language, by giving a detailed design for the necessary control points and
-  showing how they are integrated into C's dynamic semantics. 
-  Although motivated by PIPE, Tagged C is not tied to any particular enforcement mechanism,
-  and indeed we currently implement it using a modified C interpreter rather than via compilation.
-  We validate the design of Tagged C by using it to specify a range of interesting security policies,
-  including compartmentalization, memory protection, and secure information flow.
+Tag-based policies can be enforced either in software or---more promisingly---with the
+aid of hardware extensions such as ARM MTE~\cite{arm-mte},
+STAR~\cite{Gollapudi+23}, and
+PIPE~\cite{Dhawan+15,Azevedo+16,Azevedo+15}.  PIPE (Processor
+Interlocks for Policy Enforcement),\footnote{ Variants of PIPE have
+also been called PUMP~\cite{Dhawan+14,Dhawan+15},
+SDMP~\cite{Dover16,RoesslerD18}) or CoreGuard~\cite{Dover20}.}
+which has been the specific motivator for our work, is particularly flexible: it supports
+arbitrary software-defined flow rules over large (word-sized) tags with arbitrary structure,
+which enables finer-grained policies and the composition of multiple policies together.
+This flexibility is useful because security needs may differ radically between codebases,
+and even within a codebase. A conservative, one-size-fits-all policy might be too strong,
+causing failstops even during normal execution. Sensitive code might call for specialized
+protection that doesn't apply elsewhere.
+
+
+But PIPE policies can be difficult for a C engineer to write: their tags and rules
+are defined in terms of individual machine instructions and ISA-level
+concepts, and in practice are based on reverse engineering the behavior
+of specific compilers. 
+Moreover, some security policies can only be expressed in terms of high-level code
+features that are not preserved at machine level, such as function
+arguments, structured types, and structured control flow.
+
+To address these problems, we introduce a \emph{source-level} specification framework called \emph{Tagged C},
+which allows engineers to describe policies in terms of familiar C-level concepts, with tags attached to
+C functions, variables and data values, and rules triggered at \emph{control points} that correspond to
+significant execution events, such as function calls, expression evaluation, and pointer-based memory accesses. 
+Control points resemble ``advice points'' in aspect-oriented programming, but narrowly
+focused on the manipulation of tags.
+In previous work, Chhak et al.~\cite{Chhak21:Tagine} outlined such a framework for a toy
+source language and showed how high-level policies could be compiled to ISA-level policies and 
+enforced using PIPE-like hardware.  We extend this approach to handle
+the full, real C language, by giving a detailed design for the necessary control points and
+showing how they are integrated into C's dynamic semantics. 
+Although motivated by PIPE, Tagged C is not tied to any particular enforcement mechanism,
+and indeed we currently implement it using a modified C interpreter rather than via compilation.
+We validate the design of Tagged C by using it to specify a range of interesting security policies,
+including compartmentalization, memory protection, and secure information flow.
 
 %Importantly, a security policy can be modified without recompilation unless it is optimized as described in
 %\cref{sec:optionals}.
 
-%% Tagged C's novel approach is that it is a \emph{general-purpose} scheme for specifying security
-%% policies at the \emph{source level}, using a tag-based reference monitor.
-%% This style of monitor associates a metadata tag with the data in the underlying system.
-%% Throughout execution it updates these tags according to a set a predefined rules, or halts if
-%% the program would violate a rule. We are motivated by PIPE (Programmable Interlocks for Policy Enforcement)
-%% \cite{}, an ISA extension that implements such a reference monitor in hardware. 
-%% While our scheme is general and could be implemented in software, we aim for compatibility
-%% with PIPE as a likely hardware target. PIPE is distinctive compared to similar systems such as ARM MTE~\cite{arm-mte}
-%% and STAR~\cite{Gollapudi+23} in that its tags are very large---typically the size of words
-%% in the underlying ISA. This makes PIPE extremely flexible and able to run multiple policies at once.
-%% TODO: non-recompilation?]
-%% Applications of Tagged C include defining undefined behaviors (UBs) involving memory,
-%% specifying detailed secure information flow policies, and enforcing arbitrary mandatory access control rules. % OK to still say this when we aren't showing it?
-
-  Formally, Tagged C is defined as a variant C semantics that instruments ordinary execution with control points. At each control point,
-  a user-defined set of tag rules is consulted to propagate tags and potentially cause execution to failstop.
-  In the limiting case where no tag rules are defined, the semantics are similar to those of ordinary C, except that the memory model is very concrete
+Formally, Tagged C is defined as a variant C semantics that instruments ordinary execution with control points.
+At each control point, a user-defined set of tag rules is consulted to propagate tags and potentially cause
+execution to failstop. In the limiting case where no tag rules are defined, the semantics are similar to
+those of ordinary C, except that the memory model is very concrete
   (pointers and integers are essentially the same thing).\apt{Maybe explain why here, or forward ref.}
   We build our semantics on top of the CompCert C semantics, which are formalized 
   as part of the CompCert verified compiler \cite{Leroy09:CompCert}. We provide a reference interpreter
@@ -157,7 +145,7 @@ security concerns.
 
 \section{Metadata Tags and Policies, by Example}
 
-Consider a seemingly\apt{??} straightforward security requirement: ``do not leak high-security values to low-security channels.''
+Consider a straightforward security requirement: ``do not leak high-security values to low-security channels.''
 In the example in \cref{fig:ex1}, assume that {\tt psk} is a high-security value and {\tt printi} prints to a low-security
 channel, so this code indirectly performs a leak via the local variable {\tt x}.  We now explain how we would use Tagged C
 to define a security policy that would prevent this leak. \apt{A whole explanation of
@@ -284,24 +272,24 @@ So, in this example, we will be unable to generate a tag
 
 Example \ref{fig:ex2} adds two new wrinkles: we need to keep track of metadata associated with
 addresses and with the program's control-flow state. If the variable {\tt mm} represents
-mmapped memory \apt{I don't think that's what you mean. mmap is a linux system call. Say ``memory-mapped device register'' perhaps. In which case, make it {\tt volatile} again.} that can be seen publicly, we want to avoid storing the password there. And, by
+a memory-mapped device register that is outside of the program's control, we want to avoid storing the password there. And, by
 branching on the password, we risk leaking information that could eventually compromise it even
 if we never print it directly (an {\em implicit flow}.)
 \apt{Again, describe the tag-based solution informally first.}
 
-Global variables like {\tt mm} are always kept in memory, as are locals with reference types \apt{Not the normal use of this term. Just say: ``local arrays and structs.''} like arrays.
+Global variables like {\tt mm} are always kept in memory, as are local arrays and structs.
 Other parameters and locals are placed in memory if they have their addresses taken.
 Objects in memory have additional ``location tags'' that are notionally associated with the memory
 itself, which we will denote by metavariable \(\lt\). The store maps their identifier
 to their address\apt{???}, along with its own ``pointer tag'' which we will distinguish with the
 metavariable \(\pt\). To track metadata about the overall system state, we also add
-a special global tag called the PC Tag\apt{can we lower-case ``Tag'' everywhere?}, ranged over by \(\PCT\).
+a special global tag called the PC tag, ranged over by \(\PCT\).
 
 \begin{figure}
 \begin{tikzpicture}[every text node part/.style={align=left}]
   \node[matrix, ampersand replacement=\&, anchor=west] (code)
        {
-         \node {\tt int mm;}; // mmapped \\
+         \node {\tt volatile int mm;}; // mmapped \\
          \node (l1) {\tt void g(int psk) \{}; \\
          \node (l2) {\tt ~ ~ if(psk > 0)}; \\
          \node (l3) {\tt ~ ~ ~ ~ mm = 1;}; \\
@@ -358,9 +346,9 @@ a special global tag called the PC Tag\apt{can we lower-case ``Tag'' everywhere?
 \label{fig:ex2}
 \end{figure}
 
-Tagged C initializes the tags on {\tt mm} with the \(\globaltname\) rule. The PC Tag
-at the point of call, \(\PCT_0\), is fed to \(\calltname\) to determine a new PC Tag
-inside of {\tt g}. And the if-statement consults the \(\splittname\) rule to update the PC Tag
+Tagged C initializes the tags on {\tt mm} with the \(\globaltname\) rule. The PC tag
+at the point of call, \(\PCT_0\), is fed to \(\calltname\) to determine a new PC tag
+inside of {\tt g}. And the if-statement consults the \(\splittname\) rule to update the PC tag
 inside of its branch based on the value-tag of the expression {\tt psk < 0}. Once inside the
 conditional, when the program assigns to {\tt mm}, it must consult both the
 \(\assigntname\) rule as normal and the \(\storetname\) rule because it is storing
@@ -368,7 +356,7 @@ to memory.
 
 Because ``don't print the password'' is so similar to ``don't leak the password,'' we can
 implement the latter with the same tag type, duplicating most of the rules.\apt{This gives the bogus impression that we expect to write lots of function-specific rules with their own special-purpose tags, etc.} We just need to
-deal with memory tags and the PC Tag. We will tag memory
+deal with memory tags and the PC tag. We will tag memory
 locations \(\high\) by default, indicating that they are allowed to contain \(\high\)-tagged values,
 but {\tt mm} will be tagged \(\low\). The most interesting rules are:
 
@@ -393,7 +381,7 @@ but {\tt mm} will be tagged \(\low\). The most interesting rules are:
   }
 \end{figure}
 
-In this case, \(\splittname\) will set the PC Tag to \high, as it branches on a value derived from {\tt psk}.
+In this case, \(\splittname\) will set the PC tag to \high, as it branches on a value derived from {\tt psk}.
 Then, when it comes time to write to {\tt mm}, \(\storetname\) will fail rather than write to a low address
 in a high context.
 
@@ -447,8 +435,7 @@ Our semantics (given in full in the appendix) are a small-step reduction
 semantics which differ from CompCert C's in two key respects. First, Tagged C's semantics contain
 {\em control points}: hooks within the
 operational semantics at which the tag policy is consulted and either tags are updated, or the system
-failstops. (Control points resemble ``advice points'' in aspect-oriented programming, but narrowly
-focused on the manipulation of tags.\apt{This remark would be more useful in the intro.}) A control point consists of the name of a {\em tag rule}
+failstops. (\apt{This remark would be more useful in the intro.}) A control point consists of the name of a {\em tag rule}
 and the bindings of its inputs and outputs. Take, for example, the expression step reduction
 for binary operations, below. On the left, the ``tagless'' version of the rule reduces a
 binary operation on two input values to a single value by applying the operation.
@@ -623,7 +610,7 @@ instantiations would \emph{change} to accommodate different policies (PVI, PNVI,
 %of a tag rule, we write this \(\lts\), indicating that the rule consumes and produces multiple locations tags.
 
 \Cref{fig:overrun} shows a possible initial state of memory on entry to {\tt overflow} and the state after
-the assignment to {\tt *(x+2)}, assuming that the PC Tag is \(\PCT_0\) at the call.\apt{Where does the 84 come from?
+the assignment to {\tt *(x+2)}, assuming that the PC tag is \(\PCT_0\) at the call.\apt{Where does the 84 come from?
   And this layout also assumes that {\tt y} is in memory---but why is that?}
 The central tag rules are \(\binoptname\) and \(\storetname\): the former computes the tag
 on the pointer that will be used to access {\tt x+2} in memory, and the latter decides if the
@@ -679,7 +666,7 @@ the \(\storetname\) rule compares \(\pt' = \tagz\) with \(\lt_2\), and failstops
   \end{minipage}
   \begin{minipage}[t]{0.3\textwidth}
     \vspace{-2.5em}
-    \loadtruleblock{\(\mathbf{assert} ~ \forall \lt \in \overline{\lt} . \pt = \lt\) \\ \(\vt' := \vt\)}
+    \loadtruleblock{\(\mathbf{assert} ~ \forall \lt \in \lt . \pt = \lt\) \\ \(\vt' := \vt\)}
 
     \storetruleblock{\(\mathbf{assert} ~ \forall \lt \in \lt . \pt = \lt\) \\
       \(\PCT' := \PCT\);
@@ -739,14 +726,14 @@ In the Tagged C semantics, calls and returns each take two steps: first to an in
 or return state, and
 then to the normal execution state, as shown in \cref{fig:functions}.
 In the initial call step, \(\calltname\) uses the tag on the function pointer
-(typically derived from \(\FN\)) to update the PC Tag. Then, in the step from the call
+(typically derived from \(\FN\)) to update the PC tag. Then, in the step from the call
 state, the function arguments are placed in the local store, tagged with
 the results of \(\argtname\), and stack locals are allocated. Non-address-taken locals go in the
 store as well, tagged with \(\constt\), while locals that must be stack-allocated have memory
 allocated and tagged with the results of \(\localtname\). \apt{Is that really how you want to do that? (See previous note re Fig 4.)}
   On return, locals are deallocated, their location tags are 
-updated by \(\dealloctname\), and \(\rettname\) updates both the PC Tag and the tag on the returned value,
-with access to the original caller's PC Tag.
+updated by \(\dealloctname\), and \(\rettname\) updates both the PC tag and the tag on the returned value,
+with access to the original caller's PC tag.
 
 \begin{figure}
   \begin{tikzpicture}[]
@@ -768,7 +755,7 @@ with access to the original caller's PC Tag.
 \end{figure}
 
 In our compartmentalization policy (\cref{fig:compartments}), we define a tag to be a compartment
-identifier or the default \(\N\) tag. The PC Tag always carries the compartment of the
+identifier or the default \(\N\) tag. The PC tag always carries the compartment of the
 active function, kept up to date by the \(\calltname\) and \(\rettname\) rules.
 
 \begin{figure}
@@ -785,9 +772,9 @@ active function, kept up to date by the \(\calltname\) and \(\rettname\) rules.
     \localtruleblock{\(\PCT' := \PCT; \pt := \N;\) \\ \(\vt := \N; \lt := \PCT\)}
   \end{minipage}
   \begin{minipage}[t]{0.25\textwidth}
-    \loadtruleblock{\(\mathbf{assert} ~ \forall \lt \in \overline{\lt} . \PCT = \lt\) \\ \(\vt' := \vt\)}
+    \loadtruleblock{\(\mathbf{assert} ~ \forall \lt \in \lt . \PCT = \lt\) \\ \(\vt' := \vt\)}
     
-    \storetruleblock{\(\mathbf{assert} ~ \forall \lt \in \overline{\lt} . \lt = \PCT\) \\
+    \storetruleblock{\(\mathbf{assert} ~ \forall \lt \in \lt . \lt = \PCT\) \\
       \(\PCT' := \PCT; \vt' := \N; \lt' := \lt\)}
   \end{minipage}
     
@@ -801,7 +788,7 @@ active function, kept up to date by the \(\calltname\) and \(\rettname\) rules.
 
 The remainder of the policy works much like memory safety, except that coarse-grained
 protection means that the ``color'' we assign to an allocation is the active compartment,
-and during a load or store, we compare the location tags to the PC Tag, not the pointer.
+and during a load or store, we compare the location tags to the PC tag, not the pointer.
 
 \paragraph{Sharing Memory}
 
@@ -861,7 +848,7 @@ of escape analysis.\apt{This is not a pretty story, and should probably be told 
   (or at least with a pointer to the limitations section).}
 
 The policy (\cref{fig:sharing}) works by gluing together compartmentalization and memory safety.
-The PC Tag carries both the current compartment color, for tagging unshared allocations, and the next free color, for tagging shared allocations.
+The PC tag carries both the current compartment color, for tagging unshared allocations, and the next free color, for tagging shared allocations.
 \(\malloctname\) uses the function tag to determine which color to attach to the pointer and allocated
 region. During loads and stores, the location tag of the target address
 determines whether access is checked via the identity of the active compartment (for unshared allocations) or
@@ -964,12 +951,12 @@ the validity of the pointer (for shared ones).
 %To support PNVI, we need the {\it cast} expression to update the tags of a pointer
 %being cast to an integer and vice versa. We add two special-case steps to reflect this.
 
-%\judgmenttwo{\optional{\(\mem[p]_{|ty|} = \_@\vt_2 @ \overline{\lt}\)}}
+%\judgmenttwo{\optional{\(\mem[p]_{|ty|} = \_@\vt_2 @ \lt\)}}
 %            {\(\trule{\picasttres}{\picastt}\)}
 %            {\(\defestate{\cast{int}{\val{p}{\pt}}}{\tptr{ty}} \longrightarrow
 %              \defestate{\val{p}{vt}}{int}\)}
 
-%\judgmenttwo{\optional{\(\mem[p]_{|ty|} = \_@\vt_2 @ \overline{\lt}\)}}
+%\judgmenttwo{\optional{\(\mem[p]_{|ty|} = \_@\vt_2 @ \lt\)}}
 %            {\(\trule{\ipcasttres}{\ipcastt}\)}
 %            {\(\defestate{\cast{int}{\val{p}{\pt}}}{\tptr{ty}} \longrightarrow
 %              \defestate{\val{p}{vt}}{int}\)}
@@ -988,7 +975,7 @@ the validity of the pointer (for shared ones).
 %\begin{minipage}{0.65\textwidth}
 %\[\begin{aligned}
 %\truledef{\ipcastt}
-%\assert{\exists t . \forall \lt \in \overline{\lt} . \lt = t \land t \not = N}
+%\assert{\exists t . \forall \lt \in \lt . \lt = t \land t \not = N}
 %\settag{\PCT'}{\PCT}
 %\settag{\pt}{t}
 %\end{aligned}\]
@@ -1094,16 +1081,16 @@ information may flow from {\tt scanf} to {\tt sanitize}, and from {\tt sanitize}
 Since we care about a single source\apt{??}, we can once again use a pair of \(\high\)
 and \(\low\) tags, although in this case we aim to prevent \(\low\)-integrity
 data from flowing to \(\high\)-integrity locations.
-We additionally need to carry significant information on the PC Tag,
+We additionally need to carry significant information on the PC tag,
 so we define a third type of tag, written using the constructor {\sc \color{blue} pc},
 which carries (1) the current function identifier, (2) a natural number to record
 a count of tainted expression scopes, and (3) a stack of label identifiers to record
 the join points of tainted statement scopes. We will discuss (2) and (3) in detail below.
-Initially, the PC Tag is \(\pctaint{f}{0}{\varepsilon}\).
+Initially, the PC tag is \(\pctaint{f}{0}{\varepsilon}\).
 
 Selected tag rules for expressions are given in \cref{fig:sif1}. We define two operators on tags:
 the ``join'' operator \(\sqcap\) takes the higher of two security levels, and the ``reduce''
-operator \(| \cdot |\) converts a PC Tag into a security level, \(\high\) or \(\low\).
+operator \(| \cdot |\) converts a PC tag into a security level, \(\high\) or \(\low\).
 The function {\tt scanf} taints all of its writes by marking them \(\low\). \apt{I thought we'd agreed
   that this was an overly heavy-handed way to make {\tt scanf} taint the input. However...} This extends to
 its return value in \(\rettname\) as well (not shown).\apt{But it doesn't have a return value! And how would we express
@@ -1170,7 +1157,7 @@ in \(b_1\) or \(b_2\), which are already tainted. It is therefore safe to tag fu
 assignments \(\low\). In the example, {\tt public1} should be tagged \(\low\), while
 {\tt public2} is tagged \(\high\).\apt{This is confusing integrity and confidentiality.}
 
-This is where the other components of the PC Tag come into play. We perform a program
+This is where the other components of the PC tag come into play. We perform a program
 transformation introducing the labels of all join points explicitly, so that in
 \cref{fig:ifthenelse}, {\tt J} is an explicit label in the code, if it wasn't already.\apt{
   Clarify that this ``transformation'' is strictly internal/conceptual; maybe put forward pointer to para at end of this section
@@ -1181,7 +1168,7 @@ that conditional's join point. As seen in \cref{fig:SIFconditionals}, the
 \(\splittname\) tag rule takes this label as an optional parameter and, if
 the conditional branches on a low value, pushes the join point to the stack.
 Then the \(\labeltname\) rule checks if execution has reached a join point and
-if it has, removes it from the stack. A PC Tag can only reduce to \(\high\)
+if it has, removes it from the stack. A PC tag can only reduce to \(\high\)
 if its stack is empty.
 
 Branching expressions work similarly, except that the join point occurs at a different
@@ -1627,8 +1614,8 @@ Given a list \(xs\) of variable identifiers \(id\) and types
 \(ty\), a program's initial memory is defined by iteratively allocating each one
 in memory and updating the global environment with its base address, bound, type,
 and a static identity tag. Let \(|ty|\) be a function from types to their sizes
-in bytes. The memory is initialized \(\vundef@\vt@\overline{\lt}\)
-for some \(\vt\) and \(\overline{\lt}\), unless given an initializer.
+in bytes. The memory is initialized \(\vundef@\vt@\lt\)
+for some \(\vt\) and \(\lt\), unless given an initializer.
 Let \(\mem_0\) and \(\genv_0\) be the initial (empty) memory and environment.
 The parameter \(b\) marks the start of the global region.
 
@@ -1639,7 +1626,7 @@ The parameter \(b\) marks the start of the global region.
 \[\mathit{globals} ~ xs ~ b =
 \begin{cases}
   (\mem_0, \genv_0) & \textnormal{if } xs = \varepsilon \\
-  (\mem[p \dots p+|ty| \mapsto \vundef@\vt@\overline{\lt}]_{|ty|}, & \textnormal{if } xs = (id,ty)::xs' \\
+  (\mem[p \dots p+|ty| \mapsto \vundef@\vt@\lt]_{|ty|}, & \textnormal{if } xs = (id,ty)::xs' \\
   ~ \genv[id \mapsto (\mathit{p, p+|ty|,ty,\pt})]) & \textnormal{and } \trule{\globaltres}{\globalt} \\
   & \textnormal{where } (\mem,\genv) = \mathit{globals} ~ xs' ~ (b + |ty|) \\
 \end{cases}\]
@@ -1698,7 +1685,7 @@ and an expression.
 \end{aligned}\]
 
 Next, we define a notion of expression reduction. A left-hand reduction relates an expression to an expression.
-A right-hand reduction relates a triple of PC Tag, memory, and expression to another such triple.
+A right-hand reduction relates a triple of PC tag, memory, and expression to another such triple.
 
 %triple of a memory, an expression, and a tag
 %might reduces to another such triple as a left-hand, right-hand, or call reduction, written
@@ -1729,13 +1716,13 @@ When we make an internal call, we need to allocated space for locals and argumen
 
 \[\mathit{frame} ~ xs ~ as ~ \mem =
 \begin{cases}
-  (\mem''[p \mapsto \vundef@\vt@\overline{\lt}]_{|ty|}, & \textnormal{if } xs = (id,ty)::xs' \\
+  (\mem''[p \mapsto \vundef@\vt@\lt]_{|ty|}, & \textnormal{if } xs = (id,ty)::xs' \\
   \lenv'[id \mapsto (\mathit{p, p+|ty|,ty,\pt})]) &
   \textnormal{where } (\mem',p) \leftarrow \mathit{stack\_alloc} ~ |ty| ~ \mem, \\
   & \trule{\localtres}{\localt}, \\
   & \textnormal{and } (\mem'',\lenv') = \mathit{frame} ~ xs' ~ as ~ m' \\ 
   \\
-  (\mem''[p \mapsto v@\vt'@\overline{\lt}]_{|ty|}, & \textnormal{if } as = (id,ty,v @ \vt)::as' \textnormal{ and } xs = \varepsilon \\
+  (\mem''[p \mapsto v@\vt'@\lt]_{|ty|}, & \textnormal{if } as = (id,ty,v @ \vt)::as' \textnormal{ and } xs = \varepsilon \\
   \lenv'[id \mapsto (\mathit{p, p+|ty|,ty,\pt})]) &
   \textnormal{where } (\mem',p) \leftarrow \mathit{stack\_alloc} ~ |ty| ~ \mem, \\
   & \trule{\argtres}{\argt}, \\
@@ -1806,7 +1793,7 @@ And finally, we have the return rules.
 %\(\vt\) to refer to the tags associated with values, \(\pt\) for tags on pointer values
 %and memory-location expressions, \(\lt\) for tags associated with memory locations themselves,
 %\(\nt\) for ``name tags'' automatically derived from identifiers, \(\PCT\) for the
-%global ``program counter tag'' or PC Tag.
+%global ``program counter tag'' or PC tag.
 %An {\it atom} is a pair of a value and a tag, \(\val{v}{\vt}\); the @ symbol should be read
 %as a pair in general, and is used when the second object in the pair is a tag.
 %Expressions are ranged over by \(\expr\), statements by \(\stmt\), and continuations by \(\cont\).
