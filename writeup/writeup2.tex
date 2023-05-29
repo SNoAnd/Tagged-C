@@ -519,6 +519,13 @@ information-flow policies.
 \section{Example Policies}
 \label{sec:policies}
 
+In this section, we will discuss concrete policy implementations and the way
+that they have motivated our control point design. First, memory safety policies
+inform our requirements for memory tags as well as type casts. Compartmentalization
+policies depend on the call- and return-related control points, to keep track of the
+active compartment. And secure information flow (SIF) policies show us the many places
+where the user may need to reference identifiers from their program in the policy itself.
+
 \section{Evaluation}
 \label{sec:evaluation}
 
@@ -654,7 +661,7 @@ A constant \(c\) in the concrete syntax is transformed into \(\val{c}{\constt}\)
 and in general \(\val{v}{\vt}\) is a fully-reduced right-hand value. \(\loc{p}{\pt}\)
 is a fully-reduced left-hand value that represents the address of a variable.
 \(\paren{\expr}{\type}\) is the result of a conditional or shortcutting
-expression, with \(\ty\) being a type annotation in case the result needs to
+expression, with \(\type\) being a type annotation in case the result needs to
 be cast.
 
 \begin{figure}
@@ -684,7 +691,7 @@ be cast.
 \end{figure}
 
 Some common C expressions are derived forms. An array index expression,
-\(\expr_1[\expr_2]\) expands to \(\deref{\binop{+}{\expr_1}{\expr_2}}.
+\(\expr_1[\expr_2]\) expands to \(\deref{\binop{+}{\expr_1}{\expr_2}}\).
 The pre-increment  expression \(++\expr\) expands to
 \(\assign{\expr}{\binop{+}{\expr}{1@\constt}}\), and likewise for pre-decrement.
 

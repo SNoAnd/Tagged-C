@@ -1,5 +1,5 @@
 all:
-	pdflatex writeup.tex
-	pdflatex writeup.tex
-	bibtex writeup
-	pdflatex writeup.tex
+	pdflatex writeup2.tex
+	pdflatex writeup2.tex
+	bibtex writeup2
+	pdflatex writeup2.tex
