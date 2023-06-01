@@ -83,7 +83,6 @@ and even within a codebase. A conservative, one-size-fits-all policy might be to
 causing failstops even during normal execution. Sensitive code might call for specialized
 protection that doesn't apply elsewhere.
 
-
 But PIPE policies can be difficult for a C engineer to write: their tags and rules
 are defined in terms of individual machine instructions and ISA-level
 concepts, and in practice are based on reverse engineering the behavior
@@ -98,7 +97,7 @@ C functions, variables and data values, and rules triggered at \emph{control poi
 significant execution events, such as function calls, expression evaluation, and pointer-based memory accesses. 
 Control points resemble ``advice points'' in aspect-oriented programming, but narrowly
 focused on the manipulation of tags.
-In previous work, Chhak et al.~\cite{Chhak21:Tagine} outlined such a framework for a toy
+In our previous work,~\cite{Chhak21:Tagine} we outlined such a framework for a toy
 source language and showed how high-level policies could be compiled to ISA-level policies and 
 enforced using PIPE-like hardware.  We extend this approach to handle
 the full, real C language, by giving a detailed design for the necessary control points and
@@ -145,10 +144,10 @@ In summary we offer the following contributions:
 \item A Tagged C interpreter, implemented in Coq and extracted to Ocaml
 \end{itemize}
 
-[TODO: rework]
-In the next section, we give a high-level introduction of metadata-tagging: how it works,
-and how its use can improve security. Then in \cref{sec:semantics}, we briefly discuss the
-language as a whole, before moving into policies in \cref{sec:policies}. Finally, in
+In the next section, we give a high-level introduction of metadata-tagging by example.
+Then in \cref{sec:semantics}, we briefly discuss the language as a whole and its control points,
+before moving into \cref{sec:policies} to discuss three example policies and how their
+needs inform our choices of control points. Finally, in
 \cref{sec:evaluations} we discuss the degree to
 which the design meets our goals of flexibility and applicability to realistic
 security concerns.
@@ -292,19 +291,20 @@ and fail stop if a high value would be written to a low location.
 \begin{tikzpicture}[every text node part/.style={align=left}]
   \node[matrix, ampersand replacement=\&, anchor=west] (code)
        {
-         \node {\tt volatile int mm;}; // mmapped \\
-         \node (l1) {\tt void g(int psk) \{}; \\
-         \node (l2) {\tt ~ ~ if(psk > 0)}; \\
-         \node (l3) {\tt ~ ~ ~ ~ mm = 1;}; \\
-         \node {\tt \}}; \\
+         \node {\tt 1 volatile int mm;}; // mmapped \\
+         \node (l1) {\tt 2 void g(int psk) \{}; \\
+         \node (l2) {\tt 3 ~ ~ if(psk > 0)}; \\
+         \node (l3) {\tt 4 ~ ~ ~ ~ mm = 1;}; \\
+         \node {\tt 5 ~ ~ \}}; \\
+         \node {\tt 6 \}}; \\
        };
 
   \node[matrix, ampersand replacement=\&, node distance=6em, right=of l1.north,draw,anchor=west] (table1)  
        {
          \node[anchor=north] {\(g @ \PCT[_1]\)}; \&
          \node[anchor=north] {\(\mathtt{mm} \mapsto p @ \pt[_1] \) \\
-           \(\mathtt{psk} \mapsto i @ \vt[_2]\) \\
-           \(p:\fbox{\(\vundef @ \vt[_1] @ \lt[_1]\)}\)
+           \(p:\fbox{\(\vundef @ \vt[_1] @ \lt[_1]\)}\) \\
+           \(\mathtt{psk} \mapsto i @ \vt[_2]\)
          }; \&
          \node[anchor=north] {\(\pt[_1], \vt[_1],\lt[_1] \leftarrow \globaltname(\GN[mm])\) \\
            \(\PCT[_1] \leftarrow \calltname(\PCT[_0], \FN[g])\)  \\
@@ -315,8 +315,8 @@ and fail stop if a high value would be written to a low location.
       {
         \node[anchor=north] {\(g @ \PCT_2\)}; \&
         \node[anchor=north] {\(\mathtt{mm} \mapsto p @ \pt[_1]\) \\
-          \(\mathtt{psk} \mapsto i @ \vt[_2]\) \\
-           \(p:\fbox{\(\vundef @ \vt[_1] @ \lt[_1]\)}\)
+          \(p:\fbox{\(\vundef @ \vt[_1] @ \lt[_1]\)}\) \\
+          \(\mathtt{psk} \mapsto i @ \vt[_2]\)
         }; \&
         \node[anchor=north] {\(\vt[_3] \leftarrow \constt\) \\
           \(\vt[_4] \leftarrow \binoptname(>,\vt[_2],\vt[_3])\) \\ 
@@ -327,8 +327,8 @@ and fail stop if a high value would be written to a low location.
       {
         \node[anchor=north] {\(g @ \PCT[_2]\)}; \&
         \node[anchor=north] {\(\mathtt{mm} \mapsto p @ \pt[_1]\) \\
-          \(\mathtt{psk} \mapsto i @ \vt[_2] \) \\
-           \(p:\fbox{\(\vundef @ \vt[_1] @ \lt[_2]\)}\)
+          \(p:\fbox{\(\vundef @ \vt[_1] @ \lt[_2]\)}\) \\
+          \(\mathtt{psk} \mapsto i @ \vt[_2] \)
         }; \&
         \node[anchor=north] {\(\vt[_5] \leftarrow \constt\) \\
           \(\vt[_6] \leftarrow \assigntname(\PCT[_2]
@@ -818,11 +818,14 @@ identify where each pointer comes from, or possibly some sort of temporal logic.
 
 The other known limitation is in how we tag memory at allocation time. Malloc tags an
 entire region with a single tag, which means that Tagged C cannot easily
-enforce substructural memory safety. We would rather be able to tag the allocated region
-based on its type, but in C, malloc does not get access to type information!
+enforce substructural memory safety and other properties that call for allocated
+regions to be tagged according to their types. We would rather be able to tag the allocated region
+based on its type, but in C, malloc does not get access to type information---it allocates
+memory of a given side and returns a {\tt void *}, and it is up to the caller to cast the
+pointer to the desired type. That cast may be arbitrarily removed from the call to malloc!
 Versions of memory safety that protect fields of a
 struct from overflows within the same struct would be very useful, but currently enforcing
-them will require manual initialization.
+them will require manual initialization. (Mention CheckedC and its primitive.)
 
 Beyond these, there is always the possibility that we have missed some control point
 that would enable interesting security policies outside of the areas we have considered.
