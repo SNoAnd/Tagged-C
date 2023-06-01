@@ -9,7 +9,7 @@
 
 \newcommand{\malloctname}{\color{blue} \mathbf{MallocT}}
 \newcommand{\malloctargs}{\PCT, \pt, \vt}
-\newcommand{\malloctres}{\PCT',\pt,\vt,\overline{\lt}}
+\newcommand{\malloctres}{\PCT',\pt',\vt',\lt'}
 \newcommand{\malloct}{\malloctname(\malloctargs)}
 
 \newcommand{\malloctruleblock}[1]
@@ -19,7 +19,7 @@
 
 \newcommand{\localtname}{\color{blue} \mathbf{LocalT}}
 \newcommand{\localtargs}{\PCT, \TN}
-\newcommand{\localtres}{\PCT', \pt,\vt,\overline{\lt}}
+\newcommand{\localtres}{\PCT', \pt', \lt'}
 \newcommand{\localt}{\localtname(\localtargs)}
 
 \newcommand{\localtruleblock}[1]
@@ -38,7 +38,7 @@
            }
 
 \newcommand{\loadtname}{\color{blue} \mathbf{LoadT}}
-\newcommand{\loadtargs}{\PCT, \pt, \vt, \overline{\lt}}
+\newcommand{\loadtargs}{\PCT, \pt, \vt, \lt}
 \newcommand{\loadtres}{\vt'}
 \newcommand{\loadt}{\loadtname(\loadtargs)}
 
@@ -69,7 +69,7 @@
 
 \newcommand{\unoptname}{\color{blue} \mathbf{UnopT}}
 \newcommand{\unoptargs}{\odot, \PCT, \vt}
-\newcommand{\unoptres}{\vt}
+\newcommand{\unoptres}{\vt'}
 \newcommand{\unopt}{\unoptname(\unoptargs)}
            
 \newcommand{\unoptruleblock}[2]
@@ -115,7 +115,7 @@
 
 \newcommand{\argtname}{\color{blue} \mathbf{ArgT}}
 \newcommand{\argtargs}{\PCT, \vt, \AN, \TN}
-\newcommand{\argtres}{\PCT', \pt, \vt',\lts}
+\newcommand{\argtres}{\PCT', \pt', \vt',\lt'}
 \newcommand{\argt}{\argtname(\argtargs)}
 
 \newcommand{\argtruleblock}[1]
@@ -140,7 +140,7 @@
            }
 
 \newcommand{\consttname}{\color{blue} \mathbf{ConstT}}
-\newcommand{\consttres}{\vt}
+\newcommand{\consttres}{\vt'}
 \newcommand{\constt}{\consttname}
 
 \newcommand{\consttruleblock}[1]
@@ -150,7 +150,7 @@
 
 \newcommand{\globaltname}{\color{blue} \mathbf{GlobalT}}
 \newcommand{\globaltargs}{\GN, \TN}
-\newcommand{\globaltres}{\pt,\vt,\overline{\lt}}
+\newcommand{\globaltres}{\pt',\vt',\lt'}
 \newcommand{\globalt}{\globaltname(\globaltargs)}
 
 \newcommand{\globaltruleblock}[1]
@@ -160,32 +160,32 @@
 
 \newcommand{\dealloctname}{\color{blue} \mathbf{DeallocT}}
 \newcommand{\dealloctargs}{\PCT, \TN}
-\newcommand{\dealloctres}{\PCT',\vt,\overline{\lt}}
+\newcommand{\dealloctres}{\PCT',\vt',\lt'}
 \newcommand{\dealloct}{\dealloctname(\dealloctargs)}
 
 \newcommand{\freetname}{\color{blue} \mathbf{FreeT}}
 \newcommand{\freetargs}{\PCT,\pt,\vt}
-\newcommand{\freetres}{\PCT',\vt',\overline{\lt}}
+\newcommand{\freetres}{\PCT',\vt',\lt'}
 \newcommand{\freet}{\freetname(\freetargs)}
 
 \newcommand{\picasttname}{\color{blue} \mathbf{PICastT}}
-\newcommand{\picasttargs}{\PCT, \pt, \vt, \overline{\lt}}
-\newcommand{\picasttres}{\vt}
+\newcommand{\picasttargs}{\PCT, \pt, \vt, \lt}
+\newcommand{\picasttres}{\vt'}
 \newcommand{\picastt}{\picasttname(\picasttargs)}
 
 \newcommand{\ipcasttname}{\color{blue} \mathbf{IPCastT}}
-\newcommand{\ipcasttargs}{\PCT, \vt_1, \vt_2, \overline{\lt}}
-\newcommand{\ipcasttres}{\pt}
+\newcommand{\ipcasttargs}{\PCT, \vt_1, \vt_2, \lt}
+\newcommand{\ipcasttres}{\pt'}
 \newcommand{\ipcastt}{\ipcasttname(\ipcasttargs)}
 
 \newcommand{\ppcasttname}{\color{blue} \mathbf{PPCastT}}
-\newcommand{\ppcasttargs}{\PCT, \pt, \vt, \overline{\lt}}
+\newcommand{\ppcasttargs}{\PCT, \pt, \vt, \lt}
 \newcommand{\ppcasttres}{\pt'}
 \newcommand{\ppcastt}{\ppcasttname(\ppcasttargs)}
 
 \newcommand{\iicasttname}{\color{blue} \mathbf{IICastT}}
 \newcommand{\iicasttargs}{\PCT, \vt_1}
-\newcommand{\iicasttres}{\pt}
+\newcommand{\iicasttres}{\pt'}
 \newcommand{\iicastt}{\iicasttname(\iicasttargs)}
 
 \newcommand{\splittname}{\color{blue} \mathbf{SplitT}}

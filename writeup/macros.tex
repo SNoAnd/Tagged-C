@@ -9,13 +9,13 @@
 % !!! PLEASE DON'T CHANGE THESE !!! INSTEAD DEFINE YOUR OWN texdirectives.tex !!!
 \makeatletter \@input{texdirectives} \makeatother
 
-\newcommand{\gentag}{\mathit{\color{blue} t}}
-\newcommand{\vt}{\mathit{\color{blue} vt}}
-\newcommand{\pt}{\mathit{\color{blue} pt}}
-\newcommand{\lt}{\mathit{\color{blue} lt}}
-\newcommand{\lts}{\overline{\color{blue} \lt}}
-\newcommand{\nt}{\mathit{\color{blue} nt}}
-\newcommand{\PCT}{\mathcal{\color{blue} P}}
+\newcommand{\gentag}[1][]{\mathit{\color{blue} t#1}}
+\newcommand{\vt}[1][]{\mathit{\color{blue} vt#1}}
+\newcommand{\pt}[1][]{\mathit{\color{blue} pt#1}}
+\newcommand{\lt}[1][]{\mathit{\color{blue} lt#1}}
+%\newcommand{\lts}{\overline{\color{blue} \lt}}
+\newcommand{\nt}[1][]{\mathit{\color{blue} nt#1}}
+\newcommand{\PCT}[1][]{\mathcal{\color{blue} P}\mathit{#1}}
 
 \newcommand{\FN}[1][f]{{\color{blue} \textnormal{\sc f}_{#1}}}
 \newcommand{\AN}[1][f,x]{{\color{blue} \textnormal{\sc a}_{#1}}}
