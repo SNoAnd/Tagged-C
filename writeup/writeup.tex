@@ -841,39 +841,6 @@ the validity of the pointer (for shared ones).
 \subsection{Secure Information Flow}
 \label{sec:SIF}
 
- We will give an example of a single policy in the family.
-Our introductory example was an instance of {\em confidentiality}, so now we will discuss
-{\em integrity}: preventing insecure input from influencing secure behavior.
-In this code, a malformed user input is accidentally appended to an SQL query without first being sanitized:
-
-\begin{verbatim}
-void sanitize(char* in, char* out);
-void sql_query(char* query, char* res);
-
-void get_data() {
-  char[20] name;
-  char[20] name_san;
-  char[100] query = "select address where name = \"";
-  char[100] res;
-
-  scanf("%19", name);
-  sanitize(name, name_san);
-  strncat(query, name, strlen(name));
-  strncat(query, "\"",1);
-
-  sql_query(query, res);
-  printf(res);
-}
-\end{verbatim}
-
-This function sanitizes its input {\tt name}, then appends the result to an appropriate SQL
-query, storing the query's result in {\tt res}. But the programmer has accidentally
-used the unsanitized string {\tt name} reather than {\tt name\_san}!
-This creates the opportunity for an SQL injection attack\cite{??}: a user
-of this function could (presumably at the behest of an outside user) pass it a 
-{\tt name} containing ``{\tt Bobby"; drop table;}''.
-
-The fact that the input can be sanitized also makes this\apt{what? haven't described the policy yet}  an {\em intransitive} policy:
 information may flow from {\tt scanf} to {\tt sanitize}, and from {\tt sanitize} to
 {\tt sql\_query}, but not directly from {\tt scanf} to {\tt sql\_query}.
 
@@ -952,58 +919,6 @@ For this reason, we failstop if {\tt sql\_query} would load a \(\low\) value.\ap
   a heavy-handed and indirect scheme. Just want to say that the {\tt query} is $\low$.}
 
 \paragraph*{Implicit Flows}
-
-\begin{figure}[t]
-  \begin{subfigure}{0.4\textwidth}
-\begin{verbatim}
-int f(bool secret) {
-    int public1, public2;
-
-S:  if (secret) {
-b1:     public1 = 1;
-    } else {
-b2:     public1 = 0;
-    }
-
-J:  public2 = 42;
-    return public2;
-}
-\end{verbatim}
-  \end{subfigure}
-  \begin{subfigure}{0.6\textwidth}
-    \begin{tikzpicture}
-      [ initial text={}, initial distance=4em,
-        accepting/.style=accepting by arrow,
-        accepting distance=4em
-      ]
-      \node[state,initial]    (S)                        {$S$};
-      \node[state]            (b_1) [above right=of S]   {$b_1$};
-      \node[state]            (b_2) [below right=of S]   {$b_2$};
-      \node[state,accepting]  (J)   [below right=of b_1] {$J$};
-
-      \path[->] (S)   edge              node  {}  (b_1)
-                      edge              node  {}  (b_2)
-                (b_1) edge              node  {}  (J)
-                (b_2) edge              node  {}  (J);
-    \end{tikzpicture}
-  \end{subfigure}
-\caption{Leaking via if statements}
-\label{fig:ifthenelse}  
-\end{figure}
-
-Things become trickier when we consider that the program's control-flow itself can be tainted.
-This can occur in any conditional, including loops, conditional statements, and conditional expressions.
-In general, anytime a ``split'' is conditioned on a tainted value, subsequent assignments must also be tainted.
-An example can be seen in \cref{fig:ifthenelse}, where labels in the code indicate the split
-point, branches, and {\em join point} \(J\).
-
-A join point is the node in the program's control-flow graph where all possible routes
-from the split to a return have re-converged; its its immediate post-dominator \cite{}.
-[TODO: this is the Denning cited in Bay and Askarov] At this point, an observer can no
-longer deduce which path execution took, except through the assignments that happened
-in \(b_1\) or \(b_2\), which are already tainted. It is therefore safe to tag future
-assignments \(\low\). In the example, {\tt public1} should be tagged \(\low\), while
-{\tt public2} is tagged \(\high\).\apt{This is confusing integrity and confidentiality.}
 
 This is where the other components of the PC tag come into play. We perform a program
 transformation introducing the labels of all join points explicitly, so that in

@@ -160,7 +160,8 @@ Consider a straightforward security requirement for a program that handles sensi
 {\em secure information flow} (SIF) policies. Suppose the code in \cref{fig:ex1} is part of
 such a system, and {\tt psk} is expected to be a passkey and {\tt printi}
 prints an integer to an insecure channel, so this code indirectly performs a leak via the
-local variable {\tt x}. We now explain how Tagged C can enforce a security policy that would prevent this leak.
+local variable {\tt x}. We now explain how Tagged C and its control points
+enable a security policy that would prevent this leak.
 
 In Tagged C, all values carry a metadata tag. Whenever execution reaches a control point, it consults
 an associated tag rule, to check whether the next execution step should be allowed to continue and
@@ -390,9 +391,9 @@ in a high context.
     \hline
     Rule Name & Inputs & Outputs & Control Points \\
     \hline
-    \(\calltname\)      & \(\calltargs\)         & \(\calltres\)      & Call \\
-    \(\argtname\)       & \(\argtargs\)          & \(\argtres\)       & Call \\
-    \(\rettname\)       & \(\rettargs\)          & \(\rettres\)       & Return \\
+    \(\calltname\)      & \(\calltargs\)         & \(\calltres\)      & Update PC tag at Call \\
+    \(\argtname\)       & \(\argtargs\)          & \(\argtres\)       & Per Argument at Call \\
+    \(\rettname\)       & \(\rettargs\)          & \(\rettres\)       & Handle PC tag, Return Value \\
     \(\loadtname\)      & \(\loadtargs\)         & \(\loadtres\)      & Memory Loads \\
     \(\storetname\)     & \(\storetargs\)        & \(\storetres\)     & Memory Stores \\
     \(\accesstname\)    & \(\accesstargs\)       & \(\accesstres\)    & Variable Accesses \\
@@ -422,7 +423,8 @@ in a high context.
   \label{fig:controlpoints}
 \end{table}
 
-Tagged C is full ordinary C. Its semantics (given in full in the appendix)
+Tagged C is full ordinary C. [TODO: double check this.]
+Its semantics (given in full in the appendix)
 is based on that of CompCert C \cite{Leroy09:CompCert},
 a formalization of the C standard into a small-step reduction semantics.
 Tagged C's semantics differ from CompCert C's in two key respects. First, Tagged C's values
@@ -447,15 +449,21 @@ The tag rule itself is instantiated as a partial function; if a policy leaves a 
 undefined on some inputs, then those inputs are considered to violate the policy, sending
 execution into a special failstop state. The names and signatures of the tag rules,
 and their corresponding control points, are listed in \Cref{fig:controlpoints}.
-\apt{It wouldn't hurt to talk briefly through these rules, especially when the connection between rule name and control point is not obvious. And make a point of saying: ``and this is all there are or ever will be (we hope)''}
+\(\calltname\) and \(\rettname\) update the PC tag on entry and exit from a function,
+with \(\rettname\) aware of both the caller's PC tag (\(\PCT[_{\color{blue} CLR}]\))
+and the callee's (\(\PCT[_{\color{blue} CLR}]\)). \(\argtname\) updates tags on any arguments.
+\(\loadtname\) and \(\storetname\) deal with memory accesses, while \(\accesstname\) and
+\(\assigntname\) handle variable access and assignment regardless of whether the variable
+is in memory. \(\exprsplittname\), \(\exprjointname\), \(\splittname\), and \(\labeltname\)
+update the PC tag based on changed in control flow. \(\fieldtname\) updates the tag
+on a pointer value when it is offset to access the field of a struct or union.
 
 The second major semantic distinction between Tagged C and CompCert C is that Tagged C has no
 memory-undefined behavior. CompCert C models memory as a collection of blocks of offsets,
-and treats all variables as having their own block. Tagged C instead follows Concrete C
-\cite{} [Need something to cite!] in separating variables into public and private data.\apt{No, you will need to explain Concrete C in more detail}
-Public data (all heap data, globals, arrays, structs, and address-taken locals) share a single flat address
-space, where its behavior is implementation defined. \sna{Technically right?\apt{but not very informative. You should simply describe how your memory model works. then we
-can add some language justifying why this is an interesting model in its own right.}}
+and treats all variables as having their own block. Tagged C instead separates variables
+into public and private data. Public data (all heap data, globals, arrays, structs, and
+address-taken locals) share a single flat address
+space. [TODO: add some language justifying why this is an interesting model in its own right.]
 Private data (non-address-taken locals and parameters) have a separate store.
 
 %Without memory safety, programs
@@ -504,6 +512,8 @@ information-flow policies.
 \section{Example Policies}
 \label{sec:policies}
 
+[ATTN: this section is mid-rework, so it will not make sense, and will be missing things.]
+
 In this section, we will discuss concrete policy implementations and the way
 that they have motivated our control point design. First, memory safety policies
 inform our requirements for memory tags as well as type casts. Compartmentalization
@@ -539,6 +549,25 @@ be associated with the same object. This enables many low-level idioms, while st
 memory-safety violations like buffer overflows.
 
 On the other hand, their second model, {\em provenance not via integer} (PNVI), clears the
+provenance of a pointer when it is cast to an integer. When an integer is cast to a pointer
+(whether or not it was previously derived from a pointer), it takes on the provenance of whatever
+it points to at that time.
+
+\begin{figure}
+\begin{verbatim}
+1  int f() {
+2    int[1] x,y;
+3    int p = (uintptr_t) &x;
+4    int q = (uintptr_t) &y;
+5    int r = q | 0x00000001;
+5    * (int *) p = 0; // Legal in all
+6    * (int *) (r & 0x11111110) = 0; // Illegal in CompCert C
+7    * (int *) (p - (q - p)) = 0; // Illegal in PVI
+8  }
+\end{verbatim}
+\caption{Memory Safety and Pointer Casts}
+\label{fig:memsafe}
+\end{figure}
 
 \paragraph*{Memory Safety in General}
 
@@ -695,19 +724,66 @@ active function, kept up to date by the \(\calltname\) and \(\rettname\) rules.
   \label{fig:compartments}
 \end{figure}
 
-\apt{Misc. complaints: Vectors on $\overline{lt}$ not explained. CLE and CLR not explained. Bracketed outputs in CallT and RetT left over from a previous version?
-  Explain MallocT rule (or omit here). Everything in Fig. 7 should be in blue.}
-
 \subsection{Secure Information Flow}
 
 Our final example policy will be a more realistic version of our first:
-{\em secure information flow (SIF)}~\cite{Denning77:SecureInformationFlow}, which is part of a larger family of policies
-known as {\em information flow control} (IFC). \apt{In fact, one could argue that everything we do with metadata tags is really IFC.}
+{\em secure information flow (SIF)}~\cite{Denning77:SecureInformationFlow}.
 This family of policies deal entirely with enforcing
 higher-level security concerns, regardless of whether the code that they protect contains
 errors or undefined behaviors.
 
+Our introductory example was an instance of {\em confidentiality}, so now we will discuss
+{\em integrity}: preventing insecure input from influencing secure behavior (\cref{fig:sif}).
+This function takes an input {\tt name} from an standard input, sanitizes it, and then
+uses it in an SQL query. The sanitization step is very important! Without it, a user
+of this function could pass it a  {\tt name} containing ``{\tt Bobby"; drop table;}''
+(an SQL injection attack\cite{??}).
+
+%In this code, a malformed user input is accidentally appended to an SQL query without
+%first being sanitized:
+
+\begin{figure}
+\begin{verbatim}
+1 void sanitize(char* in, char* out);
+2 void sql_query(char* query, char* res);
+3
+4 void get_data() {
+5   char[20] name, name_san;
+6   char[100] query = "select address where name = \"";
+7   char[100] res;
+8
+  scanf("%19", name);
+  if (strlen(name) == 0) {
+    return -1;
+  }
+
+  sanitize(name, name_san);
+  strncat(query, name_san, strlen(name_san));
+  strncat(query, "\"",1);
+
+  sql_query(query, res);
+  printf(res);
+}
+\end{verbatim}
+\caption{SIF Example}
+\label{fig:sif}
+\end{figure}
+
+\paragraph*{Implicit Flows}
+
+Things become trickier when we consider that the program's control-flow itself can be tainted.
+This can occur in any conditional, including loops, conditional statements, and conditional expressions.
+In general, anytime a ``split'' is conditioned on a tainted value, subsequent assignments must also be
+tainted, as we saw in \cref{fig:ex2}. But in \cref{fig:sif}, after the branches of the
+if statement have completed, this is no longer necessary---no information can be gleaned
+from the store to [TODO]. The point in a control-flow graph where all possible routes
+from the split to a return have re-converged is termed a {\em join point}, and can be identified
+statically as the immediate post-dominator of the split point \cite{Denning77:SecureInformationFlow}.
+
 \paragraph*{SIF and Control Points}
+
+The above example illustrates the need to identify split and join points in expressions
+and statements.
 
 \section{Evaluation}
 \label{sec:evaluation}
@@ -740,10 +816,11 @@ also conceptually close to the trace-based definition: defining e.g. memory safe
 of normal states requires either manually keeping track of large amounts of history to
 identify where each pointer comes from, or possibly some sort of temporal logic.
 
-\apt{Something about malloc tagging, and type-based tagging in general.}
-The other known limitation is in how we tag memory at allocation time.
-Due to our approach to tagging memory uniformly at allocation time, Tagged C cannot easily
-enforce substructural memory safety. Versions of memory safety that protect fields of a
+The other known limitation is in how we tag memory at allocation time. Malloc tags an
+entire region with a single tag, which means that Tagged C cannot easily
+enforce substructural memory safety. We would rather be able to tag the allocated region
+based on its type, but in C, malloc does not get access to type information!
+Versions of memory safety that protect fields of a
 struct from overflows within the same struct would be very useful, but currently enforcing
 them will require manual initialization.
 
