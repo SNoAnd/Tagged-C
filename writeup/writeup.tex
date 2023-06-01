@@ -518,38 +518,30 @@ secure information flow.
 \label{sec:PVI}
 
 
-Variations of memory safety have been enforced in PIPE already, but usually\apt{??} using
-an ad hoc memory model.\apt{Specific citations? How are they ``ad hoc?''}
-
-\apt{But Concrete C also gives this a definition!  Need to explain what PVI still \emph{prevents}.}
+Variations of memory safety have been enforced in PIPE already, but usually using
+an ad hoc memory model. PVI has the virtue of giving definition to many memory UBs in which a pointer is
+cast to an integer, subjected to various arithmetic operations, and cast back to a pointer.
 Memarian et al.'s second memory model, {\it PNVI} (provenance not via integer), is even more permissive.
 We can also enforce it in Tagged C, though its security value is questionable, and we will
-not describe it in this paper.\apt{Last two sentences seem to add nothing.}
-For a policy to enforce PVI, it should not failstop on any program that is defined in PVI.\apt{Isn't that tautological?}
-However, it should failstop if and when a program reaches UB.\apt{Somewhat confusing, because
-  PVI turns some C standard UB's into defined behaviors.} For example, on many systems,
-pointers are (at least) 4-byte aligned, so the low-order two bits can be ``stolen'' to contain
-other data which is manipulated using bit-level shifting and masking operations. 
-This idiom is often used when the programmer wants to associate a flag with the pointer, e.g. in
-some garbage collection implementations.\cite{??} \apt{I don't think Cheney is particularly relevant.}
-These pointer manipulations are probably UBs in standard C (the standard is not completely clear on this point),
-but are explicitly defined in PVI.  
-But violations such as buffer overflows in which a load, store, or free 
-occurs outside of the proper range remain undefined in PVI and must failstop. In \cref{fig:overrun},
-we see an example of such a program, and a possible memory layout in which
-the overflow ends up overwriting the variable {\tt y}.\apt{It is odd that the example doesn't illustrate
-  the sort of bit-twiddling that PVI is intended to support! Actually, the best thing to see is how the tag rule
-instantiations would \emph{change} to accommodate different policies (PVI, PNVI, something stricter...) }
+not describe it in this paper.
+For a policy to enforce PVI, it should not failstop on any program that is defined in PVI.
+However, it should failstop if and when a program reaches UB. For example, low-level code
+that uses the lower-order bits of a pointer to store a flag (\cref{fig:mark}) should
+execute successfully. This idiom appears often in code where a pointer is associated with a flag,
+such as Cheney's garbage collection algorithm \cite{} and is generally considered harmless.
+But violations such as buffer overflows (\cref{fig:overflow}) in which a load, store, or free would
+occur outside of the proper range are undefined in PVI and must failstop. In \cref{fig:overflow},
+memory is arranged so that the overflow ends up overwriting the variable {\tt y}.
 
-\begin{figure}
-  \begin{tikzpicture}[every text node part/.style={align=left}]
-    \node[matrix, ampersand replacement=\&, anchor=west] (code)
-         {
-           \node (l0) {\tt void overrun() \{}; \\
-           \node (l1) {\tt ~ ~ int[2] x; int y;}; \\
-           \node (l3) {\tt ~ ~ *(x+2) = 42;}; \\
-           \node {\tt \}}; \\
-         };
+\begin{tikzpicture}[every text node part/.style={align=left}]
+  \node[matrix, ampersand replacement=\&, anchor=west] (code)
+       {
+         \node (l0) {\tt void overflow() \{}; \\
+         \node (l1) {\tt ~ ~ int[3] x; int y;}; \\
+         \node (l2) {\tt ~ ~ *x = 222222;}; \\
+         \node (l3) {\tt ~ ~ *(x+3) = 333333;}; \\
+         \node {\tt \}}; \\
+       };
 
     \node[matrix, ampersand replacement=\&, column sep=-1em, node distance=4.5em, below=of l3.west,anchor=west] (table2)
          {
@@ -647,7 +639,7 @@ and during a load or store, we compare the location tags to the PC tag, not the 
 be explicit about stating it; if not, perhaps the section does not pull its weight.}
 
 To allow intentional sharing of memory across compartments, a more flexible policy is needed. 
-For example, the hostname needs to conform to an expected pattern\apt{??? Need to introduce the example first!}, 
+For example, the hostname needs to conform to an expected pattern, 
 such as in an enterprise network, to differentiate between different classes of
 computers (employee, server, contractor, etc). The standard library, 
 in its own compartment, has helpful functions, 
@@ -663,6 +655,7 @@ you would expect to see failstopping occur.}
     char* curr_name = malloc(HOST_NAME_MAX + 1);
     ret = gethostname( &curr_name, HOST_NAME_MAX + 1 );
     if (! ret && !(strcmp(curr_name, intended_name))) {
+      ret = sethostname(intended_name, strlen(intended_name));
       ret = sethostname(intended_name, strlen(intended_name));
       ....
     }
@@ -827,6 +820,41 @@ the validity of the pointer (for shared ones).
 \subsection{Secure Information Flow}
 \label{sec:SIF}
 
+Our final example policy will be a more realistic version of our first:
+{\em secure information flow (SIF)}. SIF is described in Denning and Denning
+\cite{Denning77:SecureInformationFlow}, and is part of a larger family of policies
+known as {\em information flow control} (IFC.) This family of policies deal entirely with enforcing
+higher-level security concerns, regardless of whether the code that they protect contains
+errors or undefined behaviors. We will give an example of a single policy in the family.
+Our introductory example was an instance of {\em confidentiality}, so now we will discuss
+{\em integrity}: preventing insecure input from influencing secure behavior.
+In this code, a malformed user input is accidentally appended to an sql query without sanitization:
+
+\begin{verbatim}
+void sanitize(char* in, char* out);
+char* sql_query(char* query);
+
+void get_data() {
+  char[20] name;
+  char[20] name_san;
+  char[100] query = "select address where name =";
+
+  scanf("%19f", name);
+  sanitize(name, name_san);
+  strncat(query, name, strlen(name));
+  
+  sprintf(buf, sql_query(query));
+  return;
+}
+\end{verbatim}
+
+This function sanitizes its input {\tt name}, then appends the result to an appropriate SQL
+query, storing the result in {\tt buf}. But, in the default case, the programmer has accidentally
+used the unsanitized string! This creates the opportunity for an SQL injection attack: a caller
+to this function could (presumably at the behest of an outside user) call it with {\tt field} of
+3 and {\tt name} of ``Bobby; drop table;''.
+
+The fact that the input can be sanitized also makes this an {\em intransitive} policy:
 information may flow from {\tt scanf} to {\tt sanitize}, and from {\tt sanitize} to
 {\tt sql\_query}, but not directly from {\tt scanf} to {\tt sql\_query}.
 
