@@ -61,12 +61,12 @@ enforcement of {\em security policies} using a reference
 monitor~\cite{Anderson72:PlanningStudy}. A large class of useful policies
 can be specified as \emph{data-flow} constraints based on \emph{metadata tags},
 which attach to the underlying data to carry information like type, provenance,
-ownership, or security classification. The policy takes the form of a set of
-rules that check and update the metadata during execution; if a rule violation is
-encountered, the program failstops. The class of policies that can be implemented
+ownership, or security classification. A policy takes the form of a set of
+rules that check and update the metadata a key points during execution; if a rule violation is
+encountered, the program failstops. The class of well-known policies that can be implemented
 in this way includes fine-grained memory safety, secure information flow,
-and mandatory access control, all of which are important security requirements
-from the literature.
+and mandatory access control. %, all of which are important security requirements
+%from the literature.
 
 Tag-based policies can be enforced either in software or---more promisingly---with the
 aid of hardware extensions such as ARM MTE~\cite{arm-mte},
@@ -77,11 +77,11 @@ also been called PUMP~\cite{Dhawan+14,Dhawan+15},
 SDMP~\cite{Dover16,RoesslerD18}) or CoreGuard~\cite{Dover20}.}
 which has been the specific motivator for our work, is particularly flexible: it supports
 arbitrary software-defined flow rules over large (word-sized) tags with arbitrary structure,
-which enables finer-grained policies and the composition of multiple policies together.
-This flexibility is useful because security needs may differ radically between codebases,
+which enables fine-grained policies and the composition of multiple policies.
+This flexibility is useful because security needs may differ radically among codebases,
 and even within a codebase. A conservative, one-size-fits-all policy might be too strong,
 causing failstops even during normal execution. Sensitive code might call for specialized
-protection that doesn't apply elsewhere.
+oprotection that isn't relevant elsewhere.
 
 But PIPE policies can be difficult for a C engineer to write: their tags and rules
 are defined in terms of individual machine instructions and ISA-level
@@ -97,9 +97,9 @@ C functions, variables and data values, and rules triggered at \emph{control poi
 significant execution events, such as function calls, expression evaluation, and pointer-based memory accesses. 
 Control points resemble ``advice points'' in aspect-oriented programming, but narrowly
 focused on the manipulation of tags.
-In our previous work,~\cite{Chhak21:Tagine} we outlined such a framework for a toy
+In previous work~\cite{Chhak21:Tagine}, we outlined such a framework for a toy
 source language and showed how high-level policies could be compiled to ISA-level policies and 
-enforced using PIPE-like hardware.  We extend this approach to handle
+enforced using PIPE-like hardware.  Here we extend this approach to handle
 the full, real C language, by giving a detailed design for the necessary control points and
 showing how they are integrated into C's dynamic semantics. 
 Although motivated by PIPE, Tagged C is not tied to any particular enforcement mechanism,
@@ -113,11 +113,11 @@ including compartmentalization, memory protection, and secure information flow.
 Formally, Tagged C is defined as a variant C semantics that instruments ordinary execution with control points.
 At each control point, a user-defined set of tag rules is consulted to propagate tags and potentially cause
 execution to failstop. In the limiting case where no tag rules are defined, the semantics are similar to
-those of ordinary C, except that the memory model is very concrete
-(pointers and integers are essentially the same thing, and all globals, dynamically-allocated objects,
-and address-taken objects are allocated in the same memory space). This means that memory behaviors
-that would be undefined in standard C are given definition (parameterized by a particular allocation pattern)
-that matches that of a compiled version of the same code.
+those of ordinary C, except that the memory model is very concrete; 
+pointers and integers are essentially the same thing, and all globals, dynamically-allocated objects,
+and address-taken objects are allocated in the same memory space. Memory behaviors
+that would be undefined in standard C are given a definition (parameterized by a particular allocation strategy)
+consistent with the behavior of a typical compiler.
 We build the Tagged C semantics on top of the CompCert C semantics, which are formalized 
 as part of the CompCert verified compiler \cite{Leroy09:CompCert}. We provide a reference interpreter
 also based on that of CompCert, for use in prototyping and executing policies. Tag rules are written directly
@@ -144,15 +144,19 @@ In summary we offer the following contributions:
 \item A Tagged C interpreter, implemented in Coq and extracted to Ocaml
 \end{itemize}
 
-In the next section, we give a high-level introduction of metadata-tagging by example.
-Then in \cref{sec:semantics}, we briefly discuss the language as a whole and its control points,
-before moving into \cref{sec:policies} to discuss three example policies and how their
-needs inform our choices of control points. Finally, in
-\cref{sec:evaluations} we discuss the degree to
+The paper is organized as follows.
+\Cref{sec:example} gives a high-level introduction of metadata tagging by example.
+\Cref{sec:language} summarizes the Tagged C language as a whole and its control points.
+\Cref{sec:policies} describes three example policies and how their
+needs inform our choices of control points. 
+\Cref{sec:evaluation} assesses the degree to
 which the design meets our goals of flexibility and applicability to realistic
 security concerns.
+\Cref{sec:related} discusses related work, and \cref{sec:futurework} descibes future work.
+The full details of Tagged C semantics appear in the Appendix.
 
 \section{Metadata Tags and Policies, by Example}
+\label{sec:example}
 
 Consider a straightforward security requirement for a program that handles sensitive passkeys:
 ``do not leak passkeys on insecure channels.'' This is an instance of a broad class of
@@ -164,22 +168,24 @@ enable a security policy that would prevent this leak.
 
 In Tagged C, all values carry a metadata tag. Whenever execution reaches a control point, it consults
 an associated tag rule, to check whether the next execution step should be allowed to continue and
-if so, to update the tags. A policy consists of a tag type and an instantiation of all tag rules.
-For a simple SIF policy like this one, the tag type consists of \(\high\) (high security) and \(\low\) (low security).
-In this case, when {\tt f} processes its arguments, a tag-rule with domain knowledge about the program
+if so, to update the tags. A policy consists of a tag type and instantiations of the tag rules for every control point.
+For a simple SIF policy like this one, the tag type is an enumeration containing \(\high\) (high security) and \(\low\) (low security).
+In this case, when {\tt f} processes its arguments, a program-specific tag rule 
 will tag {\tt psk} \(\high\). Then its tag will be propagated along with the value through variable accesses,
-assignments, and arithmetic, which does not require specialized program knowledge, until the argument-handling
-rule in {\tt printi} catches it and failstops.
+assignments, and arithmetic, which does not require specialized program knowledge. Finally, a program-specific
+argument-handling rule for {\tt printi} will check that the tag is \(\low\); since it is not, the rule will
+cause a failstop.  \apt{Might be worth admitting here that type-based static analysis could also easily find this problem.}
 
 \Cref{fig:ex1} maps each of three points in the execution of {\tt f} to a description of the program
 state at that point, with the input value and all tags treated symbolically
-\footnote{Tag rules that merely propagate their inputs are omitted,
-in this case \(\accesstname\) and \(\assigntname\).}.
+\footnote{Tag rules that merely propagate their inputs,
+in this case \(\accesstname\) and \(\assigntname\), are omitted.\apt{If these still exist???}}.
 Let \(i\) be the value passed to {\tt psk}
 and \(\vt[_0]\) the corresponding tag. In each state, the first column
 shows the active function, the second gives the symbolic values and tags
 of variables in the local environment, and the third shows the flow of those tags though
-tag rules.
+rules. Throughout the paper, we highlight tag-related metavariables, rules, etc. in {\color{blue}blue}.
+\apt{Nitpicking, shouldn't the {\tt @} signs be blue too?}
 
 \begin{figure}
   \begin{tikzpicture}[every text node part/.style={align=left}]
@@ -228,10 +234,11 @@ tag rules.
 
   \end{tikzpicture}
 
-  \caption{Example 1}
+  \caption{Arguments, constants, and binary operations.\apt{Why are function names in italics rather than mathtt?}}
   \label{fig:ex1}
 \end{figure}
 
+\apt{I wonder if next two paras should be swapped.}
 The tag on {\tt psk} comes from \(\argtname\), which is parameterized by the tag on the argument
 value (\(\vt[_0]\)) and the names of both the function and the argument. The initial tag on local
 variable {\tt x} is the default tag \(\constt\), as is the tag on the constant 5 on line 2.
@@ -242,7 +249,7 @@ After the final step, the execution is in the function {\tt printi}, where it co
 
 The policy described above is given more precisely in \cref{fig:example1rules}. In tag rules,
 the assignment operator := denotes an assignment to the named tag-rule output, by convention
-written \(\gentag[']\) with an appropriate metavariable. Most rules are general, but
+written as primed metavariables \(\gentag[']\).  Most rules are generic, but
 \(\argtname\) connects the policy to the specifics of the program, identifying {\tt psk}
 as a source of high-security data and treating {\tt printi} as a low-security output by
 triggering a failstop if it recieves high-security data.
@@ -269,23 +276,22 @@ triggering a failstop if it recieves high-security data.
   \label{fig:example1rules}
 \end{figure}
 
-Example \ref{fig:ex2} adds two new wrinkles: we need to keep track of metadata associated with
+\Cref{fig:ex2} steps through the execution of an example function {\tt g} that adds two new wrinkles: we need to keep track of metadata associated with
 addresses and with the program's control-flow state. If the variable {\tt mm} represents
 a memory-mapped device register that is outside of the program's control, we want to avoid storing the password there.
 And, by branching on the password, we risk leaking information that could eventually compromise it even
-if we never print it directly (an {\em implicit flow}.)
+if we never print it directly (an {\em implicit flow}.) 
 
 In addition to tags on values, Tagged C attaches tags to memory locations ({\em location tags}, ranged over by
-\(\lt\)) and tracks a special global tag called the PC tag, ranged over by \(\PCT\).
-Working from the policy above, we will initialize the location tag of {\tt mm} to \(\low\),
-as a low-security output channel, and all other addresses \(\high\). Anytime we branch on
-a high-tagged value, we will also set the PC tag to \(\high\). We modify the previous rules so that
-assignments propagate the higher of the value being assigned and the PC tag, meaning that an
-assignment under a high PC remains high. And when an assignment is to a memory location, an
+\(\lt\)) and tracks a special global tag called the PC tag (ranged over by \(\PCT\)).
+Extending the policy above, we write rules that initialize the location tag of {\tt mm} to \(\low\),
+as a low-security output channel, and all other addresses \(\high\). Whenever execution branches on
+a high-tagged value, the PC tag will be set to \(\high\). We modify the previous rules so that
+assignments propagate the higher of the tag on the value being assigned and the PC tag, meaning that an
+assignment under a high PC remains high. When an assignment is to a memory location, an
 additional store rule will check the tag on that location against the value being written,
-and fail stop if a high value would be written to a low location.
+and failstop if a high value would be written to a low location.
 
-\Cref{fig:ex2} steps through an execution of {\tt g}.
 
 \begin{figure}
 \begin{tikzpicture}[every text node part/.style={align=left}]
@@ -360,11 +366,11 @@ to memory.
 
 \begin{figure}
   \globaltruleblock{
-    \(\vt:=\low\) \\
-    \(\pt:=\low\) \\
+    \(\vt':=\low\) \\
+    \(\pt':=\low\) \\
     \caseoftwo{x}
-              {\tt mm}{\(\lt:=\low\)}
-              {\(\underline{~~~}\)}{\(\lt:=\high\)}}
+              {\tt mm}{\(\lt':=\low\)}
+              {\(\underline{~~~}\)}{\(\lt':=\high\)}}
   \truleblock{\(\splittname(\PCT,\vt)\)}{
     \caseoftwo{(\(\PCT,\vt\))}
               {(\(\low,\low\))}{\(\PCT':=\low\)}
@@ -372,11 +378,13 @@ to memory.
   }
   \storetruleblock{
     \(\lt':=\lt\) \\
+    \(\PCT':=\PCT\) \\
     \caseofthree{(\(\PCT,\vt,\lt\))}
                 {(\(\underline{~~},\underline{~~},\high\))}{\(\vt':=\vt\)}
                 {(\(\low,\low,\low\))}{\(\vt':=\vt\)}
                 {\(\underline{~~~}\)}{\(\fail\)}
   }
+\caption{Secure Information Flow (pt. 2)}
 \end{figure}
 
 In this case, \(\splittname\) will set the PC tag to \high, as it branches on a value derived from {\tt psk}.
@@ -423,20 +431,17 @@ in a high context.
   \label{fig:controlpoints}
 \end{table}
 
-Tagged C is full ordinary C. [TODO: double check this.]
-Its semantics (given in full in the appendix)
+Tagged C is full ordinary C. [TODO: refine this statement!]
+Its semantics (given in full in the Appendix)
 is based on that of CompCert C \cite{Leroy09:CompCert},
 a formalization of the C standard into a small-step reduction semantics.
 Tagged C's semantics differ from CompCert C's in two key respects. First, Tagged C's values
-and states are annotated with {\em metadata tags}, and its reductions contain
-{\em control points}: hooks within the
+and states are annotated with metadata tags, and its reductions contain
+control points, which are hooks within the
 operational semantics at which the tag policy is consulted and either tags are updated, or the system
 failstops. A control point consists of the name of a {\em tag rule}
-and the bindings of its inputs and outputs. Take, for example, the expression step reduction
-for binary operations, below. On the left, the ``tagless'' version of the rule reduces a
-binary operation on two input values to a single value by applying the operation.
-On the left, the Tagged C version adds tags to the operands and the result, with the result tag
-derived from the \(\binoptname\) rule.
+and the bindings of its inputs and outputs. For example, consider the expression step reduction
+for binary operations:
 
 \begin{minipage}[t]{0.37\textwidth}
   \binopsteptagless
@@ -445,41 +450,52 @@ derived from the \(\binoptname\) rule.
   \binopstep
 \end{minipage}
 
+\noindent
+On the left, the ``tagless'' version of the rule reduces a
+binary operation on two input values to a single value by applying the operation.
+On the right, the Tagged C version adds tags to the operands and the result, with the result tag
+derived from the \(\binoptname\) rule. 
+
 The tag rule itself is instantiated as a partial function; if a policy leaves a tag rule
 undefined on some inputs, then those inputs are considered to violate the policy, sending
 execution into a special failstop state. The names and signatures of the tag rules,
 and their corresponding control points, are listed in \Cref{fig:controlpoints}.
 \(\calltname\) and \(\rettname\) update the PC tag on entry and exit from a function,
 with \(\rettname\) aware of both the caller's PC tag (\(\PCT[_{\color{blue} CLR}]\))
-and the callee's (\(\PCT[_{\color{blue} CLR}]\)). \(\argtname\) updates tags on any arguments.
+and the callee's (\(\PCT[_{\color{blue} CLE}]\)). \(\argtname\) updates tags on any arguments.
 \(\loadtname\) and \(\storetname\) deal with memory accesses, while \(\accesstname\) and
 \(\assigntname\) handle variable access and assignment regardless of whether the variable
-is in memory. \(\exprsplittname\), \(\exprjointname\), \(\splittname\), and \(\labeltname\)
+is in memory.\apt{still??}  \(\exprsplittname\), \(\exprjointname\), \(\splittname\), and \(\labeltname\)
 update the PC tag based on changed in control flow. \(\fieldtname\) updates the tag
-on a pointer value when it is offset to access the field of a struct or union.
+on a pointer value when it is offset to access the field of a struct or union. \apt{A few words
+  about the rest, or an excuse for not describing them?}
 
 The second major semantic distinction between Tagged C and CompCert C is that Tagged C has no
 memory-undefined behavior. CompCert C models memory as a collection of blocks of offsets,
 and treats all variables as having their own block. Tagged C instead separates variables
 into public and private data. Public data (all heap data, globals, arrays, structs, and
-address-taken locals) share a single flat address
-space. [TODO: add some language justifying why this is an interesting model in its own right.]
-Private data (non-address-taken locals and parameters) have a separate store.
-
+address-taken locals) share a single flat address 
+space.
+Private data (non-address-taken locals, parameters) live in a separate, abstract environment.
+Program-specified stores, e.g. writes through pointers, can cause arbitrary damage to public
+data, but do not affect private data.
+[TODO: add some language justifying why this is an interesting model in its own right.]
 %Without memory safety, programs
 %that exhibit memory-undefined behavior will act as their compiled equivalents would, potentially
 %corrupting memory; we expect that a memory safety policy will be a standard default, but that the
 %strictness of the policy may need to be tuned for programs that use low-level idioms.
 
-\paragraph*{Parts of a policy}
+%% APT: This seems out of place and superceded by discussion above.
+%% \paragraph*{Parts of a policy}
 
-A policy consists of instantiations of the tag type
-and each of the tag rules associated with control points in the semantics. Table \cref{figcontrolpoints}
-identifies the full collection of control points, their tag rules, and the inputs and outputs of the tag rules.
-The tag type \(\tau\) must be inhabited by a default tag.
+%% A policy consists of instantiations of the tag type
+%% and each of the tag rules associated with control points in the semantics. Table \cref{figcontrolpoints}
+%% identifies the full collection of control points, their tag rules, and the inputs and outputs of the tag rules.
+%% The tag type \(\tau\) must be inhabited by a default tag.
 
 \paragraph*{Identifiers}
 
+\apt{This seems out of place here.}
 Identifiers are a C source-level construct, and a policy might need to operate on them,
 so we embed them in tags called {\em name tags}. We give name tags to the
 following constructions and identify them as follows:
@@ -503,7 +519,7 @@ rule should failstop.
 This scheme works for fully orthogonal policies, but sometimes two policies will
 need to interact during execution, such as a compartmentalization policy in which
 compartments share memory-safe pointers with one another. In this case the policies
-can still be composed by hand.
+can still be composed by hand. \apt{Presumably this para may be changing...}
 
 This process can be applied to any number of different policies, allowing for instance
 a combination of a baseline memory safety policy with several more targeted
@@ -837,6 +853,7 @@ because tag-based hardware is unlikely to support linear tags, so any such updat
 need the compiler to generate extra instructions.
 
 \section{Related Work}
+\label{sec:related}
 
 \paragraph{Reference Monitors}
 
