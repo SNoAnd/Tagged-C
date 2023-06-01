@@ -28,10 +28,11 @@ Module Type Policy. (* anaaktge this is the interface for rules
       A sign I missed one is  an error somewhat like
       Error: The field PolicyFailure is missing in Tags.NullPolicy.
     *)
-  Inductive PolicyResult {A: Type} :=
+  Inductive PolicyResult (A: Type) :=
   | PolicySuccess (res: A) 
   | PolicyFail (r: string) (params: list tag).
 
+  (* anaaktge mixing implicit and explicit *)
   Arguments PolicySuccess {_} _. 
   Arguments PolicyFail {_} _ _.
 
@@ -165,7 +166,7 @@ Module PVI <: Policy.
   Definition InitPCT := Dyn 0.
 
   (* anaaktge does not inherit, more like impersonates *)
-  Inductive PolicyResult {A: Type} :=
+  Inductive PolicyResult (A: Type) :=
   | PolicySuccess (res: A) 
   | PolicyFail (r: string) (params: list tag).
 
@@ -173,13 +174,15 @@ Module PVI <: Policy.
   Arguments PolicyFail {_} _ _.
 
   Definition GlobalT (id : ident) (align : nat) : tag * list tag := (X, repeat (Glob id) align).
-  
-  Definition LocalT (align : nat) (pct : tag) : PolicyResult (tag * tag * list tag) :=
+  (* anaaktge the % in exp preceding, treat ambigous ops as its type version*)
+  Definition LocalT (align : nat) (pct : tag) : PolicyResult (tag * tag * (list tag))%type :=
     match pct with
     | Dyn c =>
         PolicySuccess (Dyn (S c), Dyn c, repeat (Dyn c) align)
     | _ =>
-        None
+        (* if the match fails, do I have anything to put in the list? 
+            was a None, which I assume means a bad thing*)
+        PolicyFail "PVI::LocalT Failure" [pct]
     end.
 
   Definition VarT (pct pt : tag) : PolicyResult tag := PolicySuccess pt.
@@ -239,7 +242,7 @@ Module PNVI <: Policy.
   Definition InitPCT := Dyn 0.
 
   (* anaaktge does not inherit, more like impersonates *)
-  Inductive PolicyResult {A: Type} :=
+  Inductive PolicyResult (A: Type) :=
   | PolicySuccess (res: A) 
   | PolicyFail (r: string) (params: list tag).
 
@@ -331,7 +334,7 @@ Module IFC (S:IFC_Spec) <: Policy.
   Theorem tag_eq_dec : forall (t1 t2:tag), {t1 = t2} + {t1 <> t2}. Proof. repeat decide equality. Qed.
 
   (* anaaktge does not inherit, more like impersonates *)
-  Inductive PolicyResult {A: Type} :=
+  Inductive PolicyResult (A: Type) :=
   | PolicySuccess (res: A) 
   | PolicyFail (r: string) (params: list tag).
 
