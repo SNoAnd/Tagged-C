@@ -780,8 +780,8 @@ of this function could pass it a  {\tt name} containing ``{\tt Bobby"; drop tabl
          \node {\tt 5 ~ ~ case INVALID:}; \\
          \node {\tt 6 ~ ~ ~ psk = 0; break;}; \\
          \node {\tt 7 ~ ~ case NEW:}; \\
-         \node {\tt 8 ~ ~ \}}; \\
-         \node (l3) {\tt 9 J:  printf(``Updating user \%d'', psk); // join point}; \\
+         \node {\tt 8 ~ \}}; \\
+         \node (l3) {\tt 9 J:  printf("Updating user \%d", id); // join point}; \\
          \node {\tt 10 ~ update(id, psk);}; \\
          \node {\tt 11 \}}; \\
        };
