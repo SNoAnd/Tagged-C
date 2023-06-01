@@ -742,31 +742,81 @@ of this function could pass it a  {\tt name} containing ``{\tt Bobby"; drop tabl
 %In this code, a malformed user input is accidentally appended to an SQL query without
 %first being sanitized:
 
+%\begin{figure}
+%\begin{verbatim}
+%1 void sanitize(char* in, char* out);
+%2 void sql_query(char* query, char* res);
+%3
+%4 void get_data() {
+%5   char[20] name, name_san;
+%6   char[100] query = "select address where name = \"";
+57   char[100] res;
+%8
+%  scanf("%19", name);
+%  if (strlen(name) == 0) {
+%    return -1;
+%  }
+%
+%  sanitize(name, name_san);
+%  strncat(query, name_san, strlen(name_san));
+%  strncat(query, "\"",1);
+%
+%  sql_query(query, res);
+%  printf(res);
+%}
+%\end{verbatim}
+%\caption{SIF Example}
+%\label{fig:sif}
+%\end{figure}
+
 \begin{figure}
-\begin{verbatim}
-1 void sanitize(char* in, char* out);
-2 void sql_query(char* query, char* res);
-3
-4 void get_data() {
-5   char[20] name, name_san;
-6   char[100] query = "select address where name = \"";
-7   char[100] res;
-8
-  scanf("%19", name);
-  if (strlen(name) == 0) {
-    return -1;
-  }
+\begin{tikzpicture}[every text node part/.style={align=left}]
+  \node[matrix, ampersand replacement=\&, anchor=west] (code)
+       {
+         \node (l1) {\tt 1 void h(int id, int psk) \{}; \\
+         \node (l2) {\tt 2 ~ switch(format(psk)) \{}; \\
+         \node {\tt 3 ~ ~ case OLD:}; \\
+         \node {\tt 4 ~ ~ ~ psk = update(psk); break;}; \\
+         \node {\tt 5 ~ ~ case INVALID:}; \\
+         \node {\tt 6 ~ ~ ~ psk = 0; break;}; \\
+         \node {\tt 7 ~ ~ case NEW:}; \\
+         \node {\tt 8 ~ ~ \}}; \\
+         \node (l3) {\tt 9 J:  printf(``Updating user \%d'', psk); // join point}; \\
+         \node {\tt 10 ~ update(id, psk);}; \\
+         \node {\tt 11 \}}; \\
+       };
 
-  sanitize(name, name_san);
-  strncat(query, name_san, strlen(name_san));
-  strncat(query, "\"",1);
+    \node[matrix, ampersand replacement=\&, node distance=12em, right=of l2.north,draw] (table1)
+         {
+           \node[anchor=north] {\(h@\PCT[_1]\)};\\
+         };
 
-  sql_query(query, res);
-  printf(res);
-}
-\end{verbatim}
-\caption{SIF Example}
-\label{fig:sif}
+    \node[matrix, ampersand replacement=\&, node distance=4.5em, below=of table1.west,draw,anchor=west] (table2)
+         {
+           \node[anchor=north] {\(h@\PCT[_3]\)}; \&
+           \node[anchor=north] {\(\PCT[_2], \vt[_1] \leftarrow \rettname(\dots)\) \\
+             \(\PCT[_3] \leftarrow \splittname(\PCT[_2], \vt_1)\) }; \\
+         };
+
+    \node[matrix, ampersand replacement=\&, node distance=4.5em, below=of table2.west,draw,anchor=west] (table3)  
+         {
+           \node[anchor=north] {\(h@\PCT[_4]\)}; \&
+           \node[anchor=north] {\(\PCT[_4] \leftarrow \labeltname(\PCT[_3], \LN[J])\)}; \\
+         };
+
+    \draw[Circle-]
+    (l1.south) -- (table1.west);
+
+    \draw[Circle-]
+    (l2.south) -| (table2.north);
+
+    \draw[Circle-]
+    (l3.north) |- (table3.west);  
+
+
+\end{tikzpicture}
+\caption{Not an Implicit Flow}
+\label{fig:sif_ex3}
 \end{figure}
 
 \paragraph*{Implicit Flows}
