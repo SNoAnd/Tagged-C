@@ -446,10 +446,8 @@ derived from the \(\binoptname\) rule.
 The tag rule itself is instantiated as a partial function; if a policy leaves a tag rule
 undefined on some inputs, then those inputs are considered to violate the policy, sending
 execution into a special failstop state. The names and signatures of the tag rules,
-and their corresponding control points, are listed in \Cref{fig:controlpoints}.\apt{It wouldn't hurt to
-  talk briefly through these rules, especially when the connection between rule name and control point
-  is not obvious. And make a point of
-  saying: ``and this is all there are or ever will be (we hope)''}
+and their corresponding control points, are listed in \Cref{fig:controlpoints}.
+\apt{It wouldn't hurt to talk briefly through these rules, especially when the connection between rule name and control point is not obvious. And make a point of saying: ``and this is all there are or ever will be (we hope)''}
 
 The second major semantic distinction between Tagged C and CompCert C is that Tagged C has no
 memory-undefined behavior. CompCert C models memory as a collection of blocks of offsets,
@@ -513,6 +511,204 @@ policies depend on the call- and return-related control points, to keep track of
 active compartment. And secure information flow (SIF) policies show us the many places
 where the user may need to reference identifiers from their program in the policy itself.
 
+\subsection{Memory Safety}
+
+Memory safety is the principle that all memory operations are through a valid pointer. What constitutes
+a valid pointer can be nuanced. In the C standard, a pointer can be rendered invalid if its valid
+is ever outside the bounds of the object that it points to, even if it is restored to be within
+bounds before performing a load or store. In practice, it is common for programs to violate the
+standard to various degrees, for instance by using lower-order bits of a pointer to store a flag
+\cite{Memarian16:DeFacto}. The possible presence of these low-level idioms means that there is
+no one-size-fits all memory safety policy.
+
+Tagged C can be used to enforce memory safety with respect to different {\em memory models}---formal
+or informal descriptions of how C should handle memory. In this paper we discuss the CompCert C
+memory model and two models proposed by Memarian et al. \cite{Memarian19:ExploringCSemantics}
+for the purposes of supporting low-level idioms, focusing in particular on how they handle
+casts from pointers to integers and back.
+
+CompCert C allows a pointer to be cast into an integer and back, provided that its value
+does not change in the interim. This is very strict! Programs that use low-level idioms
+will failstop if run under a policy that enforces this.
+
+Memarian et al.'s first memory model, {\em provenance via integer} (PVI), treats memory
+as a flat address space, and pointers as integers with additional provenance information
+associating them to their objects. Pointers maintain this provenance even through casts to
+integers and the application of arithmetic operations. When cast back, the pointers will still
+be associated with the same object. This enables many low-level idioms, while still forbidding
+memory-safety violations like buffer overflows.
+
+On the other hand, their second model, {\em provenance not via integer} (PNVI), clears the
+
+\paragraph*{Memory Safety in General}
+
+The core of all three memory safety variants is a ``lock and key'' approach, due to
+[TODO: R\&D credit \url{https://dl.acm.org/doi/10.1145/1321631.1321673}; confirm and cite. Cite S\&P.]
+Whenever an object is allocated, it is assigned a unique ``color,'' and its memory locations as well
+as its pointer are tagged with that color. Operations that are valid on pointers in a given memory model
+maintain the pointer's color, and  loads and stores are legal if the pointer tag matches the target memory
+location tag. These rules are given in \cref{fig:memcommon}.
+
+The default tag \(N\) indicates that there is currently no color.
+
+The rules for the \(PVI\) memory safety policy are given in \cref{fig:pvi}.
+
+\begin{figure}
+  \color{blue}
+  \begin{align*}
+    \tau ::= & \clr & \clr \in \mathbb{N} \\
+    & \N \\
+  \end{align*}
+  
+  \scriptsize
+
+  \begin{minipage}[t]{0.25\textwidth}
+    \vspace{-2.5em}
+    \localtruleblock
+        {\(\PCT' := \PCT+1\);
+          \(\pt := \PCT\)\\
+          \(\vt := \N\);
+          \(\lt := \left[ \PCT \right]\)
+        }
+    \malloctruleblock
+        {\(\PCT' := \PCT+1\);
+          \(\pt := \PCT\) \\
+          \(\vt := \N\);
+          \(\lt := \left[ \PCT \right]\)
+        }
+  \end{minipage}
+  \begin{minipage}[t]{0.3\textwidth}
+    \vspace{-2.5em}
+    \loadtruleblock{\(\mathbf{assert} ~ \forall \lt \in \lt . \pt = \lt\) \\ \(\vt' := \vt\)}
+
+    \storetruleblock{\(\mathbf{assert} ~ \forall \lt \in \lt . \pt = \lt\) \\
+      \(\PCT' := \PCT\);
+      \(\vt' := \vt_2\); 
+      \(\lt' := \lt\)}
+  \end{minipage}
+  
+  \caption{Memory Safety Common Rules}
+  \label{fig:memcommon}
+\end{figure}
+
+\begin{figure}
+  \begin{subfigure}{\textwidth}
+
+    \caption{CompCert C Rules}
+    \label{subfig:memcompcert}
+  \end{subfigure}
+  \begin{subfigure}{\textwidth}
+    \vspace{-2.5em}
+    \binoptruleblock{
+      \caseofthree
+          {\((\vt_1,~ \vt_2)\)}
+          {\((\clr,\N)\)}{\(\vt' := \clr\)}
+          {\((\N,\gentag)\)}{\(\vt' := \gentag\)}
+          {\((\clr_1, \clr_2)\)}{\(\vt' := \N\)}
+    }
+    \unoptruleblock{\(\vt' := \vt\)}
+    
+    \caption{PVI Rules}
+    \label{subfig:memcompcert}
+  \end{subfigure}
+  \begin{subfigure}{\textwidth}
+
+    \caption{PNVI Rules}
+    \label{subfig:memcompcert}
+  \end{subfigure}
+  
+  \caption{Memory Safety Distinct Rules}
+  \label{fig:memdistinct}
+\end{figure}
+
+\paragraph*{Memory Safety and Control Points}
+
+\subsection{Compartmentalization}
+
+In a perfect world, all C programs would be memory safe. In reality, it is common
+for a codebase to contain undefined behavior that will not be fixed. Developers intentionally use 
+low-level idioms that are UB \cite{Memarian16:DeFacto}, or the cost and risk of regressions may make it
+undesirable to fix bugs in older code \cite{Bessey10:Coverity}. Running the CompCert C or even
+the PVI policy described above might break such code, while the PNVI policy might not offer enough
+protection.
+
+A compartmentalization policy can isolate potentially risky code, such as code with intentional
+or unfixed UB, from safety-critical code, and enforce the {\em principle of least privilege}. 
+Even in the absence of language-level errors, compartmentalization can usefully 
+restrict how code in one compartment may interact with another. External libraries are
+effectively required for most software to function yet represent a threat; isolating 
+them from prevents vulnerabilities in the library from compromising critical code,
+and limits the availability of ROP gadgets and other tools to attackers that manage to
+exploit the critical code.
+
+Let's assume that we have a compartmentalization scheme that is being added to the system
+after development. A set of compartment identifiers are ranged over by \(C\),
+and function and global identifiers are mapped to compartments by \(\mathit{comp}(id)\). 
+
+\paragraph*{Compartmentalization Control Points}
+
+\begin{figure}
+  \begin{tikzpicture}[]
+    \node[state]                                      (f)                           {$f$};
+    \node[state, inner sep = 0pt, minimum size = 0pt] (call) [above right=of f]     {$\mathcal{C}$};
+    \node[state]                                      (g)    [below right=of call]  {$f'$};
+    \node[state, inner sep = 0pt, minimum size = 0pt] (ret)  [below right=of f]     {$\mathcal{R}$};
+    
+    \path[->]
+    (f)    edge [bend left] node [pos=0.5,above left] {\(\calltres \leftarrow \callt\)}       (call)
+    (call) edge [bend left] node [pos=0.25,above right] {\(\argtres \leftarrow \argt\)}
+    node [pos=0.75,above right] {\(\localtres \leftarrow \localt\)} (g)
+    (g)    edge [bend left] node [pos=0.5,below right] {\(\dealloctres \leftarrow \dealloct\)}  (ret)
+    (ret)  edge [bend left] node [pos=0.5,below left] {\(\rettres \leftarrow \rett\)}  (f);
+  \end{tikzpicture}
+
+  \caption{Structure of a function call and return, where $f$ calls $f'$.}
+  \label{fig:functions}
+\end{figure}
+
+In our compartmentalization policy (\cref{fig:compartments}), we define a tag to be a compartment
+identifier or the default \(\N\) tag. The PC tag always carries the compartment of the
+active function, kept up to date by the \(\calltname\) and \(\rettname\) rules.
+
+\begin{figure}
+  \color{blue}
+  \begin{minipage}[t]{0.4\textwidth}
+    \vspace{-3em}
+    \[\color{blue} \tau ::= C | \N\]
+
+    \calltruleblock{\(\PCT' := \mathit{comp}(f')\)}
+  
+    \rettruleblock{\(\PCT' := \PCT_{CLR};\vt':=\vt\)}
+  \end{minipage}
+  \begin{minipage}[t]{0.25\textwidth}
+    \malloctruleblock{\(\PCT' := \PCT; \pt := \N;\) \\ \(\vt := \N; \lt := \PCT\)}
+    \localtruleblock{\(\PCT' := \PCT; \pt := \N;\) \\ \(\vt := \N; \lt := \PCT\)}
+  \end{minipage}
+  \begin{minipage}[t]{0.25\textwidth}
+    \loadtruleblock{\(\mathbf{assert} ~ \forall \lt \in \lt . \PCT = \lt\) \\ \(\vt' := \vt\)}
+    
+    \storetruleblock{\(\mathbf{assert} ~ \forall \lt \in \lt . \lt = \PCT\) \\
+      \(\PCT' := \PCT; \vt' := \N; \lt' := \lt\)}
+  \end{minipage}
+    
+  \caption{Compartmentalization Policy}
+  \label{fig:compartments}
+\end{figure}
+
+\apt{Misc. complaints: Vectors on $\overline{lt}$ not explained. CLE and CLR not explained. Bracketed outputs in CallT and RetT left over from a previous version?
+  Explain MallocT rule (or omit here). Everything in Fig. 7 should be in blue.}
+
+\subsection{Secure Information Flow}
+
+Our final example policy will be a more realistic version of our first:
+{\em secure information flow (SIF)}~\cite{Denning77:SecureInformationFlow}, which is part of a larger family of policies
+known as {\em information flow control} (IFC). \apt{In fact, one could argue that everything we do with metadata tags is really IFC.}
+This family of policies deal entirely with enforcing
+higher-level security concerns, regardless of whether the code that they protect contains
+errors or undefined behaviors.
+
+\paragraph*{SIF and Control Points}
+
 \section{Evaluation}
 \label{sec:evaluation}
 
@@ -535,14 +731,17 @@ of a high-level language. How well have we achieved this aim?
 By committing to a tag-based mechanism, we do restrict the space of policies that Tagged C
 can enforce. In general, a reference monitor can enforce any policy that constitutes a
 {\em safety property}---any policy whose violation can be demonstrated by a single finite
-trace. This class includes such policies as ``no integer overflow'' and ``pointers are always in-bounds,''
-which depend on the values of variables. Tag-based monitors cannot enforce any policy that
-depends on the value of a variable rather than its tags. \apt{But perhaps note that tag-based
-  policies can express some trace properties more easily than value-based policies could, essentially
-  because tags can summarize the relevant parts of the trace history.}
+trace. Some policies in this class cannot be enforced effectively by a tag-based monitor,
+because tags can carry information about the provenance of values but not about the values
+themselves: this rules out policies such as ``no integer overflow'' and
+``pointers are always in-bounds.'' As we have seen, there are plenty of useful policies that
+engage only with the provenance of values. For such policies, tag-based enforcement is
+also conceptually close to the trace-based definition: defining e.g. memory safety in terms
+of normal states requires either manually keeping track of large amounts of history to
+identify where each pointer comes from, or possibly some sort of temporal logic.
 
 \apt{Something about malloc tagging, and type-based tagging in general.}
-
+The other known limitation is in how we tag memory at allocation time.
 Due to our approach to tagging memory uniformly at allocation time, Tagged C cannot easily
 enforce substructural memory safety. Versions of memory safety that protect fields of a
 struct from overflows within the same struct would be very useful, but currently enforcing

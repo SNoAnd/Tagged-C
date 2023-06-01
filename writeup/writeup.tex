@@ -531,20 +531,10 @@ secure information flow.
 \subsection{PVI Memory Safety}
 \label{sec:PVI}
 
-\apt{How about a quick informal summary of what this means intuitively? Then explain why a
-  one-size-fits-all solution is not appropriate... In general, don't expect the reader to
-be very familiar with the idea of UB's or with the difference between official and defacto C standards.}
-Memory safety is defined relative to a {\em memory model}---a formal or informal description of
-how a high-level language handles memory. The memory model associated with the C standard leaves
-many behaviors undefined, including some that are used in practice \cite{Memarian16:DeFacto}.
-Memarian et al. have proposed two alternatives that define useful subsets of these behaviors
-\cite{Memarian19:ExploringCSemantics}. We choose their ``provenance via integer'' (PVI) memory model
-as our example.
 
 Variations of memory safety have been enforced in PIPE already, but usually\apt{??} using
 an ad hoc memory model.\apt{Specific citations? How are they ``ad hoc?''}
-PVI has the virtue of giving definition to many memory UBs in which a pointer is
-cast to an integer, subjected to various arithmetic operations, and cast back to a pointer.
+
 \apt{But Concrete C also gives this a definition!  Need to explain what PVI still \emph{prevents}.}
 Memarian et al.'s second memory model, {\it PNVI} (provenance not via integer), is even more permissive.
 We can also enforce it in Tagged C, though its security value is questionable, and we will
@@ -612,67 +602,8 @@ instantiations would \emph{change} to accommodate different policies (PVI, PNVI,
 \Cref{fig:overrun} shows a possible initial state of memory on entry to {\tt overflow} and the state after
 the assignment to {\tt *(x+2)}, assuming that the PC tag is \(\PCT_0\) at the call.\apt{Where does the 84 come from?
   And this layout also assumes that {\tt y} is in memory---but why is that?}
-The central tag rules are \(\binoptname\) and \(\storetname\): the former computes the tag
-on the pointer that will be used to access {\tt x+2} in memory, and the latter decides if the
-store will be allowed.\apt{But actually, the LocalT rules are also crucial here. Also: I thought
-  you were going to refactor things so that LocalT keeps its signature from Fig. 2, and there
-  is a separate StoreT invocation for locals that live in memory. I guess maybe not.}
-
-We can prevent overwrites like this using a {\em memory safety} policy. In brief, whenever
-an object is allocated, it is assigned a unique ``color,'' and its memory locations as well
-as its pointer are tagged with that color. Pointers maintain their tags under arithmetic
-operations, and loads and stores are legal if the pointer tag matches the target memory location tag.
-\apt{Need citations for this idea. At least our S\&P paper. R\&D credit \url{https://dl.acm.org/doi/10.1145/1321631.1321673}.}
-The default tag \(N\) indicates that there is currently no color.
-The rules for the \(PVI\) memory safety policy are given in \cref{fig:pvi}. In this case, we will
-have \(\pt_1 = \lt_1 = \tagz\) and \(\pt_2 = \lt_2 = \tagone\). When the program tries to write to {\tt x+2},
-the \(\storetname\) rule compares \(\pt' = \tagz\) with \(\lt_2\), and failstops because they differ.
-\apt{Inconsistency in these rules: do LoadT and StoreT take a single $lt$ or a vector of them?}
 
 \begin{figure}
-  \color{blue}
-  \begin{align*}
-    \tau ::= & \clr & \clr \in \mathbb{N} \\
-    & \N \\
-  \end{align*}
-  
-  \scriptsize
-  \begin{minipage}[t]{0.3\textwidth}
-    \vspace{-2.5em}
-    \binoptruleblock{
-      \caseofthree
-          {\((\vt_1,~ \vt_2)\)}
-          {\((\clr,\N)\)}{\(\vt' := \clr\)}
-          {\((\N,\gentag)\)}{\(\vt' := \gentag\)}
-          {\((\clr_1, \clr_2)\)}{\(\vt' := \N\)}
-    }
-    \unoptruleblock{\(\vt' := \vt\)}
-
-  \end{minipage}
-  \begin{minipage}[t]{0.25\textwidth}
-    \vspace{-2.5em}
-    \localtruleblock
-        {\(\PCT' := \PCT+1\);
-          \(\pt := \PCT\)\\
-          \(\vt := \N\);
-          \(\lt := \left[ \PCT \right]\)
-        }
-    \malloctruleblock
-        {\(\PCT' := \PCT+1\);
-          \(\pt := \PCT\) \\
-          \(\vt := \N\);
-          \(\lt := \left[ \PCT \right]\)
-        }
-  \end{minipage}
-  \begin{minipage}[t]{0.3\textwidth}
-    \vspace{-2.5em}
-    \loadtruleblock{\(\mathbf{assert} ~ \forall \lt \in \lt . \pt = \lt\) \\ \(\vt' := \vt\)}
-
-    \storetruleblock{\(\mathbf{assert} ~ \forall \lt \in \lt . \pt = \lt\) \\
-      \(\PCT' := \PCT\);
-      \(\vt' := \vt_2\); 
-      \(\lt' := \lt\)}
-  \end{minipage}
 
   \caption{PVI Memory Safety Policy}
   \label{fig:pvi}
@@ -687,25 +618,7 @@ Tagged C's underlying control-flow protections prevent them from being tampered 
 \subsection{Compartmentalization}
 \label{sec:comp}
 % notes ended up below, in the coarse grained section
-In a perfect world, all C programs would be memory safe. In reality, it is common
-for a codebase to contain undefined behavior that will not be fixed. Developers intentionally use 
-low-level idioms that are UB \cite{Memarian16:DeFacto}, or the cost and risk of regressions may make it
-undesirable to fix bugs in older code \cite{Bessey10:Coverity}.\apt{Do you want to say that we may
-  not want to turn on the failstop protections of the previous section because that would cause too
-  much code to break?}
 
-A compartmentalization policy can isolate potentially risky code, such as code with intentional
-or unfixed UB, from safety-critical code, and enforce the principle of least privilege. 
-Compartmentalization limits the possible damage from exploitation\apt{??} to the containing compartment.
-And even in the absence of language-level errors, compartmentalization can usefully 
-restrict how code in one compartment may interact with another.
-Ideally, each component should have only the
-{\em least privilege} necessary to complete its task.
-This popular defense concept can be implemented at many levels. It is often built
-into a system's fundamental design, like a web browser sandbox for untrusted javascript.
-For our use case, we consider a compartmentalization scheme being added to the system
-after development. A set of compartment identifiers are ranged over by \(C\),
-and function and global identifiers are mapped to compartments by \(\mathit{comp}(id)\). 
 
 \paragraph{Coarse-grained Protection}
 
@@ -735,55 +648,7 @@ allocated and tagged with the results of \(\localtname\). \apt{Is that really ho
 updated by \(\dealloctname\), and \(\rettname\) updates both the PC tag and the tag on the returned value,
 with access to the original caller's PC tag.
 
-\begin{figure}
-  \begin{tikzpicture}[]
-    \node[state]                                      (f)                           {$f$};
-    \node[state, inner sep = 0pt, minimum size = 0pt] (call) [above right=of f]     {$\mathcal{C}$};
-    \node[state]                                      (g)    [below right=of call]  {$f'$};
-    \node[state, inner sep = 0pt, minimum size = 0pt] (ret)  [below right=of f]     {$\mathcal{R}$};
-    
-    \path[->]
-    (f)    edge [bend left] node [pos=0.5,above left] {\(\calltres \leftarrow \callt\)}       (call)
-    (call) edge [bend left] node [pos=0.25,above right] {\(\argtres \leftarrow \argt\)}
-    node [pos=0.75,above right] {\(\localtres \leftarrow \localt\)} (g)
-    (g)    edge [bend left] node [pos=0.5,below right] {\(\dealloctres \leftarrow \dealloct\)}  (ret)
-    (ret)  edge [bend left] node [pos=0.5,below left] {\(\rettres \leftarrow \rett\)}  (f);
-  \end{tikzpicture}
 
-  \caption{Structure of a function call and return, where $f$ calls $f'$.}
-  \label{fig:functions}
-\end{figure}
-
-In our compartmentalization policy (\cref{fig:compartments}), we define a tag to be a compartment
-identifier or the default \(\N\) tag. The PC tag always carries the compartment of the
-active function, kept up to date by the \(\calltname\) and \(\rettname\) rules.
-
-\begin{figure}
-  \begin{minipage}[t]{0.4\textwidth}
-    \vspace{-3em}
-    \[\color{blue} \tau ::= C | \N\]
-
-    \calltruleblock{\(\PCT' := \mathit{comp}(f')\)}
-  
-    \rettruleblock{\(\PCT' := \PCT_{CLR};\vt':=\vt\)}
-  \end{minipage}
-  \begin{minipage}[t]{0.25\textwidth}
-    \malloctruleblock{\(\PCT' := \PCT; \pt := \N;\) \\ \(\vt := \N; \lt := \PCT\)}
-    \localtruleblock{\(\PCT' := \PCT; \pt := \N;\) \\ \(\vt := \N; \lt := \PCT\)}
-  \end{minipage}
-  \begin{minipage}[t]{0.25\textwidth}
-    \loadtruleblock{\(\mathbf{assert} ~ \forall \lt \in \lt . \PCT = \lt\) \\ \(\vt' := \vt\)}
-    
-    \storetruleblock{\(\mathbf{assert} ~ \forall \lt \in \lt . \lt = \PCT\) \\
-      \(\PCT' := \PCT; \vt' := \N; \lt' := \lt\)}
-  \end{minipage}
-    
-  \caption{Compartmentalization Policy}
-  \label{fig:compartments}
-\end{figure}
-
-\apt{Misc. complaints: Vectors on $\overline{lt}$ not explained. CLE and CLR not explained. Bracketed outputs in CallT and RetT left over from a previous version?
-  Explain MallocT rule (or omit here). Everything in Fig. 7 should be in blue.}
 
 
 The remainder of the policy works much like memory safety, except that coarse-grained
@@ -794,16 +659,6 @@ and during a load or store, we compare the location tags to the PC tag, not the 
 
 \apt{It is not clear what new thing this section teaches us about control points and rules. If there is anything,
 be explicit about stating it; if not, perhaps the section does not pull its weight.}
-
-The above policy works if our compartments only ever communicate by passing
-non-pointer values. In practice, this is far too restrictive: many library functions 
-take pointers and operate on memory shared with the caller. \apt{rest of this paragarph
-  has nothing to do with sharing memory per se, and could go up in the intro to the whole
-  compartmentalization section.} External libraries are
-effectively required for most software to function yet represent a threat. Isolating 
-external libraries from critical code prevents vulnerabilities in the library from 
-compromising critical code and deprives potential attackers of ROP gadgets and other
-tools if there is an exploit in the critical code.
 
 To allow intentional sharing of memory across compartments, a more flexible policy is needed. 
 For example, the hostname needs to conform to an expected pattern\apt{??? Need to introduce the example first!}, 
@@ -983,17 +838,10 @@ the validity of the pointer (for shared ones).
 
 %\paragraph{Realizing the Integer-Pointer Cast}
 
-\apt{read to here.}
-
 \subsection{Secure Information Flow}
 \label{sec:SIF}
 
-Our final example policy will be a more realistic version of our first:
-{\em secure information flow (SIF)}~\cite{Denning77:SecureInformationFlow}, which is part of a larger family of policies
-known as {\em information flow control} (IFC). \apt{In fact, one could argue that everything we do with metadata tags is really IFC.}
-This family of policies deal entirely with enforcing
-higher-level security concerns, regardless of whether the code that they protect contains
-errors or undefined behaviors. We will give an example of a single policy in the family.
+ We will give an example of a single policy in the family.
 Our introductory example was an instance of {\em confidentiality}, so now we will discuss
 {\em integrity}: preventing insecure input from influencing secure behavior.
 In this code, a malformed user input is accidentally appended to an SQL query without first being sanitized:
