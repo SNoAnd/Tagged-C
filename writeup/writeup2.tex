@@ -8,6 +8,7 @@
 \usepackage{hyperref}
 \usepackage[capitalize]{cleveref}
 \usepackage{tikz}
+\usepackage{array}
 
 \usetikzlibrary{automata,positioning,shapes.multipart,arrows.meta}
 
@@ -750,7 +751,7 @@ of this function could pass it a  {\tt name} containing ``{\tt Bobby"; drop tabl
 %4 void get_data() {
 %5   char[20] name, name_san;
 %6   char[100] query = "select address where name = \"";
-57   char[100] res;
+%57   char[100] res;
 %8
 %  scanf("%19", name);
 %  if (strlen(name) == 0) {
@@ -779,7 +780,7 @@ of this function could pass it a  {\tt name} containing ``{\tt Bobby"; drop tabl
          \node {\tt 4 ~ ~ ~ psk = update(psk); break;}; \\
          \node {\tt 5 ~ ~ case INVALID:}; \\
          \node {\tt 6 ~ ~ ~ psk = 0; break;}; \\
-         \node {\tt 7 ~ ~ case NEW:}; \\
+         \node {\tt 7 ~ ~ case DEFAULT:}; \\
          \node {\tt 8 ~ \}}; \\
          \node (l3) {\tt 9 J:  printf("Updating user \%d", id); // join point}; \\
          \node {\tt 10 ~ update(id, psk);}; \\
@@ -851,6 +852,23 @@ of a high-level language. How well have we achieved this aim?
   from the literature
 \end{itemize}
 
+\begin{table}
+  \begin{center}
+    %\begin{tabular}{ c| c |c }
+    \title{Sketches of Other Possible Policies}
+    \begin{tabular}{  p{5cm} | p{5cm}| p{5cm}  } 
+      \textbf{Name} & \textbf{Possible Security Impact} & \textbf{Sketch of Possible Tag Implementation} \\ 
+      \hline
+      SQL Injection & Confidentiality, Integrity, Availability violations. Compromise or destruction of the entire database. & Color strings, data, and do not allow colors to mix. \\  
+      Insecure Design: Unencrypted Data at Rest & Confidentiality, (possible) Integrity. Theft or corruption of all data. & Require loads to memory to pass through an encryption routine by requiring a tag from the encryption function.  \\ 
+      Double Free & Confidentiality, Integrity, Availability. Potential Arbitrary Code Execution & Assign unique color to tag at each free. Check for an existing color before freeing. \\
+      Use After Free & Integrity. Potential Arbitrary Code Execution & Check pointers for color tag when dereferencing pointers  \\
+      Placeholder-name & Placeholder-impact & Placeholder-tag policy \\
+      \hline
+    \end{tabular}
+  \end{center}
+\end{table}
+  
 \subsection{Limitations}
 \label{sec:limitations}
 
