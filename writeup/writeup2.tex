@@ -12,7 +12,7 @@
 
 \usetikzlibrary{automata,positioning,shapes.multipart,arrows.meta}
 
-\title{Flexible Runtime Security Enforcement with Tagged C}
+\title{Flexible Run-time Security Enforcement with Tagged C}
 \author{Sean Anderson \and Allison Naaktgeboren \and Andrew Tolmach}
 \institute{Portland State University}
 
@@ -51,13 +51,13 @@ embedded devices that run our homes and hospitals are built in and on C \cite{Mu
 %in C today \cite{stackoverflow22:dev-survey}. \apt{That sentence seems off topic of ``essential technologies.''}
 The safety of these essential technologies
 depends on the security of their underlying C codebases. Insecurity might take the form of
-undefined behavior such as memory errors (e.g. buffer overflows, use-after-free, double-free),
+undefined behavior (UB) such as memory errors (e.g. buffer overflows, use-after-free, double-free),
 logic errors (e.g. sql injection, input-sanitization flaws), or
 larger-scale architectural flaws (e.g. over-provisioning access rights).
 
 [TODO: Fill out more, esp. with relevant citations.] Although static
 analyses can detect and mitigate many C insecurities, the last line of
-defense against undetected or unfixable vulnerabilities is runtime
+defense against undetected or unfixable vulnerabilities is run-time
 enforcement of {\em security policies} using a reference
 monitor~\cite{Anderson72:PlanningStudy}. A large class of useful policies
 can be specified as \emph{data-flow} constraints based on \emph{metadata tags},
@@ -482,7 +482,7 @@ Some of these control points access program-specific identifiers in the form of
 (4) Labels, \(\LN\); (5) Types, \(\TN\).
 
 The second major semantic distinction between Tagged C and CompCert C is that Tagged C has no
-memory-undefined behavior. CompCert C models memory as a collection of blocks of offsets,
+memory-related UB. CompCert C models memory as a collection of blocks of offsets,
 and treats all variables as having their own block. Tagged C instead separates variables
 into public and private data. Public data (all heap data, globals, arrays, structs, and
 address-taken locals) share a single flat address 
@@ -521,8 +521,8 @@ from other, related policies, as we will see below.
 \section{Example Policies}
 \label{sec:policies}
 
-In this section, we will discuss concrete policy implementations and the way
-that they have motivated our control point design. First, memory safety policies
+In this section, we discuss concrete policy implementations and how 
+they motivate our control point design. Memory safety policies
 inform our requirements for memory tags as well as type casts. Compartmentalization
 policies depend on the call- and return-related control points, to keep track of the
 active compartment. And secure information flow (SIF) policies show us the many places
@@ -530,16 +530,23 @@ where the user may need to reference identifiers from their program in the polic
 
 \subsection{Memory Safety}
 
-Memory safety is the principle that all memory operations are through a valid pointer. What constitutes
-a valid pointer can be nuanced. In the C standard, a pointer can be rendered invalid if its valid
-is ever outside the bounds of the object that it points to, even if it is restored to be within
+\apt{Move guts of this paragraph below net one?}
+Memory safety is the principle that all memory operations are performed through a valid pointer
+\apt{A rather odd formulation!} The definition of what constitutes
+a valid pointer can be nuanced. According to the C standard, a pointer can be rendered invalid if 
+it is ever adjusted to lie outside the bounds of the object that it initially points to, even if it is restored to be within
 bounds before performing a load or store. In practice, it is common for programs to violate the
-standard to various degrees, for instance by using lower-order bits of a pointer to store a flag
-\cite{Memarian16:DeFacto}. The possible presence of these low-level idioms means that there is
+standard to various degrees. For example, if objects are known to be aligned to \(2^n\)-byte boundaries,
+the low-order \(n\) bits of pointers can be ``borrowed'' to store other data~\cite{Memarian16:DeFacto}.
+\apt{But actually, this probably does \emph{not} violate the standard in the way described above.
+  Perhaps better, instead of talking about bounds, to say that the standard doesn't support doing
+  arbitrary arithmetic on pointers or their integer casts?}
+The possible presence of these low-level idioms means that there is
 no one-size-fits all memory safety policy.
 
+\apt{Could lead section with this para.}
 Tagged C can be used to enforce memory safety with respect to different {\em memory models}---formal
-or informal descriptions of how C should handle memory. In this paper we discuss the CompCert C
+or informal descriptions of how C should handle memory. Here we discuss the CompCert C
 memory model and two models proposed by Memarian et al. \cite{Memarian19:ExploringCSemantics}
 for the purposes of supporting low-level idioms, focusing in particular on how they handle
 casts from pointers to integers and back.
@@ -560,20 +567,22 @@ provenance of a pointer when it is cast to an integer. When an integer is cast t
 (whether or not it was previously derived from a pointer), it takes on the provenance of whatever
 it points to at that time.
 \sna{This diagram isn't quite there, but I'm interested in feedback on the level of detail
-  that seems necessary for it.}
+  that seems necessary for it. \apt{Seems ok. Maybe you need to add the other two BinopT invocations at 6,7.
+    I've made the C legal and (I think) more idiomatic, but obviously the rules still need to be finished. BTW, why isn't $a_2 = a_3 = a_1$?
+Very pedantic question: would PVI really permit line 6, given that we don't really know that {\tt y} is better than 1-byte aligned (this is not guaranteed for stack allocations), so this \& may put us in a different object? }}
 
 \begin{figure}
 
 \begin{tikzpicture}[every text node part/.style={align=left}]
   \node[matrix, anchor=west] (code)
        {
-         \node (l2) {\tt 1 ~ int[1] x,y;}; \\
-         \node (l3) {\tt 2 ~ int p = (uintptr\_t) x;}; \\
-         \node (l4) {\tt 3 ~ int q = (uintptr\_t) y;}; \\
-         \node (l5) {\tt 4 ~ int r = q | 0x00000001;}; \\
+         \node (l2) {\tt 1 ~ int x[1],y[1];}; \\
+         \node (l3) {\tt 2 ~ int p = (int) x;}; \\
+         \node (l4) {\tt 3 ~ int q = (int) y;}; \\
+         \node (l5) {\tt 4 ~ int r = q | 0x1;}; \\
          \node {\tt 5 ~ * (int *) p = 0; // Legal in all}; \\
-         \node {\tt 6 ~ * (int *) (r \& 0x11111110) = 0; // Illegal in CompCert C}; \\
-         \node {\tt 7 ~ * (int *) (p - (q - p)) = 0; // Illegal in PVI}; \\
+         \node {\tt 6 ~ * (int *) (r \& 0xfffffffe) = 0; // Illegal in CompCert C}; \\
+         \node {\tt 7 ~ * (int *) (p + (q - p)) = 0; // Illegal in PVI}; \\
          \node {\tt 8 ~ x[1] = 0; // Illegal in all}; \\
        };
 
@@ -585,22 +594,21 @@ it points to at that time.
   
 \end{tikzpicture}
 
-\caption{Memory Safety and Pointer Casts}
+\caption{Memory Safety and Pointer Casts. (Assume {\tt int} and pointers are 32 bits.)}
 \label{fig:memsafe}
 \end{figure}
 
 \paragraph*{Memory Safety in General}
 
-The core of all three memory safety variants is a ``lock and key'' approach, due to
-Clause et al. \cite{Clause07:MemsafeTainting} and introduced in a PIPE context in
-Azevedo de Amorim et al. \cite{Azevedo+15}.
+The basic idea for enforcing any of these three memory safety variants is a ``lock and key'' approach~\cite{Clause07:MemsafeTainting,Azevedo+15}.
 Whenever an object is allocated, it is assigned a unique ``color,'' and its memory locations as well
 as its pointer are tagged with that color. The default tag \(N\) indicates that there is currently
 no color. These rules are given in \cref{fig:memcommon}.
 Operations that are valid on pointers in a given memory model
 maintain the pointer's color, and  loads and stores are legal if the pointer tag matches the target memory
-location tag.
-The rules for the \(PVI\) memory safety policy are given in \cref{fig:pvi}.
+location tag.\apt{This all needs more explanation. What is going on with the PC tag? (And is $clr$ really an integer?) Why are the Binop rules for P/NVI non-symmetric? CompCert Binop rule hard to distinguish minus and underscore. What is role of $CAST$ constructor, and is it being used correctly in IPCastT??}
+The rules for the PVI memory safety policy are given in \cref{subfig:pvi}.\apt{Why is this called out separately?}
+
 
 \begin{figure}
   \begin{subfigure}{\textwidth}
@@ -616,15 +624,15 @@ The rules for the \(PVI\) memory safety policy are given in \cref{fig:pvi}.
     \begin{minipage}{0.3\textwidth}
       \localtruleblock
           {\(\PCT' := \PCT+1\);
-            \(\pt := \PCT\)\\
-            \(\vt := \N\);
-            \(\lt := \PCT\)
+            \(\pt' := \PCT\)\\
+            \(\vt' := \N\);
+            \(\lt' := \PCT\)
           }
       \malloctruleblock
           {\(\PCT' := \PCT+1\);
-            \(\pt := \PCT\) \\
-            \(\vt := \N\);
-            \(\lt := \PCT\)
+            \(\pt' := \PCT\) \\
+            \(\vt' := \N\);
+            \(\lt' := \PCT\)
           }
     \end{minipage}
     \begin{minipage}{0.3\textwidth}
@@ -675,7 +683,7 @@ The rules for the \(PVI\) memory safety policy are given in \cref{fig:pvi}.
     \ipcasttruleblock{\(\pt' := \vt\)}
     
     \caption{PVI Rules}
-    \label{subfig:memcompcert}
+    \label{subfig:pvi}
   \end{subfigure}
   \begin{subfigure}{0.3\textwidth}
     \scriptsize
@@ -693,53 +701,58 @@ The rules for the \(PVI\) memory safety policy are given in \cref{fig:pvi}.
     \ipcasttruleblock{\(\pt' := \lt\)}
     
     \caption{PNVI Rules}
-    \label{subfig:memcompcert}
+    \label{subfig:pnvi}
   \end{subfigure}
   
-    \caption{Memory Safety Rules}
+    \caption{Memory Safety Rules\apt{Need to put a constructor around $clr$; otherwise, there is no way to distinguish from a metavariable like $t$.}}
     \label{fig:memcommon}
   \end{figure}
 
-Memory safety informs our control points related to allocating, deallocating, and
+Memory safety also informs the design of control points related to allocating, deallocating, and
 accessing memory. \(\malloctname\) and \(\freetname\) are special cases of the
 \(\extcalltname\) control point, which represents a call to an external function
-that may tag its outputs in a specialized way.
+that may tag its outputs in a specialized way.\apt{This paragraph seems orphaned; perhaps
+  we need quite a bit more detail.}
 
-\paragraph*{Memory Safety Variants}
+\paragraph*{Temporal Memory Safety}
 
-Thus far we have only introduced spatial memory safety, but Tagged C also
-supports temporal safety. A full memory safety policy precents use-after-free and
+The tag rules described so far only enforce spatial memory safety, but Tagged C also
+supports enforcement of temporal safety. A full memory safety policy prevents use-after-free and
 double-free errors by either retagging a deallocated region, or using the PC tag
 to track live objects and revoking permissions on an object as soon as it is freed.
 
 \subsection{Compartmentalization}
 
-In a perfect world, all C programs would be memory safe. In reality, it is common
-for a codebase to contain undefined behavior that will not be fixed. Developers intentionally use 
-low-level idioms that are UB \cite{Memarian16:DeFacto}, or the cost and risk of regressions may make it
-undesirable to fix bugs in older code \cite{Bessey10:Coverity}. Running the CompCert C or even
-the PVI policy described above might break such code, while the PNVI policy might not offer enough
-protection.
-
-A compartmentalization policy can isolate potentially risky code, such as code with intentional
-or unfixed UB, from safety-critical code, and enforce the {\em principle of least privilege}. 
+In principle, the monitoring techniques in the previous section could be used
+to detect all unintended memory safety violations (albeit only at run time) and ultimately to fix them.
+But in reality, the cost and risk of regressions may make it
+undesirable to fix bugs in older code \cite{Bessey10:Coverity}.  
+%% In a perfect world, all C programs would be memory safe. In reality, it is common
+%% for a codebase to contain undefined behavior that will not be fixed. Developers intentionally use 
+%% low-level idioms that are UB \cite{Memarian16:DeFacto}, or the cost and risk of regressions may make it
+%% undesirable to fix bugs in older code \cite{Bessey10:Coverity}. Running the CompCert C or even
+%% the PVI policy described above might break such code, while the PNVI policy might not offer enough
+%% protection.
+%
+A compartmentalization policy can isolate potentially risky code, such as code with unfixed
+(or intentional) UB, from safety-critical code, and enforce the {\em principle of least privilege}. 
 Even in the absence of language-level errors, compartmentalization can usefully 
 restrict how code in one compartment may interact with another. External libraries are
 effectively required for most software to function yet represent a threat; isolating 
-them from prevents vulnerabilities in the library from compromising critical code,
+them prevents vulnerabilities in the library from compromising critical code,
 and limits the availability of ROP gadgets and other tools to attackers that manage to
 exploit the critical code.
 
-Let's assume that we have a compartmentalization scheme that is being added to the system
+Let's assume that we have a compartmentalization scheme\apt{what's that??}  that is being added to the system
 after development. A set of compartment identifiers are ranged over by \(C\),
-and function and global identifiers are mapped to compartments by \(\mathit{comp}(id)\). 
+and function and global identifiers are mapped to compartments by \(\mathit{comp}(id)\). \apt{Last sentence out of place here.}
 
 \paragraph*{Compartmentalization Control Points}
 
 Compartmentalization requires the policy to keep track of the active compartment, which means
 keeping track of function pointers. In Tagged C, function pointers are the exception to the
 concrete memory model. They carry symbolic values that refer uniquely to their target functions.
-A variable expression where the variable is the function {\tt f} evaluates to \(\mathtt{f}@\FN[\mathtt{f}]\).
+A variable expression where the variable is the function {\tt f} \apt{???} evaluates to \(\mathtt{f}@\FN[\mathtt{f}]\).
 When the function pointer is called, Tagged C invokes \(\callt\), where \(\pt\) is the
 function pointer's tag, to update PC tag.
 On return, in addition to handling the return value (if any), \(\rett\) determines a new PC tag
@@ -761,8 +774,8 @@ active function, kept up to date by the \(\calltname\) and \(\rettname\) rules.
     \rettruleblock{\(\PCT' := \PCT_{CLR};\vt':=\vt\)}
   \end{minipage}
   \begin{minipage}[t]{0.25\textwidth}
-    \malloctruleblock{\(\PCT' := \PCT; \pt := \N;\) \\ \(\vt := \N; \lt := \PCT\)}
-    \localtruleblock{\(\PCT' := \PCT; \pt := \N;\) \\ \(\vt := \N; \lt := \PCT\)}
+    \malloctruleblock{\(\PCT' := \PCT; \pt' := \N;\) \\ \(\vt' := \N; \lt' := \PCT\)}
+    \localtruleblock{\(\PCT' := \PCT; \pt' := \N;\) \\ \(\vt' := \N; \lt' := \PCT\)}
   \end{minipage}
   \begin{minipage}[t]{0.25\textwidth}
     \loadtruleblock{\(\mathbf{assert} ~ \forall \lt \in \lt . \PCT = \lt\) \\ \(\vt' := \vt\)}
@@ -776,7 +789,7 @@ active function, kept up to date by the \(\calltname\) and \(\rettname\) rules.
 \end{figure}
 
 Once the policy knows which compartment is active, it must ensure that compartments do not interfere with
-one another's memory. A simple means of doing so is given in \cref{fig:compmem}: any object allocated by
+one another's memory. A simple means of doing so is given in \cref{fig:compartments}: any object allocated by
 a given compartment, whether on the stack or via malloc, is tagged with that compartment's identity,
 and can only be accessed while that compartment is active.
 
@@ -785,16 +798,16 @@ common case where libraries have separate compartments from application code. On
 compartments to share selected objects by passing their pointers, treating them as
 {\em capabilities}---unforgeable tokens of privilege.
 
-Distinguishing shareable memory from memory that is local to a compartment is inconvenient
-when the goal is to avoid modifying source code. In order to be minimally intrusive, we
+Distinguishing shareable memory from memory that is local to a compartment is difficult
+without modifying source code. In order to be minimally intrusive, we
 create a variant identifier for {\tt malloc}, {\tt malloc\_share}, which maps to the same
-address (i.e., it still calls the same function) but its name tag differs and can therefore
-be used to specialize the tag rule. The need to do this is one of several limitations related
-to malloc (\cref{sec:limitations}). An engineer might manually select which allocations are
-shareable, or perhaps automatically using some form of escape analysis.
+address (i.e., it still calls the same function) but has a different name tag and can therefore
+be used to specialize the tag rule. (The need to do this is one of several limitations related
+to malloc; see \cref{sec:limitations}.) An engineer might manually select which allocations are
+shareable, or perhaps rely on some form of escape analysis to detect shareable allocations automatically.
 
-This policy (\cref{fig:sharing}) essentially combines the simple compartmentalization policy
-and a memory safety policy.
+The policy in \cref{fig:sharing} essentially combines the simple compartmentalization policy
+and a memory safety policy. \apt{Probably need to bring back some of the commented text here.}
 %The PC tag carries both the current compartment color, for tagging unshared allocations, and the next free color, for tagging shared allocations.
 %\(\malloctname\) uses the function tag to determine which color to attach to the pointer and allocated
 %region. During loads and stores, the location tag of the target address
@@ -819,7 +832,7 @@ and a memory safety policy.
                   {\(\FN[\mathtt{malloc}]\)}{\(\mathbf{MallocT}_{C}(\PCT,\pt,\vt)\)}
                   {\(\FN[\mathtt{malloc\_share}]\)}
                   {\(\clr',\pt',\lt' \leftarrow \mathbf{MallocT}_{\mathit{PVI}}(\PCT,\pt,\vt)\) \\
-                    & & \(\PCT':= (C,\clr');\) \\ & & \(\pt' := \pt; \vt := \N';\) \\ & & \(\lt := \clr\)}
+                    & & \(\PCT':= (C,\clr');\) \\ & & \(\pt' := \pt; \vt' := \N';\) \\ & & \(\lt' := \clr\)}
                   
       }
   \end{minipage}
@@ -848,12 +861,14 @@ and a memory safety policy.
 
 Using program-specific tags for globals and functions, a compartmentalization policy
 like the one above can be extended with a Mandatory Access Control (MAC) policy.
+\apt{This is a little bare!}
 
 \subsection{Secure Information Flow}
 
-Our final example policy will expand on our example of
-{\em secure information flow} (SIF)~\cite{Denning77:SecureInformationFlow}.
-This family of policies deal entirely with enforcing
+Finally, we return to the family of 
+{\em secure information flow} (SIF)~\cite{Denning77:SecureInformationFlow} policies
+introduced in \cref{sec:example}. 
+SIF deals entirely with enforcing
 higher-level security concerns, regardless of whether the code that they protect contains
 errors or undefined behaviors.
 
@@ -863,9 +878,9 @@ errors or undefined behaviors.
        {
          \node {\tt 1 void h(int id, int psk) \{}; \\
          \node (l1) {\tt 2 ~ int fmt = check\_format(psk);}; \\
-         \node (l2) {\tt 3 ~ switch(format(psk)) \{}; \\
+         \node (l2) {\tt 3 ~ switch(fmt) \{}; \\
          \node {\tt 4 ~ ~ case OLD:}; \\
-         \node {\tt 5 ~ ~ ~ psk = update(psk); break;}; \\
+         \node {\tt 5 ~ ~ ~ psk = update(id, psk); break;}; \\
          \node {\tt 6 ~ ~ case INVALID:}; \\
          \node {\tt 7 ~ ~ ~ psk = 0; break;}; \\
          \node {\tt 8 ~ ~ case DEFAULT:}; \\
@@ -907,23 +922,26 @@ errors or undefined behaviors.
 \label{fig:sifex3}
 \end{figure}
 
-In \cref{fig:sifex3}, the program checks the format of the passkey, and uses a switch statement to perform
-operations on it based on the result. As we saw back in \cref{fig:ex2}, this means that the policy
-should ``raise'' the PC tag to represent that the program's control-flow depends on {\tt psk}.
+In \cref{fig:sifex3}, the program checks the format of the passkey {\tt psk}, which is tagged  \(\high\),
+and uses a switch statement to perform
+operations on it based on the result. As in \cref{fig:ex2}, this means that the policy
+should ``raise'' the PC tag to \(\high\) to indicated that the program's control-flow depends on {\tt psk}.
 But in \cref{fig:sifex3}, after the branches of the switch statement have completed, this is no
 longer necessary---no information can be gleaned from the store to {\tt psk} once execution has
 reached label {\tt J}. {\tt J} is a {\em join point}: the point in a control-flow graph where all
 possible routes from the split to a return have re-converged, which can be identified
 statically as the immediate post-dominator of the split point \cite{Denning77:SecureInformationFlow}.
 
-In order to support policies that reason about splits and joins, we introduce the \(\splittname\),
-\(\exprsplittname\), \(\labeltname\), and \(\exprjointname\) tag rules. Every transition that tests a
+In order to support policies that reason about splits and joins, we introduce the \(\splittname\) and
+ \(\labeltname\) tag rules. Every transition that tests a
 value as part of a conditional or loop contains a control point that calls \(\splittname\), with an
 optional label that is part of Tagged C's abstract syntax. This way, the policy can react when execution
-reaches that label via the \(\labeltname\) rule. In the full SIF policy, we will keep track of
-the pending join point on the PC tag, and lower the PC tag when execution reaches the join point.
-A similar structure applies to conditional expressions, except that the policy doesn't need to track
-an arbitrary label: \(\exprjointname\) always triggers when a conditional expression is fully evaluated.
+reaches that label via the \(\labeltname\) rule. In the full SIF policy, we keep track of
+the pending join point within the PC tag, and lower the PC tag when execution reaches the join point.
+
+A similar structure applies to expressions: a \(\exprsplittname\) tag rule is triggered by entering a conditional
+expression, and a \(\exprjointname\) tag rule is triggered when the conditional expresssion is fully evaluated, allowing
+the result value to be tainted with any control flow that affected it.
 
 \begin{figure}
   \begin{minipage}{0.3\textwidth}
@@ -985,38 +1003,47 @@ In addition to \(\low\) and \(\high\), the SIF policy tracks a PC tag written us
 constructor {\sc \color{blue} pc}, which carries (1) the current function identifier,
 (2) a natural number to record a count of tainted expression scopes, and (3) a stack of label
 identifiers to record the join points of tainted statement scopes.
-Initial, the PC tag is \(\pctaint{f}{0}{\varepsilon}\), which intuitively corresponds
+Initially, the PC tag is \(\pctaint{f}{0}{\varepsilon}\), which intuitively corresponds
 to ``low'' security. The reduce operator, \(| \cdot |\), maps this tag into \(\low\)
 and a PC tag with any pending contexts into \(\high\). The join operator, \(\cdot \sqcup \cdot\),
-takes the higher of its arguments after reducing them.
+takes the higher of its arguments after reducing them. \apt{This is hard to follow, especially
+  because $\sqcup$ (or even $\sqcap$) doesn't seem to be used.  And what is $pop\_all$ ?  And are $\high$ and $\low$
+  backwards now that you've switched to a confidentiality example?}
 
-In order to use this version of SIF, the program must undergo a transformation introducing
-the labels of all join points explicitly, so that {\tt J} is an explicit label in the code,
-if it wasn't already. This is a relatively minor transformation, and is necessary because,
-in the presence of go-to, break, and continue statements, the join point of a conditional might be
-arbitrarily removed from it. The internal syntactic form of each conditional statement
-(if, switch, while, do-while, and for) takes this optional label, and if
-the conditional branches on a high value, \(\splittname\) pushes the label to the stack
+In order to use this version of SIF, the program must undergo a minor transformation \apt{where/how/by whom
+is this done??} introducing
+the labels of all join points explicitly, since otherwise there is nothing in the program
+syntax to attach the join rules to. So in the example {\tt J} becomes an explicit label in the code,
+if it wasn't already. 
+%This is a relatively minor transformation, and is necessary because\apt{don't follow the logic},
+%in the presence of goto, break, and continue statements, the join point of a conditional might be
+%arbitrarily distant from the split point.
+The internal syntactic form of each conditional statement
+(if, switch, while, do-while, and for) takes this optional label\apt{why is it optional?}, and if
+the conditional branches on a high \apt{code wrong??} value, \(\splittname\) pushes the label to the stack
 in the PC tag. Later, when execution reaches a label, \(\labeltname\) checks if it is the
-top of the join-point stack and deletes it if so.
+top of the join-point stack and deletes it if so. \apt{Not getting much intuition for why this works.}
 
-For branching expressions, if \(\exprsplittname\) is invoked with \(\vt = \high\),
+For expressions, the policy does not need to track a stack of arbitrary labels in the PC tag; instead,
+it maintains a simple counter.
+If \(\exprsplittname\) is invoked with \(\vt = \high\)\apt{doesn't match the code. lo and high confused?},
 or if the expression counter on the PC tag is non-zero, it increments the counter.
 \(\exprjointname\) decrements the counter, and when it reaches zero, we know that
-control has moved past the original high context.
-\apt{What is the reason for joining with P for the value?}
-\sna{The result of the expression is going to be tainted by its control flow.}
+control is about to move past the (potentially) high contex entered by the condtional test.
+The result value tag is adjusted to reflect that context.
+\apt{A code example could help a lot here. On the other hand, the whole subject of expression conditionals
+  could be relegated to a single sentence if space is an issue.}
 
 \paragraph*{SIF Variants}
 
 SIF can cover a wide array of different policies. Here we have shown an instance of
-a confidentiality policy, but it can also support integrity
+a confidentiality policy, but it \apt{what??} can also support integrity
 (``insecure inputs do not affect secure data''), intransive policies
-(``data can flow from A to B and B to C, but not from A to C,'') and policies with
+(``data can flow from A to B and B to C, but not from A to C''), and policies with
 more than two security levels.
 
-We have sketched a few instances of practical SIF policies. An intransitive integrity policy
-can be used to protect against SQL Injections by requiring unsafe inputs to pass through a sanitizer
+We have sketched \apt{where? not here!} a few instances of practical SIF policies. An intransitive integrity policy
+can be used to protect against SQL injections by requiring unsafe inputs to pass through a sanitizer
 before they can be appended to a query. Similarly, a more complex SIF policy could ensure that
 data at rest is always encrypted, by setting a low security level to the outputs of an encryption
 routine and a high level to the outputs of its corresponding decryption routine.
@@ -1033,7 +1060,7 @@ with broad practical applicability and described how they can be tuned to the ne
 particular program. They can be used alone or in conjunction.
 
 Additionally, the Tagged C semantics support the full complement of C language features and
-give definition to many undefined C programs
+give definition to many undefined C programs.\apt{unhelpfully vague}
 
 % Trying to just thread the table into each section rather than all at once
 %\begin{table}
@@ -1058,6 +1085,8 @@ give definition to many undefined C programs
   
 \subsection{Limitations}
 \label{sec:limitations}
+\apt{Suggest removing this subsection and labeling the discussion by topic --- tags vs. values; memory tagging; etc. --- giving pros and cons for each
+  much as the text currentlly does.}
 
 By committing to a tag-based mechanism, we do restrict the space of policies that Tagged C
 can enforce. In general, a reference monitor can enforce any policy that constitutes a
@@ -1069,7 +1098,9 @@ themselves: this rules out policies such as ``no integer overflow'' and
 engage only with the provenance of values. For such policies, tag-based enforcement is
 also conceptually close to the trace-based definition: defining e.g. memory safety in terms
 of normal states requires either manually keeping track of large amounts of history to
-identify where each pointer comes from, or possibly some sort of temporal logic.
+identify where each pointer comes from, or possibly some sort of temporal logic.\apt{These
+  points could also (or instead) be made in the introduction, to justify why tag-based
+  policies are generally interesting and worthwhile even in the absence of hardware support.}
 
 The other known limitation is in how we tag memory at allocation time. Malloc tags an
 entire region with a single tag, which means that Tagged C cannot easily
@@ -1096,6 +1127,12 @@ need the compiler to generate extra instructions.
 
 \section{Related Work}
 \label{sec:related}
+
+\apt{This paper is not really about reference monitors, but about how their behavior can be \emph{specified}.
+  So a lot of the following is not very relevant. On the other hand, there is certainly literature on
+   RV of C programs; we could start with 
+   \url{https://www.researchgate.net/publication/221047076_Runtime_Verification_of_C_Programs/link/0deec5299040f07729000000/download} and work
+   forward/backward from that.  And AOP is crucial to discuss.}
 
 \paragraph{Reference Monitors}
 
@@ -1143,21 +1180,24 @@ This motivates many of our assumptions about tags.
 \label{sec:futurework}
 
 We have presented the language and a reference interpreter, built on top of the CompCert interpreter
-\cite{Leroy09:CompCert}, and three example policies. There are several significant next-steps.
+\cite{Leroy09:CompCert}, and three example policies. There are several significant next steps.
 
 \paragraph{Compilation}
 
 An interpreter is useful for testing, but a compiler would be preferable for many reasons.
-A compiled Tagged C could use the hardware acceleration of a PIPE target, and could more easily
+A compiled Tagged C could use the hardware acceleration provided by a PIPE-equipped processor.
+Even without that, compiled code would run much faster, and could more easily
 support linked libraries, including linking against code written in other languages.
-The ultimate goal would be a fully verified compiler.
+We are currently working to extend the CompCert compiler to handle Tagged C, with the ultimated
+goal of also extending CompCert's verification guarantees to cover tags.
 
 \paragraph{Language Proofs}
 
-There are a couple of properties of the language semantics itself that we would like to prove.
+There are several propeties the language semantics itself that we would like to prove.
 Namely (1) that its behavior (prior to adding a policy) matches that of CompCert C and
 (2) that the behavior of a given program is invariant under all policies up to truncation due
-to failstop.
+to failstop. \apt{Being coy about (non)-proof of equivalence between semantics and interpreter..
+  I think we had better that this is a hole (that we would like to fill).}
 
 \paragraph{Policy Correctness Proofs}
 
@@ -1175,6 +1215,9 @@ language to make it easier to write Tagged C policies.
 \bibliography{taggedc.bib}
 
 \appendix
+
+\apt{Currently this looks like a bunch of independent appendices; need to make these sections
+  subsections of a a single appendix.}
 
 \section{Syntax}
 
