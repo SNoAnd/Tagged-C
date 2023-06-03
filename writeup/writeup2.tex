@@ -175,12 +175,12 @@ In this case, when {\tt f} processes its arguments, a program-specific tag rule
 will tag {\tt psk} \(\high\). Then its tag will be propagated along with the value through variable accesses,
 assignments, and arithmetic, which does not require specialized program knowledge. Finally, a program-specific
 argument-handling rule for {\tt printi} will check that the tag is \(\low\); since it is not, the rule will
-cause a failstop.  \apt{Might be worth admitting here that type-based static analysis could also easily find this problem.}
+cause a failstop. \apt{Might be worth admitting here that type-based static analysis could also easily find this problem.}
 
 \Cref{fig:ex1} maps each of three points in the execution of {\tt f} to a description of the program
 state at that point, with the input value and all tags treated symbolically
 \footnote{Tag rules that merely propagate their inputs,
-in this case \(\accesstname\) and \(\assigntname\), are omitted.\apt{If these still exist???}}.
+in this case \(\accesstname\) and \(\assigntname\), are omitted.}
 Let \(i\) be the value passed to {\tt psk}
 and \(\vt[_0]\) the corresponding tag. In each state, the first column
 shows the active function, the second gives the symbolic values and tags
@@ -239,7 +239,13 @@ rules. Throughout the paper, we highlight tag-related metavariables, rules, etc.
   \label{fig:ex1}
 \end{figure}
 
-\apt{I wonder if next two paras should be swapped.}
+The policy described above is given more precisely in \cref{fig:example1rules}. In tag rules,
+the assignment operator := denotes an assignment to the named tag-rule output, by convention
+written as primed metavariables \(\gentag[']\).  Most rules are generic, but
+\(\argtname\) connects the policy to the specifics of the program, identifying {\tt psk}
+as a source of high-security data and treating {\tt printi} as a low-security output by
+triggering a failstop if it recieves high-security data.
+
 The tag on {\tt psk} comes from \(\argtname\), which is parameterized by the tag on the argument
 value (\(\vt[_0]\)) and the names of both the function and the argument. The initial tag on local
 variable {\tt x} is the default tag \(\constt\), as is the tag on the constant 5 on line 2.
@@ -247,13 +253,6 @@ The result of the addition on line 2 comes from \(\binoptname\), which is parame
 by the kind of operation in addition to the tags on its inputs.
 After the final step, the execution is in the function {\tt printi}, where it consults
 \(\argtname\) a second time.
-
-The policy described above is given more precisely in \cref{fig:example1rules}. In tag rules,
-the assignment operator := denotes an assignment to the named tag-rule output, by convention
-written as primed metavariables \(\gentag[']\).  Most rules are generic, but
-\(\argtname\) connects the policy to the specifics of the program, identifying {\tt psk}
-as a source of high-security data and treating {\tt printi} as a low-security output by
-triggering a failstop if it recieves high-security data.
 
 \begin{figure}
   \begin{minipage}{0.4\textwidth}
@@ -466,7 +465,7 @@ with \(\rettname\) aware of both the caller's PC tag (\(\PCT[_{\color{blue} CLR}
 and the callee's (\(\PCT[_{\color{blue} CLE}]\)). \(\argtname\) updates tags on any arguments.
 \(\loadtname\) and \(\storetname\) deal with memory accesses, while \(\accesstname\) and
 \(\assigntname\) handle variable access and assignment regardless of whether the variable
-is in memory.\apt{still??}  \(\exprsplittname\), \(\exprjointname\), \(\splittname\), and \(\labeltname\)
+is in memory. \(\exprsplittname\), \(\exprjointname\), \(\splittname\), and \(\labeltname\)
 update the PC tag based on changed in control flow. \(\fieldtname\) updates the tag
 on a pointer value when it is offset to access the field of a struct or union. \apt{A few words
   about the rest, or an excuse for not describing them?}
@@ -693,20 +692,18 @@ and function and global identifiers are mapped to compartments by \(\mathit{comp
 
 \paragraph*{Compartmentalization Control Points}
 
+No compartmentalization is possible without keeping track of which compartment is in control at
+any given time. In the presence of function pointers, this may not be trivial! \cref{fig:functions}
+shows, step by step, how a typical function call progresses and how the tag on the function pointer
+is ultimately fed to the \(\calltname\) tag rule. At return, the \(\rettname\) rule can access the
+old PC tag from before the call. In a compartmentalization policy, the PC tag identifies the current
+function, so \(\calltname\) will set the PC tag to \(\mathit{comp}(id)\) and \(\rettname\) will
+restore it to its value before the call.
+
 \begin{figure}
-  \begin{tikzpicture}[]
-    \node[state]                                      (f)                           {$f$};
-    \node[state, inner sep = 0pt, minimum size = 0pt] (call) [above right=of f]     {$\mathcal{C}$};
-    \node[state]                                      (g)    [below right=of call]  {$f'$};
-    \node[state, inner sep = 0pt, minimum size = 0pt] (ret)  [below right=of f]     {$\mathcal{R}$};
-    
-    \path[->]
-    (f)    edge [bend left] node [pos=0.5,above left] {\(\calltres \leftarrow \callt\)}       (call)
-    (call) edge [bend left] node [pos=0.25,above right] {\(\argtres \leftarrow \argt\)}
-    node [pos=0.75,above right] {\(\localtres \leftarrow \localt\)} (g)
-    (g)    edge [bend left] node [pos=0.5,below right] {\(\dealloctres \leftarrow \dealloct\)}  (ret)
-    (ret)  edge [bend left] node [pos=0.5,below left] {\(\rettres \leftarrow \rett\)}  (f);
-  \end{tikzpicture}
+  Call(f) -> Call(p@FN_f) -> CallState(p) -> f.s
+
+  Return v -> Retstate -> Wherever
 
   \caption{Structure of a function call and return, where $f$ calls $f'$.}
   \label{fig:functions}
@@ -743,48 +740,11 @@ active function, kept up to date by the \(\calltname\) and \(\rettname\) rules.
 
 \subsection{Secure Information Flow}
 
-Our final example policy will be a more realistic version of our first:
-{\em secure information flow (SIF)}~\cite{Denning77:SecureInformationFlow}.
+Our final example policy will expand on our example of
+{\em secure information flow} (SIF)~\cite{Denning77:SecureInformationFlow}.
 This family of policies deal entirely with enforcing
 higher-level security concerns, regardless of whether the code that they protect contains
 errors or undefined behaviors.
-
-Our introductory example was an instance of {\em confidentiality}, so now we will discuss
-{\em integrity}: preventing insecure input from influencing secure behavior (\cref{fig:sif}).
-This function takes an input {\tt name} from an standard input, sanitizes it, and then
-uses it in an SQL query. The sanitization step is very important! Without it, a user
-of this function could pass it a  {\tt name} containing ``{\tt Bobby"; drop table;}''
-(an SQL injection attack\cite{??}).
-
-%In this code, a malformed user input is accidentally appended to an SQL query without
-%first being sanitized:
-
-%\begin{figure}
-%\begin{verbatim}
-%1 void sanitize(char* in, char* out);
-%2 void sql_query(char* query, char* res);
-%3
-%4 void get_data() {
-%5   char[20] name, name_san;
-%6   char[100] query = "select address where name = \"";
-%57   char[100] res;
-%8
-%  scanf("%19", name);
-%  if (strlen(name) == 0) {
-%    return -1;
-%  }
-%
-%  sanitize(name, name_san);
-%  strncat(query, name_san, strlen(name_san));
-%  strncat(query, "\"",1);
-%
-%  sql_query(query, res);
-%  printf(res);
-%}
-%\end{verbatim}
-%\caption{SIF Example}
-%\label{fig:sif}
-%\end{figure}
 
 \begin{figure}
 \begin{tikzpicture}[every text node part/.style={align=left}]
@@ -830,27 +790,112 @@ of this function could pass it a  {\tt name} containing ``{\tt Bobby"; drop tabl
     \draw[Circle-]
     (l3.north) |- (table3.west);  
 
-
 \end{tikzpicture}
 \caption{Not an Implicit Flow}
-\label{fig:sif_ex3}
+\label{fig:sifex3}
 \end{figure}
 
-\paragraph*{Implicit Flows}
-
-Things become trickier when we consider that the program's control-flow itself can be tainted.
-This can occur in any conditional, including loops, conditional statements, and conditional expressions.
-In general, anytime a ``split'' is conditioned on a tainted value, subsequent assignments must also be
-tainted, as we saw in \cref{fig:ex2}. But in \cref{fig:sif}, after the branches of the
-if statement have completed, this is no longer necessary---no information can be gleaned
-from the store to [TODO]. The point in a control-flow graph where all possible routes
-from the split to a return have re-converged is termed a {\em join point}, and can be identified
+In \cref{fig:sifex3}, the program checks the format of the passkey, and uses a switch statement to perform
+operations on it based on the result. As we saw back in \cref{fig:ex2}, this means that the policy
+should ``raise'' the PC tag to represent that the program's control-flow depends on {\tt psk}.
+But in \cref{fig:sifex3}, after the branches of the switch statement have completed, this is no
+longer necessary---no information can be gleaned from the store to {\tt psk} once execution has
+reached label {\tt J}. {\tt J} is a {\em join point}: the point in a control-flow graph where all
+possible routes from the split to a return have re-converged, which can be identified
 statically as the immediate post-dominator of the split point \cite{Denning77:SecureInformationFlow}.
 
-\paragraph*{SIF and Control Points}
+In order to support policies that reason about splits and joins, we introduce the \(\splittname\),
+\(\exprsplittname\), \(\labeltname\), and \(\exprjointname\) tag rules. Every transition that tests a
+value as part of a conditional or loop contains a control point that calls \(\splittname\), with an
+optional label that is part of Tagged C's abstract syntax. This way, the policy can react when execution
+reaches that label via the \(\labeltname\) rule. In the full SIF policy, we will keep track of
+the pending join point on the PC tag, and lower the PC tag when execution reaches the join point.
+A similar structure applies to conditional expressions, except that the policy doesn't need to track
+an arbitrary label: \(\exprjointname\) always triggers when a conditional expression is fully evaluated.
 
-The above example illustrates the need to identify split and join points in expressions
-and statements.
+\begin{figure}
+  \begin{minipage}{0.3\textwidth}
+    \color{blue}
+    \begin{align*}
+      \tau ::= & \high \\
+      & \low \\
+      & \pctaint{f}{d}{Ls} & d \in \mathbb{N}, ~ Ls \in \mathit{list} ~ id \\
+    \end{align*}
+  \end{minipage}
+  \begin{minipage}{0.69\textwidth}
+    \[|\gentag| \triangleq
+    \begin{cases}
+      \low & \textnormal{if } \gentag = \low \textnormal{ or } \gentag = \pctaint{f}{0}{\varepsilon} \\
+      \high & \textnormal{otherwise} \\
+    \end{cases}\]
+    %
+    \[\gentag_1 \sqcup \gentag_2 \triangleq
+    \begin{cases}
+      \low & \textnormal{if } |\gentag_1| = |\gentag_2| = \low \\
+      \high & \textnormal{otherwise} \\
+    \end{cases}\]
+  \end{minipage}
+  \begin{minipage}{0.55\textwidth}
+    \splittruleblock{
+      \caseoftwo{\(\PCT, \vt\)}
+                {\(\pctaint{f}{d}{Ls}, \low\)}{\(\PCT' := \pctaint{f}{d}{(L::Ls)}\)}
+                {\(\underline{~~~}, \high\)}{\(\PCT' := \PCT\)}
+    }
+    \labeltruleblock{
+      \caseoftwo{\(\PCT\)}
+                {\(\pctaint{f}{d}{Ls}\)}{
+                  let \({\color{blue} Ls'} = \mathit{pop\_all} ~ {\color{blue} \LN ~ Ls}\) in \\
+                  & &      \(\PCT' := \pctaint{f}{d}{Ls'}\)
+                }
+                {\(\underline{~~~}\)}{\(\PCT' := \PCT\)}
+    }
+  \end{minipage}
+  \begin{minipage}{0.35\textwidth}
+    \exprsplittruleblock{
+      \caseoftwo{\(\PCT, \vt\)}
+                {\(\pctaint{f}{d}{Ls}, \low\)}{\(\PCT' := \pctaint{f}{(d+1)}{Ls}\)}
+                {\(\underline{~~~}, \high\)}{\(\PCT' := \PCT\)}
+    }
+
+    \exprjointruleblock{
+      \(\vt' := \vt \sqcap \PCT\) \\
+      \caseoftwo{\(\PCT\)}
+                {\(\pctaint{f}{(d+1)}{Ls}\)}{\(\PCT' := \pctaint{f}{d}{Ls}\)}
+                {\(\underline{~~~}\)}{\(\PCT' := \PCT\)}
+    }
+  \end{minipage}
+  
+  \caption{SIF Conditionals}
+  \label{fig:SIFconditionals}
+\end{figure}
+
+In addition to \(\low\) and \(\high\), the SIF policy tracks a PC tag written using the
+constructor {\sc \color{blue} pc}, which carries (1) the current function identifier,
+(2) a natural number to record a count of tainted expression scopes, and (3) a stack of label
+identifiers to record the join points of tainted statement scopes.
+Initial, the PC tag is \(\pctaint{f}{0}{\varepsilon}\), which intuitively corresponds
+to ``low'' security. The reduce operator, \(| \cdot |\), maps this tag into \(\low\)
+and a PC tag with any pending contexts into \(\high\). The join operator, \(\cdot \sqcup \cdot\),
+takes the higher of its arguments after reducing them.
+
+In order to use this version of SIF, the program must undergo a transformation introducing
+the labels of all join points explicitly, so that {\tt J} is an explicit label in the code,
+if it wasn't already. This is a relatively minor transformation, and is necessary because,
+in the presence of go-to, break, and continue statements, the join point of a conditional might be
+arbitrarily removed from it. The internal syntactic form of each conditional statement
+(if, switch, while, do-while, and for) takes this optional label, and if
+the conditional branches on a high value, \(\splittname\) pushes the label to the stack
+in the PC tag. Later, when execution reaches a label, \(\labeltname\) checks if it is the
+top of the join-point stack and deletes it if so.
+
+For branching expressions, if \(\exprsplittname\) is invoked with \(\vt = \high\),
+or if the expression counter on the PC tag is non-zero, it increments the counter.
+\(\exprjointname\) decrements the counter, and when it reaches zero, we know that
+control has moved past the original high context.
+\apt{What is the reason for joining with P for the value?}
+\sna{The result of the expression is going to be tainted by its control flow.}
+
+\paragraph*{SIF Variants}
 
 \section{Evaluation}
 \label{sec:evaluation}
@@ -871,15 +916,18 @@ of a high-level language. How well have we achieved this aim?
 \begin{table}
   \begin{center}
     %\begin{tabular}{ c| c |c }
-    \title{Sketches of Other Possible Policies}
-    \begin{tabular}{  p{5cm} | p{5cm}| p{5cm}  } 
-      \textbf{Name} & \textbf{Possible Security Impact} & \textbf{Sketch of Possible Tag Implementation} \\ 
+    \title{Further Policies and the Uses}
+    \begin{tabular}{  p{3cm} | p{5cm}| p{5cm}  } 
+      \textbf{Name} & \textbf{Example Use Cases} & \textbf{Tag Implementation} \\ 
       \hline
-      SQL Injection & Confidentiality, Integrity, Availability violations. Compromise or destruction of the entire database. & Color strings, data, and do not allow colors to mix. \\  
-      Insecure Design: Unencrypted Data at Rest & Confidentiality, (possible) Integrity. Theft or corruption of all data. & Require loads to memory to pass through an encryption routine by requiring a tag from the encryption function.  \\ 
-      Double Free & Confidentiality, Integrity, Availability. Potential Arbitrary Code Execution & Assign unique color to tag at each free. Check for an existing color before freeing. \\
-      Use After Free & Integrity. Potential Arbitrary Code Execution & Check pointers for color tag when dereferencing pointers  \\
-      Placeholder-name & Placeholder-impact & Placeholder-tag policy \\
+      SIF: Intransitive Integrity &
+      Protect agains SQL Injection by requiring outside data to pass through a sanitizer &
+      As SIF, with special rule for sanitization function \\  
+      & Guarantee Encrypted Data at Rest by requiring all stores to first pass through an encryption routine &
+      As SIF, with special rules for encryption and decryption functions \\ 
+      Temporal Memory Safety & Prevent double free & Assign unique color to tag at each free. Check for an existing color before freeing. \\
+      & Prevent Use-after-free & Check pointers for color tag when dereferencing pointers  \\
+      Placeholder-name & Placeholder-use case & Placeholder policy \\
       \hline
     \end{tabular}
   \end{center}
