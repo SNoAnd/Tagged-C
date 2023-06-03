@@ -432,7 +432,8 @@ in a high context.
   \label{fig:controlpoints}
 \end{table}
 
-Tagged C is full ordinary C. [TODO: refine this statement!]
+Tagged C is full ordinary C. [TODO: refine this statement!] \amn{Tagged C is a subset 
+of conventional C.}
 Its semantics (given in full in the Appendix)
 is based on that of CompCert C \cite{Leroy09:CompCert},
 a formalization of the C standard into a small-step reduction semantics.
@@ -532,7 +533,11 @@ where the user may need to reference identifiers from their program in the polic
 
 \apt{Move guts of this paragraph below net one?}
 Memory safety is the principle that all memory operations are performed through a valid pointer
-\apt{A rather odd formulation!} The definition of what constitutes
+\apt{A rather odd formulation!}\amn{I think thats a subset of memory safety.Buffer overflows have 
+valid pointers. How about "Memory
+safety, broadly speaking, is the idea that operations should access only their intended memory during the
+intended window. One aspect is ensuring all pointers used at valid."} 
+The definition of what constitutes
 a valid pointer can be nuanced. According to the C standard, a pointer can be rendered invalid if 
 it is ever adjusted to lie outside the bounds of the object that it initially points to, even if it is restored to be within
 bounds before performing a load or store. In practice, it is common for programs to violate the
@@ -540,7 +545,7 @@ standard to various degrees. For example, if objects are known to be aligned to 
 the low-order \(n\) bits of pointers can be ``borrowed'' to store other data~\cite{Memarian16:DeFacto}.
 \apt{But actually, this probably does \emph{not} violate the standard in the way described above.
   Perhaps better, instead of talking about bounds, to say that the standard doesn't support doing
-  arbitrary arithmetic on pointers or their integer casts?}
+  arbitrary arithmetic on pointers or their integer casts?} 
 The possible presence of these low-level idioms means that there is
 no one-size-fits all memory safety policy.
 
@@ -738,14 +743,13 @@ A compartmentalization policy can isolate potentially risky code, such as code w
 (or intentional) UB, from safety-critical code, and enforce the {\em principle of least privilege}. 
 Even in the absence of language-level errors, compartmentalization can usefully 
 restrict how code in one compartment may interact with another. External libraries are
-effectively required for most software to function yet represent a threat; isolating 
+effectively required for most software to function yet represent a supply-chain threat; isolating 
 them prevents vulnerabilities in the library from compromising critical code,
-and limits the availability of ROP gadgets and other tools to attackers that manage to
-exploit the critical code.
+and limits the availability of ROP gadgets and other tools to attackers in the event of a compromise.
 
-Let's assume that we have a compartmentalization scheme\apt{what's that??}  that is being added to the system
-after development. A set of compartment identifiers are ranged over by \(C\),
-and function and global identifiers are mapped to compartments by \(\mathit{comp}(id)\). \apt{Last sentence out of place here.}
+Let's assume that we have been given a compartmentalization policy, with at least two compartments, to add to the system
+after development. The compartments and what belongs in them are represented in the policy by a set of compartment identifiers that 
+are ranged over by \(C\), and a set of function and global identifiers mapped to compartments identified by \(\mathit{comp}(id)\).
 
 \paragraph*{Compartmentalization Control Points}
 
@@ -807,7 +811,7 @@ to malloc; see \cref{sec:limitations}.) An engineer might manually select which 
 shareable, or perhaps rely on some form of escape analysis to detect shareable allocations automatically.
 
 The policy in \cref{fig:sharing} essentially combines the simple compartmentalization policy
-and a memory safety policy. \apt{Probably need to bring back some of the commented text here.}
+and a memory safety policy. \apt{Probably need to bring back some of the commented text here.}\amn{lost the thread here}
 %The PC tag carries both the current compartment color, for tagging unshared allocations, and the next free color, for tagging shared allocations.
 %\(\malloctname\) uses the function tag to determine which color to attach to the pointer and allocated
 %region. During loads and stores, the location tag of the target address
