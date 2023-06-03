@@ -692,22 +692,14 @@ and function and global identifiers are mapped to compartments by \(\mathit{comp
 
 \paragraph*{Compartmentalization Control Points}
 
-No compartmentalization is possible without keeping track of which compartment is in control at
-any given time. In the presence of function pointers, this may not be trivial! \cref{fig:functions}
-shows, step by step, how a typical function call progresses and how the tag on the function pointer
-is ultimately fed to the \(\calltname\) tag rule. At return, the \(\rettname\) rule can access the
-old PC tag from before the call. In a compartmentalization policy, the PC tag identifies the current
-function, so \(\calltname\) will set the PC tag to \(\mathit{comp}(id)\) and \(\rettname\) will
-restore it to its value before the call.
-
-\begin{figure}
-  Call(f) -> Call(p@FN_f) -> CallState(p) -> f.s
-
-  Return v -> Retstate -> Wherever
-
-  \caption{Structure of a function call and return, where $f$ calls $f'$.}
-  \label{fig:functions}
-\end{figure}
+Compartmentalization requires the policy to keep track of the active compartment, which means
+keeping track of function pointers. In Tagged C, function pointers are the exception to the
+concrete memory model. They carry symbolic values that refer uniquely to their target functions.
+A variable expression where the variable is the function {\tt f} evaluates to \(\mathtt{f}@\FN[\mathtt{f}]\).
+When the function pointer is called, Tagged C invokes \(\callt\), where \(\pt\) is the
+function pointer's tag, to update PC tag.
+On return, in addition to handling the return value (if any), \(\rett\) determines a new PC tag
+based on the one before the call (\(\PCT[_{CLR}]\)) and the one at the time of return (\(\PCT[_{CLE}]\)).
 
 In our compartmentalization policy (\cref{fig:compartments}), we define a tag to be a compartment
 identifier or the default \(\N\) tag. The PC tag always carries the compartment of the
@@ -737,6 +729,78 @@ active function, kept up to date by the \(\calltname\) and \(\rettname\) rules.
   \caption{Compartmentalization Policy}
   \label{fig:compartments}
 \end{figure}
+
+Once the policy knows which compartment is active, it must ensure that compartments do not interfere with
+one another's memory. A simple means of doing so is given in \cref{fig:compmem}: any object allocated by
+a given compartment, whether on the stack or via malloc, is tagged with that compartment's identity,
+and can only be accessed while that compartment is active.
+
+This is very limiting, however! In practice, compartments need to be able to share memory, such as in the
+common case where libraries have separate compartments from application code. One solution is to allow
+compartments to share selected objects by passing their pointers, treating them as
+{\em capabilities}---unforgeable tokens of privilege.
+
+Distinguishing shareable memory from memory that is local to a compartment is inconvenient
+when the goal is to avoid modifying source code. In order to be minimally intrusive, we
+create a variant identifier for {\tt malloc}, {\tt malloc\_share}, which maps to the same
+address (i.e., it still calls the same function) but its name tag differs and can therefore
+be used to specialize the tag rule. The need to do this is one of several limitations related
+to malloc (\cref{sec:limitations}). An engineer might manually select which allocations are
+shareable, or perhaps automatically using some form of escape analysis.
+
+The policy (\cref{fig:sharing}) works by gluing together compartmentalization and memory safety.
+%The PC tag carries both the current compartment color, for tagging unshared allocations, and the next free color, for tagging shared allocations.
+%\(\malloctname\) uses the function tag to determine which color to attach to the pointer and allocated
+%region. During loads and stores, the location tag of the target address
+%determines whether access is checked via the identity of the active compartment (for unshared allocations) or
+%the validity of the pointer (for shared ones).
+
+\begin{figure}
+  \begin{minipage}[t]{0.6\textwidth}
+    \malloctruleblock
+        {let \((C,\clr) := \PCT\) in \\
+          \caseoftwo{\(f'\)}
+                    {\(\mathtt{malloc}\)}{\(\PCT' := \PCT; \pt := C;\) \\ & & \(\vt := \N; \lt := C\)}
+                    {\(\mathtt{malloc\_share}\)}{\(\PCT':= (C,\clr+1);\) \\ & & \(\pt := \clr; \vt := \N';\) \\ & & \(\lt := \clr\)}
+
+        }
+  \storetruleblock
+        {let \((C,\clr) := \PCT\) in \\
+          \(\mathbf{assert} ~ \exists \lt' . \forall \lt \in \lt . \lt = \lt'\) \\
+          \caseoftwo{\(\lt'\)}
+                    {\(C'\)}{\(\mathbf{assert} ~ C = C'\) \\
+                      & &  \(\PCT' := \PCT; \vt' := \vt_2; \lt := C\)}
+                    {\(\clr\)}{\(\mathbf{assert} ~ \pt = \clr\) \\
+                      & & \(\PCT':= \PCT; \vt' := \vt_2; \lt := \clr\)}}
+
+  \end{minipage}
+  \begin{minipage}[t]{0.4\textwidth}
+    \vspace{-5em}
+    \[\color{blue}
+    \tau ::= \N \mid C \mid \clr \mid (C,\clr)\]
+    \loadtruleblock
+        {let \((C,\clr) := \PCT\) in \\
+          \(\mathbf{assert} ~ \exists \lt' . \forall \lt \in \lt . \lt = \lt'\) \\
+          \caseoftwo{\(\lt'\)}
+                    {\(C'\)}{\(\mathbf{assert} ~ C = C'\) \\
+                      & &  \(\vt' := \vt\)}
+                    {\(\clr\)}{\(\mathbf{assert} ~ \pt = \clr\) \\
+                      & & \(\vt' := \vt\)}}
+    \binoptruleblock{
+      \caseofthree
+          {\((\vt_1,~ \vt_2)\)}
+          {\((\gentag,\N)\)}{\(\vt' := \gentag\)}
+          {\((\N,\gentag)\)}{\(\vt' := \gentag\)}
+          {\((\clr_1, \clr_2)\)}{\(\vt' := \N\)}
+    }
+
+  \end{minipage}
+
+  
+  \caption{Compartmentalization with Shared Capabilities}
+  \label{fig:sharing}
+\end{figure}
+
 
 \subsection{Secure Information Flow}
 
