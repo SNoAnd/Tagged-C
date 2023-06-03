@@ -30,9 +30,9 @@ Today's computing infrastructure is built atop layers of legacy C code, often
 insecure, poorly understood, and/or difficult to maintain.
 These foundations may be shored up with dynamic security enforcement.
 % and potentially introduce regressions.
-Tagged C is a C variant with a built-in {\em tag-based reference monitor}.
-It can express a variety of dynamic security policies and enforce them with
-compiler and/or hardware support.
+We introduce Tagged C, a novel C variant with a built-in {\em tag-based reference monitor}.
+It is designed to express a variety of dynamic security policies, either solo or in concert,
+and enforce them with compiler and/or hardware support.
 
 Tagged C expresses security policies at the level familiar to C developers: that
 of the C source code rather than the ISA. It is comprehensive in supporting different
@@ -51,7 +51,7 @@ embedded devices that run our homes and hospitals are built in and on C \cite{Mu
 %in C today \cite{stackoverflow22:dev-survey}. \apt{That sentence seems off topic of ``essential technologies.''}
 The safety of these essential technologies
 depends on the security of their underlying C codebases. Insecurity might take the form of
-undefined behavior such as memory errors (e.g. buffer overflows, heap leaks, double-free),
+undefined behavior such as memory errors (e.g. buffer overflows, use-after-free, double-free),
 logic errors (e.g. sql injection, input-sanitization flaws), or
 larger-scale architectural flaws (e.g. over-provisioning access rights).
 
@@ -75,14 +75,14 @@ STAR~\cite{Gollapudi+23}, and
 PIPE~\cite{Dhawan+15,Azevedo+16,Azevedo+15}.  PIPE (Processor
 Interlocks for Policy Enforcement),\footnote{ Variants of PIPE have
 also been called PUMP~\cite{Dhawan+14,Dhawan+15},
-SDMP~\cite{Dover16,RoesslerD18}) or CoreGuard~\cite{Dover20}.}
+SDMP~\cite{Dover16,RoesslerD18} or CoreGuard~\cite{Dover20}.}
 which has been the specific motivator for our work, is particularly flexible: it supports
 arbitrary software-defined flow rules over large (word-sized) tags with arbitrary structure,
 which enables fine-grained policies and the composition of multiple policies.
 This flexibility is useful because security needs may differ radically among codebases,
 and even within a codebase. A conservative, one-size-fits-all policy might be too strong,
 causing failstops even during normal execution. Sensitive code might call for specialized
-oprotection that isn't relevant elsewhere.
+protection that isn't relevant elsewhere.
 
 But PIPE policies can be difficult for a C engineer to write: their tags and rules
 are defined in terms of individual machine instructions and ISA-level
@@ -129,7 +129,7 @@ signatures, form the essence of Tagged C's design.
 We have validated our design on the three classes of policies explored in this paper,
 and, outside of a few known limitation discussed in \cref{sec:limitations}, e.g. substructural memory safety,
 we believe it is sufficiently expressive to describe most other flow-based policies, although
-of course further experience may reveal unexpected deficiencies. 
+of course further experience is needed. 
 
 \paragraph{Contributions}
 
