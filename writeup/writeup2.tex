@@ -55,7 +55,7 @@ undefined behavior such as memory errors (e.g. buffer overflows, use-after-free,
 logic errors (e.g. sql injection, input-sanitization flaws), or
 larger-scale architectural flaws (e.g. over-provisioning access rights).
 
-[TODO: Fill out more, esp. with relevant cituations.] Although static
+[TODO: Fill out more, esp. with relevant citations.] Although static
 analyses can detect and mitigate many C insecurities, the last line of
 defense against undetected or unfixable vulnerabilities is runtime
 enforcement of {\em security policies} using a reference
@@ -409,6 +409,7 @@ in a high context.
     \(\unoptname\)      & \(\unoptargs\)         & \(\unoptres\)      & Unary Operation \\
     \(\binoptname\)     & \(\binoptargs\)        & \(\binoptres\)     & Binary Operation \\
     \(\consttname\)     &                        & \(\consttres\)     & Applied to Constants/Literals \\
+    \(\inittname\)      &                        & \(\inittres\)      & Applied to Fresh Variables \\
     \(\exprsplittname\) & \(\exprsplittargs\)    & \(\exprsplittres\) & Control-flow split points in expressions \\
     \(\exprjointname\)  & \(\exprjointargs\)     & \(\exprjointres\)  & Join points in expressions \\
     \(\splittname\)     & \(\splittargs\)        & \(\splittres\)     & Control-flow split points in statements\\
@@ -454,7 +455,7 @@ for binary operations:
 On the left, the ``tagless'' version of the rule reduces a
 binary operation on two input values to a single value by applying the operation.
 On the right, the Tagged C version adds tags to the operands and the result, with the result tag
-derived from the \(\binoptname\) rule. 
+derived from the \(\binoptname\) rule. [TODO: instance of a tag rule.]
 
 The tag rule itself is instantiated as a partial function; if a policy leaves a tag rule
 undefined on some inputs, then those inputs are considered to violate the policy, sending
@@ -467,8 +468,18 @@ and the callee's (\(\PCT[_{\color{blue} CLE}]\)). \(\argtname\) updates tags on 
 \(\assigntname\) handle variable access and assignment regardless of whether the variable
 is in memory. \(\exprsplittname\), \(\exprjointname\), \(\splittname\), and \(\labeltname\)
 update the PC tag based on changed in control flow. \(\fieldtname\) updates the tag
-on a pointer value when it is offset to access the field of a struct or union. \apt{A few words
-  about the rest, or an excuse for not describing them?}
+on a pointer value when it is offset to access the field of a struct or union.
+\(\unoptname\) and \(\binoptname\) handle operations, \(\constt\) is the default tag
+on all constants, and \(\initt\) the initial tag in a fresh variable. \(\globaltname\), \(\localtname\),
+and \(\malloctname\) are each associated with the allocation of memory, with the latter
+two corresponding to \(\dealloctname\) and \(\freetname\) as deallocation rules,
+respectively. And the cast rules are specialized based on whether the original type or
+the new type is a pointer, or both.
+
+Some of these control points access program-specific identifiers in the form of
+{\em name tags}. We give name tags to the following constructions:
+(1) function identifiers, \(\FN\); (2) Function arguments, \(\AN\); (3) Global variables, \(\GN\);
+(4) Labels, \(\LN\); (5) Types, \(\TN\).
 
 The second major semantic distinction between Tagged C and CompCert C is that Tagged C has no
 memory-undefined behavior. CompCert C models memory as a collection of blocks of offsets,
@@ -493,20 +504,6 @@ data, but do not affect private data.
 %% identifies the full collection of control points, their tag rules, and the inputs and outputs of the tag rules.
 %% The tag type \(\tau\) must be inhabited by a default tag.
 
-\paragraph*{Identifiers}
-
-\apt{This seems out of place here.}
-Identifiers are a C source-level construct, and a policy might need to operate on them,
-so we embed them in tags called {\em name tags}. We give name tags to the
-following constructions and identify them as follows:
-\begin{itemize}
-\item Function identifiers, \(\FN\)
-\item Function arguments, \(\AN\)
-\item Global variables, \(\GN\)
-\item Labels, \(\LN\)
-\item Types, \(\TN\)
-\end{itemize}
-
 \paragraph*{Combining Policies}
 
 Multiple policies can be enforced in parallel. If policy \(A\) has tag type \(\tau_A\)
@@ -516,19 +513,13 @@ the left projection of all inputs and the rules of \(B\) to the right projection
 to generate the components of the new tag. If either side failstops, the entire
 rule should failstop.
 
-This scheme works for fully orthogonal policies, but sometimes two policies will
-need to interact during execution, such as a compartmentalization policy in which
-compartments share memory-safe pointers with one another. In this case the policies
-can still be composed by hand. \apt{Presumably this para may be changing...}
-
 This process can be applied to any number of different policies, allowing for instance
 a combination of a baseline memory safety policy with several more targeted
-information-flow policies.
+information-flow policies. Alternatively, a policy can call on the tag rules
+from other, related policies, as we will see below.
 
 \section{Example Policies}
 \label{sec:policies}
-
-[ATTN: this section is mid-rework, so it will not make sense, and will be missing things.]
 
 In this section, we will discuss concrete policy implementations and the way
 that they have motivated our control point design. First, memory safety policies
@@ -568,19 +559,32 @@ On the other hand, their second model, {\em provenance not via integer} (PNVI), 
 provenance of a pointer when it is cast to an integer. When an integer is cast to a pointer
 (whether or not it was previously derived from a pointer), it takes on the provenance of whatever
 it points to at that time.
+\sna{This diagram isn't quite there, but I'm interested in feedback on the level of detail
+  that seems necessary for it.}
 
 \begin{figure}
-\begin{verbatim}
-1  int f() {
-2    int[1] x,y;
-3    int p = (uintptr_t) &x;
-4    int q = (uintptr_t) &y;
-5    int r = q | 0x00000001;
-5    * (int *) p = 0; // Legal in all
-6    * (int *) (r & 0x11111110) = 0; // Illegal in CompCert C
-7    * (int *) (p - (q - p)) = 0; // Illegal in PVI
-8  }
-\end{verbatim}
+
+\begin{tikzpicture}[every text node part/.style={align=left}]
+  \node[matrix, anchor=west] (code)
+       {
+         \node (l2) {\tt 1 ~ int[1] x,y;}; \\
+         \node (l3) {\tt 2 ~ int p = (uintptr\_t) x;}; \\
+         \node (l4) {\tt 3 ~ int q = (uintptr\_t) y;}; \\
+         \node (l5) {\tt 4 ~ int r = q | 0x00000001;}; \\
+         \node {\tt 5 ~ * (int *) p = 0; // Legal in all}; \\
+         \node {\tt 6 ~ * (int *) (r \& 0x11111110) = 0; // Illegal in CompCert C}; \\
+         \node {\tt 7 ~ * (int *) (p - (q - p)) = 0; // Illegal in PVI}; \\
+         \node {\tt 8 ~ x[1] = 0; // Illegal in all}; \\
+       };
+
+  \node[right=of l2,draw,anchor=west] {\(\mathtt{x} \mapsto a_1@\pt[_1], \mathtt{y} \mapsto a_2@\pt_2\)};
+  \node[right=of l3,draw,anchor=west] {\(\mathtt{p} \mapsto a_2@\vt[_1]\) ~
+    \(\vt[_1] \leftarrow \picasttname(\PCT, )\)};
+  \node[right=of l4,draw,anchor=west] {\(\mathtt{q} \mapsto a_3@\vt[_2]\) ~ \(\vt[_2] \leftarrow \picasttname\)};
+  \node[right=of l5,draw,anchor=west] {\(\mathtt{r} \mapsto a_4@\vt[_3]\) ~ \(\vt[_3] \leftarrow \binoptname\)};
+  
+\end{tikzpicture}
+
 \caption{Memory Safety and Pointer Casts}
 \label{fig:memsafe}
 \end{figure}
@@ -588,62 +592,78 @@ it points to at that time.
 \paragraph*{Memory Safety in General}
 
 The core of all three memory safety variants is a ``lock and key'' approach, due to
-[TODO: R\&D credit \url{https://dl.acm.org/doi/10.1145/1321631.1321673}; confirm and cite. Cite S\&P.]
+Clause et al. \cite{Clause07:MemsafeTainting} and introduced in a PIPE context in
+Azevedo de Amorim et al. \cite{Azevedo+15}.
 Whenever an object is allocated, it is assigned a unique ``color,'' and its memory locations as well
-as its pointer are tagged with that color. Operations that are valid on pointers in a given memory model
+as its pointer are tagged with that color. The default tag \(N\) indicates that there is currently
+no color. These rules are given in \cref{fig:memcommon}.
+Operations that are valid on pointers in a given memory model
 maintain the pointer's color, and  loads and stores are legal if the pointer tag matches the target memory
-location tag. These rules are given in \cref{fig:memcommon}.
-
-The default tag \(N\) indicates that there is currently no color.
-
+location tag.
 The rules for the \(PVI\) memory safety policy are given in \cref{fig:pvi}.
 
 \begin{figure}
-  \color{blue}
-  \begin{align*}
-    \tau ::= & \clr & \clr \in \mathbb{N} \\
-    & \N \\
-  \end{align*}
-  
-  \scriptsize
-
-  \begin{minipage}[t]{0.25\textwidth}
-    \vspace{-2.5em}
-    \localtruleblock
-        {\(\PCT' := \PCT+1\);
-          \(\pt := \PCT\)\\
-          \(\vt := \N\);
-          \(\lt := \left[ \PCT \right]\)
-        }
-    \malloctruleblock
-        {\(\PCT' := \PCT+1\);
-          \(\pt := \PCT\) \\
-          \(\vt := \N\);
-          \(\lt := \left[ \PCT \right]\)
-        }
-  \end{minipage}
-  \begin{minipage}[t]{0.3\textwidth}
-    \vspace{-2.5em}
-    \loadtruleblock{\(\mathbf{assert} ~ \forall \lt \in \lt . \pt = \lt\) \\ \(\vt' := \vt\)}
-
-    \storetruleblock{\(\mathbf{assert} ~ \forall \lt \in \lt . \pt = \lt\) \\
-      \(\PCT' := \PCT\);
-      \(\vt' := \vt_2\); 
-      \(\lt' := \lt\)}
-  \end{minipage}
-  
-  \caption{Memory Safety Common Rules}
-  \label{fig:memcommon}
-\end{figure}
-
-\begin{figure}
   \begin{subfigure}{\textwidth}
+    \begin{minipage}{0.3\textwidth}
+      \color{blue}
+      \begin{align*}
+        \tau ::= & \clr & \clr \in \mathbb{N} \\
+        & \N \\
+        & \mathit{CAST} ~ \clr & \textnormal{CompCert only} \\
+      \end{align*}
+    \end{minipage}
+    \scriptsize
+    \begin{minipage}{0.3\textwidth}
+      \localtruleblock
+          {\(\PCT' := \PCT+1\);
+            \(\pt := \PCT\)\\
+            \(\vt := \N\);
+            \(\lt := \PCT\)
+          }
+      \malloctruleblock
+          {\(\PCT' := \PCT+1\);
+            \(\pt := \PCT\) \\
+            \(\vt := \N\);
+            \(\lt := \PCT\)
+          }
+    \end{minipage}
+    \begin{minipage}{0.3\textwidth}
+      \loadtruleblock{\(\mathbf{assert} ~ \pt = \lt\) \\ \(\vt' := \vt\)}
 
+      \storetruleblock{\(\mathbf{assert} ~ \pt = \lt\) \\
+        \(\PCT' := \PCT\);
+        \(\vt' := \vt\); 
+        \(\lt' := \lt\)}
+    \end{minipage}
+
+    \caption{Common Memory Safety Rules}
+    \label{subfig:memgen}
+  \end{subfigure}
+  \begin{subfigure}{0.3\textwidth}
+    \color{blue}
+    %
+    \scriptsize
+    %
+    \picasttruleblock{\caseoftwo{\(\pt\)}{\(\clr\)}{\(\vt' := CAST ~ \clr\)}{\(\_\)}{\(\vt' := \pt\)}}
+
+    \binoptruleblock{
+      \caseofthree
+          {\((\oplus, \vt_1,~ \vt_2)\)}
+          {\((+,\clr,\N)\) \\ \((+,\N,\clr)\)}{\(\vt' := \clr\)}
+          {\((\_,\N,\N)\) \\ \((-,\clr,\clr)\)}{\(\vt' := \N\)}
+          {\(\underline{~ ~ ~}\)}{\(\fail\)}
+    }
+
+    \ipcasttruleblock{\caseoftwo{\(\vt[_1]\)}{\(\clr\)}{\(\vt' := CAST ~ \clr\)}{\(\_\)}{\(\vt' := \pt\)}}
+    
     \caption{CompCert C Rules}
     \label{subfig:memcompcert}
   \end{subfigure}
-  \begin{subfigure}{\textwidth}
-    \vspace{-2.5em}
+  \begin{subfigure}{0.3\textwidth}
+    \scriptsize
+    
+    \picasttruleblock{\(\vt' := \pt\)}
+
     \binoptruleblock{
       \caseofthree
           {\((\vt_1,~ \vt_2)\)}
@@ -651,22 +671,46 @@ The rules for the \(PVI\) memory safety policy are given in \cref{fig:pvi}.
           {\((\N,\gentag)\)}{\(\vt' := \gentag\)}
           {\((\clr_1, \clr_2)\)}{\(\vt' := \N\)}
     }
-    \unoptruleblock{\(\vt' := \vt\)}
+
+    \ipcasttruleblock{\(\pt' := \vt\)}
     
     \caption{PVI Rules}
     \label{subfig:memcompcert}
   \end{subfigure}
-  \begin{subfigure}{\textwidth}
+  \begin{subfigure}{0.3\textwidth}
+    \scriptsize
+    
+    \picasttruleblock{\(\vt' := \N\)}
 
+    \binoptruleblock{
+      \caseofthree
+          {\((\vt_1,~ \vt_2)\)}
+          {\((\clr,\N)\)}{\(\vt' := \clr\)}
+          {\((\N,\gentag)\)}{\(\vt' := \gentag\)}
+          {\((\clr_1, \clr_2)\)}{\(\vt' := \N\)}
+    }
+
+    \ipcasttruleblock{\(\pt' := \lt\)}
+    
     \caption{PNVI Rules}
     \label{subfig:memcompcert}
   \end{subfigure}
   
-  \caption{Memory Safety Distinct Rules}
-  \label{fig:memdistinct}
-\end{figure}
+    \caption{Memory Safety Rules}
+    \label{fig:memcommon}
+  \end{figure}
 
-\paragraph*{Memory Safety and Control Points}
+Memory safety informs our control points related to allocating, deallocating, and
+accessing memory. \(\malloctname\) and \(\freetname\) are special cases of the
+\(\extcalltname\) control point, which represents a call to an external function
+that may tag its outputs in a specialized way.
+
+\paragraph*{Memory Safety Variants}
+
+Thus far we have only introduced spatial memory safety, but Tagged C also
+supports temporal safety. A full memory safety policy precents use-after-free and
+double-free errors by either retagging a deallocated region, or using the PC tag
+to track live objects and revoking permissions on an object as soon as it is freed.
 
 \subsection{Compartmentalization}
 
@@ -706,6 +750,7 @@ identifier or the default \(\N\) tag. The PC tag always carries the compartment 
 active function, kept up to date by the \(\calltname\) and \(\rettname\) rules.
 
 \begin{figure}
+  \scriptsize
   \color{blue}
   \begin{minipage}[t]{0.4\textwidth}
     \vspace{-3em}
@@ -726,7 +771,7 @@ active function, kept up to date by the \(\calltname\) and \(\rettname\) rules.
       \(\PCT' := \PCT; \vt' := \N; \lt' := \lt\)}
   \end{minipage}
     
-  \caption{Compartmentalization Policy}
+  \caption{Simple Compartmentalization Policy}
   \label{fig:compartments}
 \end{figure}
 
@@ -748,7 +793,8 @@ be used to specialize the tag rule. The need to do this is one of several limita
 to malloc (\cref{sec:limitations}). An engineer might manually select which allocations are
 shareable, or perhaps automatically using some form of escape analysis.
 
-The policy (\cref{fig:sharing}) works by gluing together compartmentalization and memory safety.
+This policy (\cref{fig:sharing}) essentially combines the simple compartmentalization policy
+and a memory safety policy.
 %The PC tag carries both the current compartment color, for tagging unshared allocations, and the next free color, for tagging shared allocations.
 %\(\malloctname\) uses the function tag to determine which color to attach to the pointer and allocated
 %region. During loads and stores, the location tag of the target address
@@ -756,44 +802,41 @@ The policy (\cref{fig:sharing}) works by gluing together compartmentalization an
 %the validity of the pointer (for shared ones).
 
 \begin{figure}
-  \begin{minipage}[t]{0.6\textwidth}
-    \malloctruleblock
-        {let \((C,\clr) := \PCT\) in \\
-          \caseoftwo{\(f'\)}
-                    {\(\mathtt{malloc}\)}{\(\PCT' := \PCT; \pt := C;\) \\ & & \(\vt := \N; \lt := C\)}
-                    {\(\mathtt{malloc\_share}\)}{\(\PCT':= (C,\clr+1);\) \\ & & \(\pt := \clr; \vt := \N';\) \\ & & \(\lt := \clr\)}
-
-        }
+  \color{blue}
+  \scriptsize
+  \begin{minipage}{0.2\textwidth}
+    \[\begin{aligned}
+      \tau & ::= \N \\
+      & C \\
+      & \clr \\
+      & (C,\clr) \\
+    \end{aligned}\]
+  \end{minipage}
+  \begin{minipage}{0.8\textwidth}
+  \malloctruleblock
+      {let \((C,\clr) := \PCT\) in \\
+        \caseoftwo{\(\pt\)}
+                  {\(\FN[\mathtt{malloc}]\)}{\(\mathbf{MallocT}_{C}(\PCT,\pt,\vt)\)}
+                  {\(\FN[\mathtt{malloc\_share}]\)}
+                  {\(\clr',\pt',\lt' \leftarrow \mathbf{MallocT}_{\mathit{PVI}}(\PCT,\pt,\vt)\) \\
+                    & & \(\PCT':= (C,\clr');\) \\ & & \(\pt' := \pt; \vt := \N';\) \\ & & \(\lt := \clr\)}
+                  
+      }
+  \end{minipage}
+  \begin{minipage}{0.45\textwidth}
   \storetruleblock
         {let \((C,\clr) := \PCT\) in \\
-          \(\mathbf{assert} ~ \exists \lt' . \forall \lt \in \lt . \lt = \lt'\) \\
-          \caseoftwo{\(\lt'\)}
-                    {\(C'\)}{\(\mathbf{assert} ~ C = C'\) \\
-                      & &  \(\PCT' := \PCT; \vt' := \vt_2; \lt := C\)}
-                    {\(\clr\)}{\(\mathbf{assert} ~ \pt = \clr\) \\
-                      & & \(\PCT':= \PCT; \vt' := \vt_2; \lt := \clr\)}}
+          \caseoftwo{\(\lt\)}
+                    {\(C'\)}{\(\mathbf{StoreT}_C(C,\N,\vt,C')\)}
+                    {\(\clr'\)}{\(\mathbf{StoreT}_{\mathit{PVI}}(\clr,\pt,\vt,\clr')\)}}
 
   \end{minipage}
-  \begin{minipage}[t]{0.4\textwidth}
-    \vspace{-5em}
-    \[\color{blue}
-    \tau ::= \N \mid C \mid \clr \mid (C,\clr)\]
+  \begin{minipage}{0.3\textwidth}
     \loadtruleblock
         {let \((C,\clr) := \PCT\) in \\
-          \(\mathbf{assert} ~ \exists \lt' . \forall \lt \in \lt . \lt = \lt'\) \\
-          \caseoftwo{\(\lt'\)}
-                    {\(C'\)}{\(\mathbf{assert} ~ C = C'\) \\
-                      & &  \(\vt' := \vt\)}
-                    {\(\clr\)}{\(\mathbf{assert} ~ \pt = \clr\) \\
-                      & & \(\vt' := \vt\)}}
-    \binoptruleblock{
-      \caseofthree
-          {\((\vt_1,~ \vt_2)\)}
-          {\((\gentag,\N)\)}{\(\vt' := \gentag\)}
-          {\((\N,\gentag)\)}{\(\vt' := \gentag\)}
-          {\((\clr_1, \clr_2)\)}{\(\vt' := \N\)}
-    }
-
+          \caseoftwo{\(\lt\)}
+                    {\(C'\)}{\(\mathbf{StoreT}_C(C,\N,\vt,C')\)}
+                    {\(\clr'\)}{\(\mathbf{StoreT}_{\mathit{PVI}}(\clr,\pt,\vt,\clr')\)}}
   \end{minipage}
 
   
@@ -801,6 +844,10 @@ The policy (\cref{fig:sharing}) works by gluing together compartmentalization an
   \label{fig:sharing}
 \end{figure}
 
+\paragraph*{Compartmentalization Variants}
+
+Using program-specific tags for globals and functions, a compartmentalization policy
+like the one above can be extended with a Mandatory Access Control (MAC) policy.
 
 \subsection{Secure Information Flow}
 
@@ -814,17 +861,18 @@ errors or undefined behaviors.
 \begin{tikzpicture}[every text node part/.style={align=left}]
   \node[matrix, ampersand replacement=\&, anchor=west] (code)
        {
-         \node (l1) {\tt 1 void h(int id, int psk) \{}; \\
-         \node (l2) {\tt 2 ~ switch(format(psk)) \{}; \\
-         \node {\tt 3 ~ ~ case OLD:}; \\
-         \node {\tt 4 ~ ~ ~ psk = update(psk); break;}; \\
-         \node {\tt 5 ~ ~ case INVALID:}; \\
-         \node {\tt 6 ~ ~ ~ psk = 0; break;}; \\
-         \node {\tt 7 ~ ~ case DEFAULT:}; \\
-         \node {\tt 8 ~ \}}; \\
-         \node (l3) {\tt 9 J:  printf("Updating user \%d", id); // join point}; \\
-         \node {\tt 10 ~ update(id, psk);}; \\
-         \node {\tt 11 \}}; \\
+         \node {\tt 1 void h(int id, int psk) \{}; \\
+         \node (l1) {\tt 2 ~ int fmt = check\_format(psk);}; \\
+         \node (l2) {\tt 3 ~ switch(format(psk)) \{}; \\
+         \node {\tt 4 ~ ~ case OLD:}; \\
+         \node {\tt 5 ~ ~ ~ psk = update(psk); break;}; \\
+         \node {\tt 6 ~ ~ case INVALID:}; \\
+         \node {\tt 7 ~ ~ ~ psk = 0; break;}; \\
+         \node {\tt 8 ~ ~ case DEFAULT:}; \\
+         \node {\tt 9 ~ \}}; \\
+         \node (l3) {\tt 10 J:  printf("Updating user \%d", id); // join point}; \\
+         \node {\tt 11 ~ update(id, psk);}; \\
+         \node {\tt 12 \}}; \\
        };
 
     \node[matrix, ampersand replacement=\&, node distance=12em, right=of l2.north,draw] (table1)
@@ -961,41 +1009,52 @@ control has moved past the original high context.
 
 \paragraph*{SIF Variants}
 
+SIF can cover a wide array of different policies. Here we have shown an instance of
+a confidentiality policy, but it can also support integrity
+(``insecure inputs do not affect secure data''), intransive policies
+(``data can flow from A to B and B to C, but not from A to C,'') and policies with
+more than two security levels.
+
+We have sketched a few instances of practical SIF policies. An intransitive integrity policy
+can be used to protect against SQL Injections by requiring unsafe inputs to pass through a sanitizer
+before they can be appended to a query. Similarly, a more complex SIF policy could ensure that
+data at rest is always encrypted, by setting a low security level to the outputs of an encryption
+routine and a high level to the outputs of its corresponding decryption routine.
+%      As SIF, with special rule for sanitization function \\  
+%      & Guarantee Encrypted Data at Rest by requiring all stores to first pass through an encryption routine &
+%      As SIF, with special rules for encryption and decryption functions \\ 
+
 \section{Evaluation}
 \label{sec:evaluation}
 
 Tagged C aims to combine the flexibility of tag-based architectures with the abstraction
-of a high-level language. How well have we achieved this aim?
+of a high-level language. In the last section, we demonstrated three classes of policies
+with broad practical applicability and described how they can be tuned to the needs of a
+particular program. They can be used alone or in conjunction.
 
-[Here we list criteria and evaluate how we fulfilled them]
+Additionally, the Tagged C semantics support the full complement of C language features and
+give definition to many undefined C programs
 
-\begin{itemize}
-\item Flexibility: we demonstrate three policies that can be used alone or in conjunction
-\item Applicability: we support the full complement of C language features and give definition
-  to many undefined C programs
-\item Practical security: our example security policies are based on important security concepts
-  from the literature
-\end{itemize}
-
-\begin{table}
-  \begin{center}
-    %\begin{tabular}{ c| c |c }
-    \title{Further Policies and the Uses}
-    \begin{tabular}{  p{3cm} | p{5cm}| p{5cm}  } 
-      \textbf{Name} & \textbf{Example Use Cases} & \textbf{Tag Implementation} \\ 
-      \hline
-      SIF: Intransitive Integrity &
-      Protect agains SQL Injection by requiring outside data to pass through a sanitizer &
-      As SIF, with special rule for sanitization function \\  
-      & Guarantee Encrypted Data at Rest by requiring all stores to first pass through an encryption routine &
-      As SIF, with special rules for encryption and decryption functions \\ 
-      Temporal Memory Safety & Prevent double free & Assign unique color to tag at each free. Check for an existing color before freeing. \\
-      & Prevent Use-after-free & Check pointers for color tag when dereferencing pointers  \\
-      Placeholder-name & Placeholder-use case & Placeholder policy \\
-      \hline
-    \end{tabular}
-  \end{center}
-\end{table}
+% Trying to just thread the table into each section rather than all at once
+%\begin{table}
+%  \begin{center}
+%    %\begin{tabular}{ c| c |c }
+%    \title{Further Policies and their Uses}
+%    \begin{tabular}{  p{3cm} | p{5cm}| p{5cm}  } 
+%      \textbf{Name} & \textbf{Example Use Cases} & \textbf{Tag Implementation} \\ 
+%      \hline
+%      SIF: Intransitive Integrity &
+%      Protect agains SQL Injection by requiring outside data to pass through a sanitizer &
+%      As SIF, with special rule for sanitization function \\  
+%      & Guarantee Encrypted Data at Rest by requiring all stores to first pass through an encryption routine &
+%      As SIF, with special rules for encryption and decryption functions \\ 
+%      Temporal Memory Safety & Prevent double free & Assign unique color to tag at each free. Check for an existi%ng color before freeing. \\
+%      & Prevent Use-after-free & Check pointers for color tag when dereferencing pointers  \\
+%      Placeholder-name & Placeholder-use case & Placeholder policy \\
+%      \hline
+%    \end{tabular}
+%  \end{center}
+%\end{table}
   
 \subsection{Limitations}
 \label{sec:limitations}
@@ -1019,9 +1078,12 @@ regions to be tagged according to their types. We would rather be able to tag th
 based on its type, but in C, malloc does not get access to type information---it allocates
 memory of a given side and returns a {\tt void *}, and it is up to the caller to cast the
 pointer to the desired type. That cast may be arbitrarily removed from the call to malloc!
+This is not just a problem in the Tagged C context; Michael et al.
+\cite{Michael23:MSWASM} approach a similar problem by outright replacing {\tt malloc}
+with a {\tt segalloc} function that takes much more information.
 Versions of memory safety that protect fields of a
 struct from overflows within the same struct would be very useful, but currently enforcing
-them will require manual initialization. (Mention CheckedC and its primitive.)
+them will require manual initialization.
 
 Beyond these, there is always the possibility that we have missed some control point
 that would enable interesting security policies outside of the areas we have considered.
@@ -1074,9 +1136,8 @@ We realize it as an interpreter with the reference monitor built in, and envisio
 eventually compiling to PIPE-equipped hardware, although an inlining compiler would also be plausible.
 This motivates many of our assumptions about tags.
 
-\paragraph{Aspect Oriented Programming}
-
-[TODO: do forward search from original AOP paper]
+%\paragraph{Aspect Oriented Programming}
+%[TODO: do forward search from original AOP paper]
 
 \section{Future Work}
 \label{sec:futurework}
@@ -1086,11 +1147,10 @@ We have presented the language and a reference interpreter, built on top of the 
 
 \paragraph{Compilation}
 
-An interpreter is all well and good\apt{too informal}, but a compiler would be preferable for many reasons.
+An interpreter is useful for testing, but a compiler would be preferable for many reasons.
 A compiled Tagged C could use the hardware acceleration of a PIPE target, and could more easily
 support linked libraries, including linking against code written in other languages.
-The ultimate goal would be a fully verified compiler, but that is a very long way off\apt{too informal}.
-
+The ultimate goal would be a fully verified compiler.
 
 \paragraph{Language Proofs}
 

@@ -148,6 +148,15 @@
              \truleblock{\(\constt\)}{#1}
            }
 
+\newcommand{\inittname}{\color{blue} \mathbf{Initt}}
+\newcommand{\inittres}{\vt[']}
+\newcommand{\initt}{\inittname}
+
+\newcommand{\inittruleblock}[1]
+           {
+             \truleblock{\(\initt\)}{#1}
+           }
+           
 \newcommand{\globaltname}{\color{blue} \mathbf{GlobalT}}
 \newcommand{\globaltargs}{\GN, \TN}
 \newcommand{\globaltres}{\pt['],\vt['],\lt[']}
@@ -169,17 +178,27 @@
 \newcommand{\freet}{\freetname(\freetargs)}
 
 \newcommand{\picasttname}{\color{blue} \mathbf{PICastT}}
-\newcommand{\picasttargs}{\PCT, \pt, \vt, \lt}
+\newcommand{\picasttargs}{\PCT, \pt, \lt}
 \newcommand{\picasttres}{\vt[']}
 \newcommand{\picastt}{\picasttname(\picasttargs)}
 
+\newcommand{\picasttruleblock}[1]
+           {
+             \truleblock{\(\picastt\)}{#1}
+           }
+
 \newcommand{\ipcasttname}{\color{blue} \mathbf{IPCastT}}
-\newcommand{\ipcasttargs}{\PCT, \vt[_1], \vt[_2], \lt}
+\newcommand{\ipcasttargs}{\PCT, \vt, \lt}
 \newcommand{\ipcasttres}{\pt[']}
 \newcommand{\ipcastt}{\ipcasttname(\ipcasttargs)}
 
+\newcommand{\ipcasttruleblock}[1]
+           {
+             \truleblock{\(\ipcastt\)}{#1}
+           }
+
 \newcommand{\ppcasttname}{\color{blue} \mathbf{PPCastT}}
-\newcommand{\ppcasttargs}{\PCT, \pt, \vt, \lt}
+\newcommand{\ppcasttargs}{\PCT, \pt[_1], \pt[_2], \lt[_1], \lt[_2]}
 \newcommand{\ppcasttres}{\pt[']}
 \newcommand{\ppcastt}{\ppcasttname(\ppcasttargs)}
 
