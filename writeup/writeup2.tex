@@ -755,7 +755,8 @@ are ranged over by \(C\), and a set of function and global identifiers mapped to
 Compartmentalization requires the policy to keep track of the active compartment, which means
 keeping track of function pointers. In Tagged C, function pointers are the exception to the
 concrete memory model. They carry symbolic values that refer uniquely to their target functions.
-A variable expression where the variable is the function {\tt f} evaluates to \(\mathtt{f}\tagat\FN[\mathtt{f}]\).
+If \(\mathtt{f}\) is located at the symbolic address \(\alpha\), then
+the expression \(\var{\mathtt{f}}\) evaluates to \(\mathtt{f}\tagat\FN[\mathtt{f}]\).
 When the function pointer is called, Tagged C invokes \(\callt\), where \(\pt\) is the
 function pointer's tag, to update PC tag.
 On return, in addition to handling the return value (if any), \(\rett\) determines a new PC tag
@@ -810,12 +811,11 @@ to malloc; see \cref{sec:limitations}.) An engineer might manually select which 
 shareable, or perhaps rely on some form of escape analysis to detect shareable allocations automatically.
 
 The policy in \cref{fig:sharing} essentially combines the simple compartmentalization policy
-and a memory safety policy. \apt{Probably need to bring back some of the commented text here.}\amn{lost the thread here}
-%The PC tag carries both the current compartment color, for tagging unshared allocations, and the next free color, for tagging shared allocations.
-%\(\malloctname\) uses the function tag to determine which color to attach to the pointer and allocated
-%region. During loads and stores, the location tag of the target address
-%determines whether access is checked via the identity of the active compartment (for unshared allocations) or
-%the validity of the pointer (for shared ones).
+and a memory safety policy. The PC tag carries both the current compartment color, for tagging
+unshared allocations, and the next free color, for tagging shared allocations.
+\(\malloctname\) applies a color tag to shareable allocations, and \(\N\) to local ones.
+During loads and stores, the location tag of the target address
+determines whether access acts like coarse-grained compartmentalization or like memory safety.
 
 \begin{figure}
   \color{blue}
@@ -1056,6 +1056,7 @@ routine and a high level to the outputs of its corresponding decryption routine.
 
 \section{Evaluation}
 \label{sec:evaluation}
+\label{sec:limitations}
 
 Tagged C aims to combine the flexibility of tag-based architectures with the abstraction
 of a high-level language. In the last section, we demonstrated three classes of policies
@@ -1086,10 +1087,7 @@ give definition to many undefined C programs.\apt{unhelpfully vague}
 %  \end{center}
 %\end{table}
   
-\subsection{Limitations}
-\label{sec:limitations}
-\apt{Suggest removing this subsection and labeling the discussion by topic --- tags vs. values; memory tagging; etc. --- giving pros and cons for each
-  much as the text currentlly does.}
+\subsection{Tags vs. Values}
 
 By committing to a tag-based mechanism, we do restrict the space of policies that Tagged C
 can enforce. In general, a reference monitor can enforce any policy that constitutes a
@@ -1105,6 +1103,8 @@ identify where each pointer comes from, or possibly some sort of temporal logic.
   points could also (or instead) be made in the introduction, to justify why tag-based
   policies are generally interesting and worthwhile even in the absence of hardware support.}
 
+\subsection{Memory Taggig}
+
 The other known limitation is in how we tag memory at allocation time. Malloc tags an
 entire region with a single tag, which means that Tagged C cannot easily
 enforce substructural memory safety and other properties that call for allocated
@@ -1118,6 +1118,8 @@ with a {\tt segalloc} function that takes much more information.
 Versions of memory safety that protect fields of a
 struct from overflows within the same struct would be very useful, but currently enforcing
 them will require manual initialization.
+
+\subsection{Overall Control Points}
 
 Beyond these, there is always the possibility that we have missed some control point
 that would enable interesting security policies outside of the areas we have considered.
@@ -1222,7 +1224,7 @@ language to make it easier to write Tagged C policies.
 \apt{Currently this looks like a bunch of independent appendices; need to make these sections
   subsections of a a single appendix.}
 
-\section{Syntax}
+\section{Tagged C, Formally}
 
 Tagged C has the full complement of typical C expressions (\cref{fig:expr}). \(\val{v}{\vt}\),
 \(\loc{p}{\pt}\), and \(\paren{\expr}{\type}\) are internal forms.
@@ -1292,7 +1294,7 @@ concrete syntax becomes \(\sifthenelse{\expr}{\stmt_1}{\stmt_2}{\bot}\).
   \label{fig:syntax}
 \end{figure}
 
-\section{States}
+\subsection{States}
 
 States can be of several kinds, denoted by their script prefix: a {\em general state} \(\mathcal{S}(\dots)\),
 an {\em expression state} \(\mathcal{E}(\dots)\), a {\em call state} \(\mathcal{C}(\dots)\), or a
@@ -1312,14 +1314,15 @@ S ::= & \sstate{\PCT}{\mem}{\stmt}{\cont} \\
 | & \fstate{S} \\
 \end{aligned}\]
 
+\paragraph*{Pieces of a State}
 
 States in general contain a memory, a local environment, and a continuation.
 
-\subsection{Memories}
+\paragraph*{Memories}
 
-\subsection{Environments}
+\paragraph*{Environments}
 
-\subsection{Continuations}
+\paragraph*{Continuations}
 \label{app:continuations}
 
 A continuation acts like a stack of pending operations. The base of the stack is
@@ -1344,6 +1347,7 @@ loop.
 | & \kfor{\expr}{\stmt_2}{\stmt_3}{L}{\cont} \\
 | & \kforpost{\expr}{\stmt_2}{\stmt_3}{L}{\cont} \\
 \end{split}\]
+
 
 
 \section{Initial State}
