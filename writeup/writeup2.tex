@@ -558,25 +558,29 @@ memory-safety violations like buffer overflows.
 On the other hand, their second model, {\em provenance not via integer} (PNVI), clears the
 provenance of a pointer when it is cast to an integer. When an integer is cast to a pointer
 (whether or not it was previously derived from a pointer), it takes on the provenance of whatever
-it points to at that time.
-\amn{I left this bit alone since yinz seem to be on it}
-\sna{This diagram isn't quite there, but I'm interested in feedback on the level of detail
-  that seems necessary for it. \apt{Seems ok. Maybe you need to add the other two BinopT invocations at 6,7.
-    I've made the C legal and (I think) more idiomatic, but obviously the rules still need to be finished. BTW, why isn't $a_2 = a_3 = a_1$?
-Very pedantic question: would PVI really permit line 6, given that we don't really know that {\tt y} is better than 1-byte aligned (this is not guaranteed for stack allocations), so this \& may put us in a different object? }}
+it points to at that time. The security value of this memory model is questionable, but
+it is a realistic option and can support idioms that PVI cannot.
 
 \paragraph*{Policy Implementation Details}
 
 The basic idea for enforcing any of the above memory safety variants is a ``lock and key'' approach~\cite{Clause07:MemsafeTainting,Azevedo+15}.
 Whenever an object is allocated, it is assigned a unique ``color,'' and its memory locations as well
-as its pointer are tagged with that color. The default tag \(N\) indicates that there is currently
-no color. These rules are given in \cref{fig:memcommon}.
+as its pointer are tagged with that color, written \(\clr\).
+The default tag \(\N\) indicates a non-pointer or non-allocated location.
+The PC tag will also be \(\clr\),
+tracking the next available color for new allocations. These rules are given in \cref{fig:memcommon}.
 Operations that are valid on pointers in a given memory model
 maintain the pointer's color, and loads and stores are legal if the pointer tag matches the target memory
-location tag.\apt{This all needs more explanation. What is going on with the PC tag? (And is $clr$ really an integer?) Why are the Binop rules for P/NVI non-symmetric? CompCert Binop rule hard to distinguish minus and underscore. What is role of $CAST$ constructor, and is it being used correctly in IPCastT??}
-The rules for the PVI memory safety policy are given in \cref{subfig:pvi}.\apt{Why is this called out separately?}
-\begin{figure}
+location tag.
 
+The specific memory models behave differently when pointers are cast to integers and back.
+The CompCert C variant marks that the integer has been cast from a valid pointer, and
+restores that provenance when case back. But, \(\binoptname\) will failstop if it is
+actually modified between the casts. PVI simply keeps the provenance and allows all operations
+between casts. PNVI accesses the memory pointed to by the (soon-to-be) pointer and takes its
+location tag.
+
+\begin{figure}
 \begin{tikzpicture}[every text node part/.style={align=left}]
   \node[matrix, anchor=west] (code)
        {
@@ -602,34 +606,34 @@ The rules for the PVI memory safety policy are given in \cref{subfig:pvi}.\apt{W
 \label{fig:memsafe}
 \end{figure}
 
-
-
 \begin{figure}
-  \begin{subfigure}{\textwidth}
-    \begin{minipage}{0.3\textwidth}
       \color{blue}
+  \begin{subfigure}{\textwidth}
+    \begin{minipage}{0.45\textwidth}
       \begin{align*}
-        \tau ::= & \clr & \clr \in \mathbb{N} \\
+        \tau ::= & \clr & c \in \mathbb{N} \\
         & \N \\
-        & \mathit{CAST} ~ \clr & \textnormal{CompCert only} \\
+        & \mathit{CAST}(\clr) & \textnormal{(CompCert only)} \\
       \end{align*}
     \end{minipage}
     \scriptsize
     \begin{minipage}{0.3\textwidth}
       \localtruleblock
-          {\(\PCT' := \PCT+1\);
+          {let \(\clr := \PCT\) in \\
+            \(\PCT' := \clr[c+1]\) \\
             \(\pt' := \PCT\)\\
             \(\vt' := \N\);
             \(\lt' := \PCT\)
           }
       \malloctruleblock
-          {\(\PCT' := \PCT+1\);
+          {let \(\clr := \PCT\) in \\
+            \(\PCT' := \clr[c+1]\) \\
             \(\pt' := \PCT\) \\
             \(\vt' := \N\);
             \(\lt' := \PCT\)
           }
     \end{minipage}
-    \begin{minipage}{0.3\textwidth}
+    \begin{minipage}{0.2\textwidth}
       \loadtruleblock{\(\mathbf{assert} ~ \pt = \lt\) \\ \(\vt' := \vt\)}
 
       \storetruleblock{\(\mathbf{assert} ~ \pt = \lt\) \\
@@ -641,40 +645,39 @@ The rules for the PVI memory safety policy are given in \cref{subfig:pvi}.\apt{W
     \caption{Common Memory Safety Rules}
     \label{subfig:memgen}
   \end{subfigure}
-  \begin{subfigure}{0.3\textwidth}
+  \begin{subfigure}{0.4\textwidth}
     \color{blue}
     %
     \scriptsize
     %
-    \picasttruleblock{\caseoftwo{\(\pt\)}{\(\clr\)}{\(\vt' := CAST ~ \clr\)}{\(\_\)}{\(\vt' := \pt\)}}
-
+    \picasttruleblock{\caseoftwo{\(\pt\)}{\(\clr\)}{\(\vt' := \mathit{CAST}(\clr)\)}{\(\underline{~ ~ ~}\)}{\(\vt' := \pt\)}}
     \binoptruleblock{
       \caseofthree
           {\((\oplus, \vt_1,~ \vt_2)\)}
           {\((+,\clr,\N)\) \\ \((+,\N,\clr)\)}{\(\vt' := \clr\)}
-          {\((\_,\N,\N)\) \\ \((-,\clr,\clr)\)}{\(\vt' := \N\)}
+          {\((\underline{~ ~},\N,\N)\) \\ \((-,\clr,\clr)\)}{\(\vt' := \N\)}
           {\(\underline{~ ~ ~}\)}{\(\fail\)}
     }
 
-    \ipcasttruleblock{\caseoftwo{\(\vt[_1]\)}{\(\clr\)}{\(\vt' := CAST ~ \clr\)}{\(\_\)}{\(\vt' := \pt\)}}
+    \ipcasttruleblock{\caseoftwo{\(\vt\)}{\(\mathit{CAST}(\clr)\)}{\(\pt' := \clr\)}{\underline{~ ~ ~}}{\(\vt' := \pt\)}}
     
     \caption{CompCert C Rules}
     \label{subfig:memcompcert}
   \end{subfigure}
   \begin{subfigure}{0.3\textwidth}
     \scriptsize
-    
-    \picasttruleblock{\(\vt' := \pt\)}
+
+    \ipcasttruleblock{\(\pt' := \vt\)}
 
     \binoptruleblock{
       \caseofthree
           {\((\vt_1,~ \vt_2)\)}
-          {\((\clr,\N)\)}{\(\vt' := \clr\)}
-          {\((\N,\gentag)\)}{\(\vt' := \gentag\)}
-          {\((\clr_1, \clr_2)\)}{\(\vt' := \N\)}
+          {\((\clr,\N)\) \\ \((\N,\clr)\)}{\(\vt' := \clr\)}
+          {\((\N,\N)\)}{\(\vt' := \gentag\)}
+          {\((\clr[c_1], \clr[c_2])\)}{\(\vt' := \N\)}
     }
 
-    \ipcasttruleblock{\(\pt' := \vt\)}
+    \picasttruleblock{\(\vt' := \pt\)}
     
     \caption{PVI Rules}
     \label{subfig:pvi}
@@ -682,31 +685,32 @@ The rules for the PVI memory safety policy are given in \cref{subfig:pvi}.\apt{W
   \begin{subfigure}{0.3\textwidth}
     \scriptsize
     
-    \picasttruleblock{\(\vt' := \N\)}
+    \ipcasttruleblock{\(\pt' := \lt\)}
 
     \binoptruleblock{
       \caseofthree
-          {\((\vt_1,~ \vt_2)\)}
-          {\((\clr,\N)\)}{\(\vt' := \clr\)}
-          {\((\N,\gentag)\)}{\(\vt' := \gentag\)}
-          {\((\clr_1, \clr_2)\)}{\(\vt' := \N\)}
+          {\((\oplus, \vt_1,~ \vt_2)\)}
+          {\((+,\clr,\N)\) \\ \((+,\N,\clr)\)}{\(\vt' := \clr\)}
+          {\((\underline{~ ~},\N,\N)\) \\ \((-,\clr,\clr)\)}{\(\vt' := \N\)}
+          {\(\underline{~ ~ ~}\)}{\(\fail\)}
     }
 
-    \ipcasttruleblock{\(\pt' := \lt\)}
+    \picasttruleblock{\(\vt' := \N\)}
     
     \caption{PNVI Rules}
     \label{subfig:pnvi}
   \end{subfigure}
   
-    \caption{Memory Safety Rules\apt{Need to put a constructor around $clr$; otherwise, there is no way to distinguish from a metavariable like $t$.}}
+    \caption{Memory Safety Rules}
     \label{fig:memcommon}
   \end{figure}
 
 Memory safety also informs the design of control points related to allocating, deallocating, and
 accessing memory. \(\malloctname\) and \(\freetname\) are special cases of the
-\(\extcalltname\) control point, which represents a call to an external function
-that may tag its outputs in a specialized way.\apt{This paragraph seems orphaned; perhaps
-  we need quite a bit more detail.}
+\(\extcalltname\) control point. Drawing from CompCert C, Tagged C abstracts over
+``external'' functions like malloc and free, rather than treat their implementation as
+ordinary code. In a concrete system, these would be replaced by their library equivalents.
+\(\extcalltname\) models the desired tag behavior of these libraries in the Tagged C semantics.
 
 \paragraph*{Temporal Memory Safety}
 
@@ -961,7 +965,7 @@ the pending join point within the PC tag, and lower the PC tag when execution re
     \splittruleblock{
       \caseoftwo{\(\PCT, \vt\)}
                 {\(\pctaint{\FN[]}{\overline{\LN[]}}, \high\)}
-                { \\ \multicolumn{3}{l}{~ ~\(\PCT' := \pctaint{\FN[]}{\LN \cup \overline{\LN[]}}}\)}
+                { \\ \multicolumn{3}{l}{~ ~\(\PCT' := \pctaint{\FN[]}{\LN \cup \overline{\LN[]}}\)}}
                 {\(\underline{~~~}, \low\)}{\(\PCT' := \PCT\)}
     }
   \end{minipage}
@@ -996,7 +1000,7 @@ takes this label (optionally, since not all policies will care about join points
 If the conditional branches on a high value, \(\splittname\) adds the label to the set
 in the PC tag. Later, when execution reaches a label, \(\labeltname\) deletes it from the
 set. If the set is non-empty, there is at least one high split point that has not
-yet reached its join point, so we treat the PC tag as being high. When we reach the
+yet reached its join point, so we treat the PC tag as being high. When execution reaches the
 last join point and the set is empty, it is no longer possible to deduce which
 path was taken, except by looking at values that updated in the interim, all of which
 will themselves be tagged \(\high\).
@@ -1025,10 +1029,15 @@ routine and a high level to the outputs of its corresponding decryption routine.
 Tagged C aims to combine the flexibility of tag-based architectures with the abstraction
 of a high-level language. In the last section, we demonstrated three classes of policies
 with broad practical applicability and described how they can be tuned to the needs of a
-particular program. They can be used alone or in conjunction.
+particular program. They can be used alone or in conjunction. A brief summary of
+policies and their use cases may be found in \cref{table:policies}.
 
-Additionally, the Tagged C semantics support the full complement of C language features and
-give definition to many undefined C programs.\apt{unhelpfully vague}
+The Tagged C semantics support the full complement of C language features, and advance
+over our previous work. The underlying memory behavior gives definition to a wide range
+of programs and is an interesting model in its own right.
+
+In the remainder of this section, we explore some of the benefits and limitations of
+our design choices.
 
 % Trying to just thread the table into each section rather than all at once
 %\begin{table}
@@ -1103,47 +1112,47 @@ need the compiler to generate extra instructions.
    \url{https://www.researchgate.net/publication/221047076_Runtime_Verification_of_C_Programs/link/0deec5299040f07729000000/download} and work
    forward/backward from that.  And AOP is crucial to discuss.}
 
-\paragraph{Reference Monitors}
+\paragraph{Aspect Oriented Programming}
+[TODO: do forward search from original AOP paper]
 
-The concept of a reference monitor was first introduced fifty years ago~\cite{Anderson72:PlanningStudy}
-as a tamper-proof and verifiable subsystem that checks every security-relevant operation in a system to
-ensure that it conforms to a security {\em policy} (a general specification of acceptable behavior~\cite{Goguen82:SecurityPolicies}).
+%\paragraph{Reference Monitors}
 
-A reference monitor can be implemented at any level of a system. An {\em inline reference monitor}\cite{??}
-is a purely compiler-based system that inserts checks at appropriate places in the code.
-Alternatively, a reference monitor might be embedded in the operating system, or in an interpreted
-language's runtime. A {\em hardware reference monitor} instead provides primitives at the ISA-level
-that accelerate security and make it harder to subvert.
+%The concept of a reference monitor was first introduced fifty years ago~\cite{Anderson72:PlanningStudy}
+%as a tamper-proof and verifiable subsystem that checks every security-relevant operation in a system to
+%ensure that it conforms to a security {\em policy} (a general specification of acceptable behavior~\cite{Goguen82:SecurityPolicies}).
 
-Programmable Interlocks for Policy Enforcement (PIPE) \cite{Dhawan14:PUMP} is a hardware extension
-that uses {\em metadata tagging}. Each register and each word of memory is associated with
-an additional array of bits called a tag. The policy is decomposed into a set of {\em tag rules}
-that act in parallel with each executing instruction, using the tags on its operands to
-decide whether the instruction is legal and, if so, determine which tags to place on its results.
-PIPE tags are large relative to other tag-based hardware, giving it the flexibility
-to implement complex policies with structured tags, and even run multiple policies at once.
+%A reference monitor can be implemented at any level of a system. An {\em inline reference monitor}\cite{??}
+%is a purely compiler-based system that inserts checks at appropriate places in the code.
+%Alternatively, a reference monitor might be embedded in the operating system, or in an interpreted
+%language's runtime. A {\em hardware reference monitor} instead provides primitives at the ISA-level
+%that accelerate security and make it harder to subvert.
 
-Other hardware monitors include Arm MTE, STAR, and CHERI.
-Arm MTE aims to enforce a narrow form of memory safety using 4-bit tags, which distinguish adjacent objects
-in memory from one another, preventing buffer overflows, but not necessarily other memory violations. STAR 
-uses small tags in regular cache lines which constrains the possible policies \cite{Gollapudi23:STARnarrowTags}.
+%Programmable Interlocks for Policy Enforcement (PIPE) \cite{Dhawan14:PUMP} is a hardware extension
+%that uses {\em metadata tagging}. Each register and each word of memory is associated with
+%an additional array of bits called a tag. The policy is decomposed into a set of {\em tag rules}
+%that act in parallel with each executing instruction, using the tags on its operands to
+%decide whether the instruction is legal and, if so, determine which tags to place on its results.
+%PIPE tags are large relative to other tag-based hardware, giving it the flexibility
+%to implement complex policies with structured tags, and even run multiple policies at once.
 
-CHERI is capability machine \cite{Woodruff14:IntroCHERI}. In CHERI, capabilities
-are ``fat pointers'' carrying extra bounds and permission information, and capability-protected
-memory can only be accessed via a capability with the appropriate privilege. This is a natural
-way to enforce spatial memory safety, and techniques have been demonstrated for enforcing
-temporal safety \cite{NWF20:Cornucopia}, stack safety \cite{Skorstengaard19:stktokens},
-and compartmentalization \cite{Watson15:CHERIcompartments}, with varying degrees of ease and
-efficiency. But CHERI cannot easily enforce notions of security based on dataflow,
-such as Secure Information Flow.
+%Other hardware monitors include Arm MTE, STAR, and CHERI.
+%Arm MTE aims to enforce a narrow form of memory safety using 4-bit tags, which distinguish adjacent objects
+%in memory from one another, preventing buffer overflows, but not necessarily other memory violations. STAR 
+%uses small tags in regular cache lines which constrains the possible policies \cite{Gollapudi23:STARnarrowTags}.
 
-In this paper, we describe a programming language with an abstract reference monitor.
-We realize it as an interpreter with the reference monitor built in, and envision
-eventually compiling to PIPE-equipped hardware, although an inlining compiler would also be plausible.
-This motivates many of our assumptions about tags.
+%CHERI is capability machine \cite{Woodruff14:IntroCHERI}. In CHERI, capabilities
+%are ``fat pointers'' carrying extra bounds and permission information, and capability-protected
+%memory can only be accessed via a capability with the appropriate privilege. This is a natural
+%way to enforce spatial memory safety, and techniques have been demonstrated for enforcing
+%temporal safety \cite{NWF20:Cornucopia}, stack safety \cite{Skorstengaard19:stktokens},
+%and compartmentalization \cite{Watson15:CHERIcompartments}, with varying degrees of ease and
+%efficiency. But CHERI cannot easily enforce notions of security based on dataflow,
+%such as Secure Information Flow.
 
-%\paragraph{Aspect Oriented Programming}
-%[TODO: do forward search from original AOP paper]
+%In this paper, we describe a programming language with an abstract reference monitor.
+%We realize it as an interpreter with the reference monitor built in, and envision
+%eventually compiling to PIPE-equipped hardware, although an inlining compiler would also be plausible.
+%This motivates many of our assumptions about tags.
 
 \section{Future Work}
 \label{sec:futurework}

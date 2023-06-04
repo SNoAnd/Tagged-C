@@ -17,11 +17,11 @@
 \newcommand{\nt}[1][]{\mathit{\color{blue} nt#1}}
 \newcommand{\PCT}[1][]{\mathcal{\color{blue} P\mathit{#1}}}
 
-\newcommand{\FN}[1][f]{{\color{blue} \textnormal{\sc f}_{#1}}}
-\newcommand{\AN}[1][f,x]{{\color{blue} \textnormal{\sc a}_{#1}}}
-\newcommand{\GN}[1][x]{{\color{blue} \textnormal{\sc g}_{#1}}}
-\newcommand{\LN}[1][L]{{\color{blue} \textnormal{\sc l}_{#1}}}
-\newcommand{\TN}[1][ty]{{\color{blue} \textnormal{\sc t}_{#1}}}
+\newcommand{\FN}[1][f]{{\color{blue} \textnormal{\sc fn}_{#1}}}
+\newcommand{\AN}[1][f,x]{{\color{blue} \textnormal{\sc an}_{#1}}}
+\newcommand{\GN}[1][x]{{\color{blue} \textnormal{\sc gn}_{#1}}}
+\newcommand{\LN}[1][L]{{\color{blue} \textnormal{\sc ln}_{#1}}}
+\newcommand{\TN}[1][ty]{{\color{blue} \textnormal{\sc tn}_{#1}}}
 
 \newcommand{\apt}[1]{\ifdraft\textcolor{orange}{{[APT:~#1]}}\fi}
 \newcommand{\sna}[1]{\ifdraft\textcolor{green!100}{{[SNA:~#1]}}\fi}
@@ -35,7 +35,7 @@
 \newcommand{\PT}{\mathit{\color{blue} \AN[pwd]}}
 \newcommand{\M}{{\color{blue} M}}
 %% Memory Safety %%
-\newcommand{\clr}{\color{blue} \mathit{clr}}
+\newcommand{\clr}[1][c]{\textnormal{\color{blue} \sc clr}(\mathit{#1})}
 \newcommand{\tagz}{{\color{blue} 0}}
 \newcommand{\tagone}{{\color{blue} 1}}
 \newcommand{\tagtwo}{{\color{blue} 2}}
@@ -43,7 +43,7 @@
 \newcommand{\high}{\textnormal{\color{blue} \sc h}}
 \newcommand{\low}{\textnormal{\color{blue} \sc l}}
 \newcommand{\vtaint}[1]{\mathit{\color{blue} vtaint ~ #1}}
-\newcommand{\pctaint}[3]{\textnormal{\sc \color{blue} pc} \mathit{\color{blue} ~ #1 ~ #2 ~ #3}}
+\newcommand{\pctaint}[2]{\textnormal{\sc \color{blue} pc} \mathit{\color{blue} ~ #1 ~ #2}}
 \newcommand{\vol}{\mathit{\color{blue} vol}}
 \newcommand{\sink}[1]{\mathit{\color{blue} sink ~ #1}}
 
