@@ -18,6 +18,26 @@ numpages = {10},
 keywords = {program certification, confinement, information flow, security, lattice, protection, security classes}
 }
 
+@article{Denning76:SFIlattice,
+author = {Denning, Dorothy E.},
+title = {A Lattice Model of Secure Information Flow},
+year = {1976},
+issue_date = {May 1976},
+publisher = {Association for Computing Machinery},
+address = {New York, NY, USA},
+volume = {19},
+number = {5},
+issn = {0001-0782},
+url = {https://doi.org/10.1145/360051.360056},
+doi = {10.1145/360051.360056},
+abstract = {This paper investigates mechanisms that guarantee secure information flow in a computer system. These mechanisms are examined within a mathematical framework suitable for formulating the requirements of secure information flow among security classes. The central component of the model is a lattice structure derived from the security classes and justified by the semantics of information flow. The lattice properties permit concise formulations of the security requirements of different existing systems and facilitate the construction of mechanisms that enforce security. The model provides a unifying view of all systems that restrict information flow, enables a classification of them according to security objectives, and suggests some new approaches. It also leads to the construction of automatic program certification mechanisms for verifying the secure flow of information through a program.},
+journal = {Commun. ACM},
+month = {may},
+pages = {236–243},
+numpages = {8},
+keywords = {protection, program certification, security class, lattice, security, information flow}
+}
+
 @inproceedings{Chhak21:Tagine,
 author = {Chhak, CHR and Tolmach, Andrew and Anderson, Sean},
 title = {Towards Formally Verified Compilation of Tag-Based Policy Enforcement},
@@ -475,3 +495,52 @@ series = {ISCA '14}
   pages={20-37},
   doi={10.1109/SP.2015.9}
   }
+
+@article{10.1145/605432.605429,
+author = {Witchel, Emmett and Cates, Josh and Asanovi\'{c}, Krste},
+title = {Mondrian Memory Protection},
+year = {2002},
+issue_date = {October 2002},
+publisher = {Association for Computing Machinery},
+address = {New York, NY, USA},
+volume = {37},
+number = {10},
+issn = {0362-1340},
+url = {https://doi.org/10.1145/605432.605429},
+doi = {10.1145/605432.605429},
+abstract = {Mondrian memory protection (MMP) is a fine-grained protection scheme that allows multiple protection domains to flexibly share memory and export protected services. In contrast to earlier page-based systems, MMP allows arbitrary permissions control at the granularity of individual words. We use a compressed permissions table to reduce space overheads and employ two levels of permissions caching to reduce run-time overheads. The protection tables in our implementation add less than 9% overhead to the memory space used by the application. Accessing the protection tables adds than 8% additional memory references to the accesses made by the application. Although it can be layered on top of demand-paged virtual memory, MMP is also well-suited to embedded systems with a single physical address space. We extend MMP to support segment translation which allows a memory segment to appear at another location in the address space. We use this translation to implement zero-copy networking underneath the standard read system call interface, where packet payload fragments are connected together by the translation system to avoid data copying. This saves 52% of the memory references used by a traditional copying network stack.},
+journal = {SIGPLAN Not.},
+month = {oct},
+pages = {304–316},
+numpages = {13}
+}
+
+% 200+ citations, cited by several cheri papers
+% per word level protection (8 bits) mostly interested in OS,VM
+%"we believe the need for flexible, efficient, fine-grained memory protection and sharing has been neglected in modem computing
+% systems."
+% many of the others are cfi focused
+@inproceedings{Witchel02:MondrianMem,
+author = {Witchel, Emmett and Cates, Josh and Asanovi\'{c}, Krste},
+title = {Mondrian Memory Protection},
+year = {2002},
+isbn = {1581135742},
+publisher = {Association for Computing Machinery},
+address = {New York, NY, USA},
+url = {https://doi.org/10.1145/605397.605429},
+doi = {10.1145/605397.605429},
+abstract = {Mondrian memory protection (MMP) is a fine-grained protection scheme that allows multiple protection domains to flexibly share memory and export protected services. In contrast to earlier page-based systems, MMP allows arbitrary permissions control at the granularity of individual words. We use a compressed permissions table to reduce space overheads and employ two levels of permissions caching to reduce run-time overheads. The protection tables in our implementation add less than 9% overhead to the memory space used by the application. Accessing the protection tables adds than 8% additional memory references to the accesses made by the application. Although it can be layered on top of demand-paged virtual memory, MMP is also well-suited to embedded systems with a single physical address space. We extend MMP to support segment translation which allows a memory segment to appear at another location in the address space. We use this translation to implement zero-copy networking underneath the standard read system call interface, where packet payload fragments are connected together by the translation system to avoid data copying. This saves 52% of the memory references used by a traditional copying network stack.},
+booktitle = {Proceedings of the 10th International Conference on Architectural Support for Programming Languages and Operating Systems},
+pages = {304–316},
+numpages = {13},
+location = {San Jose, California},
+series = {ASPLOS X}
+}
+
+@book{USDoD85:OrangeBook,
+author = {},
+title = {Trusted Computer System Evaluation Criteria},
+year = {1985},
+isbn = { DOD 5200.28-STD},
+publisher = {United States Department of Defense},
+}

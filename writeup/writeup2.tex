@@ -55,7 +55,7 @@ undefined behavior (UB) such as memory errors (e.g. buffer overflows, use-after-
 logic errors (e.g. sql injection, input-sanitization flaws), or
 larger-scale architectural flaws (e.g. over-provisioning access rights).
 
-[TODO: Fill out more, esp. with relevant citations.] Although static
+Although static
 analyses can detect and mitigate many C insecurities, the last line of
 defense against undetected or unfixable vulnerabilities is run-time
 enforcement of {\em security policies} using a reference
@@ -65,8 +65,9 @@ which attach to the underlying data to carry information like type, provenance,
 ownership, or security classification. A policy takes the form of a set of
 rules that check and update the metadata a key points during execution; if a rule violation is
 encountered, the program failstops. The class of well-known policies that can be implemented
-in this way includes fine-grained memory safety, secure information flow,
-and mandatory access control. %, all of which are important security requirements
+in this way includes fine-grained memory safety \cite{Witchel02:MondrianMem}, secure information flow,
+\cite{Denning76:SFIlattice} and mandatory access control \cite{USDoD85:OrangeBook}. 
+%, all of which are important security requirements
 %from the literature.
 
 Tag-based policies can be enforced either in software or---more promisingly---with the
