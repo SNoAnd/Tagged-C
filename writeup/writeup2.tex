@@ -862,8 +862,10 @@ determines whether access acts like coarse-grained compartmentalization or like 
 \paragraph*{Compartmentalization Variants}
 
 Using program-specific tags for globals and functions, a compartmentalization policy
-like the one above can be extended with a Mandatory Access Control (MAC) policy.
-\apt{This is a little bare!}
+like the one above can be extended with a Mandatory Access Control (MAC) policy \cite{}.
+Here, a table explicitly identifies which compartments may call one another's functions,
+which global variables they can access, and with which other compartments they can share
+memory.
 
 \subsection{Secure Information Flow}
 
@@ -892,7 +894,7 @@ errors or undefined behaviors.
          \node {\tt 12 \}}; \\
        };
 
-    \node[matrix, ampersand replacement=\&, node distance=12em, right=of l2.north,draw] (table1)
+    \node[matrix, ampersand replacement=\&, node distance=15em, right=of l2.north,draw] (table1)
          {
            \node[anchor=north] {\(h\tagat\PCT[_1]\)};\\
          };
@@ -941,23 +943,20 @@ optional label that is part of Tagged C's abstract syntax. This way, the policy 
 reaches that label via the \(\labeltname\) rule. In the full SIF policy, we keep track of
 the pending join point within the PC tag, and lower the PC tag when execution reaches the join point.
 
-A similar structure applies to expressions: a \(\exprsplittname\) tag rule is triggered by entering a conditional
-expression, and a \(\exprjointname\) tag rule is triggered when the conditional expresssion is fully evaluated, allowing
-the result value to be tainted with any control flow that affected it.
-
 \begin{figure}
+  \scriptsize
   \begin{minipage}{0.3\textwidth}
     \color{blue}
     \begin{align*}
       \tau ::= & \high \\
       & \low \\
-      & \pctaint{f}{d}{Ls} & d \in \mathbb{N}, ~ Ls \in \mathit{list} ~ id \\
+      & \pctaint{\FN[]}{\overline{\LN[]}} \\
     \end{align*}
   \end{minipage}
   \begin{minipage}{0.69\textwidth}
     \[|\gentag| \triangleq
     \begin{cases}
-      \low & \textnormal{if } \gentag = \low \textnormal{ or } \gentag = \pctaint{f}{0}{\varepsilon} \\
+      \low & \textnormal{if } \gentag = \low \textnormal{ or } \gentag = \pctaint{\FN[]}{\varepsilon} \\
       \high & \textnormal{otherwise} \\
     \end{cases}\]
     %
@@ -967,34 +966,19 @@ the result value to be tainted with any control flow that affected it.
       \high & \textnormal{otherwise} \\
     \end{cases}\]
   \end{minipage}
-  \begin{minipage}{0.55\textwidth}
+  \begin{minipage}{0.45\textwidth}
     \splittruleblock{
       \caseoftwo{\(\PCT, \vt\)}
-                {\(\pctaint{f}{d}{Ls}, \low\)}{\(\PCT' := \pctaint{f}{d}{(L::Ls)}\)}
-                {\(\underline{~~~}, \high\)}{\(\PCT' := \PCT\)}
-    }
-    \labeltruleblock{
-      \caseoftwo{\(\PCT\)}
-                {\(\pctaint{f}{d}{Ls}\)}{
-                  let \({\color{blue} Ls'} = \mathit{pop\_all} ~ {\color{blue} \LN ~ Ls}\) in \\
-                  & &      \(\PCT' := \pctaint{f}{d}{Ls'}\)
-                }
-                {\(\underline{~~~}\)}{\(\PCT' := \PCT\)}
+                {\(\pctaint{\FN[]}{\overline{\LN[]}}, \high\)}
+                { \\ \multicolumn{3}{l}{~ ~\(\PCT' := \pctaint{\FN[]}{\LN \cup \overline{\LN[]}}}\)}
+                {\(\underline{~~~}, \low\)}{\(\PCT' := \PCT\)}
     }
   \end{minipage}
-  \begin{minipage}{0.35\textwidth}
-    \exprsplittruleblock{
-      \caseoftwo{\(\PCT, \vt\)}
-                {\(\pctaint{f}{d}{Ls}, \low\)}{\(\PCT' := \pctaint{f}{(d+1)}{Ls}\)}
-                {\(\underline{~~~}, \high\)}{\(\PCT' := \PCT\)}
-    }
-
-    \exprjointruleblock{
-      \(\vt' := \vt \sqcap \PCT\) \\
-      \caseoftwo{\(\PCT\)}
-                {\(\pctaint{f}{(d+1)}{Ls}\)}{\(\PCT' := \pctaint{f}{d}{Ls}\)}
-                {\(\underline{~~~}\)}{\(\PCT' := \PCT\)}
-    }
+  \begin{minipage}{0.5\textwidth}
+    \labeltruleblock
+        {let \(\pctaint{\FN[]}{\overline{\LN[]}} := \PCT\) in \\
+          \(\PCT' := \pctaint{\FN[]}{(\overline{\LN[]}-\LN)}\)
+        }
   \end{minipage}
   
   \caption{SIF Conditionals}
@@ -1002,49 +986,39 @@ the result value to be tainted with any control flow that affected it.
 \end{figure}
 
 In addition to \(\low\) and \(\high\), the SIF policy tracks a PC tag written using the
-constructor {\sc \color{blue} pc}, which carries (1) the current function identifier,
-(2) a natural number to record a count of tainted expression scopes, and (3) a stack of label
-identifiers to record the join points of tainted statement scopes.
-Initially, the PC tag is \(\pctaint{f}{0}{\varepsilon}\), which intuitively corresponds
-to ``low'' security. The reduce operator, \(| \cdot |\), maps this tag into \(\low\)
-and a PC tag with any pending contexts into \(\high\). The join operator, \(\cdot \sqcup \cdot\),
-takes the higher of its arguments after reducing them. \apt{This is hard to follow, especially
-  because $\sqcup$ (or even $\sqcap$) doesn't seem to be used.  And what is $pop\_all$ ?  And are $\high$ and $\low$
-  backwards now that you've switched to a confidentiality example?}
+constructor {\sc \color{blue} pc}, which carries the current function identifier and
+set of label identifiers to record the join points of tainted statement scopes.
+Initially, the PC tag is \(\pctaint{\FN[f]}{\varepsilon}\), which intuitively corresponds
+to ``low'' security. The join operator, \(\cdot \sqcup \cdot\), takes the higher of its
+arguments after reducing a PC tag into either \(\high\) or \(\low\).
 
-In order to use this version of SIF, the program must undergo a minor transformation \apt{where/how/by whom
-is this done??} introducing
+In order to use this version of SIF, the program must undergo a minor automatic transformation
+by the compiler or interpreter, introducing
 the labels of all join points explicitly, since otherwise there is nothing in the program
 syntax to attach the join rules to. So in the example {\tt J} becomes an explicit label in the code,
 if it wasn't already. 
 %This is a relatively minor transformation, and is necessary because\apt{don't follow the logic},
 %in the presence of goto, break, and continue statements, the join point of a conditional might be
 %arbitrarily distant from the split point.
-The internal syntactic form of each conditional statement
-(if, switch, while, do-while, and for) takes this optional label\apt{why is it optional?}, and if
-the conditional branches on a high \apt{code wrong??} value, \(\splittname\) pushes the label to the stack
-in the PC tag. Later, when execution reaches a label, \(\labeltname\) checks if it is the
-top of the join-point stack and deletes it if so. \apt{Not getting much intuition for why this works.}
-
-For expressions, the policy does not need to track a stack of arbitrary labels in the PC tag; instead,
-it maintains a simple counter.
-If \(\exprsplittname\) is invoked with \(\vt = \high\)\apt{doesn't match the code. lo and high confused?},
-or if the expression counter on the PC tag is non-zero, it increments the counter.
-\(\exprjointname\) decrements the counter, and when it reaches zero, we know that
-control is about to move past the (potentially) high contex entered by the condtional test.
-The result value tag is adjusted to reflect that context.
-\apt{A code example could help a lot here. On the other hand, the whole subject of expression conditionals
-  could be relegated to a single sentence if space is an issue.}
+The internal syntactic form of each conditional statement (if, switch, while, do-while, and for)
+takes this label (optionally, since not all policies will care about join points.)
+If the conditional branches on a high value, \(\splittname\) adds the label to the set
+in the PC tag. Later, when execution reaches a label, \(\labeltname\) deletes it from the
+set. If the set is non-empty, there is at least one high split point that has not
+yet reached its join point, so we treat the PC tag as being high. When we reach the
+last join point and the set is empty, it is no longer possible to deduce which
+path was taken, except by looking at values that updated in the interim, all of which
+will themselves be tagged \(\high\).
 
 \paragraph*{SIF Variants}
 
 SIF can cover a wide array of different policies. Here we have shown an instance of
-a confidentiality policy, but it \apt{what??} can also support integrity
+a confidentiality policy, but SIF can also support integrity
 (``insecure inputs do not affect secure data''), intransive policies
 (``data can flow from A to B and B to C, but not from A to C''), and policies with
 more than two security levels.
 
-We have sketched \apt{where? not here!} a few instances of practical SIF policies. An intransitive integrity policy
+To give a couple of more realistic examples, an intransitive integrity policy
 can be used to protect against SQL injections by requiring unsafe inputs to pass through a sanitizer
 before they can be appended to a query. Similarly, a more complex SIF policy could ensure that
 data at rest is always encrypted, by setting a low security level to the outputs of an encryption
@@ -1102,7 +1076,7 @@ identify where each pointer comes from, or possibly some sort of temporal logic.
   points could also (or instead) be made in the introduction, to justify why tag-based
   policies are generally interesting and worthwhile even in the absence of hardware support.}
 
-\subsection{Memory Taggig}
+\subsection{Memory Tagging}
 
 The other known limitation is in how we tag memory at allocation time. Malloc tags an
 entire region with a single tag, which means that Tagged C cannot easily
@@ -1112,7 +1086,7 @@ based on its type, but in C, malloc does not get access to type information---it
 memory of a given side and returns a {\tt void *}, and it is up to the caller to cast the
 pointer to the desired type. That cast may be arbitrarily removed from the call to malloc!
 This is not just a problem in the Tagged C context; Michael et al.
-\cite{Michael23:MSWASM} approach a similar problem by outright replacing {\tt malloc}
+\cite{Michael23:MSWASM} approach a similar issue by outright replacing {\tt malloc}
 with a {\tt segalloc} function that takes much more information.
 Versions of memory safety that protect fields of a
 struct from overflows within the same struct would be very useful, but currently enforcing
