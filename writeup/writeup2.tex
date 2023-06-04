@@ -81,14 +81,24 @@ STAR~\cite{Gollapudi+23}, and
 PIPE~\cite{Dhawan+15,Azevedo+16,Azevedo+15}.  PIPE (Processor
 Interlocks for Policy Enforcement),\footnote{ Variants of PIPE have
 also been called PUMP~\cite{Dhawan+14,Dhawan+15},
-SDMP~\cite{Dover16,RoesslerD18} or CoreGuard~\cite{Dover20}.}
-which has been the specific motivator for our work, is particularly flexible: it supports
+SDMP~\cite{Dover16,RoesslerD18} or CoreGuard~\cite{Dover20}.} 
+is a programmable hardware mechanism for supporting reference monitors 
+at the granularity of individual instructions. 
+Each value in memory and each register, well understood objects in hardware,
+is extended with a metadata tag. At the start of executing an instruction,
+PIPE checks the opcode and the tags on its operands to see if the operation 
+should be permitted according to tag rules, and if so, what tags should be 
+assigned to the result. A collection of tag rules forms a PIPE policy.
+
+
+PIPE, the specific motivator for our work, is particularly flexible: its design supports
 arbitrary software-defined flow rules over large (word-sized) tags with arbitrary structure,
-which enables fine-grained policies and the composition of multiple policies.
-This flexibility is useful because security needs may differ radically among codebases,
+which enables fine-grained policies and the composition of multiple policies. This flexibility 
+is useful because security needs may differ radically among codebases,
 and even within a codebase. A conservative, one-size-fits-all policy might be too strong,
 causing failstops even during normal execution. Sensitive code might call for specialized
 protection that isn't relevant elsewhere.
+ 
 
 But PIPE policies can be difficult for a C engineer to write: their tags and rules
 are defined in terms of individual machine instructions and ISA-level
