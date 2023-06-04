@@ -245,18 +245,19 @@ rules. Throughout the paper, we highlight tag-related metavariables, rules, etc.
   \label{fig:ex1}
 \end{figure}
 
-The policy described above is given more precisely in \cref{fig:example1rules}. In tag rules,
+The policy described above is implemented by instantiating the tag rules as shown in \cref{fig:example1rules}. In tag rules,
 the assignment operator := denotes an assignment to the named tag-rule output, by convention
 written as primed metavariables \(\gentag[']\).  Most rules are generic, but
 \(\argtname\) connects the policy to the specifics of the program, identifying {\tt psk}
-as a source of high-security data and treating {\tt printi} as a low-security output by
-triggering a failstop if it recieves high-security data.
+as a source of high-security data and treating {\tt printi} as a low-security output channel by
+triggering a failstop if it receives high-security data.
 
 The tag on {\tt psk} comes from \(\argtname\), which is parameterized by the tag on the argument
 value (\(\vt[_0]\)) and the names of both the function and the argument. The initial tag on local
 variable {\tt x} is the default tag \(\constt\), as is the tag on the constant 5 on line 2.
 The result of the addition on line 2 comes from \(\binoptname\), which is parameterized
-by the kind of operation in addition to the tags on its inputs.
+by the kind of operation as well as the tags on its inputs.\apt{Both $\binoptname$ and $\argtname$ also take $\PCT$ here, but not in the example figure.
+  Need to make these agree; if we keep $\PCT$ here, need to give a forward-ref to its definition.}
 After the final step, the execution is in the function {\tt printi}, where it consults
 \(\argtname\) a second time.
 
@@ -283,20 +284,11 @@ After the final step, the execution is in the function {\tt printi}, where it co
 \end{figure}
 
 \Cref{fig:ex2} steps through the execution of an example function {\tt g} that adds two new wrinkles: we need to keep track of metadata associated with
-addresses and with the program's control-flow state. If the variable {\tt mm} represents
-a memory-mapped device register that is outside of the program's control, we want to avoid storing the password there.
-And, by branching on the password, we risk leaking information that could eventually compromise it even
-if we never print it directly (an {\em implicit flow}.) 
-
-In addition to tags on values, Tagged C attaches tags to memory locations ({\em location tags}, ranged over by
-\(\lt\)) and tracks a special global tag called the PC tag (ranged over by \(\PCT\)).
-Extending the policy above, we write rules that initialize the location tag of {\tt mm} to \(\low\),
-as a low-security output channel, and all other addresses \(\high\). Whenever execution branches on
-a high-tagged value, the PC tag will be set to \(\high\). We modify the previous rules so that
-assignments propagate the higher of the tag on the value being assigned and the PC tag, meaning that an
-assignment under a high PC remains high. When an assignment is to a memory location, an
-additional store rule will check the tag on that location against the value being written,
-and failstop if a high value would be written to a low location.
+addresses and with the program's control-flow state. We suppose {\tt mm} is
+a memory-mapped device register that can be read from outside the program, so we want to avoid storing the passkey there,
+so we need a way to monitor stores to memory.  Furthermore, although this code does not leak the passkey directly,
+it does so indirectly: since the store to {\tt mm} is conditional on testing {\tt psk},
+an outside observer of {\tt mm} can deduce one bit of the key (an {\em implicit flow}\apt{add cite}).
 
 
 \begin{figure}
@@ -362,6 +354,8 @@ and failstop if a high value would be written to a low location.
 \label{fig:ex2}
 \end{figure}
 
+In addition to tags on values, Tagged C attaches tags to memory locations ({\em location tags}, ranged over by
+\(\lt\)) and tracks a special global tag called the PC tag (ranged over by \(\PCT\)).
 Tagged C initializes the tags on {\tt mm} with the \(\globaltname\) rule. The PC tag
 at the point of call, \(\PCT_0\), is fed to \(\calltname\) to determine a new PC tag
 inside of {\tt g}. And the if-statement consults the \(\splittname\) rule to update the PC tag
@@ -369,6 +363,19 @@ inside of its branch based on the value-tag of the expression {\tt psk < 0}. Onc
 conditional, when the program assigns to {\tt mm}, it must consult both the
 \(\assigntname\) rule as normal and the \(\storetname\) rule because it is storing
 to memory.
+
+\Cref{fig:example2rules} shows an inntantiation of these rules that  extend our previous SIF policy.
+The rule for globals initializes the location tag of {\tt mm} to \(\low\),
+as a low-security output channel, and marks all other addresses \(\high\). Whenever execution branches on
+a high-tagged value, the PC tag will be set to \(\high\). We modify the previous rules so that
+assignments propagate the higher of the tag on the value being assigned and the PC tag, meaning that an
+assignment under a high PC remains high.\apt{Why isn't this shown in the figure??}
+When an assignment is to a memory location, the store rule will check the tag on
+that location against the value being written, 
+and failstop if a high value would be written to a low location.
+For this program, \(\splittname\) will set the PC tag to \high, as it branches on a value derived from {\tt psk}; 
+then, at the write to {\tt mm}, \(\storetname\) will fail rather than write to a low address
+in a high context.
 
 \begin{figure}
   \globaltruleblock{
@@ -391,11 +398,9 @@ to memory.
                 {\(\underline{~~~}\)}{\(\fail\)}
   }
 \caption{Secure Information Flow (pt. 2)}
+\label{fig:example2rules}
 \end{figure}
 
-In this case, \(\splittname\) will set the PC tag to \high, as it branches on a value derived from {\tt psk}.
-Then, when it comes time to write to {\tt mm}, \(\storetname\) will fail rather than write to a low address
-in a high context.
 
 \section{The Tagged C Language: Syntax and Semantics}
 \label{sec:language}
