@@ -163,6 +163,8 @@ security concerns.
 \Cref{sec:related} discusses related work, and \cref{sec:futurework} descibes future work.
 The full details of Tagged C semantics appear in the Appendix.
 
+\apt{Are we supplying the Coq code as an artifact?}
+
 \section{Metadata Tags and Policies, by Example}
 \label{sec:example}
 
@@ -470,7 +472,7 @@ derived from the \(\binoptname\) rule. [TODO: instance of a tag rule.]
 
 The tag rule itself is instantiated as a partial function; if a policy leaves a tag rule
 undefined on some inputs, then those inputs are considered to violate the policy, sending
-execution into a special failstop state. The names and signatures of the tag rules,
+execution into a special failstop state. The names and signatures of all the tag rules,
 and their corresponding control points, are listed in \Cref{fig:controlpoints}.
 \(\calltname\) and \(\rettname\) update the PC tag on entry and exit from a function,
 with \(\rettname\) aware of both the caller's PC tag (\(\PCT[_{\color{blue} CLR}]\))
