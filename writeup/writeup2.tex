@@ -721,7 +721,7 @@ location tag.
 Memory safety also informs the design of control points related to allocating, deallocating, and
 accessing memory. \(\malloctname\) and \(\freetname\) are special cases of the
 \(\extcalltname\) control point. Drawing from CompCert C, Tagged C abstracts over
-``external'' functions like malloc and free, rather than treat their implementation as
+``external'' functions like {\tt malloc} and {\tt free}, rather than treat their implementation as
 ordinary code. In a concrete system, these would be replaced by their library equivalents.
 \(\extcalltname\) models the desired tag behavior of these libraries in the Tagged C semantics.
 
@@ -801,7 +801,7 @@ active function, kept up to date by the \(\calltname\) and \(\rettname\) rules.
 
 Once the policy knows which compartment is active, it must ensure that compartments do not interfere with
 one another's memory. A simple means of doing so is given in \cref{fig:compartments}: any object allocated by
-a given compartment, whether on the stack or via malloc, is tagged with that compartment's identity,
+a given compartment, whether on the stack or via {\tt malloc}, is tagged with that compartment's identity,
 and can only be accessed while that compartment is active.
 
 This is very limiting, however! In practice, compartments need to be able to share memory, such as in the
@@ -814,7 +814,7 @@ without modifying source code. In order to be minimally intrusive, we
 create a variant identifier for {\tt malloc}, {\tt malloc\_share}, which maps to the same
 address (i.e., it still calls the same function) but has a different name tag and can therefore
 be used to specialize the tag rule. (The need to do this is one of several limitations related
-to malloc; see \cref{sec:limitations}.) An engineer might manually select which allocations are
+to {\tt malloc}; see \cref{sec:limitations}.) An engineer might manually select which allocations are
 shareable, or perhaps rely on some form of escape analysis to detect shareable allocations automatically.
 
 The policy in \cref{fig:sharing} essentially combines the simple compartmentalization policy
@@ -1039,7 +1039,7 @@ routine and a high level to the outputs of its corresponding decryption routine.
 \label{sec:evaluation}
 \label{sec:limitations}
 
-Tagged C aims to combine the flexibility of tag-based architectures with the abstraction
+Tagged C aims to combine the flexibility of machine-level tag-based monitoring architectures with the abstraction
 of a high-level language. In the last section, we demonstrated three classes of policies
 with broad practical applicability and described how they can be tuned to the needs of a
 particular program. They can be used alone or in conjunction. A brief summary of
@@ -1091,23 +1091,24 @@ identify where each pointer comes from, or possibly some sort of temporal logic.
 
 \subsection{Memory Tagging}
 
-The other known limitation is in how we tag memory at allocation time. Malloc tags an
+The other known limitation is in how we tag memory at allocation time. Each call to {\tt malloc} tags an
 entire region with a single tag, which means that Tagged C cannot easily
 enforce substructural memory safety and other properties that call for allocated
 regions to be tagged according to their types. We would rather be able to tag the allocated region
-based on its type, but in C, malloc does not get access to type information---it allocates
-memory of a given side and returns a {\tt void *}, and it is up to the caller to cast the
-pointer to the desired type. That cast may be arbitrarily removed from the call to malloc!
-This is not just a problem in the Tagged C context; Michael et al.
-\cite{Michael23:MSWASM} approach a similar issue by outright replacing {\tt malloc}
+based on its type, but in C, {\tt malloc} does not get access to type information---it allocates
+memory of a given size and returns a {\tt void *}, and it is up to the caller to cast the
+pointer to the desired type. That cast may be arbitrarily distant from the call to {\tt malloc}!
+This is a well-known impediment to improving C memory safety, and previous work has often
+adopted approaches similar to ours; for example, Michael et al.
+\cite{Michael23:MSWASM} replacing {\tt malloc} outright 
 with a {\tt segalloc} function that takes much more information.
 Versions of memory safety that protect fields of a
 struct from overflows within the same struct would be very useful, but currently enforcing
 them will require manual initialization.
 
-\subsection{Overall Control Points}
+\subsection{Fixed set of Control Points}
 
-Beyond these, there is always the possibility that we have missed some control point
+There is always the possibility that we have missed some control point
 that would enable interesting security policies outside of the areas we have considered.
 How hard would it be to add control points, or extend the ones that exist? That depends
 whether the extension in question would impact compilation strategies. For instance,
