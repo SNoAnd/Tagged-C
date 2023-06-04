@@ -87,14 +87,22 @@
            
 \newcommand{\binoptname}{\color{blue} \mathbf{BinopT}}
 \newcommand{\binoptargs}{\oplus, \PCT, \vt[_1], \vt[_2]}
+\newcommand{\binoptexargs}{\oplus,\vt[_1],\vt[_2]}
 \newcommand{\binoptres}{\vt[']}
 \newcommand{\binopt}{\binoptname(\binoptargs)}
+\newcommand{\binoptex}{\binoptname(\binoptexargs)}
 
 \newcommand{\binoptruleblock}[1]
            {
              \truleblock{\(\binopt\)}{#1}
            }
 
+\newcommand{\binoptexruleblock}[1]
+           {
+             \truleblock{\(\binoptex\)}{#1}
+           }
+
+           
 \newcommand{\calltname}{\color{blue} \mathbf{CallT}}
 \newcommand{\calltargs}{\PCT, \pt}
 \newcommand{\calltres}{\PCT[']}
@@ -115,12 +123,19 @@
 
 \newcommand{\argtname}{\color{blue} \mathbf{ArgT}}
 \newcommand{\argtargs}{\PCT, \vt, \AN, \TN}
+\newcommand{\argtexargs}{\vt,\FN,\AN}
 \newcommand{\argtres}{\PCT['], \vt[']}
 \newcommand{\argt}{\argtname(\argtargs)}
+\newcommand{\argtex}{\argtname(\argtexargs)}
 
 \newcommand{\argtruleblock}[1]
            {
              \truleblock{\(\argt\)}{#1}
+           }
+
+\newcommand{\argtexruleblock}[1]
+           {
+             \truleblock{\(\argtex\)}{#1}
            }
            
 \newcommand{\rettname}{\color{blue} \mathbf{RetT}}

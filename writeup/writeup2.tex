@@ -44,7 +44,7 @@ interpreter for Tagged C.
 \end{abstract}
 
 \section{Introduction}
-Many essential technologies rely on new and old C code. 
+Many essential technologies rely on new and old C code.
 Operating systems (Linux, Windows, OSX, BSD), databases (Oracle, sqlite3), the internet
 (Apache, NGNIX, NetBSD, Cisco IOS), the Internet of Things (IoT), and the 
 embedded devices that run our homes and hospitals are built in and on C \cite{Munoz:PoweredbyC}. 
@@ -173,7 +173,8 @@ Consider a straightforward security requirement for a program that handles sensi
 {\em secure information flow} (SIF) policies. Suppose the code in \cref{fig:ex1} is part of
 such a system, where {\tt psk} is expected to be a passkey and {\tt printi}
 prints an integer to an insecure channel, so this code indirectly performs a leak via the
-local variable {\tt x}. We now explain how Tagged C and its control points
+local variable {\tt x}. This leak would be easily found using static analyses, but it serves
+as a simple first example of how Tagged C and its control points
 enable a security policy that would prevent this leak.
 
 In Tagged C, all values carry a metadata tag. Whenever execution reaches a control point, it consults
@@ -184,12 +185,12 @@ In this case, when {\tt f} processes its arguments, a program-specific tag rule
 will tag {\tt psk} as \(\high\). This tag will be propagated along with the value through variable accesses,
 assignments, and arithmetic, according to generic rules that are not specific to this program. Finally, a program-specific
 argument-handling rule for {\tt printi} will check that the tag is \(\low\); since it is not, the rule will
-cause a failstop.\apt{Might be worth admitting here that type-based static analysis could also easily find this problem.}
+cause a failstop.
 
 \Cref{fig:ex1} maps each of three points in the execution of {\tt f} to a description of the program
-state at that point, with the input value and all tags treated symbolically.\footnote{
-Tag rules that merely propagate their inputs,
-in this case \(\accesstname\) and \(\assigntname\), are omitted.\apt{recheck; if still valid, explain more.}}
+state at that point, with the input value and all tags treated symbolically. 
+Tag rules that merely propagate their inputs are omitted. In this case that is \(\accesstname\),
+each time a variable is read, and \(\assigntname\), each time one is assigned.
 Let \(i\) be the value passed to {\tt psk}
 and \(\vt[_0]\) the corresponding tag. In each state, the first column
 shows the active function, the second gives the symbolic values and tags
@@ -255,18 +256,20 @@ as a source of high-security data and treating {\tt printi} as a low-security ou
 triggering a failstop if it receives high-security data.
 
 The tag on {\tt psk} comes from \(\argtname\), which is parameterized by the tag on the argument
-value (\(\vt[_0]\)) and the names of both the function and the argument. The initial tag on local
+value (\(\vt[_0]\)) and the names of both the function
+\footnote{This is a simplification; see \cref{sec:compartments} for a discussion of how \(\argtname\)
+accesses the function identifier in practice.}
+and the argument. The initial tag on local
 variable {\tt x} is the default tag \(\constt\), as is the tag on the constant 5 on line 2.
 The result of the addition on line 2 comes from \(\binoptname\), which is parameterized
-by the kind of operation as well as the tags on its inputs.\apt{Both $\binoptname$ and $\argtname$ also take $\PCT$ here, but not in the example figure.
-  Need to make these agree; if we keep $\PCT$ here, need to give a forward-ref to its definition.}
+by the kind of operation as well as the tags on its inputs.
 After the final step, the execution is in the function {\tt printi}, where it consults
 \(\argtname\) a second time.
 
 \begin{figure}
   \begin{minipage}{0.4\textwidth}
     \[\tau::=\high | \low\]
-    \argtruleblock
+    \argtexruleblock
         {\caseofthree{\((f,x,\vt)\)}
           {(\(\mathtt{printi},\underline{~~},\high\))}{\(\fail\)}
           {(\(\mathtt{f},\mathtt{psk},\underline{~~}\))}{\(\vt':=\high\)}
@@ -275,7 +278,7 @@ After the final step, the execution is in the function {\tt printi}, where it co
   \begin{minipage}{0.5\textwidth}
     \consttruleblock{\(\vt' := \low\)}
 
-    \binoptruleblock
+    \binoptexruleblock
         {\caseoftwo{\((\vt[_1],\vt[_2])\)}
           {(\(\low,\low\))}{\(\vt':=\low\)}
           {\(\underline{~~~}\)}{\(\vt':=\high\)}}
@@ -556,7 +559,6 @@ C standard to various degrees. For example, if objects are known to be aligned t
 the low-order \(n\) bits of pointers can be ``borrowed'' to store other data~\cite{Memarian16:DeFacto}.
 The possible presence of these low-level idioms means that there is no one-size-fits all memory safety policy.
 
-
 CompCert C definition of a valid pointer allows the pointer to be cast into an integer and back, provided that its value
 does not change in the interim. This is very strict! Programs that use low-level idioms
 will failstop if run under a policy that enforces this.
@@ -733,6 +735,7 @@ double-free errors by either retagging a deallocated region, or using the PC tag
 to track live objects and revoking permissions on an object as soon as it is freed.
 
 \subsection{Compartmentalization}
+\label{sec:compartments}
 
 In principle, the monitoring techniques in the previous section could be used
 to detect all unintended memory safety violations (albeit only at run time) and ultimately to fix them.
