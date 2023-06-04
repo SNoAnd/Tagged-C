@@ -186,7 +186,6 @@ and \(\vt[_0]\) the corresponding tag. In each state, the first column
 shows the active function, the second gives the symbolic values and tags
 of variables in the local environment, and the third shows the flow of those tags though
 rules. Throughout the paper, we highlight tag-related metavariables, rules, etc. in {\color{blue}blue}.
-\apt{Nitpicking, shouldn't the {\tt @} signs be blue too?}
 
 \begin{figure}
   \begin{tikzpicture}[every text node part/.style={align=left}]
@@ -203,14 +202,14 @@ rules. Throughout the paper, we highlight tag-related metavariables, rules, etc.
     \node[matrix, ampersand replacement=\&, node distance=6em, right=of code.north,draw] (table1)
          {
            \node[anchor=north] {\(f\)}; \&
-           \node[anchor=north] {\(\mathtt{psk} \mapsto i @ \vt[_1]\) \\ \(\mathtt{x} \mapsto \vundef @ \vt[_2]\)}; \&
+           \node[anchor=north] {\(\mathtt{psk} \mapsto i \tagat \vt[_1]\) \\ \(\mathtt{x} \mapsto \vundef \tagat \vt[_2]\)}; \&
            \node[anchor=north] {\(\vt[_1] \leftarrow \argtname(\vt[_0],\FN,\AN[psk])\) \\ \(\vt[_2] \leftarrow \constt\)};\\
          };
 
     \node[matrix, ampersand replacement=\&, node distance=4.5em, below=of table1.west,draw,anchor=west] (table2)
          {
            \node[anchor=north] {\(f\)}; \&
-           \node[anchor=north] {\(\mathtt{psk} \mapsto i @ \vt[_1]\) \\ \(\mathtt{x} \mapsto (i+5) @ \vt[_4]\)}; \&
+           \node[anchor=north] {\(\mathtt{psk} \mapsto i \tagat \vt[_1]\) \\ \(\mathtt{x} \mapsto (i+5) \tagat \vt[_4]\)}; \&
            \node[anchor=north] {\(\vt[_3] \leftarrow \constt\) \\
              \(\vt[_4] \leftarrow \binoptname(+,\vt[_2],\vt[_3])\) }; \\
          };
@@ -218,7 +217,7 @@ rules. Throughout the paper, we highlight tag-related metavariables, rules, etc.
     \node[matrix, ampersand replacement=\&, node distance=4.5em, below=of table2.west,draw,anchor=west] (table3)  
          {
            \node[anchor=north] {\(\mathit{printi}\)}; \&
-           \node[anchor=north] {\(\mathtt{a} \mapsto i @ \vt[_5]\)}; \&
+           \node[anchor=north] {\(\mathtt{a} \mapsto i \tagat \vt[_5]\)}; \&
            \node[anchor=north] {\(\vt[_5] \leftarrow \argtname(\vt[_4], \FN[\mathit{printi}], \AN[a])\)}; \\
          };
 
@@ -307,10 +306,10 @@ and failstop if a high value would be written to a low location.
 
   \node[matrix, ampersand replacement=\&, node distance=6em, right=of l1.north,draw,anchor=west] (table1)  
        {
-         \node[anchor=north] {\(g @ \PCT[_1]\)}; \&
-         \node[anchor=north] {\(\mathtt{mm} \mapsto p @ \pt[_1] \) \\
-           \(p:\fbox{\(\vundef @ \vt[_1] @ \lt[_1]\)}\) \\
-           \(\mathtt{psk} \mapsto i @ \vt[_2]\)
+         \node[anchor=north] {\(g \tagat \PCT[_1]\)}; \&
+         \node[anchor=north] {\(\mathtt{mm} \mapsto p \tagat \pt[_1] \) \\
+           \(p:\fbox{\(\vundef \tagat \vt[_1] \tagat \lt[_1]\)}\) \\
+           \(\mathtt{psk} \mapsto i \tagat \vt[_2]\)
          }; \&
          \node[anchor=north] {\(\pt[_1], \vt[_1],\lt[_1] \leftarrow \globaltname(\GN[mm])\) \\
            \(\PCT[_1] \leftarrow \calltname(\PCT[_0], \FN[g])\)  \\
@@ -319,10 +318,10 @@ and failstop if a high value would be written to a low location.
        
  \node[matrix, ampersand replacement=\&, node distance=5em, below=of table1.west,draw,anchor=west] (table2)         
       {
-        \node[anchor=north] {\(g @ \PCT_2\)}; \&
-        \node[anchor=north] {\(\mathtt{mm} \mapsto p @ \pt[_1]\) \\
-          \(p:\fbox{\(\vundef @ \vt[_1] @ \lt[_1]\)}\) \\
-          \(\mathtt{psk} \mapsto i @ \vt[_2]\)
+        \node[anchor=north] {\(g \tagat \PCT_2\)}; \&
+        \node[anchor=north] {\(\mathtt{mm} \mapsto p \tagat \pt[_1]\) \\
+          \(p:\fbox{\(\vundef \tagat \vt[_1] \tagat \lt[_1]\)}\) \\
+          \(\mathtt{psk} \mapsto i \tagat \vt[_2]\)
         }; \&
         \node[anchor=north] {\(\vt[_3] \leftarrow \constt\) \\
           \(\vt[_4] \leftarrow \binoptname(>,\vt[_2],\vt[_3])\) \\ 
@@ -331,10 +330,10 @@ and failstop if a high value would be written to a low location.
 
  \node[matrix, ampersand replacement=\&, node distance=6em, below=of l3,draw,anchor=west] (table3)         
       {
-        \node[anchor=north] {\(g @ \PCT[_2]\)}; \&
-        \node[anchor=north] {\(\mathtt{mm} \mapsto p @ \pt[_1]\) \\
-          \(p:\fbox{\(\vundef @ \vt[_7] @ \lt[_2]\)}\) \\
-          \(\mathtt{psk} \mapsto i @ \vt[_2] \)
+        \node[anchor=north] {\(g \tagat \PCT[_2]\)}; \&
+        \node[anchor=north] {\(\mathtt{mm} \mapsto p \tagat \pt[_1]\) \\
+          \(p:\fbox{\(\vundef \tagat \vt[_7] \tagat \lt[_2]\)}\) \\
+          \(\mathtt{psk} \mapsto i \tagat \vt[_2] \)
         }; \&
         \node[anchor=north] {\(\vt[_5] \leftarrow \constt\) \\
           \(\vt[_6] \leftarrow \assigntname(\PCT[_2]
@@ -577,11 +576,11 @@ it points to at that time.
          \node {\tt 8 ~ x[1] = 0; // Illegal in all}; \\
        };
 
-  \node[right=of l2,draw,anchor=west] {\(\mathtt{x} \mapsto a_1@\pt[_1], \mathtt{y} \mapsto a_2@\pt_2\)};
-  \node[right=of l3,draw,anchor=west] {\(\mathtt{p} \mapsto a_2@\vt[_1]\) ~
+  \node[right=of l2,draw,anchor=west] {\(\mathtt{x} \mapsto a_1\tagat\pt[_1], \mathtt{y} \mapsto a_2\tagat\pt_2\)};
+  \node[right=of l3,draw,anchor=west] {\(\mathtt{p} \mapsto a_2\tagat\vt[_1]\) ~
     \(\vt[_1] \leftarrow \picasttname(\PCT, )\)};
-  \node[right=of l4,draw,anchor=west] {\(\mathtt{q} \mapsto a_3@\vt[_2]\) ~ \(\vt[_2] \leftarrow \picasttname\)};
-  \node[right=of l5,draw,anchor=west] {\(\mathtt{r} \mapsto a_4@\vt[_3]\) ~ \(\vt[_3] \leftarrow \binoptname\)};
+  \node[right=of l4,draw,anchor=west] {\(\mathtt{q} \mapsto a_3\tagat\vt[_2]\) ~ \(\vt[_2] \leftarrow \picasttname\)};
+  \node[right=of l5,draw,anchor=west] {\(\mathtt{r} \mapsto a_4\tagat\vt[_3]\) ~ \(\vt[_3] \leftarrow \binoptname\)};
   
 \end{tikzpicture}
 
@@ -739,7 +738,7 @@ and function and global identifiers are mapped to compartments by \(\mathit{comp
 Compartmentalization requires the policy to keep track of the active compartment, which means
 keeping track of function pointers. In Tagged C, function pointers are the exception to the
 concrete memory model. They carry symbolic values that refer uniquely to their target functions.
-A variable expression where the variable is the function {\tt f} evaluates to \(\mathtt{f}@\FN[\mathtt{f}]\).
+A variable expression where the variable is the function {\tt f} evaluates to \(\mathtt{f}\tagat\FN[\mathtt{f}]\).
 When the function pointer is called, Tagged C invokes \(\callt\), where \(\pt\) is the
 function pointer's tag, to update PC tag.
 On return, in addition to handling the return value (if any), \(\rett\) determines a new PC tag
@@ -877,19 +876,19 @@ errors or undefined behaviors.
 
     \node[matrix, ampersand replacement=\&, node distance=12em, right=of l2.north,draw] (table1)
          {
-           \node[anchor=north] {\(h@\PCT[_1]\)};\\
+           \node[anchor=north] {\(h\tagat\PCT[_1]\)};\\
          };
 
     \node[matrix, ampersand replacement=\&, node distance=4.5em, below=of table1.west,draw,anchor=west] (table2)
          {
-           \node[anchor=north] {\(h@\PCT[_3]\)}; \&
+           \node[anchor=north] {\(h\tagat\PCT[_3]\)}; \&
            \node[anchor=north] {\(\PCT[_2], \vt[_1] \leftarrow \rettname(\dots)\) \\
              \(\PCT[_3] \leftarrow \splittname(\PCT[_2], \vt_1)\) }; \\
          };
 
     \node[matrix, ampersand replacement=\&, node distance=4.5em, below=of table2.west,draw,anchor=west] (table3)  
          {
-           \node[anchor=north] {\(h@\PCT[_4]\)}; \&
+           \node[anchor=north] {\(h\tagat\PCT[_4]\)}; \&
            \node[anchor=north] {\(\PCT[_4] \leftarrow \labeltname(\PCT[_3], \LN[J])\)}; \\
          };
 
@@ -1216,7 +1215,7 @@ be cast.
 Some common C expressions are derived forms. An array index expression,
 \(\expr_1[\expr_2]\) expands to \(\deref{\binop{+}{\expr_1}{\expr_2}}\).
 The pre-increment  expression \(++\expr\) expands to
-\(\assign{\expr}{\binop{+}{\expr}{1@\constt}}\), and likewise for pre-decrement.
+\(\assign{\expr}{\binop{+}{\expr}{1\tagat\constt}}\), and likewise for pre-decrement.
 
 Similarly, statements cover the full C standard. Conditional statements
 carry optional labels as internal forms, so that an if statement in the
@@ -1306,7 +1305,7 @@ Given a list \(xs\) of variable identifiers \(id\) and types
 \(ty\), a program's initial memory is defined by iteratively allocating each one
 in memory and updating the global environment with its base address, bound, type,
 and a static identity tag. Let \(|ty|\) be a function from types to their sizes
-in bytes. The memory is initialized \(\vundef@\vt@\lt\)
+in bytes. The memory is initialized \(\vundef\tagat\vt\tagat\lt\)
 for some \(\vt\) and \(\lt\), unless given an initializer.
 Let \(\mem_0\) and \(\genv_0\) be the initial (empty) memory and environment.
 The parameter \(b\) marks the start of the global region.
@@ -1318,7 +1317,7 @@ The parameter \(b\) marks the start of the global region.
 \[\mathit{globals} ~ xs ~ b =
 \begin{cases}
   (\mem_0, \genv_0) & \textnormal{if } xs = \varepsilon \\
-  (\mem[p \dots p+|ty| \mapsto \vundef@\vt@\lt]_{|ty|}, & \textnormal{if } xs = (id,ty)::xs' \\
+  (\mem[p \dots p+|ty| \mapsto \vundef\tagat\vt\tagat\lt]_{|ty|}, & \textnormal{if } xs = (id,ty)::xs' \\
   ~ \genv[id \mapsto (\mathit{p, p+|ty|,ty,\pt})]) & \textnormal{and } \trule{\globaltres}{\globalt} \\
   & \textnormal{where } (\mem,\genv) = \mathit{globals} ~ xs' ~ (b + |ty|) \\
 \end{cases}\]
@@ -1411,13 +1410,13 @@ When we make an internal call, we need to allocated space for locals and argumen
 
 \[\mathit{frame} ~ xs ~ as ~ \mem =
 \begin{cases}
-  (\mem''[p \mapsto \vundef@\vt@\lt]_{|ty|}, & \textnormal{if } xs = (id,ty)::xs' \\
+  (\mem''[p \mapsto \vundef\tagat\vt\tagat\lt]_{|ty|}, & \textnormal{if } xs = (id,ty)::xs' \\
   \lenv'[id \mapsto (\mathit{p, p+|ty|,ty,\pt})]) &
   \textnormal{where } (\mem',p) \leftarrow \mathit{stack\_alloc} ~ |ty| ~ \mem, \\
   & \trule{\localtres}{\localt}, \\
   & \textnormal{and } (\mem'',\lenv') = \mathit{frame} ~ xs' ~ as ~ m' \\ 
   \\
-  (\mem''[p \mapsto v@\vt'@\lt]_{|ty|}, & \textnormal{if } as = (id,ty,v @ \vt)::as' \textnormal{ and } xs = \varepsilon \\
+  (\mem''[p \mapsto v\tagat\vt'\tagat\lt]_{|ty|}, & \textnormal{if } as = (id,ty,v \tagat \vt)::as' \textnormal{ and } xs = \varepsilon \\
   \lenv'[id \mapsto (\mathit{p, p+|ty|,ty,\pt})]) &
   \textnormal{where } (\mem',p) \leftarrow \mathit{stack\_alloc} ~ |ty| ~ \mem, \\
   & \trule{\argtres}{\argt}, \\
@@ -1489,15 +1488,15 @@ And finally, we have the return rules.
 %and memory-location expressions, \(\lt\) for tags associated with memory locations themselves,
 %\(\nt\) for ``name tags'' automatically derived from identifiers, \(\PCT\) for the
 %global ``program counter tag'' or PC tag.
-%An {\it atom} is a pair of a value and a tag, \(\val{v}{\vt}\); the @ symbol should be read
+%An {\it atom} is a pair of a value and a tag, \(\val{v}{\vt}\); the \tagat symbol should be read
 %as a pair in general, and is used when the second object in the pair is a tag.
 %Expressions are ranged over by \(\expr\), statements by \(\stmt\), and continuations by \(\cont\).
 %The continuations are defined in \cref{app:continuations}, and step rules in \cref{app:rules}.
 
 %A memory is an array of bytes, where each byte is part of an atom.
 %Each byte is also associated with a ``location tag'' \(\lt\). When a contiguous region of \(s\) bytes
-%starting at location \(l\) comprise an atom \(v@\vt\), and their locations tags comprise the list \(\lts\),
-%we write \(\mem[l]_s = v@\vt @\lts\). Likewise, \(\mem[l \dots l + s \mapsto v@\vt @ \lts]_s\)
+%starting at location \(l\) comprise an atom \(v\tagat\vt\), and their locations tags comprise the list \(\lts\),
+%we write \(\mem[l]_s = v\tagat\vt \tagat\lts\). Likewise, \(\mem[l \dots l + s \mapsto v\tagat\vt \tagat \lts]_s\)
 %denotes storing that many bytes. Visually, we will represent whole atoms in memory as condensed boxes,
 %with their location tags separate.
 
