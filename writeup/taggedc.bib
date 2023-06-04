@@ -412,3 +412,66 @@ articleno = {15},
 numpages = {30},
 keywords = {Secure Compilation, Memory-safety, WebAssembly, Semantics}
 }
+
+@INPROCEEDINGS { Gollapudi23:STARnarrowTags,
+author = {R. Gollapudi and G. Yuksek and D. Demicco and M. Cole and G. N. Kothari and R. H. Kulkarni and X. Zhang and K. Ghose and A. Prakash and Z. Umrigar},
+booktitle = {2023 2023 IEEE Symposium on Security and Privacy (SP) (SP)},
+title = {Control Flow and Pointer Integrity Enforcement in a Secure Tagged Architecture},
+year = {2023},
+volume = {},
+issn = {},
+pages = {2974-2989},
+abstract = {Control flow attacks exploit software vulnerabilities to divert the flow of control into unintended paths to ultimately execute attack code. This paper explores the use of instruction and data tagging as a general means of thwarting such control flow attacks, including attacks that rely on violating pointer integrity. Using specific types of narrow-width data tags along with narrow-width instruction tags embedded within the binary facilitates the security policies required to protect against such attacks, leading to a practically viable solution. Co-locating instruction tags close to their corresponding instructions within cache lines eliminates the need for separate mechanisms for instruction tag accesses. Information gleaned from the analysis phase of a compiler is augmented and used to generate the instruction and data tags. A full-stack implementation that consists of a modified LLVM compiler, modified Linux OS support for tags and a FPGA-implemented CPU hardware prototype for enforcing CFI, data pointer and code pointer integrity is demonstrated. With a modest hardware enhancement, the execution time of benchmark applications on the prototype system is shown to be limited to low, single-digit percentages of a baseline system without tagging.},
+keywords = {control-flow-integrity,-hardware-security,-pointer-integrity,-security-architectures,-security-and-privacy-policies},
+doi = {10.1109/SP46215.2023.00102},
+url = {https://doi.ieeecomputersociety.org/10.1109/SP46215.2023.00102},
+publisher = {IEEE Computer Society},
+address = {Los Alamitos, CA, USA},
+month = {may}
+}
+
+% google claims 300, acm 100, contains the phrase "We present CHERI"
+@article{10.1145/2678373.2665740,
+author = {Woodruff, Jonathan and Watson, Robert N.M. and Chisnall, David and Moore, Simon W. and Anderson, Jonathan and Davis, Brooks and Laurie, Ben and Neumann, Peter G. and Norton, Robert and Roe, Michael},
+title = {The CHERI Capability Model: Revisiting RISC in an Age of Risk},
+year = {2014},
+issue_date = {June 2014},
+publisher = {Association for Computing Machinery},
+address = {New York, NY, USA},
+volume = {42},
+number = {3},
+issn = {0163-5964},
+url = {https://doi.org/10.1145/2678373.2665740},
+doi = {10.1145/2678373.2665740},
+abstract = {Motivated by contemporary security challenges, we reevaluate and refine capability-based addressing for the RISC era. We present CHERI, a hybrid capability model that extends the 64-bit MIPS ISA with byte-granularity memory protection. We demonstrate that CHERI enables language memory model enforcement and fault isolation in hardware rather than software, and that the CHERI mechanisms are easily adopted by existing programs for efficient in-program memory safety. In contrast to past capability models, CHERI complements, rather than replaces, the ubiquitous page-based protection mechanism, providing a migration path towards deconflating data-structure protection and OS memory management. Furthermore, CHERI adheres to a strict RISC philosophy: it maintains a load-store architecture and requires only singlecycle instructions, and supplies protection primitives to the compiler, language runtime, and operating system. We demonstrate a mature FPGA implementation that runs the FreeBSD operating system with a full range of software and an open-source application suite compiled with an extended LLVM to use CHERI memory protection. A limit study compares published memory safety mechanisms in terms of instruction count and memory overheads. The study illustrates that CHERI is performance-competitive even while providing assurance and greater flexibility with simpler hardware},
+journal = {SIGARCH Comput. Archit. News},
+month = {jun},
+pages = {457–468},
+numpages = {12}
+}
+
+@inproceedings{Woodruff14:IntroCHERI,
+author = {Woodruff, Jonathan and Watson, Robert N.M. and Chisnall, David and Moore, Simon W. and Anderson, Jonathan and Davis, Brooks and Laurie, Ben and Neumann, Peter G. and Norton, Robert and Roe, Michael},
+title = {The CHERI Capability Model: Revisiting RISC in an Age of Risk},
+year = {2014},
+isbn = {9781479943944},
+publisher = {IEEE Press},
+abstract = {Motivated by contemporary security challenges, we reevaluate and refine capability-based addressing for the RISC era. We present CHERI, a hybrid capability model that extends the 64-bit MIPS ISA with byte-granularity memory protection. We demonstrate that CHERI enables language memory model enforcement and fault isolation in hardware rather than software, and that the CHERI mechanisms are easily adopted by existing programs for efficient in-program memory safety. In contrast to past capability models, CHERI complements, rather than replaces, the ubiquitous page-based protection mechanism, providing a migration path towards deconflating data-structure protection and OS memory management. Furthermore, CHERI adheres to a strict RISC philosophy: it maintains a load-store architecture and requires only singlecycle instructions, and supplies protection primitives to the compiler, language runtime, and operating system. We demonstrate a mature FPGA implementation that runs the FreeBSD operating system with a full range of software and an open-source application suite compiled with an extended LLVM to use CHERI memory protection. A limit study compares published memory safety mechanisms in terms of instruction count and memory overheads. The study illustrates that CHERI is performance-competitive even while providing assurance and greater flexibility with simpler hardware},
+booktitle = {Proceeding of the 41st Annual International Symposium on Computer Architecuture},
+pages = {457–468},
+numpages = {12},
+location = {Minneapolis, Minnesota, USA},
+series = {ISCA '14}
+}
+
+@INPROCEEDINGS{Watson15:CHERIcompartments,
+
+  author={Watson, Robert N.M. and Woodruff, Jonathan and Neumann, Peter G. and Moore, Simon W. and Anderson, Jonathan and Chisnall, David and Dave, Nirav and Davis, Brooks and Gudka, Khilan and Laurie, Ben and Murdoch, Steven J. and Norton, Robert and Roe, Michael and Son, Stacey and Vadera, Munraj},
+  booktitle={2015 IEEE Symposium on Security and Privacy}, 
+  title={CHERI: A Hybrid Capability-System Architecture for Scalable Software Compartmentalization}, 
+  year={2015},
+  volume={},
+  number={},
+  pages={20-37},
+  doi={10.1109/SP.2015.9}
+  }

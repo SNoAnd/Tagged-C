@@ -431,8 +431,7 @@ in a high context.
   \label{fig:controlpoints}
 \end{table}
 
-Tagged C is full ordinary C. [TODO: refine this statement!] \amn{Tagged C is a subset 
-of conventional C.}
+Tagged C is a subset of conventional C.
 Its semantics (given in full in the Appendix)
 is based on that of CompCert C \cite{Leroy09:CompCert},
 a formalization of the C standard into a small-step reduction semantics.
@@ -1161,15 +1160,15 @@ to implement complex policies with structured tags, and even run multiple polici
 
 Other hardware monitors include Arm MTE, STAR, and CHERI.
 Arm MTE aims to enforce a narrow form of memory safety using 4-bit tags, which distinguish adjacent objects
-in memory from one another, preventing buffer overflows, but not necessarily other memory violations.
-[TODO: read the Binghamton paper, figure out where they sit here.] 
+in memory from one another, preventing buffer overflows, but not necessarily other memory violations. STAR 
+uses small tags in regular cache lines which constrains the possible policies \cite{Gollapudi23:STARnarrowTags}.
 
-CHERI is capability machine [TODO: cite OG CHERI]. In CHERI, capabilities
+CHERI is capability machine \cite{Woodruff14:IntroCHERI}. In CHERI, capabilities
 are ``fat pointers'' carrying extra bounds and permission information, and capability-protected
 memory can only be accessed via a capability with the appropriate privilege. This is a natural
 way to enforce spatial memory safety, and techniques have been demonstrated for enforcing
 temporal safety \cite{NWF20:Cornucopia}, stack safety \cite{Skorstengaard19:stktokens},
-and compartmentalization [TODO: figure out what to cite], with varying degrees of ease and
+and compartmentalization \cite{Watson15:CHERIcompartments}, with varying degrees of ease and
 efficiency. But CHERI cannot easily enforce notions of security based on dataflow,
 such as Secure Information Flow.
 
