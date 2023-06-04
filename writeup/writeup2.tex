@@ -530,32 +530,21 @@ where the user may need to reference identifiers from their program in the polic
 
 \subsection{Memory Safety}
 
-\apt{Move guts of this paragraph below net one?}
-Memory safety is the principle that all memory operations are performed through a valid pointer
-\apt{A rather odd formulation!}\amn{I think thats a subset of memory safety.Buffer overflows have 
-valid pointers. How about "Memory
-safety, broadly speaking, is the idea that operations should access only their intended memory during the
-intended window. One aspect is ensuring all pointers used at valid."} 
-The definition of what constitutes
-a valid pointer can be nuanced. According to the C standard, a pointer can be rendered invalid if 
-it is ever adjusted to lie outside the bounds of the object that it initially points to, even if it is restored to be within
-bounds before performing a load or store. In practice, it is common for programs to violate the
-standard to various degrees. For example, if objects are known to be aligned to \(2^n\)-byte boundaries,
-the low-order \(n\) bits of pointers can be ``borrowed'' to store other data~\cite{Memarian16:DeFacto}.
-\apt{But actually, this probably does \emph{not} violate the standard in the way described above.
-  Perhaps better, instead of talking about bounds, to say that the standard doesn't support doing
-  arbitrary arithmetic on pointers or their integer casts?} 
-The possible presence of these low-level idioms means that there is
-no one-size-fits all memory safety policy.
-
-\apt{Could lead section with this para.}
 Tagged C can be used to enforce memory safety with respect to different {\em memory models}---formal
 or informal descriptions of how C should handle memory. Here we discuss the CompCert C
 memory model and two models proposed by Memarian et al. \cite{Memarian19:ExploringCSemantics}
 for the purposes of supporting low-level idioms, focusing in particular on how they handle
 casts from pointers to integers and back.
 
-CompCert C allows a pointer to be cast into an integer and back, provided that its value
+
+While the idea seems obvious, the definition of a valid pointer can vary in nuance. The C standard
+does not support arbitrary arithmetic on pointers or their integer casts.  In practice, it is common for programs to violate the
+C standard to various degrees. For example, if objects are known to be aligned to \(2^n\)-byte boundaries,
+the low-order \(n\) bits of pointers can be ``borrowed'' to store other data~\cite{Memarian16:DeFacto}.
+The possible presence of these low-level idioms means that there is no one-size-fits all memory safety policy.
+
+
+CompCert C definition of a valid pointer allows the pointer to be cast into an integer and back, provided that its value
 does not change in the interim. This is very strict! Programs that use low-level idioms
 will failstop if run under a policy that enforces this.
 
@@ -570,11 +559,22 @@ On the other hand, their second model, {\em provenance not via integer} (PNVI), 
 provenance of a pointer when it is cast to an integer. When an integer is cast to a pointer
 (whether or not it was previously derived from a pointer), it takes on the provenance of whatever
 it points to at that time.
+\amn{I left this bit alone since yinz seem to be on it}
 \sna{This diagram isn't quite there, but I'm interested in feedback on the level of detail
   that seems necessary for it. \apt{Seems ok. Maybe you need to add the other two BinopT invocations at 6,7.
     I've made the C legal and (I think) more idiomatic, but obviously the rules still need to be finished. BTW, why isn't $a_2 = a_3 = a_1$?
 Very pedantic question: would PVI really permit line 6, given that we don't really know that {\tt y} is better than 1-byte aligned (this is not guaranteed for stack allocations), so this \& may put us in a different object? }}
 
+\paragraph*{Policy Implementation Details}
+
+The basic idea for enforcing any of the above memory safety variants is a ``lock and key'' approach~\cite{Clause07:MemsafeTainting,Azevedo+15}.
+Whenever an object is allocated, it is assigned a unique ``color,'' and its memory locations as well
+as its pointer are tagged with that color. The default tag \(N\) indicates that there is currently
+no color. These rules are given in \cref{fig:memcommon}.
+Operations that are valid on pointers in a given memory model
+maintain the pointer's color, and loads and stores are legal if the pointer tag matches the target memory
+location tag.\apt{This all needs more explanation. What is going on with the PC tag? (And is $clr$ really an integer?) Why are the Binop rules for P/NVI non-symmetric? CompCert Binop rule hard to distinguish minus and underscore. What is role of $CAST$ constructor, and is it being used correctly in IPCastT??}
+The rules for the PVI memory safety policy are given in \cref{subfig:pvi}.\apt{Why is this called out separately?}
 \begin{figure}
 
 \begin{tikzpicture}[every text node part/.style={align=left}]
@@ -602,16 +602,6 @@ Very pedantic question: would PVI really permit line 6, given that we don't real
 \label{fig:memsafe}
 \end{figure}
 
-\paragraph*{Memory Safety in General}
-
-The basic idea for enforcing any of these three memory safety variants is a ``lock and key'' approach~\cite{Clause07:MemsafeTainting,Azevedo+15}.
-Whenever an object is allocated, it is assigned a unique ``color,'' and its memory locations as well
-as its pointer are tagged with that color. The default tag \(N\) indicates that there is currently
-no color. These rules are given in \cref{fig:memcommon}.
-Operations that are valid on pointers in a given memory model
-maintain the pointer's color, and  loads and stores are legal if the pointer tag matches the target memory
-location tag.\apt{This all needs more explanation. What is going on with the PC tag? (And is $clr$ really an integer?) Why are the Binop rules for P/NVI non-symmetric? CompCert Binop rule hard to distinguish minus and underscore. What is role of $CAST$ constructor, and is it being used correctly in IPCastT??}
-The rules for the PVI memory safety policy are given in \cref{subfig:pvi}.\apt{Why is this called out separately?}
 
 
 \begin{figure}
