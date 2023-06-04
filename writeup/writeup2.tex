@@ -12,7 +12,7 @@
 
 \usetikzlibrary{automata,positioning,shapes.multipart,arrows.meta}
 
-\title{Flexible Run-time Security Enforcement with Tagged C}
+\title{Flexible Runtime Security Enforcement with Tagged C}
 \author{Sean Anderson \and Allison Naaktgeboren \and Andrew Tolmach}
 \institute{Portland State University}
 
@@ -26,6 +26,7 @@
 \maketitle
 
 \begin{abstract}
+\apt{Still reads awkwardly, and doesn't expose problem/solution clearly.}
 Today's computing infrastructure is built atop layers of legacy C code, often
 insecure, poorly understood, and/or difficult to maintain.
 These foundations may be shored up with dynamic security enforcement.
@@ -49,29 +50,33 @@ Operating systems (Linux, Windows, OSX, BSD), databases (Oracle, sqlite3), the i
 embedded devices that run our homes and hospitals are built in and on C \cite{Munoz:PoweredbyC}. 
 %C is not a relic; more than a third of professional programmers report active developing
 %in C today \cite{stackoverflow22:dev-survey}. \apt{That sentence seems off topic of ``essential technologies.''}
-The safety of these essential technologies
-depends on the security of their underlying C codebases. Insecurity might take the form of
+The safety of these technologies
+depends on the security of their underlying C codebases.
+Insecurity can arise from C
 undefined behavior (UB) such as memory errors (e.g. buffer overflows, use-after-free, double-free),
-logic errors (e.g. sql injection, input-sanitization flaws), or
+logic errors (e.g. SQL injection, input-sanitization flaws), or
 larger-scale architectural flaws (e.g. over-provisioning access rights).
 
 Although static
-analyses can detect and mitigate many C insecurities, the last line of
-defense against undetected or unfixable vulnerabilities is run-time
+analyses can detect and mitigate many C insecurities, a last line of
+defense against undetected or unfixable vulnerabilities is runtime
 enforcement of {\em security policies} using a reference
-monitor~\cite{Anderson72:PlanningStudy}. A large class of useful policies
-can be specified as \emph{data-flow} constraints based on \emph{metadata tags},
-which attach to the underlying data to carry information like type, provenance,
-ownership, or security classification. A policy takes the form of a set of
-rules that check and update the metadata a key points during execution; if a rule violation is
-encountered, the program failstops. The class of well-known policies that can be implemented
-in this way includes fine-grained memory safety \cite{Witchel02:MondrianMem}, secure information flow,
+monitor~\cite{Anderson72:PlanningStudy}. In particular, 
+many useful policies can be specified in terms of flow constraints on 
+\emph{metadata tags}, which augment the underlying data with information like type, provenance,
+ownership, or security classification. A tag-based policy takes the form of a set of
+rules that check and update the metadata tags at key points during execution; if a rule violation is
+encountered, the program failstops. Well-known policies that can be implemented
+in this way include fine-grained memory safety \cite{Witchel02:MondrianMem}, secure information flow,
 \cite{Denning76:SFIlattice} and mandatory access control \cite{USDoD85:OrangeBook}. 
 %, all of which are important security requirements
 %from the literature.
+\apt{Should still move some of evaluation discussion about monitoring tags vs. values to here.
+  Explain (a) why hardware enforcement is easier for tags than full values; (b) why tag policies might
+be easier to specify than aribtrary value-based policies.}
 
-Tag-based policies can be enforced either in software or---more promisingly---with the
-aid of hardware extensions such as ARM MTE~\cite{arm-mte},
+Tag-based policies are especially well-suited for hardware enforcement, using 
+processor extensions such as ARM MTE~\cite{arm-mte},
 STAR~\cite{Gollapudi+23}, and
 PIPE~\cite{Dhawan+15,Azevedo+16,Azevedo+15}.  PIPE (Processor
 Interlocks for Policy Enforcement),\footnote{ Variants of PIPE have
@@ -97,8 +102,8 @@ To address these problems, we introduce a \emph{source-level} specification fram
 which allows engineers to describe policies in terms of familiar C-level concepts, with tags attached to
 C functions, variables and data values, and rules triggered at \emph{control points} that correspond to
 significant execution events, such as function calls, expression evaluation, and pointer-based memory accesses. 
-Control points resemble ``advice points'' in aspect-oriented programming, but narrowly
-focused on the manipulation of tags.
+Control points resemble ``advice points'' in aspect-oriented programming, but are narrowly
+focused on the manipulation of tags.\apt{revisit this after related work is done}
 In previous work~\cite{Chhak21:Tagine}, we outlined such a framework for a toy
 source language and showed how high-level policies could be compiled to ISA-level policies and 
 enforced using PIPE-like hardware.  Here we extend this approach to handle
@@ -116,24 +121,25 @@ Formally, Tagged C is defined as a variant C semantics that instruments ordinary
 At each control point, a user-defined set of tag rules is consulted to propagate tags and potentially cause
 execution to failstop. In the limiting case where no tag rules are defined, the semantics are similar to
 those of ordinary C, except that the memory model is very concrete; 
-pointers and integers are essentially the same thing, and all globals, dynamically-allocated objects,
-and address-taken objects are allocated in the same memory space. Memory behaviors
+data pointers are just integers, and all globals, dynamically-allocated objects,
+and address-taken objects are allocated in the same integer-addressed memory space. Memory behaviors
 that would be undefined in standard C are given a definition (parameterized by a particular allocation strategy)
 consistent with the behavior of a typical compiler.
 We build the Tagged C semantics on top of the CompCert C semantics, which are formalized 
-as part of the CompCert verified compiler \cite{Leroy09:CompCert}. We provide a reference interpreter
+as part of the CompCert verified compiler \cite{Leroy09:CompCert}. We provide a reference interpreter,
 also based on that of CompCert, for use in prototyping and executing policies. Tag rules are written directly
 in Coq as Gallina functions.
 
 The choice of control points and their associations with tag rules, as well as the tag rules'
 signatures, form the essence of Tagged C's design. 
-We have validated our design on the three classes of policies explored in this paper,
+We have validated this design on the three classes of policies explored in this paper,
 and, outside of a few known limitation discussed in \cref{sec:limitations}, e.g. substructural memory safety,
 we believe it is sufficiently expressive to describe most other flow-based policies, although
-of course further experience is needed. 
+of course further experience is needed to confirm this.
 
 \paragraph{Contributions}
 
+\apt{Should still try to goose these up as Catalin suggested}
 In summary we offer the following contributions:
 
 \begin{itemize}
@@ -1472,7 +1478,7 @@ And finally, we have the return rules.
 %\sna{I'm organizing our diss tracks into paragraphs that we can cut or move as needed}
 %\paragraph*{Why Dynamic?}
   
-%  Unfortunately, it is not always possible to fully secure C code before run-time.
+%  Unfortunately, it is not always possible to fully secure C code before run time.
 %  Ideally, bugs would be quickly identified and then fixed promptly. 
 %  That is not always possible for a variety of reasons: bugs may escape detection, 
 %  require significant effort to diagnose, or be impractical to fix. 
