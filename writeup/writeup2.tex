@@ -379,12 +379,12 @@ conditional, when the program assigns to {\tt mm}, it must consult both the
 \(\assigntname\) rule as normal and the \(\storetname\) rule because it is storing
 to memory.
 
-\Cref{fig:example2rules} shows an inntantiation of these rules that  extend our previous SIF policy.
+\Cref{fig:example2rules} shows an inntantiation of these rules that extend our previous SIF policy.
 The rule for globals initializes the location tag of {\tt mm} to \(\low\),
 as a low-security output channel, and marks all other addresses \(\high\). Whenever execution branches on
 a high-tagged value, the PC tag will be set to \(\high\). We modify the previous rules so that
 assignments propagate the higher of the tag on the value being assigned and the PC tag, meaning that an
-assignment under a high PC remains high.\apt{Why isn't this shown in the figure??}
+assignment under a high PC remains high.
 When an assignment is to a memory location, the store rule will check the tag on
 that location against the value being written, 
 and failstop if a high value would be written to a low location.
@@ -408,8 +408,10 @@ in a high context.
     \(\lt':=\lt\) \\
     \(\PCT':=\PCT\) \\
     \caseofthree{(\(\PCT,\vt,\lt\))}
-                {(\(\underline{~~},\underline{~~},\high\))}{\(\vt':=\vt\)}
-                {(\(\low,\low,\low\))}{\(\vt':=\vt\)}
+                {(\(\high,\underline{~~},\high\)) \\
+                  (\(\underline{~~},\high,\high\))
+                }{\(\vt':=\high\)}
+                {(\(\low,\low,\low\))}{\(\vt':=\low\)}
                 {\(\underline{~~~}\)}{\(\fail\)}
   }
 \caption{Secure Information Flow (pt. 2)}
