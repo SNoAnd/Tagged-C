@@ -28,20 +28,18 @@
 \begin{abstract}
 Today's computing infrastructure is built atop layers of legacy C code, 
 which is often insecure, poorly understood, and/or difficult to maintain.
-Additional security can be added with dynamic enforcement. Hardware reference monitors 
-are a promising mechanism for dynamic enforcement, including PIPE (Processor
-Interlocks for Policy Enforcement). Unfortunately, the existing PIPE systems
-require expression at the ISA, which is often out of reach of C developers.
-
-We introduce Tagged C, a novel C variant with formalized and verified semantics 
+Security can be improved by using runtime reference monitors, which might
+be implemented using hardware support, such as the PIPE (Processor
+Interlocks for Policy Enforcement) processor extensions. Unfortunately,
+existing PIPE-based systems require policies to be expressed at the ISA level,
+which makes them opaque and limits their applicability to higher-level language features.
+To address this problem, we introduce Tagged C, a novel C variant with formalized and verified semantics 
 for a built-in {\em tag-based reference monitor} based on PIPE.
-Tagged C expresses PIPE security policies at a level familiar to C developers: that
+Tagged C expresses security policies at a level familiar to C developers: that
 of the C source code rather than the ISA.
-
 Tagged C is designed to express a variety of dynamic security policies,  
-either solo or in concert, and enforce them with compiler and/or hardware support.
-It is comprehensive in supporting different
-approaches to security and varying levels of strictness. We demonstrate
+individually or in combination, and enforce them with compiler and hardware support.
+It supports different approaches to security and varying levels of strictness. We demonstrate
 this range by providing examples of {\em memory safety}, {\em compartmentalization},
 and {\em secure information flow} (SIF) policies. We also give a formalized, full semantics
 and a reference interpreter for Tagged C.
