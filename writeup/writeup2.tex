@@ -267,7 +267,7 @@ value (\(\vt[_0]\)) and the names of both the function
 \footnote{This is a simplification; see \cref{sec:compartments} for a discussion of how \(\argtname\)
 accesses the function identifier in practice.}
 and the argument. The initial tag on local
-variable {\tt x} is the default tag \(\constt\), as is the tag on the constant 5 on line 2.
+variable {\tt x} is the default tag \(\consttname\), as is the tag on the constant 5 on line 2.
 The result of the addition on line 2 comes from \(\binoptname\), which is parameterized
 by the kind of operation as well as the tags on its inputs.
 After the final step, the execution is in the function {\tt printi}, where it consults
@@ -433,8 +433,8 @@ in a high context.
     \(\assigntname\)    & \(\assigntargs\)       & \(\assigntres\)    & Variable Assignments \\
     \(\unoptname\)      & \(\unoptargs\)         & \(\unoptres\)      & Unary Operation \\
     \(\binoptname\)     & \(\binoptargs\)        & \(\binoptres\)     & Binary Operation \\
-    \(\consttname\)     &                        & \(\consttres\)     & Applied to Constants/Literals \\
-    \(\inittname\)      &                        & \(\inittres\)      & Applied to Fresh Variables \\
+    \(\consttname\)     & \(\consttargs\)        & \(\consttres\)     & Applied to Constants/Literals \\
+    \(\inittname\)      & \(\inittargs\)         & \(\inittres\)      & Applied to Fresh Variables \\
     \(\exprsplittname\) & \(\exprsplittargs\)    & \(\exprsplittres\) & Control-flow split points in expressions \\
     \(\exprjointname\)  & \(\exprjointargs\)     & \(\exprjointres\)  & Join points in expressions \\
     \(\splittname\)     & \(\splittargs\)        & \(\splittres\)     & Control-flow split points in statements\\
@@ -505,8 +505,8 @@ and the callee's (\(\PCT[_{\color{blue} CLE}]\)). \(\argtname\) updates tags on 
 is in memory. \(\exprsplittname\), \(\exprjointname\), \(\splittname\), and \(\labeltname\)
 update the PC tag based on changes in control flow. \(\fieldtname\) updates the tag
 on a pointer value when it is offset to access the field of a struct or union.
-\(\unoptname\) and \(\binoptname\) handle operations, \(\constt\) is the default tag
-on all constants, and \(\initt\) the initial tag in a fresh variable. \(\globaltname\), \(\localtname\),
+\(\unoptname\) and \(\binoptname\) handle operations, \(\consttname\) is the default tag
+on all constants, and \(\inittname\) the initial tag in a fresh variable. \(\globaltname\), \(\localtname\),
 and \(\malloctname\) are each associated with the allocation of memory, with the latter
 two corresponding to \(\dealloctname\) and \(\freetname\) as deallocation rules,
 respectively. The cast rules are specialized based on whether the original type or
