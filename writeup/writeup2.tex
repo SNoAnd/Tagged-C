@@ -1261,9 +1261,11 @@ with a trivial ``do-nothing'' policy behaves like ordinary CompCert C, and (iii)
 do not change program behavior outside of potentially causing failstops.
 
 \paragraph*{Policy Correctness Proofs}
-For each example policy discussed in this paper, we sketched an informal specification for the
-security property it ought to enforce. A natural next step is to formalize these specifications
-and prove that the corresponding policies do in fact enforce them.
+
+Besides proving properties of Tagged C itself, we aim to prove properties of the policies
+themselves. For each family of policies that we discuss, we will give a higher-level formal
+specification (e.g., a non-interference property for SIF) and prove that it holds on all
+programs run under that property.
 
 \bibliographystyle{splncs04}
 \bibliography{taggedc.bib}
