@@ -28,11 +28,10 @@
 \begin{abstract}
 Today's computing infrastructure is built atop layers of legacy C code, 
 which is often insecure, poorly understood, and/or difficult to maintain.
-These layers may be shored up with dynamic security enforcement. Hardware reference monitors 
-are a popular mechanism for dynamic enforcement, including PIPE (Processor
-Interlocks for Policy Enforcement). Unfortunately, the existing PIPE systems'
-semantics are often underspecified, leaving gaps,
-and/or require expression at the ISA, which is often out of reach of C developers.
+Additional security can be added by dynamic enforcement. Hardware reference monitors 
+are a promising mechanism for dynamic enforcement, including PIPE (Processor
+Interlocks for Policy Enforcement). Unfortunately, the existing PIPE systems
+require expression at the ISA, which is often out of reach of C developers.
 
 We introduce Tagged C, a novel C variant with formalized and verified semantics 
 for a built-in {\em tag-based reference monitor} based on PIPE.
