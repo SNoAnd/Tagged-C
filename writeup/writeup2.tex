@@ -82,27 +82,25 @@ PIPE~\cite{Dhawan+15,Azevedo+16,Azevedo+15}.  PIPE (Processor
 Interlocks for Policy Enforcement),\footnote{ Variants of PIPE have
 also been called PUMP~\cite{Dhawan+14,Dhawan+15},
 SDMP~\cite{Dover16,RoesslerD18} or CoreGuard~\cite{Dover20}.} 
-is a programmable hardware mechanism for supporting reference monitors 
+the specific motivator for our work, 
+is a programmable hardware mechanism that supports monitoring 
 at the granularity of individual instructions. 
-Each value in memory and each register, well understood objects in hardware,
-is extended with a metadata tag. At the start of executing an instruction,
+Each value in memory and registers
+is extended with a metadata tag. Before executing each instruction,
 PIPE checks the opcode and the tags on its operands to see if the operation 
-should be permitted according to tag rules, and if so, what tags should be 
+should be permitted according to a tag rule, and if so, what tags should be 
 assigned to the result. A collection of tag rules forms a PIPE policy.
-
-
-PIPE, the specific motivator for our work, is particularly flexible: its design supports
-arbitrary software-defined flow rules over large (word-sized) tags with arbitrary structure,
-which enables fine-grained policies and the composition of multiple policies. This flexibility 
+PIPE is particularly flexible: it supports
+arbitrary software-defined tag rules over large (word-sized) tags with arbitrary structure,
+which enables fine-grained policies and policy composition. This flexibility 
 is useful because security needs may differ radically among codebases,
 and even within a codebase. A conservative, one-size-fits-all policy might be too strong,
 causing failstops even during normal execution. Sensitive code might call for specialized
 protection that isn't relevant elsewhere.
  
-
 But PIPE policies can be difficult for a C engineer to write: their tags and rules
 are defined in terms of individual machine instructions and ISA-level
-concepts, and in practice are based on reverse engineering the behavior
+concepts, and in practice they are developed by reverse engineering the behavior
 of specific compilers. 
 Moreover, some security policies can only be expressed in terms of high-level code
 features that are not preserved at machine level, such as function
@@ -153,13 +151,14 @@ of course further experience is needed to confirm this.
 In summary we offer the following contributions:
 
 \begin{itemize}
-\item The design of a comprehensive set of {\em control points} at which the C language interfaces with a tag-based policy
-\item Tagged C policies implementing (1) compartmentalization,
+\item The design of a comprehensive set of {\em control points} at which the C language interfaces with a tag-based policy.
+\item Tagged C policies implementing (1) compartmentalization.
   (2) a realistic, permissive memory model from the literature (PVI),
-  and (3) Secure Information Flow (SIF)
+  and (3) Secure Information Flow (SIF).
 \item A full formal semantic definition for Tagged C, formalized in Coq, describing how the control points
-  interact with programs
-\item A Tagged C interpreter, implemented in Coq and extracted to Ocaml
+  interact with programs.
+\item A Tagged C interpreter, implemented in Coq and extracted to OCaml. \apt{Since we're not providing the
+  interpreter as an artifact, is there anything interesting we can say about it in the paper?}
 \end{itemize}
 
 The paper is organized as follows.
@@ -172,8 +171,6 @@ which the design meets our goals of flexibility and applicability to realistic
 security concerns.
 \Cref{sec:related} discusses related work, and \cref{sec:futurework} descibes future work.
 The full details of Tagged C semantics appear in the Appendix.
-
-\apt{Are we supplying the Coq code as an artifact?}
 
 \section{Metadata Tags and Policies, by Example}
 \label{sec:example}
