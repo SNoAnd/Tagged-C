@@ -612,6 +612,14 @@ location tag.
          \node (l3) {\tt 2 ~ int p = (int) x;}; \\
          \node (l4) {\tt 3 ~ int q = (int) y;}; \\
          \node (l5) {\tt 4 ~ int r = q | 0x1;}; \\
+%5 UNCLEAR IF WHAT FOLLOWS WAS SUPPOSED TO WORK; IT DOESN'T COMPILE FOR ME
+%%   \node[matrix, ampersand replacement=\%, anchor=west] (code)
+%%        {
+%%          \node {\tt 1 ~ int x[1],y[1];}; \% \node {\(\mathtt{x} \mapsto a_1\tagat\pt[_1]\) \\ \(\mathtt{y} \mapsto a_2\tagat\pt_2\)}; \% \node {\(\PCT_1,\pt_1,\lt_1 \leftarrow \localt\) \\ \(\PCT_2,\pt_2,\lt_2 \leftarrow \localt\)}; \\
+%%          \node {\tt 2 ~ int p = (int) x;}; \% \node {\(\mathtt{p} \mapsto a_2\tagat\vt[_1]\) ~
+%%     \(\vt[_1] \leftarrow \picasttname(\PCT,\pt[_1],\lt[_1])\)}; \\
+%%          \node {\tt 3 ~ int q = (int) y;}; \% \node {\(\mathtt{q} \mapsto a_3\tagat\vt[_2]\) ~ \(\vt[_2] \leftarrow \picasttname(\PCT,\pt[_2],\lt[_2])\)}; \\
+%%          \node {\tt 4 ~ int r = q | 0x1;}; \% \node {\(\mathtt{r} \mapsto a_4\tagat\vt[_3]\) ~ \(\vt[_3] \leftarrow \binoptname(\mid, \PCT, \vt[_2], \constt)\)}; \\
          \node {\tt 5 ~ * (int *) p = 0; // Legal in all}; \\
          \node {\tt 6 ~ * (int *) (r \& 0xfffffffe) = 0; // Illegal in CompCert C}; \\
          \node {\tt 7 ~ * (int *) (p + (q - p)) = 0; // Illegal in PVI}; \\
