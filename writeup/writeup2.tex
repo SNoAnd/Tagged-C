@@ -71,16 +71,13 @@ many useful policies can be specified in terms of flow constraints on
 \emph{metadata tags}, which augment the underlying data with information like type, provenance,
 ownership, or security classification. A tag-based policy takes the form of a set of
 rules that check and update the metadata tags at key points during execution; if a rule violation is
-encountered, the program failstops. Well-known policies that can be implemented
-in this way include fine-grained memory safety \cite{Witchel02:MondrianMem}, secure information flow,
-\cite{Denning76:SFIlattice} and mandatory access control \cite{USDoD85:OrangeBook}. 
-%, all of which are important security requirements
-%from the literature.
-\apt{Should still move some of evaluation discussion about monitoring tags vs. values to here.
-  Explain (a) why hardware enforcement is easier for tags than full values; (b) why tag policies might
-be easier to specify than aribtrary value-based policies.}
+encountered, the program failstops. 
+Although monitoring based on metadata tags is less flexible and powerful than monitoring based on the
+underlying data values, it can enforce many useful security properties, including
+both low-level concerns, such as fine-grained memory safety~\cite{Witchel02:MondrianMem}, and high-level
+properties like secure information flow~\cite{Denning76:SFIlattice} and mandatory access control~\cite{USDoD85:OrangeBook}. 
 
-Tag-based policies are especially well-suited for hardware enforcement, using 
+Tag-based policies are especially well-suited for efficient hardware enforcement, using 
 processor extensions such as ARM MTE~\cite{arm-mte},
 STAR~\cite{Gollapudi+23}, and
 PIPE~\cite{Dhawan+15,Azevedo+16,Azevedo+15}.  PIPE (Processor
@@ -103,6 +100,12 @@ and even within a codebase. A conservative, one-size-fits-all policy might be to
 causing failstops even during normal execution. Sensitive code might call for specialized
 protection that isn't relevant elsewhere.
  
+\apt{There is still a thought I would like to express here about tag-based policies being
+  relatively accessible to programmers, since they manipulate meta state just like ordinary
+  programs manipulate state.  As opposed to, say, writing temporal logic formulae.  But (a)
+  I can't find a good place to put this, and (b) seems like this advantage is also shared
+  by AOP and similar approaches. So I'm leaving it out for now.}
+
 But PIPE policies can be difficult for a C engineer to write: their tags and rules
 are defined in terms of individual machine instructions and ISA-level
 concepts, and in practice they are developed by reverse engineering the behavior
@@ -1098,61 +1101,61 @@ routine and a high level to the outputs of its corresponding decryption routine.
 %      & Guarantee Encrypted Data at Rest by requiring all stores to first pass through an encryption routine &
 %      As SIF, with special rules for encryption and decryption functions \\ 
 
-\section{Evaluation}
-\label{sec:evaluation}
+%% \section{Evaluation}
+%% \label{sec:evaluation}
 
-Tagged C aims to combine the flexibility of machine-level tag-based monitoring architectures with the abstraction
-of a high-level language. In the last section, we demonstrated three classes of policies
-with broad practical applicability and described how they can be tuned to the needs of a
-particular program. They can be used alone or in conjunction. A brief summary of
-policies and their use cases may be found in \cref{table:policies}.
+%% Tagged C aims to combine the flexibility of machine-level tag-based monitoring architectures with the abstraction
+%% of a high-level language. In the last section, we demonstrated three classes of policies
+%% with broad practical applicability and described how they can be tuned to the needs of a
+%% particular program. They can be used alone or in conjunction. A brief summary of
+%% policies and their use cases may be found in \cref{table:policies}.
 
-The Tagged C semantics support the full complement of C language features, and advance
-over our previous work. The underlying memory behavior gives definition to a wide range
-of programs and is an interesting model in its own right.
+%% The Tagged C semantics support the full complement of C language features, and advance
+%% over our previous work. The underlying memory behavior gives definition to a wide range
+%% of programs and is an interesting model in its own right.
 
-In the remainder of this section, we explore some of the benefits and limitations of
-our design choices.
+%% In the remainder of this section, we explore some of the benefits and limitations of
+%% our design choices.
 
-%generic/program specific
-%low-level/high-level
+%% %generic/program specific
+%% %low-level/high-level
 
-% Trying to just thread the table into each section rather than all at once
-%\begin{table}
-%  \begin{center}
-%    %\begin{tabular}{ c| c |c }
-%    \title{Further Policies and their Uses}
-%    \begin{tabular}{  p{3cm} | p{5cm}| p{5cm}  } 
-%      \textbf{Name} & \textbf{Example Use Cases} & \textbf{Tag Implementation} \\ 
-%      \hline
-%      SIF: Intransitive Integrity &
-%      Protect agains SQL Injection by requiring outside data to pass through a sanitizer &
-%      As SIF, with special rule for sanitization function \\  
-%      & Guarantee Encrypted Data at Rest by requiring all stores to first pass through an encryption routine &
-%      As SIF, with special rules for encryption and decryption functions \\ 
-%      Temporal Memory Safety & Prevent double free & Assign unique color to tag at each free. Check for an existi%ng color before freeing. \\
-%      & Prevent Use-after-free & Check pointers for color tag when dereferencing pointers  \\
-%      Placeholder-name & Placeholder-use case & Placeholder policy \\
-%      \hline
-%    \end{tabular}
-%  \end{center}
-%\end{table}
+%% % Trying to just thread the table into each section rather than all at once
+%% %\begin{table}
+%% %  \begin{center}
+%% %    %\begin{tabular}{ c| c |c }
+%% %    \title{Further Policies and their Uses}
+%% %    \begin{tabular}{  p{3cm} | p{5cm}| p{5cm}  } 
+%% %      \textbf{Name} & \textbf{Example Use Cases} & \textbf{Tag Implementation} \\ 
+%% %      \hline
+%% %      SIF: Intransitive Integrity &
+%% %      Protect agains SQL Injection by requiring outside data to pass through a sanitizer &
+%% %      As SIF, with special rule for sanitization function \\  
+%% %      & Guarantee Encrypted Data at Rest by requiring all stores to first pass through an encryption routine &
+%% %      As SIF, with special rules for encryption and decryption functions \\ 
+%% %      Temporal Memory Safety & Prevent double free & Assign unique color to tag at each free. Check for an existi%ng color before freeing. \\
+%% %      & Prevent Use-after-free & Check pointers for color tag when dereferencing pointers  \\
+%% %      Placeholder-name & Placeholder-use case & Placeholder policy \\
+%% %      \hline
+%% %    \end{tabular}
+%% %  \end{center}
+%% %\end{table}
   
-\subsection{Tags vs. Values}
+%% \subsection{Tags vs. Values}
 
-By committing to a tag-based mechanism, we do restrict the space of policies that Tagged C
-can enforce. In general, a reference monitor can enforce any policy that constitutes a
-{\em safety property}---any policy whose violation can be demonstrated by a single finite
-trace. Some policies in this class cannot be enforced effectively by a tag-based monitor,
-because tags can carry information about the provenance of values but not about the values
-themselves: this rules out policies such as ``no integer overflow'' and
-``pointers are always in-bounds.'' As we have seen, there are plenty of useful policies that
-engage only with the provenance of values. For such policies, tag-based enforcement is
-also conceptually close to the trace-based definition: defining e.g. memory safety in terms
-of normal states requires either manually keeping track of large amounts of history to
-identify where each pointer comes from, or possibly some sort of temporal logic.\apt{These
-  points could also (or instead) be made in the introduction, to justify why tag-based
-  policies are generally interesting and worthwhile even in the absence of hardware support.}
+%% By committing to a tag-based mechanism, we do restrict the space of policies that Tagged C
+%% can enforce. In general, a reference monitor can enforce any policy that constitutes a
+%% {\em safety property}---any policy whose violation can be demonstrated by a single finite
+%% trace. Some policies in this class cannot be enforced effectively by a tag-based monitor,
+%% because tags can carry information about the provenance of values but not about the values
+%% themselves: this rules out policies such as ``no integer overflow'' and
+%% ``pointers are always in-bounds.'' As we have seen, there are plenty of useful policies that
+%% engage only with the provenance of values. For such policies, tag-based enforcement is
+%% also conceptually close to the trace-based definition: defining e.g. memory safety in terms
+%% of normal states requires either manually keeping track of large amounts of history to
+%% identify where each pointer comes from, or possibly some sort of temporal logic.\apt{These
+%%   points could also (or instead) be made in the introduction, to justify why tag-based
+%%   policies are generally interesting and worthwhile even in the absence of hardware support.}
 
 
 
