@@ -112,7 +112,7 @@ C functions, variables and data values, and rules triggered at \emph{control poi
 significant execution events, such as function calls, expression evaluation, and pointer-based memory accesses. 
 Control points resemble ``advice points'' in aspect-oriented programming, but are narrowly
 focused on the manipulation of tags.\apt{revisit this after related work is done}
-In previous work~\cite{Chhak21:Tagine}, we outlined such a framework for a toy
+In previous work on the Tagine project~\cite{Chhak21:Tagine}, we outlined such a framework for a toy
 source language and showed how high-level policies could be compiled to ISA-level policies and 
 enforced using PIPE-like hardware.  Here we extend this approach to handle
 the full, real C language, by giving a detailed design for the necessary control points and
@@ -166,10 +166,10 @@ The paper is organized as follows.
 \Cref{sec:language} summarizes the Tagged C language as a whole and its control points.
 \Cref{sec:policies} describes three example policies and how their
 needs inform our choices of control points. 
-\Cref{sec:evaluation} assesses the degree to
-which the design meets our goals of flexibility and applicability to realistic
-security concerns.
-\Cref{sec:related} discusses related work, and \cref{sec:futurework} descibes future work.
+%\Cref{sec:evaluation} assesses the degree to
+%which the design meets our goals of flexibility and applicability to realistic
+%security concerns.
+\Cref{sec:related} discusses related work, and \cref{sec:futurework} descibes limitations and future work.
 The full details of Tagged C semantics appear in the Appendix.
 
 \section{Metadata Tags and Policies, by Example}
@@ -569,11 +569,12 @@ from other, related policies, as illustrated in \cref{sec:compartments}, below.
 \label{sec:policies}
 
 In this section, we discuss concrete policy implementations and how 
-they motivate our control point design. Memory safety policies
+they motivate the Tagged C control point design. Memory safety policies
 inform our requirements for memory tags as well as type casts. Compartmentalization
 policies depend on the call- and return-related control points, to keep track of the
 active compartment. And secure information flow (SIF) policies show us the many places
 where the user may need to reference identifiers from their program in the policy itself.
+Taken together, these example policies illustrate Tagged C's breadth of application.
 
 \subsection{Memory Safety}
 \label{sec:memsafe}
@@ -1080,7 +1081,6 @@ routine and a high level to the outputs of its corresponding decryption routine.
 
 \section{Evaluation}
 \label{sec:evaluation}
-\label{sec:limitations}
 
 Tagged C aims to combine the flexibility of machine-level tag-based monitoring architectures with the abstraction
 of a high-level language. In the last section, we demonstrated three classes of policies
@@ -1135,33 +1135,7 @@ identify where each pointer comes from, or possibly some sort of temporal logic.
   points could also (or instead) be made in the introduction, to justify why tag-based
   policies are generally interesting and worthwhile even in the absence of hardware support.}
 
-\subsection{Memory Tagging}
 
-The other known limitation is in how we tag memory at allocation time. Each call to {\tt malloc} tags an
-entire region with a single tag, which means that Tagged C cannot easily
-enforce substructural memory safety and other properties that call for allocated
-regions to be tagged according to their types. We would rather be able to tag the allocated region
-based on its type, but in C, {\tt malloc} does not get access to type information---it allocates
-memory of a given size and returns a {\tt void *}, and it is up to the caller to cast the
-pointer to the desired type. That cast may be arbitrarily distant from the call to {\tt malloc}!
-This is a well-known impediment to improving C memory safety, and previous work has often
-adopted approaches similar to ours; for example, Michael et al.
-\cite{Michael23:MSWASM} replacing {\tt malloc} outright 
-with a {\tt segalloc} function that takes much more information.
-Versions of memory safety that protect fields of a
-struct from overflows within the same struct would be very useful, but currently enforcing
-them will require manual initialization.
-
-\subsection{Fixed set of Control Points}
-
-There is always the possibility that we have missed some control point
-that would enable interesting security policies outside of the areas we have considered.
-How hard would it be to add control points, or extend the ones that exist? That depends
-whether the extension in question would impact compilation strategies. For instance,
-we have avoided control points that allow updates to their operand tags, although
-this could be useful in enforcing policies that attempt to maintain the uniqueness of tags,
-because tag-based hardware is unlikely to support linear tags, so any such updates would
-need the compiler to generate extra instructions.
 
 \section{Related Work}
 \label{sec:related}
@@ -1214,22 +1188,62 @@ need the compiler to generate extra instructions.
 %eventually compiling to PIPE-equipped hardware, although an inlining compiler would also be plausible.
 %This motivates many of our assumptions about tags.
 
-\section{Future Work}
+\section{Limitations and Future Work}
+\label{sec:limitations}
 \label{sec:futurework}
 
-We have presented the language and a reference interpreter, built on top of the CompCert interpreter
-\cite{Leroy09:CompCert}, and three example policies. There are several significant next steps.
+Although we believe our policy examples validate the main features of Tagged C, 
+there are limitations in the design and further implementation tasks that we
+hope to address in future.
 
 \paragraph*{Compilation}
+An interpreter is useful for testing policies, but our main goal has always been to
+produce a compiler from Tagged C to machine code for a PIPE-equipped processor.
+The basic strategy for compilation was outlined in the Tagine project~\cite{Chhak21:Tagine}.
+We are currently working to extend the CompCert compiler to handle Tagged C, with the ultimate
+goal of also extending CompCert's semantics preservervation guarantees to cover tagged semantics.
 
-An interpreter is useful for testing, but a compiler would be preferable for many reasons.
-A compiled Tagged C could use the hardware acceleration provided by a PIPE-equipped processor.
-Even without that, compiled code would run much faster, and could more easily
-support linked libraries, including linking against code written in other languages.
-We are currently working to extend the CompCert compiler to handle Tagged C, with the ultimated
-goal of also extending CompCert's verification guarantees to cover tags.
+\paragraph*{Fixed set of Control Points}
+We deliberately designed Tagged C to rely on a fixed number of predefined
+control points. This simplifies and organizes the task of the policy designer, but of course
+it leaves the possibility that new policies will arise for which our current set of
+control points is inadequate.  There is no conceptual reason why
+the control points cannot be extended on demand, but extending the interpreter
+and, even more
+and even more the compilerthe overhead of doing this
+will obviously increase once we have a compiler---particularly because of the need
+to consider how tag rule evaluation interacts with compiler optimziation~\cite{Chhak21:Tagine}.
+It is also important to keep the ultimate 
 
-\paragraph*{Language Proofs}
+How hard would it be to add control points, or extend the ones that exist? That depends
+whether the extension in question would impact compilation strategies. For instance,
+we have avoided control points that allow updates to their operand tags, although
+this could be useful in enforcing policies that attempt to maintain the uniqueness of tags,
+because tag-based hardware is unlikely to support linear tags, so any such updates would
+need the compiler to generate extra instructions.
+
+\subsection*{Heap Memory Tagging}
+The way Tagged C currently handles {\tt malloc} is unsatisfactory. First, there is no
+easy way to distinguish different static {\tt malloc} call locations; our use of
+variant names (\cref{sec:compartments) is something of a hack. A more principled solution
+  would probably involve building a general mechanism for identifying particular
+  static points within functions, but we have so far intentionally avoided this in
+  favor of a ``black box'' approach to policy construction.
+  \apt{Need to add something earlier in the paper about our rationale for attaching rules
+    to ``externally visible'' things like function calls and globals.}
+  A further problem with {\tt malloc} is that it does not get access to type information;
+  instead, it takes just an object size and returns a {\tt void *}, and it is up to the caller to
+  cast this to a pointer of the desired type (at an arbitrary future point).
+  Therefore, Tagged C cannot easily
+  enforce substructural memory safety (i.e. protecting fields within a single struct
+  from overflowing into each other) or other properties that call for allocated
+  regions to be tagged according to their types.
+  This is a well-known impediment to improving C memory safety; to get around it,
+  previous work  (e.g. \cite{Michael23:MSWASM}) has often adopted non-standard
+  versions of {\tt malloc} that take more informative parameters. While this is
+  not satisfactory for protecting legacy code, we do not see a good alternative at present.
+
+\subsection*{Language Proofs}
 
 There are several propeties the language semantics itself that we would like to prove.
 Namely (1) that its behavior (prior to adding a policy) matches that of CompCert C and
