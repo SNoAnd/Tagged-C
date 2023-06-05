@@ -92,7 +92,7 @@ should be permitted according to a tag rule, and if so, what tags should be
 assigned to the result. A collection of tag rules forms a PIPE policy.
 PIPE is particularly flexible: it supports
 arbitrary software-defined tag rules over large (word-sized) tags with arbitrary structure,
-which enables fine-grained policies and policy composition. This flexibility 
+which enables fine-grained policies and composition of multiple policies. This flexibility 
 is useful because security needs may differ radically among codebases,
 and even within a codebase. A conservative, one-size-fits-all policy might be too strong,
 causing failstops even during normal execution. Sensitive code might call for specialized
@@ -561,6 +561,7 @@ memory model and two models proposed by Memarian et al. \cite{Memarian19:Explori
 for the purposes of supporting low-level idioms, focusing in particular on how they handle
 casts from pointers to integers and back.
 
+
 While the idea seems obvious, the definition of a valid pointer can vary in nuance. The C standard
 does not support arbitrary arithmetic on pointers or their integer casts.  In practice, it is common for programs to violate the
 C standard to various degrees. For example, if objects are known to be aligned to \(2^n\)-byte boundaries,
@@ -604,21 +605,25 @@ between casts. PNVI accesses the memory pointed to by the (soon-to-be) pointer a
 location tag.
 
 \begin{figure}
-  \small
 \begin{tikzpicture}[every text node part/.style={align=left}]
-  \node[matrix, ampersand replacement=\&, anchor=west] (code)
+  \node[matrix, anchor=west] (code)
        {
-         \node {\tt 1 ~ int x[1],y[1];}; \& \node {\(\mathtt{x} \mapsto a_1\tagat\pt[_1]\) \\ \(\mathtt{y} \mapsto a_2\tagat\pt_2\)}; \& \node {\(\PCT_1,\pt_1,\lt_1 \leftarrow \localt\) \\ \(\PCT_2,\pt_2,\lt_2 \leftarrow \localt\)}; \\
-         \node {\tt 2 ~ int p = (int) x;}; \& \node {\(\mathtt{p} \mapsto a_2\tagat\vt[_1]\) ~
-    \(\vt[_1] \leftarrow \picasttname(\PCT,\pt[_1],\lt[_1])\)}; \\
-         \node {\tt 3 ~ int q = (int) y;}; \& \node {\(\mathtt{q} \mapsto a_3\tagat\vt[_2]\) ~ \(\vt[_2] \leftarrow \picasttname(\PCT,\pt[_2],\lt[_2])\)}; \\
-         \node {\tt 4 ~ int r = q | 0x1;}; \& \node {\(\mathtt{r} \mapsto a_4\tagat\vt[_3]\) ~ \(\vt[_3] \leftarrow \binoptname(\mid, \PCT, \vt[_2], \constt)\)}; \\
+         \node (l2) {\tt 1 ~ int x[1],y[1];}; \\
+         \node (l3) {\tt 2 ~ int p = (int) x;}; \\
+         \node (l4) {\tt 3 ~ int q = (int) y;}; \\
+         \node (l5) {\tt 4 ~ int r = q | 0x1;}; \\
          \node {\tt 5 ~ * (int *) p = 0; // Legal in all}; \\
          \node {\tt 6 ~ * (int *) (r \& 0xfffffffe) = 0; // Illegal in CompCert C}; \\
          \node {\tt 7 ~ * (int *) (p + (q - p)) = 0; // Illegal in PVI}; \\
          \node {\tt 8 ~ x[1] = 0; // Illegal in all}; \\
        };
 
+  \node[right=of l2,draw,anchor=west] {\(\mathtt{x} \mapsto a_1\tagat\pt[_1], \mathtt{y} \mapsto a_2\tagat\pt_2\)};
+  \node[right=of l3,draw,anchor=west] {\(\mathtt{p} \mapsto a_2\tagat\vt[_1]\) ~
+    \(\vt[_1] \leftarrow \picasttname(\PCT, )\)};
+  \node[right=of l4,draw,anchor=west] {\(\mathtt{q} \mapsto a_3\tagat\vt[_2]\) ~ \(\vt[_2] \leftarrow \picasttname\)};
+  \node[right=of l5,draw,anchor=west] {\(\mathtt{r} \mapsto a_4\tagat\vt[_3]\) ~ \(\vt[_3] \leftarrow \binoptname\)};
+  
 \end{tikzpicture}
 
 \caption{Memory Safety and Pointer Casts. (Assume {\tt int} and pointers are 32 bits.)}
@@ -1127,18 +1132,14 @@ need the compiler to generate extra instructions.
 \section{Related Work}
 \label{sec:related}
 
+\apt{This paper is not really about reference monitors, but about how their behavior can be \emph{specified}.
+  So a lot of the following is not very relevant. On the other hand, there is certainly literature on
+   RV of C programs; we could start with 
+   \url{https://www.researchgate.net/publication/221047076_Runtime_Verification_of_C_Programs/link/0deec5299040f07729000000/download} and work
+   forward/backward from that.  And AOP is crucial to discuss.}
+
 \paragraph{Aspect Oriented Programming}
-
-The aspect-oriented programming (AOP) paradigm aims to separate disparate concerns,
-termed {\em aspects}, that cannot be localized inside modules, such as security and logging \cite{}.
-An AOP language distributes {\em advice points} throughout its semantics, much like our
-control points, and the programmer separately writes {\em advice} in the form of
-additional code that should execute before or after the advice point. The compiler
-then interleaves all of the advice with its relevant advice points.
-
-AOP has been used to implement security systems \cite{} and to extend C more generally \cite{}.
-
-\paragraph{Runtime Verification and Specification}
+[TODO: do forward search from original AOP paper]
 
 %\paragraph{Reference Monitors}
 
@@ -1199,8 +1200,8 @@ goal of also extending CompCert's verification guarantees to cover tags.
 There are several propeties the language semantics itself that we would like to prove.
 Namely (1) that its behavior (prior to adding a policy) matches that of CompCert C and
 (2) that the behavior of a given program is invariant under all policies up to truncation due
-to failstop. Furthermore, we do not yet have a complete proof of the correctness of our
-interpreter, which is a high priority.
+to failstop. \apt{Being coy about (non)-proof of equivalence between semantics and interpreter..
+  I think we had better that this is a hole (that we would like to fill).}
 
 \paragraph{Policy Correctness Proofs}
 
