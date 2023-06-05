@@ -1188,47 +1188,23 @@ in a regression, only potential failstops.
 \paragraph{Runtime Verification and Specification}
 
 The basic AOP notion of interleaving checks with normal execution extends to
-runtime monitors that are more directly comparable to Tagged C. Here, the advice
-that is interleaved
+runtime monitors that are more directly comparable to Tagged C, such as
+Havelund \cite{Havelund08:RVC} and Ball and Rajamani \cite{Ball02:slic}.
+These works apply to C a common framework for runtime verification:
+conceptually, advice points (or equivalents) are treated as events in a trace,
+and the monitor as a state machine that steps alongside them. This ``security automaton''
+concept traces back to [TODO: cite security automaton paper].
+Other variations model the monitor as a regular expression on traces or
+as a temporal logic. It can then be interleaved into the program as
+an inline monitor \cite{} [inline monitors], or run on a log file to identify
+errors offline \cite{}.
 
-%\paragraph{Reference Monitors}
-
-%The concept of a reference monitor was first introduced fifty years ago~\cite{Anderson72:PlanningStudy}
-%as a tamper-proof and verifiable subsystem that checks every security-relevant operation in a system to
-%ensure that it conforms to a security {\em policy} (a general specification of acceptable behavior~\cite{Goguen82:SecurityPolicies}).
-
-%A reference monitor can be implemented at any level of a system. An {\em inline reference monitor}\cite{??}
-%is a purely compiler-based system that inserts checks at appropriate places in the code.
-%Alternatively, a reference monitor might be embedded in the operating system, or in an interpreted
-%language's runtime. A {\em hardware reference monitor} instead provides primitives at the ISA-level
-%that accelerate security and make it harder to subvert.
-
-%Programmable Interlocks for Policy Enforcement (PIPE) \cite{Dhawan14:PUMP} is a hardware extension
-%that uses {\em metadata tagging}. Each register and each word of memory is associated with
-%an additional array of bits called a tag. The policy is decomposed into a set of {\em tag rules}
-%that act in parallel with each executing instruction, using the tags on its operands to
-%decide whether the instruction is legal and, if so, determine which tags to place on its results.
-%PIPE tags are large relative to other tag-based hardware, giving it the flexibility
-%to implement complex policies with structured tags, and even run multiple policies at once.
-
-%Other hardware monitors include Arm MTE, STAR, and CHERI.
-%Arm MTE aims to enforce a narrow form of memory safety using 4-bit tags, which distinguish adjacent objects
-%in memory from one another, preventing buffer overflows, but not necessarily other memory violations. STAR 
-%uses small tags in regular cache lines which constrains the possible policies \cite{Gollapudi23:STARnarrowTags}.
-
-%CHERI is capability machine \cite{Woodruff14:IntroCHERI}. In CHERI, capabilities
-%are ``fat pointers'' carrying extra bounds and permission information, and capability-protected
-%memory can only be accessed via a capability with the appropriate privilege. This is a natural
-%way to enforce spatial memory safety, and techniques have been demonstrated for enforcing
-%temporal safety \cite{NWF20:Cornucopia}, stack safety \cite{Skorstengaard19:stktokens},
-%and compartmentalization \cite{Watson15:CHERIcompartments}, with varying degrees of ease and
-%efficiency. But CHERI cannot easily enforce notions of security based on dataflow,
-%such as Secure Information Flow.
-
-%In this paper, we describe a programming language with an abstract reference monitor.
-%We realize it as an interpreter with the reference monitor built in, and envision
-%eventually compiling to PIPE-equipped hardware, although an inlining compiler would also be plausible.
-%This motivates many of our assumptions about tags.
+In general, all of these systems are more expressive than Tagged C, because the
+monitor can access system values, not just keep track of provenance. But that expressiveness
+means that PIPE acceleration will not be feasible. There may be some ancillary
+benefits to our restrictive set of control points---namely that, for those policies
+that they can express, they do so elegantly---but it does mean that we have a narrower
+application.
 
 \section{Future Work}
 \label{sec:futurework}
