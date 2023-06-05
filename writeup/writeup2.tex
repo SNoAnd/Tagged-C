@@ -94,8 +94,8 @@ arbitrary software-defined tag rules over large (word-sized) tags with arbitrary
 which enables fine-grained policies and composition of multiple policies. This flexibility 
 is useful because security needs may differ radically among codebases,
 and even within a codebase. A conservative, one-size-fits-all policy might be too strong,
-causing failstops even during normal execution. Sensitive code might call for specialized
-protection that isn't relevant elsewhere.
+causing failstops even during normal execution. Sensitive code might call for its own specialized
+protection.
  
 \apt{There is still a thought I would like to express here about tag-based policies being
   relatively accessible to programmers, since they manipulate meta state just like ordinary
@@ -111,7 +111,7 @@ Moreover, some security policies can only be expressed in terms of high-level co
 features that are not preserved at machine level, such as function
 arguments, structured types, and structured control flow.
 
-To address these problems, we introduce a \emph{source-level} specification framework called \emph{Tagged C},
+To address these problems, we introduce a \emph{source-level} specification framework, \emph{Tagged C},
 which allows engineers to describe policies in terms of familiar C-level concepts, with tags attached to
 C functions, variables and data values, and rules triggered at \emph{control points} that correspond to
 significant execution events, such as function calls, expression evaluation, and pointer-based memory accesses. 
@@ -122,8 +122,8 @@ source language and showed how high-level policies could be compiled to ISA-leve
 enforced using PIPE-like hardware.  Here we extend this approach to handle
 the full, real C language, by giving a detailed design for the necessary control points and
 showing how they are integrated into C's dynamic semantics. 
-Although motivated by PIPE, Tagged C is not tied to any particular enforcement mechanism,
-and indeed we currently implement it using a modified C interpreter rather than via compilation.
+Although motivated by PIPE, Tagged C is not tied to any particular enforcement mechanism. 
+We currently implement it using a modified C interpreter rather than a compiler.
 We validate the design of Tagged C by using it to specify a range of interesting security policies,
 including compartmentalization, memory protection, and secure information flow.
 
@@ -148,8 +148,8 @@ The choice of control points and their associations with tag rules, as well as t
 signatures, form the essence of Tagged C's design. 
 We have validated this design on the three classes of policies explored in this paper,
 and, outside of a few known limitation discussed in \cref{sec:limitations}, e.g. substructural memory safety,
-we believe it is sufficiently expressive to describe most other flow-based policies, although
-of course further experience is needed to confirm this.
+we believe it is sufficiently expressive to describe most other flow-based policies, although 
+further experience is needed to confirm this.
 
 \paragraph*{Contributions}
 
@@ -268,11 +268,12 @@ rules. Throughout the paper, we highlight tag-related metavariables, rules, etc.
   \label{fig:ex1}
 \end{figure}
 
-The policy described above is implemented by instantiating the tag rules as shown in \cref{fig:example1rules}. In tag rules,
+The policy described above is implemented by instantiating the tag rules as shown in \cref{fig:example1rules}. 
+In tag rules,
 the assignment operator := denotes an assignment to the named tag-rule output, by convention
 written as primed metavariables \(\gentag[']\).  Most rules are generic, but
 \(\argtname\) connects the policy to the specifics of the program, identifying {\tt psk}
-as a source of high-security data and treating {\tt printi} as a low-security output channel by
+as high-security data and treating {\tt printi} as a low-security output channel by
 triggering a failstop if it receives high-security data.
 
 The tag on {\tt psk} comes from \(\argtname\), which is parameterized by the tag on the argument
@@ -509,7 +510,7 @@ On the right, the Tagged C version adds tags to the operands and the result, wit
 derived from the \(\binoptname\) rule. [TODO: instance of a tag rule.]
 
 The tag rule itself is instantiated as a partial function; if a policy leaves a tag rule
-undefined on some inputs, then those inputs are considered to violate the policy, sending
+undefined on some inputs, then those inputs violate the policy, sending
 execution into a special failstop state. The names and signatures of all the tag rules,
 and their corresponding control points, are listed in \Cref{fig:controlpoints}.
 We briefly summarize the rules here, and give motivating examples of their use in \cref{sec:policies}
@@ -589,12 +590,12 @@ from other, related policies, as illustrated in \cref{sec:compartments}, below.
 \label{sec:policies}
 
 In this section, we discuss concrete policy implementations and how 
-they motivate the Tagged C control point design. Memory safety policies
-inform our requirements for memory tags as well as type casts. Compartmentalization
+they motivate Tagged C's control point design. Memory safety policies
+inform our requirements for memory tags and type casts. Compartmentalization
 policies depend on the call- and return-related control points, to keep track of the
-active compartment. And secure information flow (SIF) policies show us the many places
+active compartment. Secure information flow (SIF) policies expose the many places
 where the user may need to reference identifiers from their program in the policy itself.
-Taken together, these example policies illustrate Tagged C's breadth of application.
+Together, these example policies illustrate Tagged C's breadth of application.
 
 \subsection{Memory Safety}
 \label{sec:memsafe}
@@ -1066,7 +1067,7 @@ arguments after reducing a PC tag into either \(\high\) or \(\low\).
 
 In order to use this version of SIF, the program must undergo a minor automatic transformation
 by the compiler or interpreter, introducing
-the labels of all join points explicitly, since otherwise there is nothing in the program
+the labels of all join points explicitly. Otherwise there is nothing in the program
 syntax to attach the join rules to. So in the example {\tt J} becomes an explicit label in the code,
 if it wasn't already. 
 %This is a relatively minor transformation, and is necessary because\apt{don't follow the logic},
@@ -1077,7 +1078,7 @@ takes this label (optionally, since not all policies will care about join points
 If the conditional branches on a high value, \(\splittname\) adds the label to the set
 in the PC tag. Later, when execution reaches a label, \(\labeltname\) deletes it from the
 set. If the set is non-empty, there is at least one high split point that has not
-yet reached its join point, so we treat the PC tag as being high. When execution reaches the
+yet reached its join point, so we treat the PC tag as high. When execution reaches the
 last join point and the set is empty, it is no longer possible to deduce which
 path was taken, except by looking at values that updated in the interim, all of which
 will themselves be tagged \(\high\).
