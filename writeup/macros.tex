@@ -1,6 +1,6 @@
-\newif\ifdraft \drafttrue
+\newif\ifdraft \draftfalse
 \newif\iftext \textfalse
-\newif\iflater \latertrue
+\newif\iflater \laterfalse
 \newif\ifspace \spacefalse
 \newif\ifaftersubmission \aftersubmissionfalse
 \newif\ifcameraready  \camerareadyfalse
@@ -17,11 +17,11 @@
 \newcommand{\nt}[1][]{\mathit{\color{blue} nt#1}}
 \newcommand{\PCT}[1][]{\mathcal{\color{blue} P\mathit{#1}}}
 
-\newcommand{\FN}[1][f]{{\color{blue} \textnormal{\sc fn}_{\mathtt{#1}}}}
-\newcommand{\AN}[1][x]{{\color{blue} \textnormal{\sc an}_{\mathtt{#1}}}}
-\newcommand{\GN}[1][x]{{\color{blue} \textnormal{\sc gn}_{\mathtt{#1}}}}
-\newcommand{\LN}[1][L]{{\color{blue} \textnormal{\sc ln}_{\mathtt{#1}}}}
-\newcommand{\TN}[1][ty]{{\color{blue} \textnormal{\sc tn}_{\mathtt{#1}}}}
+\newcommand{\FN}[1][f]{\mathtt{\color{blue} #1}_{\color{blue} \mathit{fun}}}
+\newcommand{\AN}[1][x]{\mathtt{\color{blue} #1}_{\color{blue} \mathit{arg}}}
+\newcommand{\GN}[1][x]{\mathtt{\color{blue} #1}_{\color{blue} \mathit{glb}}}
+\newcommand{\LN}[1][L]{\mathtt{\color{blue} #1}_{\color{blue} \mathit{lbl}}}
+\newcommand{\TN}[1][ty]{\mathtt{\color{blue} #1}_{\color{blue} \mathit{typ}}}
 
 \newcommand{\apt}[1]{\ifdraft\textcolor{orange}{{[APT:~#1]}}\fi}
 \newcommand{\sna}[1]{\ifdraft\textcolor{green!100}{{[SNA:~#1]}}\fi}

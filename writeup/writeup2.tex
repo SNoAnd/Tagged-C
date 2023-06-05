@@ -201,23 +201,21 @@ if so, to update the tags. A policy consists of a tag type definition and instan
 For a simple SIF policy like this one, the tag type is an enumeration containing \(\high\) (high security) and \(\low\) (low security).
 In this case, when {\tt f} processes its arguments, a program-specific tag rule 
 will tag {\tt psk} as \(\high\). This tag will be propagated along with the value through variable accesses,
-assignments, and arithmetic, according to generic rules that are not specific to this program. Finally, a program-specific
-argument-handling rule for {\tt printi} will check that the tag is \(\low\); since it is not, the rule will
-cause a failstop.
+assignments, and arithmetic, according to generic rules that are not specific to this program.
+Finally, a program-specific argument-handling rule for {\tt printi} will check that the tag is \(\low\);
+since it is not, the rule will cause a failstop.
 
-[Explain how to read these]
-[Explain and fix names]
-[Elide undef?]
-
-\Cref{fig:ex1} maps each of three points in the execution of {\tt f} to a description of the program
+\Cref{fig:ex1} maps three points in the execution of {\tt f} to descriptions of the program
 state at that point, with the input value and all tags treated symbolically. 
 Tag rules that merely propagate their inputs are omitted. In this case that is \(\accesstname\),
 each time a variable is read, and \(\assigntname\), each time one is assigned.
-Let \(i\) be the value passed to {\tt psk}
-and \(\vt[_0]\) the corresponding tag. In each state, the first column
-shows the active function, the second gives the symbolic values and tags
-of variables in the local environment, and the third shows the flow of those tags though
-rules. Throughout the paper, we highlight tag-related metavariables, rules, etc. in {\color{blue}blue}.
+Suppose {\tt f} is called with a {\tt psk} of \(i\), tagged with \(\vt[_0]\).
+In each state, the first column (white) shows the active function, the second (gray) gives the symbolic values and tags
+of variables in the local environment, and the third (blue) shows the rules that produce those tags.
+Throughout the paper, we highlight tag-related metavariables, rules, etc. in {\color{blue}blue}.
+Tags that are derived from identifiers are subscripted with the identifier namespace, e.g.
+\(\FN[f]\) is the tag associated with the function name {\tt f}. \(\vundef\) denotes an
+uninitialized value.
 
 \begin{figure}
   \begin{tikzpicture}[every text node part/.style={align=left}]
@@ -234,23 +232,23 @@ rules. Throughout the paper, we highlight tag-related metavariables, rules, etc.
     \node[matrix, ampersand replacement=\&, node distance=6em, right=of code.north,draw] (table1)
          {
            \node[anchor=north] {\tt f}; \&
-           \node[anchor=north] {\(\mathtt{psk} \mapsto i \tagat \vt[_1]\) \\ \(\mathtt{x} \mapsto \vundef \tagat \vt[_2]\)}; \&
-           \node[anchor=north] {\(\vt[_1] \leftarrow \argtname(\vt[_0],\FN[f],\AN[psk])\) \\ \(\vt[_2] \leftarrow \constt\)};\\
+           \node[anchor=north, fill=gray!20] {\(\mathtt{psk} \mapsto i \tagat \vt[_1]\) \\ \(\mathtt{x} \mapsto \vundef \tagat \vt[_2]\)}; \&
+           \node[anchor=north, fill=blue!10] {\(\vt[_1] \leftarrow \argtname(\vt[_0],\FN[f],\AN[psk])\) \\ \(\vt[_2] \leftarrow \constt\)};\\
          };
 
     \node[matrix, ampersand replacement=\&, node distance=4.5em, below=of table1.west,draw,anchor=west] (table2)
          {
            \node[anchor=north] {\tt f}; \&
-           \node[anchor=north] {\(\mathtt{psk} \mapsto i \tagat \vt[_1]\) \\ \(\mathtt{x} \mapsto (i+5) \tagat \vt[_4]\)}; \&
-           \node[anchor=north] {\(\vt[_3] \leftarrow \constt\) \\
+           \node[anchor=north, fill=gray!20] {\(\mathtt{psk} \mapsto i \tagat \vt[_1]\) \\ \(\mathtt{x} \mapsto (i+5) \tagat \vt[_4]\)}; \&
+           \node[anchor=north, fill=blue!10] {\(\vt[_3] \leftarrow \constt\) \\
              \(\vt[_4] \leftarrow \binoptname(+,\vt[_2],\vt[_3])\) }; \\
          };
 
     \node[matrix, ampersand replacement=\&, node distance=4.5em, below=of table2.west,draw,anchor=west] (table3)  
          {
            \node[anchor=north] {\tt printi}; \&
-           \node[anchor=north] {\(\mathtt{a} \mapsto i \tagat \vt[_5]\)}; \&
-           \node[anchor=north] {\(\vt[_5] \leftarrow \argtname(\vt[_4], \FN[printi], \AN[a])\)}; \\
+           \node[anchor=north, fill=gray!20] {\(\mathtt{a} \mapsto i \tagat \vt[_5]\)}; \&
+           \node[anchor=north, fill=blue!10] {\(\vt[_5] \leftarrow \argtname(\vt[_4], \FN[printi], \AN[a])\)}; \\
          };
 
     \draw[Circle-]
