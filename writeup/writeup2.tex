@@ -28,20 +28,18 @@
 \begin{abstract}
 Today's computing infrastructure is built atop layers of legacy C code, 
 which is often insecure, poorly understood, and/or difficult to maintain.
-Additional security can be added with dynamic enforcement. Hardware reference monitors 
-are a promising mechanism for dynamic enforcement, including PIPE (Processor
-Interlocks for Policy Enforcement). Unfortunately, the existing PIPE systems
-require expression at the ISA, which is often out of reach of C developers.
-
-We introduce Tagged C, a novel C variant with formalized and verified semantics 
+Security can be improved by using runtime reference monitors, which might
+be implemented using hardware support, such as the PIPE (Processor
+Interlocks for Policy Enforcement) processor extensions. Unfortunately,
+existing PIPE-based systems require policies to be expressed at the ISA level,
+which makes them opaque and limits their applicability to higher-level language features.
+To address this problem, we introduce Tagged C, a novel C variant with formalized and verified semantics 
 for a built-in {\em tag-based reference monitor} based on PIPE.
-Tagged C expresses PIPE security policies at a level familiar to C developers: that
+Tagged C expresses security policies at a level familiar to C developers: that
 of the C source code rather than the ISA.
-
 Tagged C is designed to express a variety of dynamic security policies,  
-either solo or in concert, and enforce them with compiler and/or hardware support.
-It is comprehensive in supporting different
-approaches to security and varying levels of strictness. We demonstrate
+individually or in combination, and enforce them with compiler and hardware support.
+It supports different approaches to security and varying levels of strictness. We demonstrate
 this range by providing examples of {\em memory safety}, {\em compartmentalization},
 and {\em secure information flow} (SIF) policies. We also give a formalized, full semantics
 and a reference interpreter for Tagged C.
@@ -96,8 +94,8 @@ arbitrary software-defined tag rules over large (word-sized) tags with arbitrary
 which enables fine-grained policies and composition of multiple policies. This flexibility 
 is useful because security needs may differ radically among codebases,
 and even within a codebase. A conservative, one-size-fits-all policy might be too strong,
-causing failstops even during normal execution. Sensitive code might call for specialized
-protection that isn't relevant elsewhere.
+causing failstops even during normal execution. Sensitive code might call for its own specialized
+protection.
  
 \apt{There is still a thought I would like to express here about tag-based policies being
   relatively accessible to programmers, since they manipulate meta state just like ordinary
@@ -113,7 +111,7 @@ Moreover, some security policies can only be expressed in terms of high-level co
 features that are not preserved at machine level, such as function
 arguments, structured types, and structured control flow.
 
-To address these problems, we introduce a \emph{source-level} specification framework called \emph{Tagged C},
+To address these problems, we introduce a \emph{source-level} specification framework, \emph{Tagged C},
 which allows engineers to describe policies in terms of familiar C-level concepts, with tags attached to
 C functions, variables and data values, and rules triggered at \emph{control points} that correspond to
 significant execution events, such as function calls, expression evaluation, and pointer-based memory accesses. 
@@ -124,8 +122,8 @@ source language and showed how high-level policies could be compiled to ISA-leve
 enforced using PIPE-like hardware.  Here we extend this approach to handle
 the full, real C language, by giving a detailed design for the necessary control points and
 showing how they are integrated into C's dynamic semantics. 
-Although motivated by PIPE, Tagged C is not tied to any particular enforcement mechanism,
-and indeed we currently implement it using a modified C interpreter rather than via compilation.
+Although motivated by PIPE, Tagged C is not tied to any particular enforcement mechanism. 
+We currently implement it using a modified C interpreter rather than a compiler.
 We validate the design of Tagged C by using it to specify a range of interesting security policies,
 including compartmentalization, memory protection, and secure information flow.
 
@@ -150,8 +148,8 @@ The choice of control points and their associations with tag rules, as well as t
 signatures, form the essence of Tagged C's design. 
 We have validated this design on the three classes of policies explored in this paper,
 and, outside of a few known limitation discussed in \cref{sec:limitations}, e.g. substructural memory safety,
-we believe it is sufficiently expressive to describe most other flow-based policies, although
-of course further experience is needed to confirm this.
+we believe it is sufficiently expressive to describe most other flow-based policies, although 
+further experience is needed to confirm this.
 
 \paragraph*{Contributions}
 
@@ -268,11 +266,12 @@ uninitialized value.
   \label{fig:ex1}
 \end{figure}
 
-The policy described above is implemented by instantiating the tag rules as shown in \cref{fig:example1rules}. In tag rules,
+The policy described above is implemented by instantiating the tag rules as shown in \cref{fig:example1rules}. 
+In tag rules,
 the assignment operator := denotes an assignment to the named tag-rule output, by convention
 written as primed metavariables \(\gentag[']\).  Most rules are generic, but
 \(\argtname\) connects the policy to the specifics of the program, identifying {\tt psk}
-as a source of high-security data and treating {\tt printi} as a low-security output channel by
+as high-security data and treating {\tt printi} as a low-security output channel by
 triggering a failstop if it receives high-security data.
 
 The tag on {\tt psk} comes from \(\argtname\), which is parameterized by the tag on the argument
@@ -443,28 +442,28 @@ in a high context.
     \hline
     Rule Name & Inputs & Outputs & Control Points \\
     \hline
-    \(\calltname\)      & \(\calltargs\)         & \(\calltres\)      & Update PC tag at Call \\
-    \(\argtname\)       & \(\argtargs\)          & \(\argtres\)       & Per Argument at Call \\
-    \(\rettname\)       & \(\rettargs\)          & \(\rettres\)       & Handle PC tag, Return Value \\
-    \(\loadtname\)      & \(\loadtargs\)         & \(\loadtres\)      & Memory Loads \\
-    \(\storetname\)     & \(\storetargs\)        & \(\storetres\)     & Memory Stores \\
-    \(\accesstname\)    & \(\accesstargs\)       & \(\accesstres\)    & Variable Accesses \\
-    \(\assigntname\)    & \(\assigntargs\)       & \(\assigntres\)    & Variable Assignments \\
-    \(\unoptname\)      & \(\unoptargs\)         & \(\unoptres\)      & Unary Operation \\
-    \(\binoptname\)     & \(\binoptargs\)        & \(\binoptres\)     & Binary Operation \\
-    \(\consttname\)     & \(\consttargs\)        & \(\consttres\)     & Applied to Constants/Literals \\
-    \(\inittname\)      & \(\inittargs\)         & \(\inittres\)      & Applied to Fresh Variables \\
-    \(\exprsplittname\) & \(\exprsplittargs\)    & \(\exprsplittres\) & Control-flow split points in expressions \\
-    \(\exprjointname\)  & \(\exprjointargs\)     & \(\exprjointres\)  & Join points in expressions \\
+    \(\calltname\)      & \(\calltargs\)         & \(\calltres\)      & Update PC tag at call \\
+    \(\argtname\)       & \(\argtargs\)          & \(\argtres\)       & Per argument at call \\
+    \(\rettname\)       & \(\rettargs\)          & \(\rettres\)       & Handle PC tag, return value \\
+    \(\loadtname\)      & \(\loadtargs\)         & \(\loadtres\)      & Memory oads \\
+    \(\storetname\)     & \(\storetargs\)        & \(\storetres\)     & Memory stores \\
+    \(\accesstname\)    & \(\accesstargs\)       & \(\accesstres\)    & Variable accesses \\
+    \(\assigntname\)    & \(\assigntargs\)       & \(\assigntres\)    & Variable assignments \\
+    \(\unoptname\)      & \(\unoptargs\)         & \(\unoptres\)      & Unary operation \\
+    \(\binoptname\)     & \(\binoptargs\)        & \(\binoptres\)     & Binary operation \\
+    \(\consttname\)     & \(\consttargs\)        & \(\consttres\)     & Applied to constants/literals \\
+    \(\inittname\)      & \(\inittargs\)         & \(\inittres\)      & Applied to fresh variables \\
     \(\splittname\)     & \(\splittargs\)        & \(\splittres\)     & Control-flow split points in statements\\
     \(\labeltname\)     & \(\labeltargs\)        & \(\labeltres\)     & Labels/arbitrary code points \\
+    \(\exprsplittname\) & \(\exprsplittargs\)    & \(\exprsplittres\) & Control-flow split points in expressions \\
+    \(\exprjointname\)  & \(\exprjointargs\)     & \(\exprjointres\)  & Join points in expressions \\
     \(\globaltname\)    & \(\globaltargs\)       & \(\globaltres\)    & Program initialization \\
     \(\localtname\)     & \(\localtargs\)        & \(\localtres\)     & Stack allocation (per local) \\
     \(\dealloctname\)   & \(\dealloctargs\)      & \(\dealloctres\)   & Stack deallocation (per local) \\
     \(\extcalltname\)   & \(\extcalltargs\)      & \(\extcalltres\)   & Call to linked code \\
     \(\malloctname\)    & \(\malloctargs\)       & \(\malloctres\)    & Call to {\tt malloc} \\
     \(\freetname\)      & \(\freetargs\)         & \(\freetres\)      & Call to {\tt free} \\
-    \(\fieldtname\)     & \(\fieldtargs\)        & \(\fieldtres\)     & Field Access \\
+    \(\fieldtname\)     & \(\fieldtargs\)        & \(\fieldtres\)     & Structure/union field access \\
     \(\picasttname\)    & \(\picasttargs\)       & \(\picasttres\)    & Cast from pointer to scalar \\
     \(\ipcasttname\)    & \(\ipcasttargs\)       & \(\ipcasttres\)    & Cast from scalar to pointer \\
     \(\ppcasttname\)    & \(\ppcasttargs\)       & \(\ppcasttres\)    & Cast between pointers \\
@@ -472,7 +471,10 @@ in a high context.
     \hline
   \end{tabular}
 
-  \caption{Full list of tag-rules and control points}
+  \caption{Full list of tag-rule signatures and control points. Key to metavariables:
+    \(\PCT\): PC tag, \(\vt\): value tag, \(\pt\): pointer tag, \(\lt\): location tag;
+    \(\FN\): function identfier; \(\AN\): function argument; \(\GN\): global
+    variable name, \(\LN\): label; \(\TN\): type.}
   \label{fig:controlpoints}
 \end{table}
 
@@ -484,7 +486,7 @@ are based on that of CompCert C~\cite{Leroy09:CompCert},
 a formalization of the C standard into a small-step reduction semantics.
 Tagged C's semantics differ from CompCert C's in two key respects: tag support and memory model.
 
-\paragraph*{Tags} First, Tagged C's values
+\subsection{Tags} First, Tagged C's values
 and states are annotated with metadata tags, and its reductions contain
 control points, which are hooks within the
 operational semantics at which the tag policy is consulted and either tags are updated, or the system
@@ -506,38 +508,36 @@ On the right, the Tagged C version adds tags to the operands and the result, wit
 derived from the \(\binoptname\) rule. [TODO: instance of a tag rule.]
 
 The tag rule itself is instantiated as a partial function; if a policy leaves a tag rule
-undefined on some inputs, then those inputs are considered to violate the policy, sending
+undefined on some inputs, then those inputs violate the policy, sending
 execution into a special failstop state. The names and signatures of all the tag rules,
 and their corresponding control points, are listed in \Cref{fig:controlpoints}.
 We briefly summarize the rules here, and give motivating examples of their use in \cref{sec:policies}
 
-\apt{This para should be expanded to discuss arguments and results in somewhat
-  more detail.}
 Nearly all the rules are parameterized by the current PC tag \(\PCT\), and the rules
 for control points associated with changes in program state (variable or memory update,
-change in control flow) can produce a changed \(\PCT\) as a result.
-\(\calltname\) and \(\rettname\) update the PC tag on entry and exit from a function;
+change in control flow) can produce a changed \(\PCT'\) as a result.
+\(\calltname\) \apt{still don't understand why this doesn't take $\FN$, as in the example}
+and \(\rettname\) update the PC tag on entry and exit from a function.
 \(\rettname\) is parameterized by both the caller's PC tag (\(\PCT[_{\color{blue} CLR}]\))
-and the callee's (\(\PCT[_{\color{blue} CLE}]\)). \(\argtname\) updates tags on any arguments.
+and the callee's (\(\PCT[_{\color{blue} CLE}]\)); it can also update the return value's tag.
+\(\argtname\) updates tags on any arguments, based on the function and argument names.
 \(\loadtname\) and \(\storetname\) deal with memory accesses, while \(\accesstname\) and
-\(\assigntname\) handle variable access and assignment regardless of whether the variable
-is in memory. \(\exprsplittname\), \(\exprjointname\), \(\splittname\), and \(\labeltname\)
-update the PC tag based on changes in control flow. \(\fieldtname\) updates the tag
-on a pointer value when it is offset to access the field of a struct or union.
+\(\assigntname\) are invoked on variable access and assignment regardless of whether the variable
+is in memory.
 \(\unoptname\) and \(\binoptname\) handle operations, \(\consttname\) is the default tag
-on all constants, and \(\inittname\) the initial tag in a fresh variable. \(\globaltname\), \(\localtname\),
-and \(\malloctname\) are each associated with the allocation of memory, with the latter
-two corresponding to \(\dealloctname\) and \(\freetname\) as deallocation rules,
+on all constants, and \(\inittname\) is the initial tag in a fresh variable.
+\(\splittname\), \(\labeltname\), \(\exprsplittname\), and \(\exprjointname\) 
+update the PC tag based on changes in control flow in statements and expressions.
+\(\fieldtname\) updates the tag on a pointer value when it is offset to access the field of a struct or union.
+ \(\globaltname\), \(\localtname\),
+ and \(\malloctname\) are each associated with the allocation of memory, and are
+ parameterized by the type of the allocated value. The latter
+two have corresponding deallocation rules \(\dealloctname\) and \(\freetname\),
 respectively. The cast rules are specialized based on whether the original type or
 the new type is a pointer, or both.
 
-Some of these control points access program-specific identifiers in the form of
-{\em name tags}. We give name tags to the following constructions:
-(1) function identifiers, \(\FN\); (2) Function arguments, \(\AN\); (3) Global variables, \(\GN\);
-(4) Labels, \(\LN\); (5) Types, \(\TN\).
-\apt{Want to move this to  caption of Table 1; some entries in table seem wrong, e.g. for ArgT.}
 
-\paragraph*{Memory} The second major semantic distinction of Tagged C is that, unlike CompCert C,
+\subsection{Memory} The second major semantic distinction of Tagged C is that, unlike CompCert C,
 it has no memory-related UB. CompCert C models memory as a collection of disjoint blocks,
 and treats each variable as having its own block. Pointers are described by a (block, offset) pair,
 and invalid pointer accesses (out-of-bounds, use after free, etc.) produce UB.
@@ -570,7 +570,7 @@ In an implementation that compiles to PIPE, the private data can be protected by
 %% identifies the full collection of control points, their tag rules, and the inputs and outputs of the tag rules.
 %% The tag type \(\tau\) must be inhabited by a default tag.
 
-\paragraph*{Combining Policies}
+\subsection{Combining Policies}
 
 Multiple policies can be enforced in parallel. If policy \(A\) has tag type \(\tau_A\)
 and policy \(B\) has \(\tau_B\), then policy \(A \times B\) should have tag type
@@ -588,12 +588,12 @@ from other, related policies, as illustrated in \cref{sec:compartments}, below.
 \label{sec:policies}
 
 In this section, we discuss concrete policy implementations and how 
-they motivate the Tagged C control point design. Memory safety policies
-inform our requirements for memory tags as well as type casts. Compartmentalization
+they motivate Tagged C's control point design. Memory safety policies
+inform our requirements for memory tags and type casts. Compartmentalization
 policies depend on the call- and return-related control points, to keep track of the
-active compartment. And secure information flow (SIF) policies show us the many places
+active compartment. Secure information flow (SIF) policies expose the many places
 where the user may need to reference identifiers from their program in the policy itself.
-Taken together, these example policies illustrate Tagged C's breadth of application.
+Together, these example policies illustrate Tagged C's breadth of application.
 
 \subsection{Memory Safety}
 \label{sec:memsafe}
@@ -1065,7 +1065,7 @@ arguments after reducing a PC tag into either \(\high\) or \(\low\).
 
 In order to use this version of SIF, the program must undergo a minor automatic transformation
 by the compiler or interpreter, introducing
-the labels of all join points explicitly, since otherwise there is nothing in the program
+the labels of all join points explicitly. Otherwise there is nothing in the program
 syntax to attach the join rules to. So in the example {\tt J} becomes an explicit label in the code,
 if it wasn't already. 
 %This is a relatively minor transformation, and is necessary because\apt{don't follow the logic},
@@ -1076,7 +1076,7 @@ takes this label (optionally, since not all policies will care about join points
 If the conditional branches on a high value, \(\splittname\) adds the label to the set
 in the PC tag. Later, when execution reaches a label, \(\labeltname\) deletes it from the
 set. If the set is non-empty, there is at least one high split point that has not
-yet reached its join point, so we treat the PC tag as being high. When execution reaches the
+yet reached its join point, so we treat the PC tag as high. When execution reaches the
 last join point and the set is empty, it is no longer possible to deduce which
 path was taken, except by looking at values that updated in the interim, all of which
 will themselves be tagged \(\high\).
