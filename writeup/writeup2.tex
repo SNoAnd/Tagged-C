@@ -26,20 +26,25 @@
 \maketitle
 
 \begin{abstract}
-\apt{Still reads awkwardly, and doesn't expose problem/solution clearly.}
-Today's computing infrastructure is built atop layers of legacy C code, often
-insecure, poorly understood, and/or difficult to maintain.
-These foundations may be shored up with dynamic security enforcement.
-% and potentially introduce regressions.
-We introduce Tagged C, a novel C variant with a built-in {\em tag-based reference monitor}.
-It is designed to express a variety of dynamic security policies, either solo or in concert,
-and enforce them with compiler and/or hardware support.
+Today's computing infrastructure is built atop layers of legacy C code, 
+which is often insecure, poorly understood, and/or difficult to maintain.
+These layers may be shored up with dynamic security enforcement. Reference monitors 
+are a popular mechanism for dynamic enforcement. Unfortunately,
+their semantics are often underspecified, leaving gaps,
+and/or require expression at the ISA, which is often out of reach of C developers.
 
-Tagged C expresses security policies at the level familiar to C developers: that
-of the C source code rather than the ISA. It is comprehensive in supporting different
-approaches to security as well as more or less restrictive policies. We demonstrate
+We introduce Tagged C, a novel C variant with formalized and verified semantics 
+for a built-in {\em tag-based reference monitor} based on PIPE (Processor
+Interlocks for Policy Enforcement). Tagged C expresses security 
+policies at a level familiar to C developers: that
+of the C source code rather than the ISA.
+
+Tagged C is designed to express a variety of dynamic security policies,  
+either solo or in concert, and enforce them with compiler and/or hardware support.
+It is comprehensive in supporting different
+approaches to security and varying levels of strictness. We demonstrate
 this range by providing examples of {\em memory safety}, {\em compartmentalization},
-and {\em secure information flow} (SIF) policies. We also give a semantics and reference
+and {\em secure information flow} (SIF) policies. We also give a reference
 interpreter for Tagged C.
 \end{abstract}
 
@@ -152,9 +157,12 @@ of course further experience is needed to confirm this.
 In summary we offer the following contributions:
 
 \begin{itemize}
-\item The design of a comprehensive set of {\em control points} at which the C language interfaces with a tag-based policy.
+\item The design of a comprehensive set of {\em control points} at which the C language interfaces
+  with a tag-based policy. These expand on prior work by encompassing the full C language
+  while being powerful enough to enable a range of policies even in the presence of C's more challenging
+  constructs (e.g., go-to, conditional expressions.)
 \item Tagged C policies implementing (1) compartmentalization.
-  (2) a realistic, permissive memory model from the literature (PVI),
+  (2) realistic, permissive memory models from the literature (PVI and PNVI),
   and (3) Secure Information Flow (SIF).
 \item A full formal semantic definition for Tagged C, formalized in Coq, describing how the control points
   interact with programs.
@@ -194,6 +202,10 @@ will tag {\tt psk} as \(\high\). This tag will be propagated along with the valu
 assignments, and arithmetic, according to generic rules that are not specific to this program. Finally, a program-specific
 argument-handling rule for {\tt printi} will check that the tag is \(\low\); since it is not, the rule will
 cause a failstop.
+
+[Explain how to read these]
+[Explain and fix names]
+[Elide undef?]
 
 \Cref{fig:ex1} maps each of three points in the execution of {\tt f} to a description of the program
 state at that point, with the input value and all tags treated symbolically. 
@@ -273,6 +285,8 @@ The result of the addition on line 2 comes from \(\binoptname\), which is parame
 by the kind of operation as well as the tags on its inputs.
 After the final step, the execution is in the function {\tt printi}, where it consults
 \(\argtname\) a second time.
+
+[TR args in same order in cases]
 
 \begin{figure}
   \begin{minipage}{0.4\textwidth}
@@ -389,6 +403,10 @@ and failstop if a high value would be written to a low location.
 For this program, \(\splittname\) will set the PC tag to \high, as it branches on a value derived from {\tt psk}; 
 then, at the write to {\tt mm}, \(\storetname\) will fail rather than write to a low address
 in a high context.
+
+[Explain that P in the example is the PC tag]
+[Explain that not all inputs get updated]
+[PCT update from store]
 
 \begin{figure}
   \globaltruleblock{
