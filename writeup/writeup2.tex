@@ -135,7 +135,7 @@ that would be undefined in standard C are given a definition (parameterized by a
 consistent with the behavior of a typical compiler.
 We build the Tagged C semantics on top of the CompCert C semantics, which are formalized 
 as part of the CompCert verified compiler \cite{Leroy09:CompCert}. We provide a reference interpreter,
-also based on that of CompCert, for use in prototyping and executing policies. Tag rules are written directly
+also based on that of CompCert~\cite[Ch. 4]{Leroy22:CompCertManual}, for use in prototyping and executing policies. Tag rules are written directly
 in Coq as Gallina functions.
 
 The choice of control points and their associations with tag rules, as well as the tag rules'
@@ -145,7 +145,7 @@ and, outside of a few known limitation discussed in \cref{sec:limitations}, e.g.
 we believe it is sufficiently expressive to describe most other flow-based policies, although
 of course further experience is needed to confirm this.
 
-\paragraph{Contributions}
+\paragraph*{Contributions}
 
 \apt{Should still try to goose these up as Catalin suggested}
 In summary we offer the following contributions:
@@ -457,11 +457,15 @@ in a high context.
   \label{fig:controlpoints}
 \end{table}
 
-Tagged C is full ordinary C.
+Tagged C contains almost all features of full ISO C 99.\footnote{
+It inherits the limitations of CompCert C, primarily that {\tt setjump} and {\tt longjump}
+may not work, and variable-length arrays are not supported.~\cite[Ch. 5]{Leroy22:CompCertManual}.}
 Its semantics (given in full in the Appendix)
-are based on that of CompCert C \cite{Leroy09:CompCert},
+are based on that of CompCert C~\cite{Leroy09:CompCert},
 a formalization of the C standard into a small-step reduction semantics.
-Tagged C's semantics differ from CompCert C's in two key respects. First, Tagged C's values
+Tagged C's semantics differ from CompCert C's in two key respects: tag support and memory model.
+
+\paragraph*{Tags} First, Tagged C's values
 and states are annotated with metadata tags, and its reductions contain
 control points, which are hooks within the
 operational semantics at which the tag policy is consulted and either tags are updated, or the system
@@ -486,36 +490,54 @@ The tag rule itself is instantiated as a partial function; if a policy leaves a 
 undefined on some inputs, then those inputs are considered to violate the policy, sending
 execution into a special failstop state. The names and signatures of all the tag rules,
 and their corresponding control points, are listed in \Cref{fig:controlpoints}.
-\(\calltname\) and \(\rettname\) update the PC tag on entry and exit from a function,
-with \(\rettname\) aware of both the caller's PC tag (\(\PCT[_{\color{blue} CLR}]\))
+We briefly summarize the rules here, and give motivating examples of their use in \cref{sec:policies}
+
+\apt{This para should be expanded to discuss arguments and results in somewhat
+  more detail.}
+Nearly all the rules are parameterized by the current PC tag \(\PCT\), and the rules
+for control points associated with changes in program state (variable or memory update,
+change in control flow) can produce a changed \(\PCT\) as a result.
+\(\calltname\) and \(\rettname\) update the PC tag on entry and exit from a function;
+\(\rettname\) is parameterized by both the caller's PC tag (\(\PCT[_{\color{blue} CLR}]\))
 and the callee's (\(\PCT[_{\color{blue} CLE}]\)). \(\argtname\) updates tags on any arguments.
 \(\loadtname\) and \(\storetname\) deal with memory accesses, while \(\accesstname\) and
 \(\assigntname\) handle variable access and assignment regardless of whether the variable
 is in memory. \(\exprsplittname\), \(\exprjointname\), \(\splittname\), and \(\labeltname\)
-update the PC tag based on changed in control flow. \(\fieldtname\) updates the tag
+update the PC tag based on changes in control flow. \(\fieldtname\) updates the tag
 on a pointer value when it is offset to access the field of a struct or union.
 \(\unoptname\) and \(\binoptname\) handle operations, \(\constt\) is the default tag
 on all constants, and \(\initt\) the initial tag in a fresh variable. \(\globaltname\), \(\localtname\),
 and \(\malloctname\) are each associated with the allocation of memory, with the latter
 two corresponding to \(\dealloctname\) and \(\freetname\) as deallocation rules,
-respectively. And the cast rules are specialized based on whether the original type or
+respectively. The cast rules are specialized based on whether the original type or
 the new type is a pointer, or both.
 
 Some of these control points access program-specific identifiers in the form of
 {\em name tags}. We give name tags to the following constructions:
 (1) function identifiers, \(\FN\); (2) Function arguments, \(\AN\); (3) Global variables, \(\GN\);
 (4) Labels, \(\LN\); (5) Types, \(\TN\).
+\apt{Want to move this to  caption of Table 1; some entries in table seem wrong, e.g. for ArgT.}
 
-The second major semantic distinction between Tagged C and CompCert C is that Tagged C has no
-memory-related UB. CompCert C models memory as a collection of blocks of offsets,
-and treats all variables as having their own block. Tagged C instead separates variables
+\paragraph*{Memory} The second major semantic distinction of Tagged C is that, unlike CompCert C,
+it has no memory-related UB. CompCert C models memory as a collection of disjoint blocks,
+and treats each variable as having its own block. Pointers are described by a (block, offset) pair,
+and invalid pointer accesses (out-of-bounds, use after free, etc.) produce UB.
+Tagged C instead separates variables
 into public and private data. Public data (all heap data, globals, arrays, structs, and
-address-taken locals) share a single flat address 
-space.
+address-taken locals) share a single flat address space (possibly with holes), and pointers are
+offsets into this space. Pointer accesses outside of this space cause
+an explicit failstop, rather than UB. 
 Private data (non-address-taken locals, parameters) live in a separate, abstract environment.
 Program-specified stores, e.g. writes through pointers, can cause arbitrary damage to public
-data, but do not affect private data.
-[TODO: add some language justifying why this is an interesting model in its own right.]
+data, but do not affect private data. 
+This model is strong enough to support a reasonable
+notion of semantics-preserving compilation, without making any commitment about fine-grained
+memory safety, which is intentionally left for explicit tag policies to specify (see \cref{sec:memsafe}).
+In an implementation that compiles to PIPE, the private data can be protected by a small number of
+``built-in'' tags.
+%In terms of exploits, it prevents control-only attacks,
+%but allows data-only and data-bending attacks/
+
 %Without memory safety, programs
 %that exhibit memory-undefined behavior will act as their compiled equivalents would, potentially
 %corrupting memory; we expect that a memory safety policy will be a standard default, but that the
@@ -541,7 +563,7 @@ rule should failstop.
 This process can be applied to any number of different policies, allowing for instance
 a combination of a baseline memory safety policy with several more targeted
 information-flow policies. Alternatively, a policy can call on the tag rules
-from other, related policies, as we will see below.
+from other, related policies, as illustrated in \cref{sec:compartments}, below.
 
 \section{Example Policies}
 \label{sec:policies}
@@ -554,6 +576,7 @@ active compartment. And secure information flow (SIF) policies show us the many 
 where the user may need to reference identifiers from their program in the policy itself.
 
 \subsection{Memory Safety}
+\label{sec:memsafe}
 
 Tagged C can be used to enforce memory safety with respect to different {\em memory models}---formal
 or informal descriptions of how C should handle memory. Here we discuss the CompCert C
@@ -1072,6 +1095,9 @@ of programs and is an interesting model in its own right.
 In the remainder of this section, we explore some of the benefits and limitations of
 our design choices.
 
+%generic/program specific
+%low-level/high-level
+
 % Trying to just thread the table into each section rather than all at once
 %\begin{table}
 %  \begin{center}
@@ -1146,7 +1172,7 @@ need the compiler to generate extra instructions.
    \url{https://www.researchgate.net/publication/221047076_Runtime_Verification_of_C_Programs/link/0deec5299040f07729000000/download} and work
    forward/backward from that.  And AOP is crucial to discuss.}
 
-\paragraph{Aspect Oriented Programming}
+\paragraph*{Aspect Oriented Programming}
 [TODO: do forward search from original AOP paper]
 
 %\paragraph{Reference Monitors}
@@ -1194,7 +1220,7 @@ need the compiler to generate extra instructions.
 We have presented the language and a reference interpreter, built on top of the CompCert interpreter
 \cite{Leroy09:CompCert}, and three example policies. There are several significant next steps.
 
-\paragraph{Compilation}
+\paragraph*{Compilation}
 
 An interpreter is useful for testing, but a compiler would be preferable for many reasons.
 A compiled Tagged C could use the hardware acceleration provided by a PIPE-equipped processor.
@@ -1203,7 +1229,7 @@ support linked libraries, including linking against code written in other langua
 We are currently working to extend the CompCert compiler to handle Tagged C, with the ultimated
 goal of also extending CompCert's verification guarantees to cover tags.
 
-\paragraph{Language Proofs}
+\paragraph*{Language Proofs}
 
 There are several propeties the language semantics itself that we would like to prove.
 Namely (1) that its behavior (prior to adding a policy) matches that of CompCert C and
@@ -1211,13 +1237,13 @@ Namely (1) that its behavior (prior to adding a policy) matches that of CompCert
 to failstop. \apt{Being coy about (non)-proof of equivalence between semantics and interpreter..
   I think we had better that this is a hole (that we would like to fill).}
 
-\paragraph{Policy Correctness Proofs}
+\paragraph*{Policy Correctness Proofs}
 
 For each example policy discussed in this paper, we sketched a formal specification for the
 security property it ought to enforce. A natural continuation would be to prove the correctness
 of each policy against these specifications.
 
-\paragraph{Policy DSL}
+\paragraph*{Policy DSL}
 
 Currently, policies are written in Gallina, the language embedded in Coq. This is fine for a
 proof-of-concept, but not satisfactory for real use. We plan to develop a domain-specific policy
