@@ -117,7 +117,7 @@ series = {CPP 2021}
   year = 1982
 }
 
-﻿@phdthesis{Lundblad13IRM:,
+﻿@phdthesis{Lundblad13:IRM,
    author = {Lundblad, Andreas},
    institution = {KTH, Theoretical Computer Science, TCS},
    note = {QC 20130220},
@@ -581,3 +581,79 @@ url = {https://www.microsoft.com/en-us/research/publication/slic-a-specification
 pages = {12},
 number = {MSR-TR-2001-21},
 }
+
+@inproceedings{Havelund22:LogScope,
+author = {Havelund, Klaus},
+title = {Specification-Based Monitoring In C++},
+year = {2022},
+isbn = {978-3-031-19848-9},
+publisher = {Springer-Verlag},
+address = {Berlin, Heidelberg},
+url = {https://doi.org/10.1007/978-3-031-19849-6_5},
+doi = {10.1007/978-3-031-19849-6_5},
+abstract = {Software systems cannot in general be assumed proven correct before deployment. Testing is still the most common approach to demonstrate a satisfactory level of correctness. However, some errors will survive verification efforts, and it is therefore reasonable to monitor a system after deployment, to determine whether it executes correctly. Both for testing and post-deployment monitoring, it may be desirable to be able to formalize correctness properties that can be monitored against program executions. This is also referred to as runtime verification. We present a specification language and a monitoring system for monitoring such specifications against event streams. The monitoring engine front-end, written in Scala, translates the specification to C++, whereas the back-end (the monitoring engine), written in C++, interprets the generated C++ monitor on an event stream. This makes it feasible to monitor the execution of C and C++ programs online.},
+booktitle = {Leveraging Applications of Formal Methods, Verification and Validation. Verification Principles: 11th International Symposium, ISoLA 2022, Rhodes, Greece, October 22–30, 2022, Proceedings, Part I},
+pages = {65–87},
+numpages = {23},
+location = {Rhodes, Greece}
+}
+
+@article{Schneider00:Automata,
+author = {Schneider, Fred B.},
+title = {Enforceable Security Policies},
+year = {2000},
+issue_date = {Feb. 2000},
+publisher = {Association for Computing Machinery},
+address = {New York, NY, USA},
+volume = {3},
+number = {1},
+issn = {1094-9224},
+url = {https://doi.org/10.1145/353323.353382},
+doi = {10.1145/353323.353382},
+abstract = {A precise characterization is given for the class of security policies enforceable with mechanisms that work by monitoring system execution, and automata are introduced for specifying exactly that class of security policies. Techniques to enforce security policies specified by such automata are also discussed.},
+journal = {ACM Trans. Inf. Syst. Secur.},
+month = {feb},
+pages = {30–50},
+numpages = {21},
+keywords = {proof carrying code, EM security policies, security automata, inlined reference monitors, safety properties, security policies, SASI}
+}
+
+@InProceedings{Kiczales97:AOP,
+author="Kiczales, Gregor
+and Lamping, John
+and Mendhekar, Anurag
+and Maeda, Chris
+and Lopes, Cristina
+and Loingtier, Jean-Marc
+and Irwin, John",
+editor="Ak{\c{s}}it, Mehmet
+and Matsuoka, Satoshi",
+title="Aspect-oriented programming",
+booktitle="ECOOP'97 --- Object-Oriented Programming",
+year="1997",
+publisher="Springer Berlin Heidelberg",
+address="Berlin, Heidelberg",
+pages="220--242",
+abstract="We have found many programming problems for which neither procedural nor object-oriented programming techniques are sufficient to clearly capture some of the important design decisions the program must implement. This forces the implementation of those design decisions to be scattered throughout the code, resulting in ``tangled'' code that is excessively difficult to develop and maintain. We present an analysis of why certain design decisions have been so difficult to clearly capture in actual code. We call the properties these decisions address aspects, and show that the reason they have been hard to capture is that they cross-cut the system's basic functionality. We present the basis for a new programming technique, called aspect-oriented programming, that makes it possible to clearly express programs involving such aspects, including appropriate isolation, composition and reuse of the aspect code. The discussion is rooted in systems we have built using aspect-oriented programming.",
+isbn="978-3-540-69127-3"
+}
+
+@article{Lampson74:Protection,
+author = {Lampson, Butler W.},
+title = {Protection},
+year = {1974},
+issue_date = {January 1974},
+publisher = {Association for Computing Machinery},
+address = {New York, NY, USA},
+volume = {8},
+number = {1},
+issn = {0163-5980},
+url = {https://doi.org/10.1145/775265.775268},
+doi = {10.1145/775265.775268},
+abstract = {Abstract models are given which reflect the properties of most existing mechanisms for enforcing protection or access control, together with some possible implementations. The properties of existing systems are explicated in terms of the model and implementations.},
+journal = {SIGOPS Oper. Syst. Rev.},
+month = {Jan},
+pages = {18–24},
+numpages = {7}
+}
+

@@ -1,6 +1,6 @@
 \newcommand{\truleblock}[2]
            {
-             \colorbox{blue!10}{
+             \tcbox{
              \begin{tabular}{l}
                #1 \\
                #2 \\
@@ -110,15 +110,7 @@
            
 \newcommand{\calltruleblock}[1]
            {
-             \colorbox{blue!10}{
-               \begin{tabular}{l}
-                 \(\callt\) \\
-                 % body
-                 #1 \\
-                 % outputs
-                 \{ \(\calltres\) \} \\
-               \end{tabular}
-             }
+             \truleblock{\(\callt\)}{#1}
            }
 
 \newcommand{\argtname}{\color{blue} \mathbf{ArgT}}
@@ -145,19 +137,13 @@
 
 \newcommand{\rettruleblock}[1]
            {
-             \colorbox{blue!10}{
-               \begin{tabular}{l}
-                 \(\rett\) \\
-                 #1 \\
-                 \{ \(\rettres\) \} \\
-               \end{tabular}
-             }
+             \truleblock{\(\rett\)}{#1}
            }
 
 \newcommand{\consttname}{\color{blue} \mathbf{ConstT}}
 \newcommand{\consttargs}{\PCT}
 \newcommand{\consttres}{\vt[']}
-\newcommand{\constt}{\consttname}
+\newcommand{\constt}{\consttname(\consttargs)}
 
 \newcommand{\consttruleblock}[1]
            {
@@ -167,7 +153,7 @@
 \newcommand{\inittname}{\color{blue} \mathbf{InitT}}
 \newcommand{\inittargs}{\PCT}
 \newcommand{\inittres}{\vt[']}
-\newcommand{\initt}{\inittname}
+\newcommand{\initt}{\inittname(\inittargs)}
 
 \newcommand{\inittruleblock}[1]
            {
@@ -272,12 +258,7 @@
 
 \newcommand{\labeltruleblock}[1]
            {
-             \colorbox{blue!10}{
-               \begin{tabular}{l}
-                 \(\labelt\) \\
-                 #1 \\
-               \end{tabular}
-             }
+             \truleblock{\(\labelt\)}{#1}
            }
 
 \newcommand{\extcalltname}{\color{blue} \mathbf{ExtCallT}}
