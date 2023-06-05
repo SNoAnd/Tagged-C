@@ -26,20 +26,25 @@
 \maketitle
 
 \begin{abstract}
-\apt{Still reads awkwardly, and doesn't expose problem/solution clearly.}
-Today's computing infrastructure is built atop layers of legacy C code, often
-insecure, poorly understood, and/or difficult to maintain.
-These foundations may be shored up with dynamic security enforcement.
-% and potentially introduce regressions.
-We introduce Tagged C, a novel C variant with a built-in {\em tag-based reference monitor}.
-It is designed to express a variety of dynamic security policies, either solo or in concert,
-and enforce them with compiler and/or hardware support.
+Today's computing infrastructure is built atop layers of legacy C code, 
+which is often insecure, poorly understood, and/or difficult to maintain.
+These layers may be shored up with dynamic security enforcement. Reference monitors 
+are a popular mechanism for dynamic enforcement. Unfortunately,
+their semantics are often underspecified, leaving gaps,
+and/or require expression at the ISA, which is often out of reach of C developers.
 
-Tagged C expresses security policies at the level familiar to C developers: that
-of the C source code rather than the ISA. It is comprehensive in supporting different
-approaches to security as well as more or less restrictive policies. We demonstrate
+We introduce Tagged C, a novel C variant with formalized and verified semantics 
+for a built-in {\em tag-based reference monitor} based on PIPE (Processor
+Interlocks for Policy Enforcement). Tagged C expresses security 
+policies at a level familiar to C developers: that
+of the C source code rather than the ISA.
+
+Tagged C is designed to express a variety of dynamic security policies,  
+either solo or in concert, and enforce them with compiler and/or hardware support.
+It is comprehensive in supporting different
+approaches to security and varying levels of strictness. We demonstrate
 this range by providing examples of {\em memory safety}, {\em compartmentalization},
-and {\em secure information flow} (SIF) policies. We also give a semantics and reference
+and {\em secure information flow} (SIF) policies. We also give a reference
 interpreter for Tagged C.
 \end{abstract}
 
