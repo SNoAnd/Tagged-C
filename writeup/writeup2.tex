@@ -445,28 +445,28 @@ in a high context.
     \hline
     Rule Name & Inputs & Outputs & Control Points \\
     \hline
-    \(\calltname\)      & \(\calltargs\)         & \(\calltres\)      & Update PC tag at Call \\
-    \(\argtname\)       & \(\argtargs\)          & \(\argtres\)       & Per Argument at Call \\
-    \(\rettname\)       & \(\rettargs\)          & \(\rettres\)       & Handle PC tag, Return Value \\
-    \(\loadtname\)      & \(\loadtargs\)         & \(\loadtres\)      & Memory Loads \\
-    \(\storetname\)     & \(\storetargs\)        & \(\storetres\)     & Memory Stores \\
-    \(\accesstname\)    & \(\accesstargs\)       & \(\accesstres\)    & Variable Accesses \\
-    \(\assigntname\)    & \(\assigntargs\)       & \(\assigntres\)    & Variable Assignments \\
-    \(\unoptname\)      & \(\unoptargs\)         & \(\unoptres\)      & Unary Operation \\
-    \(\binoptname\)     & \(\binoptargs\)        & \(\binoptres\)     & Binary Operation \\
-    \(\consttname\)     & \(\consttargs\)        & \(\consttres\)     & Applied to Constants/Literals \\
-    \(\inittname\)      & \(\inittargs\)         & \(\inittres\)      & Applied to Fresh Variables \\
-    \(\exprsplittname\) & \(\exprsplittargs\)    & \(\exprsplittres\) & Control-flow split points in expressions \\
-    \(\exprjointname\)  & \(\exprjointargs\)     & \(\exprjointres\)  & Join points in expressions \\
+    \(\calltname\)      & \(\calltargs\)         & \(\calltres\)      & Update PC tag at call \\
+    \(\argtname\)       & \(\argtargs\)          & \(\argtres\)       & Per argument at call \\
+    \(\rettname\)       & \(\rettargs\)          & \(\rettres\)       & Handle PC tag, return value \\
+    \(\loadtname\)      & \(\loadtargs\)         & \(\loadtres\)      & Memory oads \\
+    \(\storetname\)     & \(\storetargs\)        & \(\storetres\)     & Memory stores \\
+    \(\accesstname\)    & \(\accesstargs\)       & \(\accesstres\)    & Variable accesses \\
+    \(\assigntname\)    & \(\assigntargs\)       & \(\assigntres\)    & Variable assignments \\
+    \(\unoptname\)      & \(\unoptargs\)         & \(\unoptres\)      & Unary operation \\
+    \(\binoptname\)     & \(\binoptargs\)        & \(\binoptres\)     & Binary operation \\
+    \(\consttname\)     & \(\consttargs\)        & \(\consttres\)     & Applied to constants/literals \\
+    \(\inittname\)      & \(\inittargs\)         & \(\inittres\)      & Applied to fresh variables \\
     \(\splittname\)     & \(\splittargs\)        & \(\splittres\)     & Control-flow split points in statements\\
     \(\labeltname\)     & \(\labeltargs\)        & \(\labeltres\)     & Labels/arbitrary code points \\
+    \(\exprsplittname\) & \(\exprsplittargs\)    & \(\exprsplittres\) & Control-flow split points in expressions \\
+    \(\exprjointname\)  & \(\exprjointargs\)     & \(\exprjointres\)  & Join points in expressions \\
     \(\globaltname\)    & \(\globaltargs\)       & \(\globaltres\)    & Program initialization \\
     \(\localtname\)     & \(\localtargs\)        & \(\localtres\)     & Stack allocation (per local) \\
     \(\dealloctname\)   & \(\dealloctargs\)      & \(\dealloctres\)   & Stack deallocation (per local) \\
     \(\extcalltname\)   & \(\extcalltargs\)      & \(\extcalltres\)   & Call to linked code \\
     \(\malloctname\)    & \(\malloctargs\)       & \(\malloctres\)    & Call to {\tt malloc} \\
     \(\freetname\)      & \(\freetargs\)         & \(\freetres\)      & Call to {\tt free} \\
-    \(\fieldtname\)     & \(\fieldtargs\)        & \(\fieldtres\)     & Field Access \\
+    \(\fieldtname\)     & \(\fieldtargs\)        & \(\fieldtres\)     & Structure/union field access \\
     \(\picasttname\)    & \(\picasttargs\)       & \(\picasttres\)    & Cast from pointer to scalar \\
     \(\ipcasttname\)    & \(\ipcasttargs\)       & \(\ipcasttres\)    & Cast from scalar to pointer \\
     \(\ppcasttname\)    & \(\ppcasttargs\)       & \(\ppcasttres\)    & Cast between pointers \\
@@ -474,7 +474,10 @@ in a high context.
     \hline
   \end{tabular}
 
-  \caption{Full list of tag-rules and control points}
+  \caption{Full list of tag-rule signatures and control points. Key to metavariables:
+    \(\PCT\): PC tag, \(\vt\): value tag, \(\pt\): pointer tag, \(\lt\): location tag;
+    \(\FN\): function identfier; \(\AN\): function argument; \(\GN\): global
+    variable name, \(\LN\): label; \(\TN\): type.}
   \label{fig:controlpoints}
 \end{table}
 
@@ -486,7 +489,7 @@ are based on that of CompCert C~\cite{Leroy09:CompCert},
 a formalization of the C standard into a small-step reduction semantics.
 Tagged C's semantics differ from CompCert C's in two key respects: tag support and memory model.
 
-\paragraph*{Tags} First, Tagged C's values
+\subsection{Tags} First, Tagged C's values
 and states are annotated with metadata tags, and its reductions contain
 control points, which are hooks within the
 operational semantics at which the tag policy is consulted and either tags are updated, or the system
@@ -513,33 +516,31 @@ execution into a special failstop state. The names and signatures of all the tag
 and their corresponding control points, are listed in \Cref{fig:controlpoints}.
 We briefly summarize the rules here, and give motivating examples of their use in \cref{sec:policies}
 
-\apt{This para should be expanded to discuss arguments and results in somewhat
-  more detail.}
 Nearly all the rules are parameterized by the current PC tag \(\PCT\), and the rules
 for control points associated with changes in program state (variable or memory update,
-change in control flow) can produce a changed \(\PCT\) as a result.
-\(\calltname\) and \(\rettname\) update the PC tag on entry and exit from a function;
+change in control flow) can produce a changed \(\PCT'\) as a result.
+\(\calltname\) \apt{still don't understand why this doesn't take $\FN$, as in the example}
+and \(\rettname\) update the PC tag on entry and exit from a function.
 \(\rettname\) is parameterized by both the caller's PC tag (\(\PCT[_{\color{blue} CLR}]\))
-and the callee's (\(\PCT[_{\color{blue} CLE}]\)). \(\argtname\) updates tags on any arguments.
+and the callee's (\(\PCT[_{\color{blue} CLE}]\)); it can also update the return value's tag.
+\(\argtname\) updates tags on any arguments, based on the function and argument names.
 \(\loadtname\) and \(\storetname\) deal with memory accesses, while \(\accesstname\) and
-\(\assigntname\) handle variable access and assignment regardless of whether the variable
-is in memory. \(\exprsplittname\), \(\exprjointname\), \(\splittname\), and \(\labeltname\)
-update the PC tag based on changes in control flow. \(\fieldtname\) updates the tag
-on a pointer value when it is offset to access the field of a struct or union.
+\(\assigntname\) are invoked on variable access and assignment regardless of whether the variable
+is in memory.
 \(\unoptname\) and \(\binoptname\) handle operations, \(\consttname\) is the default tag
-on all constants, and \(\inittname\) the initial tag in a fresh variable. \(\globaltname\), \(\localtname\),
-and \(\malloctname\) are each associated with the allocation of memory, with the latter
-two corresponding to \(\dealloctname\) and \(\freetname\) as deallocation rules,
+on all constants, and \(\inittname\) is the initial tag in a fresh variable.
+\(\splittname\), \(\labeltname\), \(\exprsplittname\), and \(\exprjointname\) 
+update the PC tag based on changes in control flow in statements and expressions.
+\(\fieldtname\) updates the tag on a pointer value when it is offset to access the field of a struct or union.
+ \(\globaltname\), \(\localtname\),
+ and \(\malloctname\) are each associated with the allocation of memory, and are
+ parameterized by the type of the allocated value. The latter
+two have corresponding deallocation rules \(\dealloctname\) and \(\freetname\),
 respectively. The cast rules are specialized based on whether the original type or
 the new type is a pointer, or both.
 
-Some of these control points access program-specific identifiers in the form of
-{\em name tags}. We give name tags to the following constructions:
-(1) function identifiers, \(\FN\); (2) Function arguments, \(\AN\); (3) Global variables, \(\GN\);
-(4) Labels, \(\LN\); (5) Types, \(\TN\).
-\apt{Want to move this to  caption of Table 1; some entries in table seem wrong, e.g. for ArgT.}
 
-\paragraph*{Memory} The second major semantic distinction of Tagged C is that, unlike CompCert C,
+\subsection{Memory} The second major semantic distinction of Tagged C is that, unlike CompCert C,
 it has no memory-related UB. CompCert C models memory as a collection of disjoint blocks,
 and treats each variable as having its own block. Pointers are described by a (block, offset) pair,
 and invalid pointer accesses (out-of-bounds, use after free, etc.) produce UB.
@@ -572,7 +573,7 @@ In an implementation that compiles to PIPE, the private data can be protected by
 %% identifies the full collection of control points, their tag rules, and the inputs and outputs of the tag rules.
 %% The tag type \(\tau\) must be inhabited by a default tag.
 
-\paragraph*{Combining Policies}
+\subsection{Combining Policies}
 
 Multiple policies can be enforced in parallel. If policy \(A\) has tag type \(\tau_A\)
 and policy \(B\) has \(\tau_B\), then policy \(A \times B\) should have tag type
