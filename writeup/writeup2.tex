@@ -1137,9 +1137,15 @@ termed {\em aspects}, that cannot be localized inside modules, such as security 
 An AOP language distributes {\em advice points} throughout its semantics, much like our
 control points, and the programmer separately writes {\em advice} in the form of
 additional code that should execute before or after the advice point. The compiler
-then interleaves all of the advice with its relevant advice points.
+then interleaves all of the advice with its relevant advice points. This is conceptually
+very similar to our notion of control points! The main difference is that advice is
+code, executing before or after its advice point, while a tag monitor is separate from
+the system---it cannot interfere in the execution except to failstop. On the one hand,
+this means that Tagged C policies cannot ``correct'' bad behavior. On the other,
+it means that attaching a given policy to any program in Tagged C will never result
+in a regression, only potential failstops.
 
-AOP has been used to implement security systems \cite{} and to extend C more generally \cite{}.
+AOP has been used to implement security systems \cite{} and to extend C in general \cite{}.
 
 \paragraph{Runtime Verification and Specification}
 
