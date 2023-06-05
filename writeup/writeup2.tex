@@ -134,9 +134,10 @@ and address-taken objects are allocated in the same integer-addressed memory spa
 that would be undefined in standard C are given a definition (parameterized by a particular allocation strategy)
 consistent with the behavior of a typical compiler.
 We build the Tagged C semantics on top of the CompCert C semantics, which are formalized 
-as part of the CompCert verified compiler \cite{Leroy09:CompCert}. We provide a reference interpreter,
-also based on that of CompCert~\cite[Ch. 4]{Leroy22:CompCertManual}, for use in prototyping and executing policies. Tag rules are written directly
-in Coq as Gallina functions.
+as part of the CompCert verified compiler \cite{Leroy09:CompCert}. For prototyping and executing example policies,
+we provide a reference interpreter also based on that of CompCert~\cite[Ch. 4]{Leroy22:CompCertManual},
+written in the Gallina functional language of the Coq Proof Assistant~\cite{coq}.
+Tag types and rules are also written directly in Gallina. 
 
 The choice of control points and their associations with tag rules, as well as the tag rules'
 signatures, form the essence of Tagged C's design. 
@@ -1217,34 +1218,33 @@ An interpreter is useful for testing policies, but our main goal has always been
 produce a compiler from Tagged C to machine code for a PIPE-equipped processor.
 The basic strategy for compilation was outlined in the Tagine project~\cite{Chhak21:Tagine}.
 We are currently working to extend the CompCert compiler to handle Tagged C, with the ultimate
-goal of also extending CompCert's semantics preservervation guarantees to cover tagged semantics.
+goal of also extending CompCert's semantics preservation guarantees to cover tagged semantics.
 
 \paragraph*{Fixed set of Control Points}
 We deliberately designed Tagged C to rely on a fixed number of predefined
 control points. This simplifies and organizes the task of the policy designer, but of course
-it leaves the possibility that new policies will arise for which our current set of
-control points is inadequate.  There is no conceptual reason why
-the control points cannot be extended on demand, but extending the interpreter
-and, even more
-and even more the compilerthe overhead of doing this
-will obviously increase once we have a compiler---particularly because of the need
-to consider how tag rule evaluation interacts with compiler optimziation~\cite{Chhak21:Tagine}.
-It is also important to keep the ultimate 
+new policies might arise for which our current set of
+control points proves to be inadequate.  There is no conceptual reason why
+control points cannot be added or given modified signatures as the need arises,
+but extending the interpreter and (eventually) the compiler would be non-trivial.
+Particular care needs to be taken in designing control points that are amenable
+to compilation for PIPE: tag rule evaluation has a complicated interaction with
+compiler optimization~\cite{Chhak21:Tagine}, and some potentially useful tag
+rule signatures (such as updating tags on operation inputs to enforce uniqueness
+constraints) would require the compiler to generate extra instructions to work
+around limitations of the PIPE hardware.
 
-How hard would it be to add control points, or extend the ones that exist? That depends
-whether the extension in question would impact compilation strategies. For instance,
-we have avoided control points that allow updates to their operand tags, although
-this could be useful in enforcing policies that attempt to maintain the uniqueness of tags,
-because tag-based hardware is unlikely to support linear tags, so any such updates would
-need the compiler to generate extra instructions.
+\paragraph*{Policy DSL}
+Currently, policies are written in Gallina, the language embedded in Coq~\cite{coq}. This is fine for a
+proof-of-concept, but not satisfactory for real use by software engineers.
+We plan to develop a domain-specific policy language to make it easier to write Tagged C policies.
 
-\subsection*{Heap Memory Tagging}
+\paragraph*{Heap Memory Tagging}
 The way Tagged C currently handles {\tt malloc} is unsatisfactory. First, there is no
 easy way to distinguish different static {\tt malloc} call locations; our use of
 variant names (\cref{sec:compartments}) is something of a hack. A more principled solution
   would probably involve building a general mechanism for identifying particular
-  static points within functions, but we have so far intentionally avoided this in
-  favor of a ``black box'' approach to policy construction.
+  static points within functions, but we have so far intentionally avoided this.
   \apt{Need to add something earlier in the paper about our rationale for attaching rules
     to ``externally visible'' things like function calls and globals.}
   A further problem with {\tt malloc} is that it does not get access to type information;
@@ -1256,28 +1256,21 @@ variant names (\cref{sec:compartments}) is something of a hack. A more principle
   regions to be tagged according to their types.
   This is a well-known impediment to improving C memory safety; to get around it,
   previous work  (e.g. \cite{Michael23:MSWASM}) has often adopted non-standard
-  versions of {\tt malloc} that take more informative parameters. While this is
-  not satisfactory for protecting legacy code, we do not see a good alternative at present.
+  versions of {\tt malloc} that take more informative parameters. This is
+  not satisfactory for protecting legacy code, but we do not see a good alternative at present.
 
-\subsection*{Language Proofs}
 
-There are several propeties the language semantics itself that we would like to prove.
-Namely (1) that its behavior (prior to adding a policy) matches that of CompCert C and
-(2) that the behavior of a given program is invariant under all policies up to truncation due
-to failstop. \apt{Being coy about (non)-proof of equivalence between semantics and interpreter..
-  I think we had better that this is a hole (that we would like to fill).}
+\paragraph*{Proofs}
+One reason for prototyping Tagged C in the Coq Proof Assistant is to lay the groundwork
+for formal proofs of its prooperties.  In particular, we would like to show that
+(i) the Tagged C semantics and interpreter have equivalent behavior; (ii) Tagged C running
+with a trivial ``do-nothing'' policy behaves like ordinary CompCert C, and (iii) Tagged C policies
+do not change program behavior outside of potentially causing failstops.
 
 \paragraph*{Policy Correctness Proofs}
-
-For each example policy discussed in this paper, we sketched a formal specification for the
-security property it ought to enforce. A natural continuation would be to prove the correctness
-of each policy against these specifications.
-
-\paragraph*{Policy DSL}
-
-Currently, policies are written in Gallina, the language embedded in Coq. This is fine for a
-proof-of-concept, but not satisfactory for real use. We plan to develop a domain-specific policy
-language to make it easier to write Tagged C policies.
+For each example policy discussed in this paper, we sketched an informal specification for the
+security property it ought to enforce. A natural next step is to formalize these specifications
+and prove that the corresponding policies do in fact enforce them.
 
 \bibliographystyle{splncs04}
 \bibliography{taggedc.bib}
