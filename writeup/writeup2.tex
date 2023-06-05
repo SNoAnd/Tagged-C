@@ -267,7 +267,7 @@ value (\(\vt[_0]\)) and the names of both the function
 \footnote{This is a simplification; see \cref{sec:compartments} for a discussion of how \(\argtname\)
 accesses the function identifier in practice.}
 and the argument. The initial tag on local
-variable {\tt x} is the default tag \(\constt\), as is the tag on the constant 5 on line 2.
+variable {\tt x} is the default tag \(\consttname\), as is the tag on the constant 5 on line 2.
 The result of the addition on line 2 comes from \(\binoptname\), which is parameterized
 by the kind of operation as well as the tags on its inputs.
 After the final step, the execution is in the function {\tt printi}, where it consults
@@ -433,8 +433,8 @@ in a high context.
     \(\assigntname\)    & \(\assigntargs\)       & \(\assigntres\)    & Variable Assignments \\
     \(\unoptname\)      & \(\unoptargs\)         & \(\unoptres\)      & Unary Operation \\
     \(\binoptname\)     & \(\binoptargs\)        & \(\binoptres\)     & Binary Operation \\
-    \(\consttname\)     &                        & \(\consttres\)     & Applied to Constants/Literals \\
-    \(\inittname\)      &                        & \(\inittres\)      & Applied to Fresh Variables \\
+    \(\consttname\)     & \(\consttargs\)        & \(\consttres\)     & Applied to Constants/Literals \\
+    \(\inittname\)      & \(\inittargs\)         & \(\inittres\)      & Applied to Fresh Variables \\
     \(\exprsplittname\) & \(\exprsplittargs\)    & \(\exprsplittres\) & Control-flow split points in expressions \\
     \(\exprjointname\)  & \(\exprjointargs\)     & \(\exprjointres\)  & Join points in expressions \\
     \(\splittname\)     & \(\splittargs\)        & \(\splittres\)     & Control-flow split points in statements\\
@@ -505,8 +505,8 @@ and the callee's (\(\PCT[_{\color{blue} CLE}]\)). \(\argtname\) updates tags on 
 is in memory. \(\exprsplittname\), \(\exprjointname\), \(\splittname\), and \(\labeltname\)
 update the PC tag based on changes in control flow. \(\fieldtname\) updates the tag
 on a pointer value when it is offset to access the field of a struct or union.
-\(\unoptname\) and \(\binoptname\) handle operations, \(\constt\) is the default tag
-on all constants, and \(\initt\) the initial tag in a fresh variable. \(\globaltname\), \(\localtname\),
+\(\unoptname\) and \(\binoptname\) handle operations, \(\consttname\) is the default tag
+on all constants, and \(\inittname\) the initial tag in a fresh variable. \(\globaltname\), \(\localtname\),
 and \(\malloctname\) are each associated with the allocation of memory, with the latter
 two corresponding to \(\dealloctname\) and \(\freetname\) as deallocation rules,
 respectively. The cast rules are specialized based on whether the original type or
@@ -1140,14 +1140,30 @@ identify where each pointer comes from, or possibly some sort of temporal logic.
 \section{Related Work}
 \label{sec:related}
 
-\apt{This paper is not really about reference monitors, but about how their behavior can be \emph{specified}.
-  So a lot of the following is not very relevant. On the other hand, there is certainly literature on
-   RV of C programs; we could start with 
-   \url{https://www.researchgate.net/publication/221047076_Runtime_Verification_of_C_Programs/link/0deec5299040f07729000000/download} and work
-   forward/backward from that.  And AOP is crucial to discuss.}
+\paragraph{Aspect-Oriented Programming}
 
-\paragraph*{Aspect Oriented Programming}
-[TODO: do forward search from original AOP paper]
+The aspect-oriented programming (AOP) paradigm aims to separate disparate concerns,
+termed {\em aspects}, that cannot be localized inside modules, such as security and logging \cite{}. % OG paper
+An AOP language distributes {\em advice points} throughout its semantics, much like our
+control points, and the programmer separately writes {\em advice} in the form of
+additional code that should execute before or after the advice point. The compiler
+then interleaves all of the advice with its relevant advice points. Though usually
+focused on higher-level languages \cite{}, \cite{} [cite two java versions here],
+there has been work on extending AOP to C \cite{}. [TinyC2]
+
+AOP, with its advice points, is conceptually very similar to our notion of control points!
+The main difference is that advice is
+code, executing before or after its advice point, while a tag monitor is separate from
+the system---it cannot interfere in the execution except to failstop. On the one hand,
+this means that Tagged C policies cannot ``correct'' bad behavior. On the other,
+it means that attaching a given policy to any program in Tagged C will never result
+in a regression, only potential failstops.
+
+\paragraph{Runtime Verification and Specification}
+
+The basic AOP notion of interleaving checks with normal execution extends to
+runtime monitors that are more directly comparable to Tagged C. Here, the advice
+that is interleaved
 
 %\paragraph{Reference Monitors}
 
