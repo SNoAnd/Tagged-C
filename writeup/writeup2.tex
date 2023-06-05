@@ -1241,7 +1241,7 @@ need the compiler to generate extra instructions.
 \subsection*{Heap Memory Tagging}
 The way Tagged C currently handles {\tt malloc} is unsatisfactory. First, there is no
 easy way to distinguish different static {\tt malloc} call locations; our use of
-variant names (\cref{sec:compartments) is something of a hack. A more principled solution
+variant names (\cref{sec:compartments}) is something of a hack. A more principled solution
   would probably involve building a general mechanism for identifying particular
   static points within functions, but we have so far intentionally avoided this in
   favor of a ``black box'' approach to policy construction.
