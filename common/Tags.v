@@ -77,13 +77,13 @@ Module TagLib (P:Policy).
   Definition at_map (f:val -> val) (a:atom*tag) :=
     let '(v,t,t') := a in (f v, t, t').
 
-  (* TODO put these back later. might need "a" to be an option 
-  Definition opt_atom_map (f:val -> val) (a:PolicyResult atom) :=
+  (* These things should not take policy results... *)
+  Definition opt_atom_map (f:val -> val) (a:option atom) :=
     option_map (atom_map f) a.
 
-  Definition opt_at_map (f:val -> val) (a:PolicyResult (atom*tag)) :=
+  Definition opt_at_map (f:val -> val) (a:option (atom*tag)) :=
     option_map (at_map f) a.
-  *)
+  
 
   Lemma atom_eq_dec :
     forall (a1 a2:atom),
@@ -180,8 +180,6 @@ Module PVI <: Policy.
     | Dyn c =>
         PolicySuccess (Dyn (S c), Dyn c, repeat (Dyn c) align)
     | _ =>
-        (* if the match fails, do I have anything to put in the list? 
-            was a None, which I assume means a bad thing*)
         PolicyFail "PVI::LocalT Failure" [pct]
     end.
 
@@ -198,16 +196,18 @@ Module PVI <: Policy.
     | _, _ => PolicySuccess (pct, vt2)
     end.
 
-  Definition LoadT (pct pt vt: tag) (lts : list tag) PolicyResult tag :=
+  Definition LoadT (pct pt vt: tag) (lts : list tag) : PolicyResult tag :=
     match pt with
-    | X => None
-    | _ => if forallb (tag_eq_dec pt) lts then PolicySuccess vt else None
+    | X => PolicyFail "PVI::LoadT X Failure" ([pct;pt;vt]++lts)
+    | _ => if forallb (tag_eq_dec pt) lts then PolicySuccess vt 
+           else (PolicyFail "PVI::LoadT tag_eq_dec Failure" ([pct;pt;vt]++lts))
     end.
 
   Definition StoreT (pct pt ovt vt : tag) (lts : list tag) : PolicyResult (tag * tag * list tag) :=
     match pt with
-    | X => None
-    | _ => if forallb (tag_eq_dec pt) lts then PolicySuccess (pct,vt,lts) else None
+    | X => (PolicyFail "PVI::StoreT X Failure" ([pct;pt;ovt;vt]++lts))
+    | _ => if forallb (tag_eq_dec pt) lts then PolicySuccess (pct,vt,lts) 
+           else (PolicyFail "PVI::StoreT tag_eq_dec Failure" ([pct;pt;ovt;vt]++lts))
     end.
 
   Definition IfSplitT (pct vt : tag) : PolicyResult (tag * tag) := PolicySuccess (pct, pct).
@@ -255,8 +255,7 @@ Module PNVI <: Policy.
     match pct with
     | Dyn c =>
         PolicySuccess (Dyn (S c), Dyn c, repeat (Dyn c) align)
-    | _ =>
-        None
+    | _ => PolicyFail "PNVI::LocalT  Failure" [pct]
     end.
 
   Definition VarT (pct pt : tag) : PolicyResult tag := PolicySuccess pt.
@@ -274,14 +273,16 @@ Module PNVI <: Policy.
 
   Definition LoadT (pct pt vt: tag) (lts : list tag) : PolicyResult tag :=
     match pt with
-    | X => None
-    | _ => if forallb (tag_eq_dec pt) lts then PolicySuccess vt else None
+    | X => (PolicyFail "PVNI::LoadT X Failure" ([pct;pt;vt]++lts))
+    | _ => if forallb (tag_eq_dec pt) lts then PolicySuccess vt 
+           else (PolicyFail "PNVI::LoadT tag_eq_dec Failure" ([pct;pt;vt]++lts))
     end.
 
   Definition StoreT (pct pt ovt vt : tag) (lts : list tag) : PolicyResult (tag * tag * list tag) :=
     match pt with
-    | X => None
-    | _ => if forallb (tag_eq_dec pt) lts then PolicySuccess (pct,vt,lts) else None
+    | X => (PolicyFail "PNVI::StoreT X Failure" ([pct;pt;ovt;vt]++lts))
+    | _ => if forallb (tag_eq_dec pt) lts then PolicySuccess (pct,vt,lts) 
+           else (PolicyFail "PNVI::StoreT tag_eq_dec Failure" ([pct;pt;ovt;vt]++lts))
     end.
 
   Definition IfSplitT (pct vt : tag) : PolicyResult (tag * tag) := PolicySuccess (pct, pct).
@@ -382,7 +383,8 @@ Module IFC (S:IFC_Spec) <: Policy.
 
   Definition StoreT (pct pt ovt vt: tag) (lts: list tag) : PolicyResult (tag * tag * list tag) :=
     let st := merge (merge pct pt) vt in
-    if forallb (check st) lts then PolicySuccess (pct, st, lts) else None.
+    if forallb (check st) lts then PolicySuccess (pct, st, lts) 
+    else (PolicyFail "IFC::StoreT check st Failure" ([pct;pt;ovt;vt]++lts)).
 
   Definition IfSplitT (pct vt : tag) : PolicyResult (tag * tag) := PolicySuccess (merge pct vt, pct).
   
