@@ -1351,13 +1351,19 @@ provides the interface for allocation and deallocation of stack and heap memory.
 \begin{figure}[t]
   \[\mem[p]_{\type} \triangleq
   \begin{cases}
-
+    v\tagat\vt\tagat\left[\lt[_0]\dots\lt[_n]\right] & \textnormal{if } \mem.\mathit{contents} ~ (p+n) = (v\tagat\vt)_n\tagat\lt[_n], \\
+    & \textnormal{and } \mem.\mathit{perm} ~ (p+n) \not = \mathit{Reserved}, \textnormal{ where } 0 \leq n < |\type| \\
+    \vundef\tagat\vt\tagat\left[\lt[_0]\dots\lt[_n]\right] & \textnormal{else if } \mem.\mathit{contents} ~ (p+n) = \underline{~~}\tagat\lt[_n] \\
+    & \textnormal{and } \mem.\mathit{perm} ~ (p+n) \not = \mathit{Reserved}, \textnormal{ where } 0 \leq n < |\type| \\
+    \bot & \textnormal{otherwise}
   \end{cases}\]
 
-  \[\forall n. 0 \leq n < |\type| \rightarrow  
-  \mem.\mathit{contents} ~ (p+n) = (v\tagat\vt)\]
-  \[\]
-
+  \[\mem[p \mapsto v\tagat\vt\tagat\overline{\lt}]_{\type} \triangleq
+  \begin{cases}
+    \left\{ \mem.\mathit{contents}\llbracket p + n \mapsto (v\tagat\vt)_n\tagat(\mathit{nth} ~ n ~ \overline{\lt}) \mid \rrbracket 0 \leq n < |\type| \right\} \\ \hspace{4em} \textnormal{if } \mathit{perm} ~ (p+n) \not = \mathit{Reserved} \textnormal{ where } 0 \leq n < |\type| \\
+    \bot \hspace{3.2em} \textnormal{otherwise} \\
+  \end{cases}\]
+  
   \caption{Memory Operations}
   \label{fig:memops}
 \end{figure}
