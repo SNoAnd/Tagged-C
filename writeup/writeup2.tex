@@ -715,7 +715,7 @@ Line (5) is always legal, (6) is illegal in CompCert C, (7) is also illegal in P
   \caption{Generic Memory Safety Rules}
   \label{fig:memgen}
 \end{figure}
-\begin{figure}
+\begin{figure}[t]
   \begin{subfigure}{\textwidth}
     \centering
     \color{blue}
@@ -839,7 +839,7 @@ In our compartmentalization policy (\cref{fig:compartments}), we define a tag to
 identifier or the default \(\N\) tag. The PC tag always carries the compartment of the
 active function, kept up to date by the \(\calltname\) and \(\rettname\) rules.
 
-\begin{figure}
+\begin{figure}[t]
   \scriptsize
   \color{blue}
   \begin{minipage}[t]{0.3\textwidth}
@@ -933,7 +933,7 @@ SIF deals entirely with enforcing
 higher-level security concerns, regardless of whether the code that they protect contains
 errors or undefined behaviors.
 
-\begin{figure}
+\begin{figure}[t]
 \begin{tikzpicture}[every text node part/.style={align=left}]
   \node[matrix, ampersand replacement=\&, anchor=west] (code)
        {
@@ -1000,7 +1000,7 @@ reaches that label via the \(\labeltname\) rule. In the full SIF policy, we keep
 the pending join points within the PC tag, and lower the PC tag when execution reaches the join point.
 A similar approach applies to conditional expressions, but we omit the details here.
 
-\begin{figure}
+\begin{figure}[t]
   \scriptsize
   \begin{minipage}{0.17\textwidth}
     \color{blue}
