@@ -468,9 +468,9 @@ in a high context.
   \end{tabular}
 
   \caption{Full list of tag-rule signatures and control points. Key to metavariables:
-    \(\PCT\): PC tag, \(\vt\): value tag, \(\pt\): pointer tag, \(\lt\): location tag;
-    \(\FN\): function identfier; \(\AN\): function argument; \(\GN\): global
-    variable name, \(\LN\): label; \(\TN\): type.}
+    \(\PCT\): PC tag, \(\vt\): value tag, \(\pt\): pointer tag, \(\lt\): location tag,
+    \(\FN\): function identfier, \(\AN\): function argument, \(\GN\): global
+    variable name, \(\LN\): label, \(\TN\): type.}
   \label{fig:controlpoints}
 \end{table}
 
@@ -499,7 +499,7 @@ for binary operations:
 \end{minipage}
 
 \noindent
-On the left, the ``tagless'' version of the rule reduces a
+On the left, the ordinary ``tagless'' version of the rule reduces a
 binary operation on two inputs to a single value.
 On the right, the Tagged C version adds tags to the operands and tags the result
 based on the \(\binoptname\) rule. \sna{Instance of a tag rule?}
@@ -576,7 +576,7 @@ the left projection of all inputs and the rules of \(B\) to the right projection
 to generate the components of the new tag. If either side failstops, the entire
 rule should failstop.
 
-This process can be applied to any number of different policies, allowing for instance
+This process can be applied to any number of different policies, allowing, for instance,
 a combination of a baseline memory safety policy with several more targeted
 information-flow policies. Alternatively, a policy can call on the tag rules
 from other, related policies, as illustrated in \cref{sec:compartments}, below.
@@ -588,9 +588,9 @@ In this section, we discuss concrete policy implementations and how
 they motivate Tagged C's control point design. Memory safety policies
 inform our requirements for memory tags and type casts. Compartmentalization
 policies depend on the call- and return-related control points, to keep track of the
-active compartment. Secure information flow (SIF) policies expose the many places
+active compartment. Secure information flow policies expose the many places
 where the user may need to reference identifiers from their program in the policy itself.
-Together, these example policies illustrate Tagged C's breadth of application.
+Taken toogether, these example policies illustrate Tagged C's breadth of application.
 
 \subsection{Memory Safety}
 \label{sec:memsafe}
@@ -598,18 +598,17 @@ Together, these example policies illustrate Tagged C's breadth of application.
 Tagged C can be used to enforce memory safety with respect to different {\em memory models}---formal
 or informal descriptions of how C should handle memory. Here we discuss the CompCert C
 memory model and two models proposed by Memarian et al. \cite{Memarian19:ExploringCSemantics}
-for the purposes of supporting low-level idioms, focusing in particular on how they handle
+for the purposes of supporting low-level idioms in the presence of compiler optimization, focusing in particular on how they handle
 casts from pointers to integers and back.
 
-
-While the idea seems obvious, the definition of a valid pointer can vary. The C standard
+While the idea of a valid pointer may seem obvious, the precise definition can vary. The C standard
 does not support arbitrary arithmetic on pointers or their integer casts.  In practice, it is common for programs to violate the
-C standard to various degrees. For example, if objects are known to be aligned to \(2^n\)-byte boundaries,
+C standard to various degrees; see \cref{fig:memsafe}. For example, if objects are known to be aligned to \(2^n\)-byte boundaries,
 the low-order \(n\) bits of pointers can be ``borrowed'' to store other data~\cite{Memarian16:DeFacto}.
 The possible presence of these low-level idioms means that there is no one-size-fits all memory safety policy.
-CompCert C's definition of a valid pointer allows the pointer to be cast into an integer and back, provided that its value
+CompCert C's definition of a valid pointer allows the pointer to be cast into an integer and back, but only if its value
 does not change in the interim. This is very strict! Programs that use low-level idioms
-will failstop if run under a policy that enforces this.
+would failstop if run under a policy that enforces this.
 
 Memarian et al.'s first memory model, {\em provenance via integer} (PVI), treats memory
 as a flat address space, and pointers as integers with additional provenance information
@@ -622,7 +621,7 @@ On the other hand, their second model, {\em provenance not via integer} (PNVI), 
 provenance of a pointer when it is cast to an integer. When an integer is cast to a pointer
 (whether or not it was previously derived from a pointer), it takes on the provenance of whatever
 it points to at that time. The security value of this memory model is questionable, but
-it is a realistic option and can support idioms that PVI cannot.
+it is a realistic option for a compiler to choose and can support idioms that PVI cannot.
 
 \paragraph*{Implementation}
 
@@ -631,14 +630,14 @@ Whenever an object is allocated, it is assigned a unique ``color,'' and its memo
 as its pointer are tagged with that color, written \(\clr\).
 The default tag \(\N\) indicates a non-pointer or non-allocated location.
 The PC tag will also be \(\clr\),
-tracking the next available color for new allocations. These rules are given in \cref{fig:memcommon}.
+tracking the next available color for new allocations. These rules are given in \cref{fig:memgen}.
 Operations that are valid on pointers in a given memory model
 maintain the pointer's color, and loads and stores are legal if the pointer tag matches the target memory
 location tag.
 
-The specific memory models behave differently when pointers are cast to integers and back.
+The specific memory models (\cref{fig:memspecial})  behave differently when pointers are cast to integers and back.
 The CompCert C variant marks that the integer has been cast from a valid pointer, and
-restores that provenance when case back. But, \(\binoptname\) will failstop if it is
+restores that provenance when cast back. But, \(\binoptname\) will failstop if it is
 actually modified between the casts. PVI simply keeps the provenance and allows all operations
 between casts. PNVI accesses the memory pointed to by the (soon-to-be) pointer and takes its
 location tag.
@@ -681,12 +680,12 @@ Line (5) is always legal, (6) is illegal in CompCert C, (7) is also illegal in P
 
 \begin{figure}[t]
   \color{blue}
-  \begin{minipage}{0.5\textwidth}
-    \begin{align*}
-      \tau ::= & \clr & c \in \mathbb{N} \\
-      & \N \\
-      & \mathit{CAST}(\clr) & \textnormal{(CompCert only)} \\
-    \end{align*}
+  \begin{minipage}{0.3\textwidth}
+    \(\begin{array}{lllr}
+      \tau & ::= & \clr & c \in \mathbb{N} \\
+      & | & \N \\
+%      & | & \mathit{CAST}(\clr) & \textnormal{(CompCert only)} \\
+    \end{array}\)
   \end{minipage}
   \scriptsize
   \begin{minipage}{0.22\textwidth}
@@ -713,8 +712,8 @@ Line (5) is always legal, (6) is illegal in CompCert C, (7) is also illegal in P
       \(\lt' := \lt\)}
   \end{minipage}
 
-  \caption{Common Memory Safety Rules}
-  \label{subfig:memgen}
+  \caption{Generic Memory Safety Rules}
+  \label{fig:memgen}
 \end{figure}
 \begin{figure}
   \begin{subfigure}{\textwidth}
@@ -728,6 +727,9 @@ Line (5) is always legal, (6) is illegal in CompCert C, (7) is also illegal in P
       \ipcasttruleblock{\caseoftwo{\(\vt\)}{\(\mathit{CAST}(\clr)\)}{\(\pt' := \clr\)}{\underline{~ ~ ~}}{\(\vt' := \pt\)}}
     \end{minipage}
     \begin{minipage}{0.5\textwidth}
+    \vspace{-2em}
+    \(\color{blue} \tau ::= \ldots | \mathit{CAST}(\clr)\)
+
     \binoptruleblock{
       \caseofthree
           {\((\oplus, \vt_1,~ \vt_2)\)}
@@ -776,9 +778,8 @@ Line (5) is always legal, (6) is illegal in CompCert C, (7) is also illegal in P
     \caption{PNVI Rules}
     \label{subfig:pnvi}
   \end{subfigure}
-  
-    \caption{Memory Safety Rules}
-    \label{fig:memcommon}
+    \label{fig:memspecial}
+    \caption{Specialized Memory Safety Rules}
   \end{figure}
 
 Memory safety also informs the design of control points related to allocating, deallocating, and
@@ -1002,11 +1003,11 @@ For simplicity this example has omitted expression conditionals, but the approac
   \scriptsize
   \begin{minipage}{0.17\textwidth}
     \color{blue}
-    \begin{align*}
-      \tau ::= & \high \\
-      & \low \\
-      & \pctaint{\FN[]}{\overline{\LN[]}} \\
-    \end{align*}
+    \(\begin{array}{lll}
+      \tau & ::= & \high \\
+      & | & \low \\
+      & | & \pctaint{\FN[]}{\overline{\LN[]}} \\
+    \end{array}\)
   \end{minipage}
   \begin{minipage}{0.5\textwidth}
     \[|\gentag| \triangleq
