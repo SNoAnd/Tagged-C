@@ -469,7 +469,7 @@ in a high context.
 
   \caption{Full list of tag-rule signatures and control points. Key to metavariables:
     \(\PCT\): PC tag, \(\vt\): value tag, \(\pt\): pointer tag, \(\lt\): location tag,
-    \(\FN\): function identfier, \(\AN\): function argument, \(\GN\): global
+    \(\FN\): function identifier, \(\AN\): function argument, \(\GN\): global
     variable name, \(\LN\): label, \(\TN\): type.}
   \label{fig:controlpoints}
 \end{table}
@@ -828,9 +828,10 @@ Compartmentalization requires the policy to keep track of the active compartment
 keeping track of function pointers. In Tagged C, function pointers are the exception to the
 concrete memory model. They carry symbolic values that refer uniquely to their target functions.
 If \(\mathtt{f}\) is located at the symbolic address \(\alpha\), then
-the expression \(\var{\mathtt{f}}\) evaluates to \(\mathtt{f}\tagat\FN[f]\).
+% the expression {\(\var{\mathtt{f}}\) evaluates to \(\mathtt{f}\tagat\FN[f]\). 
+the expression {\tt \&f} evaluates to \(\alpha\tagat\FN[f]\). \apt{sean please check my change}
 When the function pointer is called, Tagged C invokes \(\callt\), where \(\pt\) is the
-function pointer's tag, to update PC tag.
+function pointer's tag, to update the PC tag.
 On return, in addition to handling the return value (if any), \(\rett\) determines a new PC tag
 based on the one before the call (\(\PCT[_{CLR}]\)) and the one at the time of return (\(\PCT[_{CLE}]\)).
 
@@ -994,10 +995,10 @@ statically as the immediate post-dominator of the split point \cite{Denning77:Se
 In order to support policies that reason about splits and joins, we introduce the \(\splittname\) and
  \(\labeltname\) tag rules. Every transition that tests a
 value as part of a conditional or loop contains a control point that calls \(\splittname\), with an
-optional label that is part of Tagged C's abstract syntax. This way, the policy can react when execution
+optional \apt{why?} label that is part of Tagged C's abstract syntax. This way, the policy can react when execution
 reaches that label via the \(\labeltname\) rule. In the full SIF policy, we keep track of
 the pending join points within the PC tag, and lower the PC tag when execution reaches the join point.
-For simplicity this example has omitted expression conditionals, but the approach is similar.
+A similar approach applies to conditional expressions, but we omit the details here.
 
 \begin{figure}
   \scriptsize
@@ -1006,13 +1007,13 @@ For simplicity this example has omitted expression conditionals, but the approac
     \(\begin{array}{lll}
       \tau & ::= & \high \\
       & | & \low \\
-      & | & \pctaint{\FN[]}{\overline{\LN[]}} \\
+      & | & \pctaint{\FN}{\LNS} \\
     \end{array}\)
   \end{minipage}
   \begin{minipage}{0.5\textwidth}
     \[|\gentag| \triangleq
     \begin{cases}
-      \low & \textnormal{if } \gentag = \low \textnormal{ or } \gentag = \pctaint{\FN[]}{\varepsilon} \\
+      \low & \textnormal{if } \gentag = \low \textnormal{ or } \gentag = \pctaint{\FN}{\emptyset} \\
       \high & \textnormal{otherwise} \\
     \end{cases}\]
     %
@@ -1025,13 +1026,13 @@ For simplicity this example has omitted expression conditionals, but the approac
   \begin{minipage}{0.25\textwidth}
     \splittruleblock{
       \caseoftwo{\(\PCT, \vt\)}
-                {\(\pctaint{\FN[]}{\overline{\LN[]}}, \high\)}
-                { \\ \multicolumn{3}{l}{~ ~\(\PCT' := \pctaint{\FN[]}{\LN \cup \overline{\LN[]}}\)}}
+                {\(\pctaint{\FN}{\LNS}, \high\)}
+                { \\ \multicolumn{3}{l}{~ ~\(\PCT' := \pctaint{\FN}{(\LNS \cup \LN)}\)}}
                 {\(\underline{~~~}, \low\)}{\(\PCT' := \PCT\)}
     }
     \labeltruleblock
-        {let \(\pctaint{\FN}{\overline{\LN}} := \PCT\) in \\
-          \(\PCT['] := \pctaint{\FN}{(\overline{\LN}-\LN)}\)
+        {let \(\pctaint{\FN}{\LNS} := \PCT\) in \\
+          \(\PCT['] := \pctaint{\FN}{(\LNS-\LN)}\)
         }
     \assigntruleblock
         {\(\PCT[']:=\PCT\); \(\vt':=\PCT \sqcup \vt[_2]\)}
@@ -1042,9 +1043,9 @@ For simplicity this example has omitted expression conditionals, but the approac
 \end{figure}
 
 In addition to \(\low\) and \(\high\), the SIF policy tracks a PC tag written using the
-constructor {\sc \color{blue} pc}, which carries the current function identifier and
+constructor {\sc \color{blue} pc}, which carries the current function identifier\apt{why??}  and
 set of label identifiers to record the join points of tainted statement scopes.
-Initially, the PC tag is \(\pctaint{\FN[f]}{\varepsilon}\), which corresponds
+Initially, the PC tag is \(\pctaint{\FN[f]}{\emptyset}\), which corresponds
 to ``low'' security. The join operator, \(\cdot \sqcup \cdot\), takes the higher of its
 arguments after reducing a PC tag into either \(\high\) or \(\low\).
 
@@ -1057,7 +1058,9 @@ if it wasn't already.
 %in the presence of goto, break, and continue statements, the join point of a conditional might be
 %arbitrarily distant from the split point.
 The internal syntactic form of each conditional statement (if, switch, while, do-while, and for)
-takes this label (optionally, since not all policies will care about join points.)
+takes this label (optionally, since not all policies will care about join points.\apt{this is still
+  mysterious. (a) I thought the optional part was because there might \emph{be} no join point.
+  (b) otherwise, even if the policy doesn't care, why wouldn't we instrument the program?})
 If the conditional branches on a high value, \(\splittname\) adds the label to the set
 in the PC tag. Later, when execution reaches a label, \(\labeltname\) deletes it from the
 set. If the set is non-empty, there is at least one high split point that has not
@@ -1146,19 +1149,20 @@ routine and a high level to the outputs of its corresponding decryption routine.
 
 Aspect-oriented Programming (AOP) aims to separate disparate concerns ({\em aspects}),
 that cannot be localized inside modules, such as security and logging \cite{Kiczales97:AOP}. % OG paper
-An AOP language distributes {\em advice points} throughout its semantics, much like our
-control points, and the programmer separately writes {\em advice} in the form of
+An AOP language distributes {\em advice points} throughout its semantics,
+and the programmer separately writes {\em advice} in the form of
 additional code that should execute before or after the advice point. The compiler
-then interleaves all of the advice with its relevant advice points.
-
-AOP, with its advice points, is conceptually very similar to our notion of control points!
-The main difference is that advice is
-code, executing before or after its advice point, while a tag monitor is separate from
-the system---it cannot interfere in the execution except to failstop. This means that
+then {\em weaves} the advice together with the main code. 
+Advice points are conceptually very similar to our notion of control points, 
+but advice is arbitrary code that can affect the main program's state,
+whereas tag rules are constrained to inspect tags and are evaluated separately
+from the system being monitored; they cannot interfere in the execution except to cause a failstop.
+This means that
 Tagged C policies cannot ``correct'' bad behavior, but also
 that attaching a given policy to any program in Tagged C will never result
 in a regression, only potential failstops.
 
+\apt{This paragraph needs more work if at all possible}
 The notion of interleaving checks with normal execution extends to
 runtime monitors that are more directly comparable to Tagged C, such as
 the C runtime verification work of
@@ -1170,7 +1174,7 @@ It can then be interleaved into the program as
 an inline monitor \cite{Lundblad13:IRM}, or run offline on a log file \cite{Havelund22:LogScope}.
 In general, all of these systems are more expressive than Tagged C, because the
 monitor can access system values, not just keep track of provenance. But that expressiveness
-means that PIPE acceleration will not be feasible.
+requires software-based implementation, whereas we are focused on using PIPE hardware.
 
 \section{Limitations and Future Work}
 \label{sec:limitations}
