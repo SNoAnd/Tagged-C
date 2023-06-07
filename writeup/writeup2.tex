@@ -163,11 +163,11 @@ In summary we offer the following contributions:
   with a tag-based policy. These expand on prior work by encompassing the full C language
   while being powerful enough to enable a range of policies even in the presence of C's more challenging
   constructs (e.g., go-to, conditional expressions.)
-\item Tagged C policies enforcing (1) compartmentalization, \apt{can we say anything about the novelty of the public/private model? PRISC doesn't count as a prior publication!}
-  (2) realistic memory models (PVI and PNVI),
-  and (3) secure information flow.
+\item Tagged C policies enforcing (1) compartmentalization, including a novel compartmentalization policy
+  with separate public and private memory, (2) memory safety, with realistic memory models that allow
+  low-level idioms to varying degrees, and (3) secure information flow.
 \item A full formal semantic definition for Tagged C, formalized in Coq, describing how the control points
-  interact with programs, and interpreter, implemented in Coq and extracted to OCaml.
+  interact with programs, and an interpreter, implemented in Coq and extracted to OCaml.
 \end{itemize}
 
 The paper is organized as follows.
@@ -397,7 +397,12 @@ a high-tagged value, the PC tag will be set to \(\high\). We modify the previous
 assignments propagate the higher of the tag on the value being assigned and the PC tag, meaning that an
 assignment under a high PC remains high.\apt{But this is not shown -- super confusing! 
   And I thought we agreed this was a bogus way
-to raise the PC anyway: consider something like {\tt if (hi) f(x+x);} -- here the {\tt x+x} is high, even though it is not assigned to anything. So instead PC tag should be ANDed into consts, binops, etc.}
+  to raise the PC anyway: consider something like {\tt if (hi) f(x+x);} -- here the {\tt x+x} is high, even though it is not assigned to anything. So instead PC tag should be ANDed into consts, binops, etc.}
+\sna{We discussed that there are two ways to do this. The one shown, and the one you're describing.
+  They should be equivalent. As for the call example, the PC tag really ought to remain high during the call,
+  since other branches might not make a call at all, and the callee might make an output. So whether
+  or not {\tt x+x} is high doesn't matter all that much. That said, I fell into the trap again of
+  confusing storet with assignt, and your version of the policy doesn't have that trap, so that's nice.}
 When an assignment is to a memory location, the store rule will check the tag on
 that location against the value being written, 
 and failstop if a high value would be written to a low location.
@@ -829,7 +834,7 @@ keeping track of function pointers. In Tagged C, function pointers are the excep
 concrete memory model. They carry symbolic values that refer uniquely to their target functions.
 If \(\mathtt{f}\) is located at the symbolic address \(\alpha\), then
 % the expression {\(\var{\mathtt{f}}\) evaluates to \(\mathtt{f}\tagat\FN[f]\). 
-the expression {\tt \&f} evaluates to \(\alpha\tagat\FN[f]\). \apt{sean please check my change}
+the expression {\tt \&f} evaluates to \(\alpha\tagat\FN[f]\).
 When the function pointer is called, Tagged C invokes \(\callt\), where \(\pt\) is the
 function pointer's tag, to update the PC tag.
 On return, in addition to handling the return value (if any), \(\rett\) determines a new PC tag
@@ -994,8 +999,9 @@ statically as the immediate post-dominator of the split point \cite{Denning77:Se
 
 In order to support policies that reason about splits and joins, we introduce the \(\splittname\) and
  \(\labeltname\) tag rules. Every transition that tests a
-value as part of a conditional or loop contains a control point that calls \(\splittname\), with an
-optional \apt{why?} label that is part of Tagged C's abstract syntax. This way, the policy can react when execution
+value as part of a conditional or loop contains a control point that calls \(\splittname\), with an optional
+label that is part of Tagged C's abstract syntax (optional both because some policies may not care about join
+points and because some functions have multiple exits and no join points). This way, the policy can react when execution
 reaches that label via the \(\labeltname\) rule. In the full SIF policy, we keep track of
 the pending join points within the PC tag, and lower the PC tag when execution reaches the join point.
 A similar approach applies to conditional expressions, but we omit the details here.
@@ -1007,7 +1013,7 @@ A similar approach applies to conditional expressions, but we omit the details h
     \(\begin{array}{lll}
       \tau & ::= & \high \\
       & | & \low \\
-      & | & \pctaint{\FN}{\LNS} \\
+      & | & \pctaint{\LNS} \\
     \end{array}\)
   \end{minipage}
   \begin{minipage}{0.5\textwidth}
@@ -1043,7 +1049,7 @@ A similar approach applies to conditional expressions, but we omit the details h
 \end{figure}
 
 In addition to \(\low\) and \(\high\), the SIF policy tracks a PC tag written using the
-constructor {\sc \color{blue} pc}, which carries the current function identifier\apt{why??}  and
+constructor {\sc \color{blue} pc}, which carries a
 set of label identifiers to record the join points of tainted statement scopes.
 Initially, the PC tag is \(\pctaint{\FN[f]}{\emptyset}\), which corresponds
 to ``low'' security. The join operator, \(\cdot \sqcup \cdot\), takes the higher of its
@@ -1058,9 +1064,7 @@ if it wasn't already.
 %in the presence of goto, break, and continue statements, the join point of a conditional might be
 %arbitrarily distant from the split point.
 The internal syntactic form of each conditional statement (if, switch, while, do-while, and for)
-takes this label (optionally, since not all policies will care about join points.\apt{this is still
-  mysterious. (a) I thought the optional part was because there might \emph{be} no join point.
-  (b) otherwise, even if the policy doesn't care, why wouldn't we instrument the program?})
+takes this label (optionally, since there might be a join point).
 If the conditional branches on a high value, \(\splittname\) adds the label to the set
 in the PC tag. Later, when execution reaches a label, \(\labeltname\) deletes it from the
 set. If the set is non-empty, there is at least one high split point that has not
@@ -1330,9 +1334,9 @@ provides the interface for allocation and deallocation of stack and heap memory.
 
 \begin{figure}[t]
   \begin{align*}
-    & \mem \in \mathit{MEM} ::= \{ \mathit{contents}; \mathit{perms}; \mathit{globals}; \mathit{live}; \mathit{allocator} \} & \textnormal{where} \\
+    & \mem \in \mathit{MEM} ::= \{ \contents; \mathit{perms}; \mathit{globals}; \mathit{live}; \mathit{allocator} \} & \textnormal{where} \\
     & \mathit{frag} ::= (v\tagat\vt)_n & n \in \mathbb{N} \\
-    & \mem.\mathit{contents} \in \Int \rightarrow \mathit{frag}\tagat \lt \\
+    & \mem.\contents \in \Int \rightarrow \mathit{frag}\tagat \lt \\
     & \mathit{perm} ::= \mathit{Live} | \mathit{Free} | \mathit{Reserved} \\
     & \mem.\mathit{perms} \in \Int \rightarrow \mathit{perm} \\
     & \mem.\mathit{globals} \in (\Int \times \Int) \\
@@ -1351,16 +1355,16 @@ provides the interface for allocation and deallocation of stack and heap memory.
 \begin{figure}[t]
   \[\mem[p]_{\type} \triangleq
   \begin{cases}
-    v\tagat\vt\tagat\left[\lt[_0]\dots\lt[_n]\right] & \textnormal{if } \mem.\mathit{contents} ~ (p+n) = (v\tagat\vt)_n\tagat\lt[_n], \\
+    v\tagat\vt\tagat\left[\lt[_0]\dots\lt[_n]\right] & \textnormal{if } \mem.\contents ~ (p+n) = (v\tagat\vt)_n\tagat\lt[_n], \\
     & \textnormal{and } \mem.\mathit{perm} ~ (p+n) \not = \mathit{Reserved}, \textnormal{ where } 0 \leq n < |\type| \\
-    \vundef\tagat\vt\tagat\left[\lt[_0]\dots\lt[_n]\right] & \textnormal{else if } \mem.\mathit{contents} ~ (p+n) = \underline{~~}\tagat\lt[_n] \\
+    \vundef\tagat\vt\tagat\left[\lt[_0]\dots\lt[_n]\right] & \textnormal{else if } \mem.\contents ~ (p+n) = \underline{~~}\tagat\lt[_n] \\
     & \textnormal{and } \mem.\mathit{perm} ~ (p+n) \not = \mathit{Reserved}, \textnormal{ where } 0 \leq n < |\type| \\
     \bot & \textnormal{otherwise}
   \end{cases}\]
 
   \[\mem[p \mapsto v\tagat\vt\tagat\overline{\lt}]_{\type} \triangleq
   \begin{cases}
-    \left\{ \mem.\mathit{contents}\llbracket p + n \mapsto (v\tagat\vt)_n\tagat(\mathit{nth} ~ n ~ \overline{\lt}) \mid \rrbracket 0 \leq n < |\type| \right\} \\ \hspace{4em} \textnormal{if } \mathit{perm} ~ (p+n) \not = \mathit{Reserved} \textnormal{ where } 0 \leq n < |\type| \\
+    \mem\left\langle\contents := \mem.\contents\llbracket p + n \mapsto (v\tagat\vt)_n\tagat(\mathit{nth} ~ n ~ \overline{\lt}) \mid 0 \leq n < |\type| \rrbracket \right\rangle \\ \hspace{4em} \textnormal{if } \mathit{perm} ~ (p+n) \not = \mathit{Reserved} \textnormal{ where } 0 \leq n < |\type| \\
     \bot \hspace{3.2em} \textnormal{otherwise} \\
   \end{cases}\]
   
@@ -1382,8 +1386,9 @@ may become inaccessible, depending on the allocator.
 Formally, a memory's contents is a map from machine integer addresses to tagged
 byte-sized fragments. For a value \(v\) of type \(\type\) and tag \(\vt\),
 \((v\tagat\vt)_n\) is the \(n\)th fragment of \(v\tagat\vt\). We write
-\(\mem[p]_{\type} = v\tagat\vt\tagat\overline{lt}\) to indicate that \(\mem[p+i] = (v\tagat\vt)_i\)
-for \(0 \leq i < |\type|\).
+\(\mem[p]_{\type} = v\tagat\vt\tagat\overline{\lt}\) to indicate that a load
+of type \(\type\) gathers all of the fragments of \(v\tagat\vt\), and the
+location tags \(\overline{\lt}\).
 
 
 
