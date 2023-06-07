@@ -2220,8 +2220,10 @@ Definition do_step (w: world) (s: Csem.state) : list transition :=
         | Kdo k => ret "step_do_2" (State f pct Sskip k e m )
         | Kifthenelse s1 s2 k =>
             do b <- bool_val v ty m;
-            (* TODO anaaktge this looks similiar to the earlier thing that we replaced with k *)
-            ret "step_ifthenelse_2" (State f pct (if b then s1 else s2) (Ktag (IfJoinT pct) k) e m)
+            (* TODO anaaktge this looks similiar to the earlier thing that we replaced with k,
+                Sean thinks its ok to do the same here, and itll be replaced in the merge.
+                Confirm after merge this is what we want.  *)
+            ret "step_ifthenelse_2" (State f pct (if b then s1 else s2) k e m)
         | Kwhile1 x s k =>
             do b <- bool_val v ty m;
             if b
