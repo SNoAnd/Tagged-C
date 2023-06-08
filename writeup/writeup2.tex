@@ -1342,7 +1342,7 @@ provides the interface for allocation and deallocation of stack and heap memory.
     & \mem.\mathit{perms} \in \Int \rightarrow \mathit{perm} \\
     & \mem.\mathit{globals} \in (\Int \times \Int) \\
     & \mem.\mathit{live} \in \mathit{list} ~ (\Int \times \Int) \\
-    & \mem.\mathit{allocator} \in \AL \\
+    & \mem.\mathit{allocator} \in \AL & \textnormal{Abstract allocator with  \\
     & \mathit{stkalloc} \in \AL \rightarrow (\Int, \Int) \rightarrow (\AL \times \Int \times \Int) \\
     & \mathit{stkfree} \in \AL \rightarrow (\Int, \Int) \rightarrow \AL \\
     & \mathit{heapalloc} \in \AL \rightarrow (\Int, \Int) \rightarrow (\AL \times \Int \times \Int) \\
@@ -1390,9 +1390,6 @@ byte-sized fragments. For a value \(v\) of type \(\type\) and tag \(\vt\),
 \(\mem[p]_{\type} = v\tagat\vt\tagat\overline{\lt}\) to indicate that a load
 of type \(\type\) gathers all of the fragments of \(v\tagat\vt\), and the
 location tags \(\overline{\lt}\).
-
-
-
 
 \subsection{States}
 
