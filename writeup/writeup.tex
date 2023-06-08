@@ -145,32 +145,23 @@ security concerns.
 
 \section{Metadata Tags and Policies, by Example}
 
-Consider a straightforward security requirement: ``do not leak high-security values to low-security channels.''
-In the example in \cref{fig:ex1}, assume that {\tt psk} is a high-security value and {\tt printi} prints to a low-security
-channel, so this code indirectly performs a leak via the local variable {\tt x}.  We now explain how we would use Tagged C
-to define a security policy that would prevent this leak. \apt{A whole explanation of
-  the basic ideas is missing here: values carry tags, tags are checked at control points, rules are to be instantiated below, etc., etc.} 
-\apt{And I think that you need first to explain informally how you want tag checking to work, along the lines of
-  ``We have two tags, H and L; the value of psk gets tagged H by virtue of a specific rule on f; the tag is propagated through the arithmetic by a general rule,
-  and is caught at the printi by virtue of a specific rule on printi.''  The other control points are mainly distractions, especially
-  AccessT and AssignT; perhaps it is best to leave these out of these initial examples.}
-\Cref{fig:ex1} maps each of three points
-in the execution of {\tt f} to a description of the program state at that point,
-with the input value and all tags treated symbolically. Let \(i\) be the value passed to {\tt psk}
-and \(\vt_0\) the corresponding tag. \apt{Subscripts should be blue too}. In each state, the first column
-shows the active function, the second gives the symbolic values and tags
-of variables in the local environment, and the third shows the flow of those tags though
-tag rules.
-
-\begin{figure}
-  \begin{tikzpicture}[every text node part/.style={align=left}]
-    \node[matrix, ampersand replacement=\&, anchor=west] (code)
-         {
-           \node (l1) {\tt void f(int psk) \{}; \\
-           \node (l2) {\tt ~ ~ int x = psk+5;}; \\
-           \node (l3) {\tt ~ ~ printi(x);}; \\
-           \node {\tt \}}; \\
-         };
+Consider a seemingly straightforward security requirement: ``do not leak the passkey, {\tt psk}.''
+In the following example, {\tt psk} is passed to {\tt f} as an argument, copied to
+a local variable, and then printed---clearly a leak of {\tt psk}. We can examine the states in {\tt f} at
+three points to see how its input value \(i\) moves through the system. In the figure below, 
+the first column
+of each state shows the active function, the second gives the symbolic values (and tags)
+of variables in the local environment, and the third shows the origins of those tags in
+tag rules. \amn{ Missing a table with columns here? }
+\amn{diagram needs a title/caption/name. How does it relate to missing table?}
+\begin{tikzpicture}[every text node part/.style={align=left}]
+  \node[matrix, ampersand replacement=\&, anchor=west] (code)
+       {
+         \node (l1) {\tt void f(int psk) \{}; \\
+         \node (l2) {\tt ~ ~ int x = psk+5;}; \\
+         \node (l3) {\tt ~ ~ printi(x);}; \\
+         \node {\tt \}}; \\
+       };
 
     \node[node distance=4em, right=of code.north] (mid1) {};
   
@@ -211,15 +202,10 @@ tag rules.
 
   \end{tikzpicture}
 
-  \caption{Example 1}
-  \label{fig:ex1}
-\end{figure}
-
-\apt{Why is {\tt x} described before {\tt psk}??}
-The initial tag on {\tt x}, \(\vt_1\), comes from the \(\localtname\) tag rule; all locals for a given function
-name (which is a parameter to the rule) get the same tag. \apt{Not at all obvious to me (or the reader) why {\tt x} gets an initial
-value and tag at all. (Indeed, should it, since it cannot be accessed before it acquires a proper initial value?) Needs an explanation at least, although this is muddying the waters.}
-  The tag on {\tt psk}
+Going step-by-step through the example code above: \amn{Shouldn't we start with f and printi at the top 
+of the diagram? }
+the initial tag on {\tt x}, \(\vt_1\), comes from the \(\localtname\) tag rule,
+which can be specialized by the identity of the current function. The tag on {\tt psk}
 comes from \(\argtname\), which is parameterized by the tag on the argument value (\(\vt_0\)) and
 the names of both the function and the argument. Next, {\tt x} is assigned {\tt psk+5}.
 Four tag rules are invoked during this statement: \(\accesstname\) when reading
@@ -355,8 +341,8 @@ conditional, when the program assigns to {\tt mm}, it must consult both the
 to memory.
 
 Because ``don't print the password'' is so similar to ``don't leak the password,'' we can
-implement the latter with the same tag type, duplicating most of the rules.\apt{This gives the bogus impression that we expect to write lots of function-specific rules with their own special-purpose tags, etc.} We just need to
-deal with memory tags and the PC tag. We will tag memory
+implement the latter with the same tag type, duplicating most of the rules. We just need to
+deal with memory tags and the PC Tag. We will tag memory
 locations \(\high\) by default, indicating that they are allowed to contain \(\high\)-tagged values,
 but {\tt mm} will be tagged \(\low\). The most interesting rules are:
 
@@ -393,23 +379,21 @@ in a high context.
     \hline
     Rule Name & Inputs & Outputs & Control Points \\
     \hline
-    \(\accesstname\)    & \(\accesstargs\)       & \(\accesstres\)    & Variable Accesses \\
     \(\loadtname\)      & \(\loadtargs\)         & \(\loadtres\)      & Memory Loads \\
-    \(\assigntname\)    & \(\assigntargs\)       & \(\assigntres\)    & Variable Assignments \\
     \(\storetname\)     & \(\storetargs\)        & \(\storetres\)     & Memory Stores \\
     \(\unoptname\)      & \(\unoptargs\)         & \(\unoptres\)      & Unary Operation \\
     \(\binoptname\)     & \(\binoptargs\)        & \(\binoptres\)     & Binary Operation \\
     \(\consttname\)     &                        & \(\consttres\)     & Applied to Constants/Literals \\
     \(\exprsplittname\) & \(\exprsplittargs\)    & \(\exprsplittres\) & Control-flow split points in expressions \\
     \(\exprjointname\)  & \(\exprjointargs\)     & \(\exprjointres\)  & Join points in expressions \\
-    \(\splittname\)     & \(\splittargs\)        & \(\splittres\)     & Control-flow split points in statements\\
+    \(\splittname\)     & \(\splittargs\)        & \(\splittres\)     & Control-flow split points in statements)\\
     \(\labeltname\)     & \(\labeltargs\)        & \(\labeltres\)     & Labels/arbitrary code points \\
     \(\calltname\)      & \(\calltargs\)         & \(\calltres\)      & Call \\
     \(\argtname\)       & \(\argtargs\)          & \(\argtres\)       & Call \\
     \(\rettname\)       & \(\rettargs\)          & \(\rettres\)       & Return \\
     \(\globaltname\)    & \(\globaltargs\)       & \(\globaltres\)    & Program initialization \\
-    \(\localtname\)     & \(\localtargs\)        & \(\localtres\)     & Call \apt{clarify this is invoked per local that comes into scope. and what about local blocks?}\\
-    \(\dealloctname\)   & \(\dealloctargs\)      & \(\dealloctres\)   & Return \apt{ditto} \\
+    \(\localtname\)     & \(\localtargs\)        & \(\localtres\)     & Call \\
+    \(\dealloctname\)   & \(\dealloctargs\)      & \(\dealloctres\)   & Return \\
     \(\extcalltname\)   & \(\extcalltargs\)      & \(\extcalltres\)   & Call to linked code \\
     \(\malloctname\)    & \(\malloctargs\)       & \(\malloctres\)    & Call to {\tt malloc} \\
     \(\freetname\)      & \(\freetargs\)         & \(\freetres\)      & Call to {\tt free} \\
@@ -421,21 +405,22 @@ in a high context.
     \hline
   \end{tabular}
 
-  \caption{Full list of tag-rules and control points\apt{Ordering still seems sub-optimal. AccessT and AssignT are seldom interesting, so could move down the list. CallT, ArgT, RetT are quite important, so could move up.}}
-  \label{fig:controlpoints}
-\end{table}
-
-\apt{Start boldly: ``Tagged C is (almost) full ordinary C.'' Then list exceptions, wherever they come from (CompCert or us). }
-
+Multiple policies can be enforced in parallel. If policy \(A\) has tag type \(\tau_A\)
+and policy \(B\) has \(\tau_B\), then policy \(A \times B\) should have tag type
+\(\tau = \tau_A \times \tau_B\). Its tag rules should apply the rules of \(A\) to
+the left projection of all inputs and the rules of \(B\) to the right projection
+to generate the components of the new tag. If either side failstops, the entire
+rule should failstop.
 
 Tagged C uses the full syntax of CompCert C \cite{Leroy09:CompCert},
-an elaboration\apt{that's a technical term in this context, which I don't think you mean} of the C standard into a formal operational semantics,
-with minimal modification\apt{from what?}, with the exception of inline assembly.\apt{as I noted before, that's not part of the standard}
+an elaboration of the C standard into a formal operational semantics,
+with minimal modification, with the exception of inline assembly.
 Our semantics (given in full in the appendix) are a small-step reduction
 semantics which differ from CompCert C's in two key respects. First, Tagged C's semantics contain
 {\em control points}: hooks within the
 operational semantics at which the tag policy is consulted and either tags are updated, or the system
-failstops. (\apt{This remark would be more useful in the intro.}) A control point consists of the name of a {\em tag rule}
+failstops. (Control points resemble ``advice points'' in aspect-oriented programming, but narrowly
+focused on the manipulation of tags.) A control point consists of the name of a {\em tag rule}
 and the bindings of its inputs and outputs. Take, for example, the expression step reduction
 for binary operations, below. On the left, the ``tagless'' version of the rule reduces a
 binary operation on two input values to a single value by applying the operation.
@@ -452,26 +437,18 @@ derived from the \(\binoptname\) rule.
 The tag rule itself is instantiated as a partial function; if a policy leaves a tag rule
 undefined on some inputs, then those inputs are considered to violate the policy, sending
 execution into a special failstop state. The names and signatures of the tag rules,
-and their corresponding control points, are listed in \Cref{fig:controlpoints}.\apt{It wouldn't hurt to
-  talk briefly through these rules, especially when the connection between rule name and control point
-  is not obvious. And make a point of
-  saying: ``and this is all there are or ever will be (we hope)''}
+and their corresponding control points, are listed in \Cref{fig:controlpoints}.
 
-\apt{This para, which I rewrote to be a bit more positive, could go much earlier in the paper.}
 The choice of control points and their associations with tag rules, as well as the tag rules'
-signatures, form the essence of Tagged C's design. 
-We have validated our design on the three classes of policies explored in this paper,
-and, outside of a few known limitation discussed in \ref{??}\apt{e.g. substructural memory safety},
-we believe it is sufficiently expressive to describe most other flow-based policies, although
-of course further experience may reveal unexpected deficiencies. 
+signatures, are a crucial design element. Our proposed design is sufficient for the three classes of
+policy that we explore in this paper, but it may not be complete.
 
 The second major semantic distinction between Tagged C and CompCert C is that Tagged C has no
 memory-undefined behavior. CompCert C models memory as a collection of blocks of offsets,
 and treats all variables as having their own block. Tagged C instead follows Concrete C
-\cite{} [Need something to cite!] in separating variables into public and private data.\apt{No, you will need to explain Concrete C in more detail}
-Public data (all heap data, globals, arrays, structs, and address-taken locals) share a single flat address
-space, where its behavior is implementation defined. \sna{Technically right?\apt{but not very informative. You should simply describe how your memory model works. then we
-can add some language justifying why this is an interesting model in its own right.}}
+\cite{} [Need something to cite!] in separating variables into public and private data.
+Public data (all heap data, globals, arrays, and address taken locals) share a single flat address
+space, where its behavior is implementation defined. \sna{Technically right?}
 Private data (non-address-taken locals and parameters) have a separate store.
 
 %Without memory safety, programs
@@ -508,9 +485,9 @@ the left projection of all inputs and the rules of \(B\) to the right projection
 to generate the components of the new tag. If either side failstops, the entire
 rule should failstop.
 
-\apt{Need to describe the limits on this idea, namely when policies are not completely
-  orthogonal. For example, a compartmentalization policy is likely to overlap a generic
-  memory safety policy.}
+This process can be applied to any number of different policies, allowing for instance
+a combination of a baseline memory safety policy with several more targeted
+information-flow policies.
 
 This process can be applied to any number of different policies, allowing for instance
 a combination of a baseline memory safety policy with several more targeted
@@ -523,56 +500,42 @@ The heart of Tagged C is in its security policies.\apt{Not a good lead}  Using t
 we will walk through three example policies: PVI memory safety, compartmentalization, and
 secure information flow.
 
-\apt{Take a deep breath and remind yourself that the point of this paper is to explain and justify the
-  control points and tag rules, NOT to explain these policies. Every section and every paragraph
-  should be organized  with that in mind.}
-
-
 \subsection{PVI Memory Safety}
 \label{sec:PVI}
 
 
-Variations of memory safety have been enforced in PIPE already, but usually\apt{??} using
-an ad hoc memory model.\apt{Specific citations? How are they ``ad hoc?''}
-
-\apt{But Concrete C also gives this a definition!  Need to explain what PVI still \emph{prevents}.}
+Variations of memory safety have been enforced in PIPE already, but usually using
+an ad hoc memory model. PVI has the virtue of giving definition to many memory UBs in which a pointer is
+cast to an integer, subjected to various arithmetic operations, and cast back to a pointer.
 Memarian et al.'s second memory model, {\it PNVI} (provenance not via integer), is even more permissive.
 We can also enforce it in Tagged C, though its security value is questionable, and we will
-not describe it in this paper.\apt{Last two sentences seem to add nothing.}
-For a policy to enforce PVI, it should not failstop on any program that is defined in PVI.\apt{Isn't that tautological?}
-However, it should failstop if and when a program reaches UB.\apt{Somewhat confusing, because
-  PVI turns some C standard UB's into defined behaviors.} For example, on many systems,
-pointers are (at least) 4-byte aligned, so the low-order two bits can be ``stolen'' to contain
-other data which is manipulated using bit-level shifting and masking operations. 
-This idiom is often used when the programmer wants to associate a flag with the pointer, e.g. in
-some garbage collection implementations.\cite{??} \apt{I don't think Cheney is particularly relevant.}
-These pointer manipulations are probably UBs in standard C (the standard is not completely clear on this point),
-but are explicitly defined in PVI.  
-But violations such as buffer overflows in which a load, store, or free 
-occurs outside of the proper range remain undefined in PVI and must failstop. In \cref{fig:overrun},
-we see an example of such a program, and a possible memory layout in which
-the overflow ends up overwriting the variable {\tt y}.\apt{It is odd that the example doesn't illustrate
-  the sort of bit-twiddling that PVI is intended to support! Actually, the best thing to see is how the tag rule
-instantiations would \emph{change} to accommodate different policies (PVI, PNVI, something stricter...) }
+not describe it in this paper.
+For a policy to enforce PVI, it should not failstop on any program that is defined in PVI.
+However, it should failstop if and when a program reaches UB. For example, low-level code
+that uses the lower-order bits of a pointer to store a flag (\cref{fig:mark}) should
+execute successfully. This idiom appears often in code where a pointer is associated with a flag,
+such as Cheney's garbage collection algorithm \cite{} and is generally considered harmless.
+But violations such as buffer overflows (\cref{fig:overflow}) in which a load, store, or free would
+occur outside of the proper range are undefined in PVI and must failstop. In \cref{fig:overflow},
+memory is arranged so that the overflow ends up overwriting the variable {\tt y}.
 
-\begin{figure}
-  \begin{tikzpicture}[every text node part/.style={align=left}]
-    \node[matrix, ampersand replacement=\&, anchor=west] (code)
-         {
-           \node (l0) {\tt void overrun() \{}; \\
-           \node (l1) {\tt ~ ~ int[2] x; int y;}; \\
-           \node (l3) {\tt ~ ~ *(x+2) = 42;}; \\
-           \node {\tt \}}; \\
-         };
+\begin{tikzpicture}[every text node part/.style={align=left}]
+  \node[matrix, ampersand replacement=\&, anchor=west] (code)
+       {
+         \node (l0) {\tt void overflow() \{}; \\
+         \node (l1) {\tt ~ ~ int[3] x; int y;}; \\
+         \node (l2) {\tt ~ ~ *x = 222222;}; \\
+         \node (l3) {\tt ~ ~ *(x+3) = 333333;}; \\
+         \node {\tt \}}; \\
+       };
 
-    \node[matrix, ampersand replacement=\&, column sep=-1em, node distance=4.5em, below=of l3.west,anchor=west] (table2)
-         {
-           \node[anchor=north] {\hspace{1em}}; \&
-           \node[anchor=north] {\memory{\hspace{-2.5em} \(\mathtt{x}\mapsto 84 @ \pt_1\)}{\(\vundef\)}{\(\vt_1\)}{\(\lt_1\)}}; \&
-           \node[anchor=north] {\memory{\(88\)}{\(\vundef\)}{\(\vt_1\)}{\(\lt_1\)}}; \&
-           \node[anchor=north] {\memory{\hspace{-2.5em} \(\mathtt{y}\mapsto 92 @ \pt_2\)}{\(\vundef\)}{\(\vt_2\)}{\(\lt_2\)}};
-           \\
-         };
+  \node[matrix, ampersand replacement=\&, node distance=4em, right=of l1.east,draw,anchor=west] (table1)
+       {
+         \node[anchor=north]{\(\mathit{overflow} @ \PCT_2\)}; \&
+         \node[anchor=north]{\(\mathtt{x}\mapsto \underline{84} @ \pt_1\) \\ \(\mathtt{y} \mapsto \underline{96} @ \pt_2\)}; %\&
+         %         \node[anchor=north] {\(\vt_1 \leftarrow \localtname(f)\) \\ \(\vt_2 \leftarrow \argtname(\vt_0,f,psk)\)};
+         \\
+       };
 
     \node[matrix, ampersand replacement=\&, node distance=1em, right=of table2.east,anchor=west,draw] (tableside)
          {
@@ -599,11 +562,68 @@ instantiations would \emph{change} to accommodate different policies (PVI, PNVI,
 %We now show separate location tags on each of the four bytes in each word. In the inputs and outputs
 %of a tag rule, we write this \(\lts\), indicating that the rule consumes and produces multiple locations tags.
 
-\Cref{fig:overrun} shows a possible initial state of memory on entry to {\tt overflow} and the state after
-the assignment to {\tt *(x+2)}, assuming that the PC tag is \(\PCT_0\) at the call.\apt{Where does the 84 come from?
-  And this layout also assumes that {\tt y} is in memory---but why is that?}
+\Cref{fig:overflow} shows the initial state of memory on entry to {\tt overflow} and the state after
+the assignment to {\tt *(x+3)}, assuming that the PC Tag is \(\PCT_0\) at the call. The tags associated
+with {\tt x} (\(\PCT_1,\pt_1,\vt_1,\lts_1\)) come from \(\localtname(\PCT_0,\TN[int])\) and those
+associated with {\tt y} come from \(\localtname(\PCT_1,\TN[int])\).
+
+The write to {\tt *(x+3)} is of particular interest. We tag the result of {\tt x+3}
+with \(\pt' \leftarrow \binoptname(\PCT_2, \pt_1, \constt)\); then for the store itself,
+we use the rule \(\vt_4, \lts_4 \leftarrow \storetname(\PCT_2, \pt', \vt_2, \constt, \lts_2)\).
+
+We can prevent overflows like this using a {\em memory safety} policy. In brief, whenever
+an object is allocated, it is assigned a unique ``color,'' and its memory locations as well
+as its pointer are tagged with that color. Pointers maintain their tags under arithmetic
+operations, and loads and stores are legal if the pointer matches the target memory location.
+The default tag \(N\) indicates that there is currently no color.
+The rules for the \(PVI\) memory safety policy are given in \cref{fig:pvi}. In this case, we will
+have \(\pt_1 = \lt_1 = \tagz\) and \(\pt_2 = \lt_2 = \tagone\). When we try to write to {\tt x+3},
+we compare \(\pt' = \tagz\) with \(\lt_2\), and failstop because they differ.
 
 \begin{figure}
+  \color{blue}
+  \begin{align*}
+    \tau ::= & \clr & \clr \in \mathbb{N} \\
+    & \N \\
+  \end{align*}
+  
+  \scriptsize
+  \begin{minipage}[t]{0.3\textwidth}
+    \vspace{-2.5em}
+    \binoptruleblock{
+      \caseofthree
+          {\((\vt_1,~ \vt_2)\)}
+          {\((\clr,\N)\)}{\(\vt' := \clr\)}
+          {\((\N,\gentag)\)}{\(\vt' := \gentag\)}
+          {\((\clr_1, \clr_2)\)}{\(\vt' := \N\)}
+    }
+    \unoptruleblock{\(\vt' := \vt\)}
+
+  \end{minipage}
+  \begin{minipage}[t]{0.25\textwidth}
+    \vspace{-2.5em}
+    \localtruleblock
+        {\(\PCT' := \PCT+1\);
+          \(\pt := \PCT\)\\
+          \(\vt := \N\);
+          \(\lts := \left[ \PCT \right]\)
+        }
+    \malloctruleblock
+        {\(\PCT' := \PCT+1\);
+          \(\pt := \PCT\) \\
+          \(\vt := \N\);
+          \(\lts := \left[ \PCT \right]\)
+        }
+  \end{minipage}
+  \begin{minipage}[t]{0.3\textwidth}
+    \vspace{-2.5em}
+    \loadtruleblock{\(\mathbf{assert} ~ \forall \lt \in \overline{\lt} . \pt = \lt\) \\ \(\vt' := \vt\)}
+
+    \storetruleblock{\(\mathbf{assert} ~ \forall \lt \in \lts . \pt = \lt\) \\
+      \(\PCT' := \PCT\);
+      \(\vt' := \vt_2\); 
+      \(\lts' := \lts\)}
+  \end{minipage}
 
   \caption{PVI Memory Safety Policy}
   \label{fig:pvi}
@@ -619,6 +639,17 @@ Tagged C's underlying control-flow protections prevent them from being tampered 
 \label{sec:comp}
 % notes ended up below, in the coarse grained section
 
+A compartmentalization policy can isolate potentially risky code, such as code with intentional
+or unfixed UB, from safety-critical code, and enforce the principle of least privledge. 
+It limits the possible damage from exploitation to the containing compartment.
+It may also restrict how code in one compartment may interact with another
+even in the absence of language-level errors. Ideally, each component has only the
+{\em least privilege} necessary to complete its task.
+This popular defense can be implemented at many levels. It is often built
+into a system's fundamental design, like a web browser sandbox for untrusted javascript.
+For our use-case, we consider a compartmentalization scheme being added to the system
+after development. A set of compartment identifiers are ranged over by \(C\),
+and function and global identifiers are mapped to compartments by \(\mathit{comp}(id)\). 
 
 \paragraph{Coarse-grained Protection}
 
@@ -631,22 +662,20 @@ Tagged C's underlying control-flow protections prevent them from being tampered 
 %   else cannot be shared. unique colors to defeat forced pointer arthimetic. hybrid system
 %   roughly the effect of containing things, but wihtout the issues of the MAC
 %
-The core of a compartmentalization policy is once again based on memory protection. In the simplest version, 
+The core of a compartmentalization policy is memory protection. In the simplest version, 
 a function's stack frame and any heap-allocated regions are only accessible by functions within its
 compartment. The system keeps track of the active compartment using the PC tag.
 
 In the Tagged C semantics, calls and returns each take two steps: first to an intermediate call
 or return state, and
-then to the normal execution state, as shown in \cref{fig:functions}.
-In the initial call step, \(\calltname\) uses the tag on the function pointer
-(typically derived from \(\FN\)) to update the PC tag. Then, in the step from the call
-state, the function arguments are placed in the local store, tagged with
-the results of \(\argtname\), and stack locals are allocated. Non-address-taken locals go in the
-store as well, tagged with \(\constt\), while locals that must be stack-allocated have memory
-allocated and tagged with the results of \(\localtname\). \apt{Is that really how you want to do that? (See previous note re Fig 4.)}
-  On return, locals are deallocated, their location tags are 
-updated by \(\dealloctname\), and \(\rettname\) updates both the PC tag and the tag on the returned value,
-with access to the original caller's PC tag.
+then to the normal execution state, as shown in \cref{fig:functions} with some function \(f\)
+calling \(f'\). In the initial call step, \(\calltname\)
+uses the name-tags of the caller and callee to update the PC Tag. Then, in the step from the call
+state, we place the function arguments in the temp environment, tagging their values with
+the results of \(\argtname\), and we allocate our stack locals, tagging their values and locations
+with the results of \(\localtname\). And on return, we deallocate locals and update their location
+tags with \(\dealloctname\) when stepping to a return state, and from there \(\rettname\) updates both
+the PC Tag and the tag on the returned value.
 
 
 
@@ -661,7 +690,7 @@ and during a load or store, we compare the location tags to the PC tag, not the 
 be explicit about stating it; if not, perhaps the section does not pull its weight.}
 
 To allow intentional sharing of memory across compartments, a more flexible policy is needed. 
-For example, the hostname needs to conform to an expected pattern\apt{??? Need to introduce the example first!}, 
+For example, the hostname needs to conform to an expected pattern, 
 such as in an enterprise network, to differentiate between different classes of
 computers (employee, server, contractor, etc). The standard library, 
 in its own compartment, has helpful functions, 
@@ -677,6 +706,7 @@ you would expect to see failstopping occur.}
     char* curr_name = malloc(HOST_NAME_MAX + 1);
     ret = gethostname( &curr_name, HOST_NAME_MAX + 1 );
     if (! ret && !(strcmp(curr_name, intended_name))) {
+      ret = sethostname(intended_name, strlen(intended_name));
       ret = sethostname(intended_name, strlen(intended_name));
       ....
     }
@@ -841,6 +871,41 @@ the validity of the pointer (for shared ones).
 \subsection{Secure Information Flow}
 \label{sec:SIF}
 
+Our final example policy will be a more realistic version of our first:
+{\em secure information flow (SIF)}. SIF is described in Denning and Denning
+\cite{Denning77:SecureInformationFlow}, and is part of a larger family of policies
+known as {\em information flow control} (IFC.) This family of policies deal entirely with enforcing
+higher-level security concerns, regardless of whether the code that they protect contains
+errors or undefined behaviors. We will give an example of a single policy in the family.
+Our introductory example was an instance of {\em confidentiality}, so now we will discuss
+{\em integrity}: preventing insecure input from influencing secure behavior.
+In this code, a malformed user input is accidentally appended to an sql query without sanitization:
+
+\begin{verbatim}
+void sanitize(char* in, char* out);
+char* sql_query(char* query);
+
+void get_data() {
+  char[20] name;
+  char[20] name_san;
+  char[100] query = "select address where name =";
+
+  scanf("%19f", name);
+  sanitize(name, name_san);
+  strncat(query, name, strlen(name));
+  
+  sprintf(buf, sql_query(query));
+  return;
+}
+\end{verbatim}
+
+This function sanitizes its input {\tt name}, then appends the result to an appropriate SQL
+query, storing the result in {\tt buf}. But, in the default case, the programmer has accidentally
+used the unsanitized string! This creates the opportunity for an SQL injection attack: a caller
+to this function could (presumably at the behest of an outside user) call it with {\tt field} of
+3 and {\tt name} of ``Bobby; drop table;''.
+
+The fact that the input can be sanitized also makes this an {\em intransitive} policy:
 information may flow from {\tt scanf} to {\tt sanitize}, and from {\tt sanitize} to
 {\tt sql\_query}, but not directly from {\tt scanf} to {\tt sql\_query}.
 
@@ -1180,32 +1245,14 @@ of a high-level language. How well have we achieved this aim?
   from the literature
 \end{itemize}
 
-\subsection{Limitations}
+\subsection{Limitations of the Tag Mechanism}
 
 By committing to a tag-based mechanism, we do restrict the space of policies that Tagged C
 can enforce. In general, a reference monitor can enforce any policy that constitutes a
 {\em safety property}---any policy whose violation can be demonstrated by a single finite
 trace. This class includes such policies as ``no integer overflow'' and ``pointers are always in-bounds,''
 which depend on the values of variables. Tag-based monitors cannot enforce any policy that
-depends on the value of a variable rather than its tags. \apt{But perhaps note that tag-based
-  policies can express some trace properties more easily than value-based policies could, essentially
-  because tags can summarize the relevant parts of the trace history.}
-
-\apt{Something about malloc tagging, and type-based tagging in general.}
-
-Due to our approach to tagging memory uniformly at allocation time, Tagged C cannot easily
-enforce substructural memory safety. Versions of memory safety that protect fields of a
-struct from overflows within the same struct would be very useful, but currently enforcing
-them will require manual initialization.
-
-Beyond these, there is always the possibility that we have missed some control point
-that would enable interesting security policies outside of the areas we have considered.
-How hard would it be to add control points, or extend the ones that exist? That depends
-whether the extension in question would impact compilation strategies. For instance,
-we have avoided control points that allow updates to their operand tags, although
-this could be useful in enforcing policies that attempt to maintain the uniqueness of tags,
-because tag-based hardware is unlikely to support linear tags, so any such updates would
-need the compiler to generate extra instructions.
+depends on the value of a variable rather than its tags.
 
 \section{Related Work}
 
