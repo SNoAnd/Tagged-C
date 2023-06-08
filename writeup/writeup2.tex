@@ -1326,22 +1326,23 @@ concrete syntax becomes \(\sifthenelse{\expr}{\stmt_1}{\stmt_2}{\bot}\).
 
 \subsection{Memory Model}
 
-A memory configuration consists of the contents of memory, the permissions
-of memory, the live regions
-(separated into a single region for globals, and a list of allocated regions
-that can be deallocated), and the state of its allocator. The allocator
-provides the interface for allocation and deallocation of stack and heap memory.
+A memory configuration (\cref{fig:mem}) consists of the contents of memory, the permissions
+of memory, the live regions (separated into a single region for globals, and
+a list of allocated regions that can be deallocated), and the state of its
+allocator. The allocator is kept abstract, and axiomatized to provide the
+interface for allocation and deallocation of stack and heap memory.
 
 \begin{figure}[t]
+  \[\mathit{frag} ::= (v\tagat\vt)_n & n \in \mathbb{N}\]
+  \[\mathit{perm} ::= \mathit{Live} | \mathit{Free} | \mathit{Reserved}\] \\
   \begin{align*}
-    & \mem \in \mathit{MEM} ::= \{ \contents; \mathit{perms}; \mathit{globals}; \mathit{live}; \mathit{allocator} \} & \textnormal{where} \\
-    & \mathit{frag} ::= (v\tagat\vt)_n & n \in \mathbb{N} \\
-    & \mem.\contents \in \Int \rightarrow \mathit{frag}\tagat \lt \\
-    & \mathit{perm} ::= \mathit{Live} | \mathit{Free} | \mathit{Reserved} \\
-    & \mem.\mathit{perms} \in \Int \rightarrow \mathit{perm} \\
-    & \mem.\mathit{globals} \in (\Int \times \Int) \\
-    & \mem.\mathit{live} \in \mathit{list} ~ (\Int \times \Int) \\
-    & \mem.\mathit{allocator} \in \AL & \textnormal{Abstract allocator}  \\
+    \mem \in \mathit{MEM} ::= \{ & \contents : \Int \rightarrow \mathit{frag}\tagat \tau, \\
+    & \mathit{perms} : \Int \rightarrow \mathit{perm}, \\
+    & \mathit{globals} : (\Int \times \Int), \\
+    & \mathit{live} : \mathit{list} ~ (\Int \times \Int), \\
+    & \mathit{allocator} : \AL \} \\
+  \end{align*}
+  \begin{align*}
     & \mathit{stkalloc} \in \AL \rightarrow (\Int, \Int) \rightarrow (\AL \times \Int \times \Int) \\
     & \mathit{stkfree} \in \AL \rightarrow (\Int, \Int) \rightarrow \AL \\
     & \mathit{heapalloc} \in \AL \rightarrow (\Int, \Int) \rightarrow (\AL \times \Int \times \Int) \\
@@ -1383,12 +1384,52 @@ the compiler. So the program will see a stable state of free memory
 between allocator invocations, upon which its values may change or it
 may become inaccessible, depending on the allocator.
 
-Formally, a memory's contents is a map from machine integer addresses to tagged
-byte-sized fragments. For a value \(v\) of type \(\type\) and tag \(\vt\),
-\((v\tagat\vt)_n\) is the \(n\)th fragment of \(v\tagat\vt\). We write
-\(\mem[p]_{\type} = v\tagat\vt\tagat\overline{\lt}\) to indicate that a load
-of type \(\type\) gathers all of the fragments of \(v\tagat\vt\), and the
-location tags \(\overline{\lt}\).
+A memory's contents is a map from machine integer addresses to tagged
+byte-sized fragments, which must be combined for a load.
+For a value \(v\) and tag \(\vt\), we write \(n\)th fragment of \(v\tagat\vt\)
+as \((v\tagat\vt)_n\), and if \(v\) is of type \(\type\), the full value in memory
+consists of \((v\tagat\vt)_0\) up to \((v\tagat\vt)_{|\type|}\).
+Load and store operations are given in \cref{fig:memops}.
+
+\paragraph{Globals and the Global Environment}
+
+\begin{figure}[t]
+  \[\genv ::= \GN \rightharpoonup (\Int \times \Int \times \tau \times \type)\]
+  \[\fenv ::= \FN \rightharpoonup (\alpha \times \mathit{fdef})\]
+
+  \caption{Environments}
+  \label{fig:genv}
+\end{figure}
+
+Globals are stored in memory in a single contiguous region. A global
+environment \(\genv\) is a partial map from identifiers to four-tuples
+containing the base address of the variable in memory, its bound (one past
+the end of its range), its pointer tag, and its type.
+
+Given a list \(xs\) of variable identifiers \(id\) and types
+\(ty\), plus a list \(fs\) of function identifiers,
+a program's initial state is defined by iteratively allocating each variable
+in memory and updating the global environment with its base address, bound, type,
+and a static identity tag. Additionally, the global environment holds function
+pointers.
+Let \(|ty|\) be a function from types to their sizes
+in bytes. The memory is initialized \(\vundef\tagat\vt\tagat\lt\)
+for some \(\vt\) and \(\lt\), unless given an initializer.
+Let \(\mem_0\) and \(\genv_0\) be the initial (empty) memory and environment.
+The parameter \(b\) marks the start of the global region.
+
+%Since we don't need to initialize tags in memory dynamically, our rule for
+%selecting these tags can cover the entire initialization of the memory with arbitrary
+%granularity. We represent this as a list of tags of length \(|ty|\).
+
+\[\mathit{globals} ~ xs ~ fs ~ b =
+\begin{cases}
+  (\mem_0, \genv_0) & \textnormal{if } xs = \varepsilon, \textnormal{ where } \\
+  & \forall f \in fs . \exists \alpha . \genv_0[f] = \alpha \tagat \FN\\
+  (\mem[p \dots p+|ty| \mapsto \vundef\tagat\vt\tagat\lt]_{|ty|}, & \textnormal{if } xs = (id,ty)::xs' \\
+  ~ \genv[id \mapsto (\mathit{p, p+|ty|,ty,\pt})]) & \textnormal{and } \trule{\globaltres}{\globalt} \\
+  & \textnormal{where } (\mem,\genv) = \mathit{globals} ~ xs' ~ (b + |ty|) \\
+\end{cases}\]
 
 \subsection{States}
 
@@ -1446,33 +1487,6 @@ loop.
 | & \kfor{\expr}{\stmt_2}{\stmt_3}{L}{\cont} \\
 | & \kforpost{\expr}{\stmt_2}{\stmt_3}{L}{\cont} \\
 \end{split}\]
-
-\subsection{Initial State}
-
-Given a list \(xs\) of variable identifiers \(id\) and types
-\(ty\), plus a list \(fs\) of function identifiers,
-a program's initial state is defined by iteratively allocating each variable
-in memory and updating the global environment with its base address, bound, type,
-and a static identity tag. Additionally, the global environment holds function
-pointers.
-Let \(|ty|\) be a function from types to their sizes
-in bytes. The memory is initialized \(\vundef\tagat\vt\tagat\lt\)
-for some \(\vt\) and \(\lt\), unless given an initializer.
-Let \(\mem_0\) and \(\genv_0\) be the initial (empty) memory and environment.
-The parameter \(b\) marks the start of the global region.
-
-%Since we don't need to initialize tags in memory dynamically, our rule for
-%selecting these tags can cover the entire initialization of the memory with arbitrary
-%granularity. We represent this as a list of tags of length \(|ty|\).
-
-\[\mathit{globals} ~ xs ~ fs ~ b =
-\begin{cases}
-  (\mem_0, \genv_0) & \textnormal{if } xs = \varepsilon, \textnormal{ where } \\
-  & \forall f \in fs . \exists \alpha . \genv_0[f] = \alpha \tagat \FN\\
-  (\mem[p \dots p+|ty| \mapsto \vundef\tagat\vt\tagat\lt]_{|ty|}, & \textnormal{if } xs = (id,ty)::xs' \\
-  ~ \genv[id \mapsto (\mathit{p, p+|ty|,ty,\pt})]) & \textnormal{and } \trule{\globaltres}{\globalt} \\
-  & \textnormal{where } (\mem,\genv) = \mathit{globals} ~ xs' ~ (b + |ty|) \\
-\end{cases}\]
 
 \section{Step Rules}
 \label{app:rules}
