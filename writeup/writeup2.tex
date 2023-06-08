@@ -1169,13 +1169,12 @@ in a regression, only potential failstops.
 
 \apt{This paragraph needs more work if at all possible}
 The notion of interleaving checks with normal execution extends to
-runtime monitors that are more directly comparable to Tagged C, such as
-the C runtime verification work of
-Havelund \cite{Havelund08:RVC} and Ball and Rajamani \cite{Ball02:slic}.
-In a typical scheme, control-point-equivalents are treated as events in a trace,
-and the monitor as a state machine that steps alongside them; a ``security automaton''
-\cite{Schneider00:Automata}.
-It can then be interleaved into the program as
+C runtime monitors that are more directly comparable to Tagged C, such as
+{\sc Rmor}~\cite{Havelund08:RVC} and SLIC~\cite{Ball02:slic}.
+In these schemes, specified junctures in C execution are treated as events in a trace,
+and the monitor as a state machine that steps alongside them: a ``security automaton
+\cite{Schneider00:Automata}.''
+Trace checking can be interleaved into the program as
 an inline monitor \cite{Lundblad13:IRM}, or run offline on a log file \cite{Havelund22:LogScope}.
 In general, all of these systems are more expressive than Tagged C, because the
 monitor can access system values, not just keep track of provenance. But that expressiveness
