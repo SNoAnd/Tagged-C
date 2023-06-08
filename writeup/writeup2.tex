@@ -1333,22 +1333,24 @@ allocator. The allocator is kept abstract, and axiomatized to provide the
 interface for allocation and deallocation of stack and heap memory.
 
 \begin{figure}[t]
-  \[\mathit{frag} ::= (v\tagat\vt)_n & n \in \mathbb{N}\]
-  \[\mathit{perm} ::= \mathit{Live} | \mathit{Free} | \mathit{Reserved}\] \\
   \begin{align*}
-    \mem \in \mathit{MEM} ::= \{ & \contents : \Int \rightarrow \mathit{frag}\tagat \tau, \\
-    & \mathit{perms} : \Int \rightarrow \mathit{perm}, \\
-    & \mathit{globals} : (\Int \times \Int), \\
-    & \mathit{live} : \mathit{list} ~ (\Int \times \Int), \\
-    & \mathit{allocator} : \AL \} \\
-  \end{align*}
-  \begin{align*}
-    & \mathit{stkalloc} \in \AL \rightarrow (\Int, \Int) \rightarrow (\AL \times \Int \times \Int) \\
-    & \mathit{stkfree} \in \AL \rightarrow (\Int, \Int) \rightarrow \AL \\
-    & \mathit{heapalloc} \in \AL \rightarrow (\Int, \Int) \rightarrow (\AL \times \Int \times \Int) \\
-    & \mathit{heapfree} \in \AL \rightarrow (\Int, \Int) \rightarrow (\AL \times \Int \times \Int) \\
+    \mathit{frag} ::= & (v\tagat\vt)_n & n \in \mathbb{N} \\
+    \mathit{perm} ::= & \mathit{Live} | \mathit{Free} | \mathit{Reserved} \\
+    \mem \in \mathit{MEM} ::= & \left\{
+    \begin{aligned}
+      & \contents : \Int \rightarrow \mathit{frag}\tagat \tau, \\
+      & \mathit{perms} : \Int \rightarrow \mathit{perm}, \\
+      & \mathit{globals} : (\Int \times \Int), \\
+      & \mathit{live} : \mathit{list} ~ (\Int \times \Int), \\
+      & \mathit{allocator} : \AL
+    \end{aligned} \right\} \\
   \end{align*}
 
+%    \mathit{stkalloc} \in & \AL \rightarrow (\Int, \Int) \rightarrow (\AL \times \Int \times \Int) \\
+%    \mathit{stkfree} \in & \AL \rightarrow (\Int, \Int) \rightarrow \AL \\
+%    \mathit{heapalloc} \in & \AL \rightarrow (\Int, \Int) \rightarrow (\AL \times \Int \times \Int) \\
+%    \mathit{heapfree} \in & \AL \rightarrow (\Int, \Int) \rightarrow (\AL \times \Int \times \Int) \\
+ 
   \caption{Components of Memory}
   \label{fig:mem}
 \end{figure}
@@ -1391,45 +1393,43 @@ as \((v\tagat\vt)_n\), and if \(v\) is of type \(\type\), the full value in memo
 consists of \((v\tagat\vt)_0\) up to \((v\tagat\vt)_{|\type|}\).
 Load and store operations are given in \cref{fig:memops}.
 
-\paragraph{Globals and the Global Environment}
+\paragraph{Globals and Environments}
 
 \begin{figure}[t]
-  \[\genv ::= \GN \rightharpoonup (\Int \times \Int \times \tau \times \type)\]
-  \[\fenv ::= \FN \rightharpoonup (\alpha \times \mathit{fdef})\]
-
+  \begin{align*}
+    \genv ::= & \GN \rightharpoonup (\Int \times \Int \times \tau \times \type) \\
+    \fenv ::= & \FN \rightharpoonup (\alpha \times \tau) \\
+    \mathit{fdefs} ::= & \alpha \rightarrow (\mathit{list} ~ (\AN \times \type) \times \stmt \times \type) \\
+    \lenv ::= & (\mathtt{x}_{loc} + \AN) \rightharpoonup (\Int \times \Int \times \tau \times \type) \\
+    \tenv ::= & (\mathtt{x}_{loc} + \AN) \rightharpoonup (\mathit{val} \times \tau) \\
+  \end{align*}
+  
   \caption{Environments}
   \label{fig:genv}
 \end{figure}
+\sna{Define what a val is. Also, ident namespaces.}
 
-Globals are stored in memory in a single contiguous region. A global
+Globals are stored in memory in a single contiguous region. The global
 environment \(\genv\) is a partial map from identifiers to four-tuples
 containing the base address of the variable in memory, its bound (one past
-the end of its range), its pointer tag, and its type.
+the end of its range), its pointer tag, and its type. The function map
+is a partial map from identifiers to pairs of a function address---an
+abstract symbol in the set \(\alpha\)---and a tag. And the function
+\(\mathit{fdefs}\) maps function addresses to their definitions: a list
+of arguments and their types, a body statement, and a return type.
 
-Given a list \(xs\) of variable identifiers \(id\) and types
-\(ty\), plus a list \(fs\) of function identifiers,
-a program's initial state is defined by iteratively allocating each variable
-in memory and updating the global environment with its base address, bound, type,
-and a static identity tag. Additionally, the global environment holds function
-pointers.
-Let \(|ty|\) be a function from types to their sizes
-in bytes. The memory is initialized \(\vundef\tagat\vt\tagat\lt\)
-for some \(\vt\) and \(\lt\), unless given an initializer.
-Let \(\mem_0\) and \(\genv_0\) be the initial (empty) memory and environment.
-The parameter \(b\) marks the start of the global region.
+\sna{Make these identifiers not blue when they aren't tags!}
+The global environment and memory are initialized such that for each global variable
+\(\GN\) of type \(\type\) and with initial value \(v\):
+\begin{itemize}
+\item \(\globaltres \leftarrow \globalt\)
+\item \(\genv ~ \GN = (\mathit{base},\mathit{bound},\mathit{\pt'})\)
+\item \(\mem.\contents ~ (\mathit{base}+n) = (v\tagat\vt')_n \tagat \lt'\) for \(0 \leq n < |\type|\)
+\item \(\mem.\mathit{perms} ~ (\mathit{base}+n) = \mathit{LIVE}\) for \(0 \leq n < |\type|\)
+\end{itemize}
 
-%Since we don't need to initialize tags in memory dynamically, our rule for
-%selecting these tags can cover the entire initialization of the memory with arbitrary
-%granularity. We represent this as a list of tags of length \(|ty|\).
-
-\[\mathit{globals} ~ xs ~ fs ~ b =
-\begin{cases}
-  (\mem_0, \genv_0) & \textnormal{if } xs = \varepsilon, \textnormal{ where } \\
-  & \forall f \in fs . \exists \alpha . \genv_0[f] = \alpha \tagat \FN\\
-  (\mem[p \dots p+|ty| \mapsto \vundef\tagat\vt\tagat\lt]_{|ty|}, & \textnormal{if } xs = (id,ty)::xs' \\
-  ~ \genv[id \mapsto (\mathit{p, p+|ty|,ty,\pt})]) & \textnormal{and } \trule{\globaltres}{\globalt} \\
-  & \textnormal{where } (\mem,\genv) = \mathit{globals} ~ xs' ~ (b + |ty|) \\
-\end{cases}\]
+Bases and bounds are non-overlapping and contiguous, and their total range covers
+\(\mem.\mathit{globals}\).
 
 \subsection{States}
 
