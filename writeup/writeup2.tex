@@ -1341,7 +1341,7 @@ provides the interface for allocation and deallocation of stack and heap memory.
     & \mem.\mathit{perms} \in \Int \rightarrow \mathit{perm} \\
     & \mem.\mathit{globals} \in (\Int \times \Int) \\
     & \mem.\mathit{live} \in \mathit{list} ~ (\Int \times \Int) \\
-    & \mem.\mathit{allocator} \in \AL & \textnormal{Abstract allocator with  \\
+    & \mem.\mathit{allocator} \in \AL & \textnormal{Abstract allocator}  \\
     & \mathit{stkalloc} \in \AL \rightarrow (\Int, \Int) \rightarrow (\AL \times \Int \times \Int) \\
     & \mathit{stkfree} \in \AL \rightarrow (\Int, \Int) \rightarrow \AL \\
     & \mathit{heapalloc} \in \AL \rightarrow (\Int, \Int) \rightarrow (\AL \times \Int \times \Int) \\
