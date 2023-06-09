@@ -82,3 +82,8 @@
 .nia.cache
 .nra.cache
 .csdp.cache
+# things to keep out of the policy-fuzzing branch
+writeup/*.pdf
+writeup/*.tex
+writeup/*.kra
+writeup/*.png

@@ -876,19 +876,21 @@ Notation " 'check' A ; B" := (if A then B else stuck)
 
 Local Open Scope reducts_monad_scope.
 
-Notation "'trule' X <- A ; B" := (match A with Some X => B | None => failstop end)
+(* anaaktge - TODO does failstop give me the policy output yet? 
+    probably should do something with the str and list from PolicyFail *)
+Notation "'trule' X <- A ; B" := (match A with PolicySuccess X => B | PolicyFail _ _ => failstop end)
   (at level 200, X ident, A at level 100, B at level 200)
   : tag_monad_scope.
 
-Notation "'trule' X , Y <- A ; B" := (match A with Some (X, Y) => B | None => failstop end)
+Notation "'trule' X , Y <- A ; B" := (match A with PolicySuccess (X, Y) => B | PolicyFail _ _ => failstop end)
   (at level 200, X ident, Y ident, A at level 100, B at level 200)
   : tag_monad_scope.
 
-Notation "'trule' X , Y , Z <- A ; B" := (match A with Some (X, Y, Z) => B | None => failstop end)
+Notation "'trule' X , Y , Z <- A ; B" := (match A with PolicySuccess (X, Y, Z) => B | PolicyFail _ _ => failstop end)
   (at level 200, X ident, Y ident, Z ident, A at level 100, B at level 200)
   : tag_monad_scope.
 
-Notation "'trule' X , Y , Z , W <- A ; B" := (match A with Some (X, Y, Z, W) => B | None => failstop end)
+Notation "'trule' X , Y , Z , W <- A ; B" := (match A with PolicySuccess (X, Y, Z, W) => B | PolicyFail _ _ => failstop end)
   (at level 200, X ident, Y ident, Z ident, W ident, A at level 100, B at level 200)
   : tag_monad_scope.
 
@@ -2218,7 +2220,10 @@ Definition do_step (w: world) (s: Csem.state) : list transition :=
         | Kdo k => ret "step_do_2" (State f pct Sskip k e m )
         | Kifthenelse s1 s2 k =>
             do b <- bool_val v ty m;
-            ret "step_ifthenelse_2" (State f pct (if b then s1 else s2) (Ktag (IfJoinT pct) k) e m)
+            (* TODO anaaktge this looks similiar to the earlier thing that we replaced with k,
+                Sean thinks its ok to do the same here, and itll be replaced in the merge.
+                Confirm after merge this is what we want.  *)
+            ret "step_ifthenelse_2" (State f pct (if b then s1 else s2) k e m)
         | Kwhile1 x s k =>
             do b <- bool_val v ty m;
             if b
