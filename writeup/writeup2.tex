@@ -117,8 +117,8 @@ To address these problems, we introduce a \emph{source-level} specification fram
 which allows engineers to describe policies in terms of familiar C-level concepts, with tags attached to
 C functions, variables and data values, and rules triggered at \emph{control points} that correspond to
 significant execution events, such as function calls, expression evaluation, and pointer-based memory accesses. 
-Control points resemble ``advice points'' in aspect-oriented programming, but are narrowly
-focused on the manipulation of tags.\apt{revisit this after related work is done}
+Control points resemble ``advice points'' in aspect-oriented programming, but the ``advice''
+in this case can only take the form of manipulating tags, not data.
 In previous work on the Tagine project~\cite{Chhak21:Tagine}, we outlined such a framework for a toy
 source language and showed how high-level policies could be compiled to ISA-level policies and 
 enforced using PIPE-like hardware.  Here we extend this approach to handle
@@ -141,7 +141,8 @@ and address-taken objects are allocated in the same integer-addressed memory spa
 that would be undefined in standard C are given a definition % (parameterized by a particular allocation strategy)
 consistent with the behavior of a typical compiler.
 We build the Tagged C semantics on top of the CompCert C semantics, which are formalized 
-as part of the CompCert verified compiler \cite{Leroy09:CompCert}. For prototyping and executing example policies,
+as part of the CompCert verified compiler \cite{Leroy09:CompCert}\cite{Leroy09:CompCertBackend}.
+For prototyping and executing example policies,
 we provide a reference interpreter also based on that of CompCert~\cite[Ch. 4]{Leroy22:CompCertManual},
 written in the Gallina functional language of the Coq Proof Assistant~\cite{coq}.
 Tag types and rules are also written directly in Gallina. 
@@ -179,7 +180,7 @@ needs inform our choices of control points.
 %which the design meets our goals of flexibility and applicability to realistic
 %security concerns.
 \Cref{sec:related} discusses related work, and \cref{sec:futurework} descibes limitations and future work.
-The full formal Tagged C semantics appear in our tech report\footnote{Not yet available.}.\apt{fix as appropriate}
+The full formal Tagged C semantics appear in our appendix.
 
 \section{Metadata Tags and Policies, by Example}
 \label{sec:example}
@@ -356,13 +357,11 @@ an outside observer of {\tt mm} can deduce one bit of the key (an {\em implicit 
       {
         \node[anchor=north] {\(g \tagat \PCT[_2]\)}; \&
         \node[anchor=north, fill=gray!20] {\(\mathtt{mm} \mapsto p \tagat \pt[_1]\) \\
-          \(p:\fbox{\(1 \tagat \vt[_7] \tagat \lt[_2]\)}\) \\
+          \(p:\fbox{\(1 \tagat \vt[_6] \tagat \lt[_2]\)}\) \\
           \(\mathtt{psk} \mapsto i \tagat \vt[_2] \)
         }; \&
         \node[anchor=north, fill=blue!10] {\(\vt[_5] \leftarrow \constt\) \\
-          \(\vt[_6] \leftarrow \assigntname(\PCT[_2]
-          ,\vt[_1],\vt[_5])\) \\
-          \(\PCT[_3],\vt[_7],\lt[_2] \leftarrow \storetname(\PCT[_2],\pt[_1],\vt[_6],\lt[_1])\)}; \\
+          \(\PCT[_3],\vt[_6],\lt[_2] \leftarrow \storetname(\PCT[_2],\pt[_1],\vt[_5],\lt[_1])\)}; \\
       };
 
   \draw[Circle-]
@@ -386,23 +385,15 @@ Tagged C initializes the tags on {\tt mm} with the \(\globaltname\) rule. The PC
 at the point of call, \(\PCT[_0]\), is fed to \(\calltname\) to determine a new PC tag
 inside of {\tt g}. And the if-statement consults the \(\splittname\) rule to update the PC tag
 inside of its branch based on the value-tag of the expression {\tt psk < 0}. Once inside the
-conditional, when the program assigns to {\tt mm}, it must consult both the
-\(\assigntname\) rule as normal and the \(\storetname\) rule because it is storing
-to memory.\apt{Could we just omit \(\assigntname\) again??? see next comment}
+conditional, when the program assigns to {\tt mm}, it must consult the \(\storetname\) rule because
+it is storing to memory (again ommitting \(\assigntname\)).
 
 \Cref{fig:example2rules} shows an instantiation of these rules that extend our previous SIF policy.
 The rule for globals initializes the location tag of {\tt mm} to \(\low\),
 as a low-security output channel, and marks all other addresses \(\high\). Whenever execution branches on
 a high-tagged value, the PC tag will be set to \(\high\). We modify the previous rules so that
-assignments propagate the higher of the tag on the value being assigned and the PC tag, meaning that an
-assignment under a high PC remains high.\apt{But this is not shown -- super confusing! 
-  And I thought we agreed this was a bogus way
-  to raise the PC anyway: consider something like {\tt if (hi) f(x+x);} -- here the {\tt x+x} is high, even though it is not assigned to anything. So instead PC tag should be ANDed into consts, binops, etc.}
-\sna{We discussed that there are two ways to do this. The one shown, and the one you're describing.
-  They should be equivalent. As for the call example, the PC tag really ought to remain high during the call,
-  since other branches might not make a call at all, and the callee might make an output. So whether
-  or not {\tt x+x} is high doesn't matter all that much. That said, I fell into the trap again of
-  confusing storet with assignt, and your version of the policy doesn't have that trap, so that's nice.}
+all expressions propagate the {\em higher} of the PC tag and the relevant value tag(s) (e.g., the
+updated \(\binoptname\) in \cref{fig:example2rules}).
 When an assignment is to a memory location, the store rule will check the tag on
 that location against the value being written, 
 and failstop if a high value would be written to a low location.
@@ -416,11 +407,18 @@ in a high context.
     \caseoftwo{x}
               {\tt mm}{\(\lt':=\low\)}
               {\(\underline{~~~}\)}{\(\lt':=\high\)}}
+  \begin{minipage}{0.3\textwidth}
   \truleblock{\(\splittname(\PCT,\vt)\)}{
     \caseoftwo{(\(\PCT,\vt\))}
               {(\(\low,\low\))}{\(\PCT':=\low\)}
               {\(\underline{~~~}\)}{\(\PCT':=\high\)}
   }
+  \binoptruleblock{
+    \caseoftwo{\((\PCT,\vt[_1],\vt[_2])\)}
+              {(\(\low,\low,\low\))}{\(\vt':=\low\)}
+              {\(\underline{~~~}\)}{\(\vt':=\high\)}
+  }
+  \end{minipage}
   \storetruleblock{
     \(\lt':=\lt\); \(\PCT':=\PCT\) \\
     \caseofthree{(\(\PCT,\vt,\lt\))}
@@ -1041,8 +1039,6 @@ A similar approach applies to conditional expressions, but we omit the details h
         {let \(\pctaint{\FN}{\LNS} := \PCT\) in \\
           \(\PCT['] := \pctaint{\FN}{(\LNS-\LN)}\)
         }
-    \assigntruleblock
-        {\(\PCT[']:=\PCT\); \(\vt':=\PCT \sqcup \vt[_2]\)}
   \end{minipage}
   
   \caption{SIF Conditionals}
@@ -1167,13 +1163,10 @@ Tagged C policies cannot ``correct'' bad behavior, but also
 that attaching a given policy to any program in Tagged C will never result
 in a regression, only potential failstops.
 
-\apt{This paragraph needs more work if at all possible}
-The notion of interleaving checks with normal execution extends to
-C runtime monitors that are more directly comparable to Tagged C, such as
-{\sc Rmor}~\cite{Havelund08:RVC} and SLIC~\cite{Ball02:slic}.
-In these schemes, specified junctures in C execution are treated as events in a trace,
-and the monitor as a state machine that steps alongside them: a ``security automaton
-\cite{Schneider00:Automata}.''
+C runtime verification (RV) systems such as {\sc Rmor}~\cite{Havelund08:RVC} and SLIC~\cite{Ball02:slic}
+are more directly comparable to Tagged C. In an RV system, specified junctures in
+execution are treated as events in a trace, and a user defines valid traces
+in terms of state machines~\cite{Schneider00:Automata}, regular expressions, or temporal logics.
 Trace checking can be interleaved into the program as
 an inline monitor \cite{Lundblad13:IRM}, or run offline on a log file \cite{Havelund22:LogScope}.
 In general, all of these systems are more expressive than Tagged C, because the
@@ -1254,6 +1247,15 @@ programs run under that property.
 
 \section{Tagged C, Formally}
 
+In this appendix, we will present the Tagged C semantics, focusing on those elements
+that differ from the original CompCert C. A reader interested in exploring the
+underlying CompCert C semantics should consult Blazy and Leroy \cite{Blazy09:CompCertClight}
+on the Clight semantics, which is one step lower than CompCert C in the CompCert toolchain.
+
+Chief among the areas that differ is the memory model. While still heavily based on the CompCert
+memory model \cite{Leroy12:CompCertMM}, it is modified to use a flat address space
+and to behave in correspondence to some underlying machine-compiler implementation.
+
 Tagged C has the full complement of typical C expressions (\cref{fig:expr}). \(\val{v}{\vt}\),
 \(\loc{p}{\pt}\), and \(\paren{\expr}{\type}\) are internal forms.
 A constant \(c\) in the concrete syntax is transformed into \(\val{c}{\constt}\),
@@ -1283,7 +1285,8 @@ be cast.
   | & \comma{\expr_1}{\expr_2} & \textnormal{Expression Sequence} \\
   | & \call{\expr_f}{\overline{\expr}_{args}} & \textnormal{Function Call} \\
   | & \loc{l}{\lt} & \textnormal{Memory Location} \\
-  | & \paren{\expr}{ty}{\gentag} & \textnormal{Parenthetical with Optional Cast} \\
+  | & \floc{\alpha}{\pt} & \textnormal{Abstract Function Address} \\
+  | & \paren{\expr}{ty} & \textnormal{Result of Conditional} \\
   \end{aligned}\]
   \caption{Expression Syntax}
   \label{fig:expr}
@@ -1322,15 +1325,17 @@ concrete syntax becomes \(\sifthenelse{\expr}{\stmt_1}{\stmt_2}{\bot}\).
   \label{fig:syntax}
 \end{figure}
 
-\subsection{Atoms}
+Values \(v\) are drawn from the set \(\mathit{val}\). Identifiers belong to
+disjoint namespaces, identified by a subscript, e.g. \(\mathtt{x}_{glb}\).
 
 \subsection{Memory Model}
 
 A memory configuration (\cref{fig:mem}) consists of the contents of memory, the permissions
 of memory, the live regions (separated into a single region for globals, and
 a list of allocated regions that can be deallocated), and the state of its
-allocator. The allocator is kept abstract, and axiomatized to provide the
-interface for allocation and deallocation of stack and heap memory.
+allocator oracle. The oracle is kept abstract, and axiomatized to provide the
+interface for allocation and deallocation of stack and heap memory, as well as
+the {\it scramble} operation, described below.
 
 \begin{figure}[t]
   \begin{align*}
@@ -1342,14 +1347,9 @@ interface for allocation and deallocation of stack and heap memory.
       & \mathit{perms} : \Int \rightarrow \mathit{perm}, \\
       & \mathit{globals} : (\Int \times \Int), \\
       & \mathit{live} : \mathit{list} ~ (\Int \times \Int), \\
-      & \mathit{allocator} : \AL
+      & \mathit{oracle} : \AL
     \end{aligned} \right\} \\
   \end{align*}
-
-%    \mathit{stkalloc} \in & \AL \rightarrow (\Int, \Int) \rightarrow (\AL \times \Int \times \Int) \\
-%    \mathit{stkfree} \in & \AL \rightarrow (\Int, \Int) \rightarrow \AL \\
-%    \mathit{heapalloc} \in & \AL \rightarrow (\Int, \Int) \rightarrow (\AL \times \Int \times \Int) \\
-%    \mathit{heapfree} \in & \AL \rightarrow (\Int, \Int) \rightarrow (\AL \times \Int \times \Int) \\
  
   \caption{Components of Memory}
   \label{fig:mem}
@@ -1375,8 +1375,8 @@ interface for allocation and deallocation of stack and heap memory.
   \label{fig:memops}
 \end{figure}
 
-An address can have permissions of Live, Reserved, or Free. Live memory
-is memory that has been allocation for program use. It is guaranteed to be
+An address can have permissions of \(\mathit{LIVE}\), \(\mathit{RESERVED}\), or \(\mathit{FREE}\).
+Live memory is memory that has been allocated for program use. It is guaranteed to be
 stable (unless it's volatile). Reserved memory is set aside for the compiler,
 and is wholly inaccessible. Everything else is free.
 
@@ -1393,21 +1393,41 @@ as \((v\tagat\vt)_n\), and if \(v\) is of type \(\type\), the full value in memo
 consists of \((v\tagat\vt)_0\) up to \((v\tagat\vt)_{|\type|}\).
 Load and store operations are given in \cref{fig:memops}.
 
-\paragraph{Globals and Environments}
+\paragraph{Allocator Oracle}
+
+The role of the allocator oracle is to abstract away low-level details of memory
+management that may affect execution of the program, but are not directly visible
+to the source semantics. It defines a set of four operations:
+\begin{align*}
+  \mathit{stkalloc} \in & \AL \rightarrow (\Int, \Int) \rightharpoonup (\AL \times \Int \times \Int) \\
+  \mathit{stkfree} \in & \AL \rightarrow (\Int, \Int) \rightharpoonup \AL \\
+  \mathit{heapalloc} \in & \AL \rightarrow (\Int, \Int) \rightharpoonup (\AL \times \Int \times \Int) \\
+  \mathit{heapfree} \in & \AL \rightarrow (\Int, \Int) \rightharpoonup (\AL \times \Int \times \Int) \\
+\end{align*}
+
+Allocating and freeing stack and heap memory are straightforward enough.
+There is one final operation that is dependent on the oracle:
+\[\mathit{scramble} \in \mem \rightharpoonup \mem\]
+
+\(\mathit{scramble}\) is invoked at calls and returns to reflect the fact that compiler generated
+code is manipulating memory, so non-\(\mathit{LIVE}\) regions might have their permissions
+and/or their values changed. It is axiomatically guaranteed not to touch \(\mathit{LIVE}\)
+regions, and that the regions it does touch are deterministic based on the oracle.
+
+\paragraph{Globals, Locals, and Environments}
 
 \begin{figure}[t]
   \begin{align*}
-    \genv ::= & \GN \rightharpoonup (\Int \times \Int \times \tau \times \type) \\
-    \fenv ::= & \FN \rightharpoonup (\alpha \times \tau) \\
-    \mathit{fdefs} ::= & \alpha \rightarrow (\mathit{list} ~ (\AN \times \type) \times \stmt \times \type) \\
-    \lenv ::= & (\mathtt{x}_{loc} + \AN) \rightharpoonup (\Int \times \Int \times \tau \times \type) \\
-    \tenv ::= & (\mathtt{x}_{loc} + \AN) \rightharpoonup (\mathit{val} \times \tau) \\
+    \genv ::= & \mathtt{x}_{glb} \rightharpoonup (\Int \times \Int \times \tau \times \type) \\
+    \fenv ::= & \mathtt{f}_{fun} \rightharpoonup (\alpha \times \tau) \\
+    \mathit{fdefs} ::= & \mathtt{f}_{fun} \rightarrow (\mathit{list} ~ (\mathtt{x}_{loc} \times \mathtt{x}_{arg} \times \type) \times \stmt \times \type + EXT(spec)) \\
+    \lenv ::= & (\mathtt{x}_{loc} + \mathtt{x}_{arg}) \rightharpoonup (\Int \times \Int \times \tau \times \type) \\
+    \tenv ::= & (\mathtt{x}_{loc} + \mathtt{x}_{arg}) \rightharpoonup (\mathit{val} \times \tau) \\
   \end{align*}
   
   \caption{Environments}
   \label{fig:genv}
 \end{figure}
-\sna{Define what a val is. Also, ident namespaces.}
 
 Globals are stored in memory in a single contiguous region. The global
 environment \(\genv\) is a partial map from identifiers to four-tuples
@@ -1418,12 +1438,11 @@ abstract symbol in the set \(\alpha\)---and a tag. And the function
 \(\mathit{fdefs}\) maps function addresses to their definitions: a list
 of arguments and their types, a body statement, and a return type.
 
-\sna{Make these identifiers not blue when they aren't tags!}
 The global environment and memory are initialized such that for each global variable
 \(\GN\) of type \(\type\) and with initial value \(v\):
 \begin{itemize}
 \item \(\globaltres \leftarrow \globalt\)
-\item \(\genv ~ \GN = (\mathit{base},\mathit{bound},\mathit{\pt'})\)
+\item \(\genv ~ \mathtt{x}_{glb} = (\mathit{base},\mathit{bound},\mathit{\pt'})\)
 \item \(\mem.\contents ~ (\mathit{base}+n) = (v\tagat\vt')_n \tagat \lt'\) for \(0 \leq n < |\type|\)
 \item \(\mem.\mathit{perms} ~ (\mathit{base}+n) = \mathit{LIVE}\) for \(0 \leq n < |\type|\)
 \end{itemize}
@@ -1431,82 +1450,118 @@ The global environment and memory are initialized such that for each global vari
 Bases and bounds are non-overlapping and contiguous, and their total range covers
 \(\mem.\mathit{globals}\).
 
+Local variables and function arguments may or may not be stored in memory. Those
+that are keep their base, bound, tag and type in a local environment, \(\lenv\).
+Those that are not have their tagged values stored directly in a temp environment,
+\(\tenv\).
+
+Allocation of in-memory locals is performed by the \(\mathit{new\_loc}\) function,
+which takes a memory, a local environment, a tag (the PC tag),
+and a pair of the variable or identifier, and its type.
+
+\[\begin{aligned}
+& \mathit{new\_loc} ~ \mem ~ \lenv ~ \PCT ~ (\mathtt{x}_{loc}, \type) \triangleq \\
+& ~~ \textnormal{let } (o,base,bound) := \mathit{stk\_alloc} ~ \mem.\mathit{oracle} ~ (0,|\type|) \textnormal{ in} \\
+& ~~\textnormal{if } \trule{\localtres}{\localt}, \textnormal{ then} \\
+& ~~~~ \textnormal{let } \mem' = \mem \left\langle \mathit{oracle} := o \right\rangle [base \mapsto \vundef\tagat\initt\tagat\lt[']]_{|ty|} \textnormal{ in} \\
+& ~~~~ (\mem', \lenv[id \mapsto (\mathit{base, bound, \pt', \type})], \PCT[']) \\
+& ~~ \textnormal{else } \fail(``LocalT",\PCT,\TN)
+\end{aligned}\]
+
+\sna{handle the multiple tags here}
+The \(\mathit{new\_arg}\) function is similar, but it takes as argument an initial tagged value.
+
+\[\begin{aligned}
+& \mathit{new\_arg} ~ \mem ~ \lenv ~ \PCT ~ (\mathtt{x}_{arg}, (v\tagat\vt), \type)\triangleq \\
+& ~~ \textnormal{let } (o,base,bound) := \mathit{stk\_alloc} ~ \mem.\mathit{oracle} ~ (0,|\type|) \textnormal{ in} \\
+& ~~\textnormal{if } \trule{\localtres}{\localt}, \textnormal{ then} \\
+& ~~~~ \textnormal{let } \mem' = \mem \left\langle \mathit{oracle} := o \right\rangle [base \mapsto v\tagat\vt\tagat\lt[']]_{|ty|} \textnormal{ in} \\
+& ~~~~ (\mem', \lenv[id \mapsto (\mathit{base, bound, \pt', \type})], \PCT[']) \\
+& ~~ \textnormal{else } \fail(``LocalT",\PCT,\TN)
+\end{aligned}\]
+
+\subsection{Expression Reductions}
+
+Now that we've introduced memory and environments, we can look at some
+expression reductions and where the control points fit into them.
+A left-hand reduction \(\lenv,\expr \Rightarrow_\lh \expr'\)
+relates an expression and local environment to an expression.
+These are given in \cref{fig:lexprsteps}.
+A right-hand reduction
+\((\PCT,\mem,\tenv,\expr) \Rightarrow_\rh (\PCT',\mem',\tenv',\expr')\)
+relates a tuple of PC Tag, memory, temp environment, and expression to another such triple.
+The first batch to look at are in \cref{fig:rexprsteps1}. Note that,
+whether kept in memory or not, variables are accessed with the \(\accesstname\)
+rule and assigned with the \(\assigntname\) rule. If they are in memory,
+\(\loadtname\) and \(\storetname\) apply as well.
+%Given these reduction relations, we construct step rules for contexts in
+%expressions.
+
+\begin{figure}
+  \varlocalstep
+  \varglobalstep
+  \funglobalstep
+  \fieldstructstep
+
+  \caption{Left-hand expression reductions}
+  \label{fig:lexprsteps}
+\end{figure}
+
+\begin{figure}
+  \derefstep
+  \valofstep
+  \valoftmpstep
+  \addrofstep
+  \addroffunstep
+  \assignstep
+  \assigntmpstep
+  
+  \caption{Right-hand expression reductions (Part 1)}
+  \label{fig:rexprsteps1}
+\end{figure}
+
+\begin{figure}
+  \unopstep
+  \binopstep
+  \seqandtruestep
+  \seqandfalsestep
+  \seqortruestep
+  \seqorfalsestep
+%  \assignopstep
+%  \postincstep
+  \conditionstep
+  \commastep
+  \parenstep
+  \iicaststep
+  \picaststep
+  \ipcaststep
+  \ppcaststep
+
+  \caption{Right-hand expression reductions (Part 2)}
+  \label{fig:rexprsteps2}
+\end{figure}
+
 \subsection{States}
 
 States can be of several kinds, denoted by their script prefix: a {\em general state} \(\mathcal{S}(\dots)\),
 an {\em expression state} \(\mathcal{E}(\dots)\), a {\em call state} \(\mathcal{C}(\dots)\), or a
 {\em return state} \(\mathcal{R}(\dots)\). Finally, the special state {\em failstop} (\(\mathcal{F}(\dots)\))
-represents a tag failure, and carries the state that produced the failure.
-[Allison: to whatever degree you've figured out what is useful here by publication-time, we can
-  tune this to be more specific.]
-
-In the below definition, memories are ranged over by \(\mem\), local environments by
-\(\lenv\), and continuations by \(\cont\).
+represents a tag failure, and carries the name of the tag rule that produced the failure as well
+as a list of tags for the arguments. States within functions carry the local and temp environments
+for those functions; the global and function environments are always accessible and never
+mutated.
 
 \[\begin{aligned}
-S ::= & \sstate{\PCT}{\mem}{\stmt}{\cont} \\
-| & \estate{\PCT}{\mem}{\expr}{\cont} \\
+S ::= & \sstate{\PCT}{\mem,\lenv,\tenv}{\stmt}{\cont} \\
+| & \estate{\PCT}{\mem,\lenv,\tenv}{\expr}{\cont} \\
 | & \cstate{\PCT}{\mem}{f}{\overline{\val{v}{\vt}}}{\cont} \\
 | & \rstate{\PCT}{\mem}{\val{v}{\vt}}{\cont} \\
-| & \fstate{S} \\
+| & \fstate{\mathit{rule},\overline{\gentag}} \\
 \end{aligned}\]
 
-\paragraph*{Pieces of a State}
+\paragraph*{Contexts}
 
-States in general contain a memory, a local environment, and a continuation.
-A memory \(\mem\) is a map from machine integers to 
-A successful load, written \(\mem[l]\), yields a value with two tags, \(v\tagat\vt\tagat\lt\).
-A local environment \(\lenv\) is a map from variable identifiers to tagged addresses,
-\(p\tagat\pt\), and a temp environment \(\tenv\) is a map from identifiers to tagged values,
-\(v\tagat\vt\). A global environment \(\genv\) maps an identifier to either a tagged address,
-or a symbolic function pointer tagged with its own name.
-The global environment is fixed at the start of execution, so we omit it from state tuples.
-
-\paragraph*{Continuations}
-\label{app:continuations}
-
-A continuation acts like a stack of pending operations. The base of the stack is
-\(\kemp\). \(\mathit{Kdo}\) indicates that a do statement is evaluating an expression.
-\(\mathit{Kseq}\) with parameter \(\stmt\) indicates that, after the current statement
-is done executing, \(\stmt\) is next. \(\mathit{Kif}\) means that execution is evaluating
-the test expression of an if statement, and its parameters are the branches of the
-if. Similarly, the test continuations for while, do-while, and for loops indicate that
-the test expression is being evaluated. The associated loop continuations indicate that
-execution is in the loop body. They continuations carry all of the information of the original
-loop.
-
-\[\begin{split}
-\cont ::= & \kemp \\
-| & \kdo{\cont} \\
-| & \kseq{\stmt}{\cont} \\
-| & \kif{\stmt_1}{\stmt_2}{L}{\cont} \\
-| & \kwhiletest{\expr}{\stmt}{L}{\cont} \\
-| & \kwhileloop{\expr}{\stmt}{L}{\cont} \\
-| & \kdowhiletest{\expr}{\stmt}{L}{\cont} \\
-| & \kdowhileloop{\expr}{\stmt}{L}{\cont} \\
-| & \kfor{\expr}{\stmt_2}{\stmt_3}{L}{\cont} \\
-| & \kforpost{\expr}{\stmt_2}{\stmt_3}{L}{\cont} \\
-\end{split}\]
-
-\section{Step Rules}
-\label{app:rules}
-
-\subsection{Sequencing rules}
-
-\sequencing
-
-\subsection{Conditional rules}
-
-\conditionals
-
-\subsection{Loop rules}
-
-\loops
-
-\subsection{Contexts}
-\label{app:contexts}
-
-Our expression semantics are contextual. A context \(\ctx[\expr]_k\) is a function from an
+The Tagged C expression semantics are contextual. A context \(\ctx[\expr]_k\) is a function from an
 expression to an expression, with a ``kind'' flag \(k\) (left-hand or right-hand, \(\lh\) or \(\rh\)).
 
 \[\begin{aligned}
@@ -1537,66 +1592,69 @@ expression to an expression, with a ``kind'' flag \(k\) (left-hand or right-hand
 | & \call{\expr_1}{\ctx{\overline{\expr_2}}_\rh} \\ % ctx_call_right
 % skipped builtins
 | & \comma{\ctx{\expr_1}_\rh}{\expr_2} \\ % ctx_comma
-| & \paren{\ctx{\expr}_\rh}{\type}{} \\ % ctx_paren
+| & \paren{\ctx{\expr}_\rh}{\type} \\ % ctx_paren
 \end{aligned}\]
 
-A left-hand reduction \(\expr \Rightarrow_\lh \expr'\)
-relates an expression to an expression. A right-hand reduction
-\((\PCT,\mem,\expr) \Rightarrow_\rh (\PCT',\mem',\expr')\)
-relates a triple of PC Tag, memory, and expression to another such triple.
-Given these reduction relations, we construct step rules for contexts in
-expressions.
-
-%triple of a memory, an expression, and a tag
-%might reduces to another such triple as a left-hand, right-hand, or call reduction, written
-%\((\mem, \expr, \PCT) \Rightarrow_k (\mem', \expr', \PCT')\),
-%based on rules given below. These reductions are embedded in states as follows.
-
 \judgmenttwo{\(\ctx{\expr}_\lh\)}
-            {\(\expr \Rightarrow_\lh \expr'\)}
-            {\(\defestate{\ctx{\expr}} \longrightarrow \defestate{\ctx{\expr'}}\)}
+            {\(\lenv,\expr \Rightarrow_\lh \expr'\)}
+            {\(\estate{\PCT}{\mem,\lenv,\tenv}{\ctx{\expr}}{\cont} \longrightarrow
+              \estate{\PCT}{\mem,\lenv,\tenv}{\ctx{\expr'}}{\cont}\)}
 
 \judgmenttwo{\(\ctx{\expr}_\rh\)}
-            {\((\PCT, \mem, \expr) \Rightarrow_\rh (\PCT', \mem', \expr')\)}
-            {\(\defestate{\ctx{\expr}} \longrightarrow \estate{\PCT'}{\mem'}{\ctx{\expr'}}{\cont}\)}
-            
-All that remains is to give the expression reductions themselves.
+            {\(\PCT, \mem, \tenv, \expr \Rightarrow_\rh \PCT', \mem', \tenv', \expr'\)}
+            {\(\estate{\PCT}{\mem,\lenv,\tenv}{\ctx{\expr}}{\cont} \longrightarrow
+              \estate{\PCT'}{\mem',\lenv,\tenv'}{\ctx{\expr'}}{\cont}\)}
 
-\expressions
 
+\paragraph*{Continuations}
+\label{app:continuations}
+
+A continuation acts like a stack of pending operations. The base of the stack is
+\(\kemp\). \(\mathit{Kdo}\) indicates that a do statement is evaluating an expression.
+\(\mathit{Kseq}\) with parameter \(\stmt\) indicates that, after the current statement
+is done executing, \(\stmt\) is next. \(\mathit{Kif}\) means that execution is evaluating
+the test expression of an if statement, and its parameters are the branches of the
+if. Similarly, the test continuations for while, do-while, and for loops indicate that
+the test expression is being evaluated. The associated loop continuations indicate that
+execution is in the loop body. They continuations carry all of the information of the original
+loop.
+
+\[\begin{split}
+\cont ::= & \kemp \\
+| & \kdo{\cont} \\
+| & \kseq{\stmt}{\cont} \\
+| & \kif{\stmt_1}{\stmt_2}{L}{\cont} \\
+| & \kwhiletest{\expr}{\stmt}{L}{\cont} \\
+| & \kwhileloop{\expr}{\stmt}{L}{\cont} \\
+| & \kdowhiletest{\expr}{\stmt}{L}{\cont} \\
+| & \kdowhileloop{\expr}{\stmt}{L}{\cont} \\
+| & \kfor{\expr}{\stmt_2}{\stmt_3}{L}{\cont} \\
+| & \kforpost{\expr}{\stmt_2}{\stmt_3}{L}{\cont} \\
+| & \kreturn{\cont} \\
+| & \kcall{\lenv}{\tenv}{\ctx}{\type}{\cont}
+\end{split}\]
+
+Now we present the step rules. These are essentially identical to their
+CompCert C equivalents, so there will be little discussion: the important
+detail is the presence or absence of control points. We omit the
+rules that step to the fail state if a tag rule fails.
+
+\subsection{Sequencing rules}
+
+\sequencing
+
+\subsection{Conditional rules}
+
+\conditionals
+
+\subsection{Loop rules}
+
+\loops
+           
 \subsection{Call and Return Rules}
 
-In order to make a call, we need to reduce the function expression to an \(\floc{\_}\) value, an
-abstract location corresponding to a particular function. Then we can make the call.
-
 \callexprstep
-
-When we make an internal call, we need to allocated space for locals and arguments using the helper function
-\(\mathit{frame}\).
-
-\[\mathit{frame} ~ xs ~ as ~ \mem =
-\begin{cases}
-  (\mem''[p \mapsto \vundef\tagat\vt\tagat\lt]_{|ty|}, & \textnormal{if } xs = (id,ty)::xs' \\
-  \lenv'[id \mapsto (\mathit{p, p+|ty|,ty,\pt})]) &
-  \textnormal{where } (\mem',p) \leftarrow \mathit{stack\_alloc} ~ |ty| ~ \mem, \\
-  & \trule{\localtres}{\localt}, \\
-  & \textnormal{and } (\mem'',\lenv') = \mathit{frame} ~ xs' ~ as ~ m' \\ 
-  \\
-  (\mem''[p \mapsto v\tagat\vt'\tagat\lt]_{|ty|}, & \textnormal{if } as = (id,ty,v \tagat \vt)::as' \textnormal{ and } xs = \varepsilon \\
-  \lenv'[id \mapsto (\mathit{p, p+|ty|,ty,\pt})]) &
-  \textnormal{where } (\mem',p) \leftarrow \mathit{stack\_alloc} ~ |ty| ~ \mem, \\
-  & \trule{\argtres}{\argt}, \\
-  & \textnormal{and } (\mem'',\lenv') = \mathit{frame} ~ xs' ~ as ~ m' \\
-  \\
-  (\mem, \lambda x . \bot) & \textnormal{if } xs = \varepsilon \textnormal{ and } as = \varepsilon \\
-\end{cases}\]
-
 \callstep
-
-On the other hand, when we make an external call, we step directly to a return state with some value
-being returned and an updated memory. [TODO: talk more about how the tag policy applies in external
-  functions, what they can and can't do with tags.]
-
 \extcallstep
 
 Special external functions, such as malloc, just get their own rules.

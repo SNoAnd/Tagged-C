@@ -76,7 +76,7 @@
 \newcommand{\kdowhileloop}[4]{\mathit{KdoWhileLoop} ~ #1 ~ #2 ~ #3; ~ #4}
 \newcommand{\kfor}[5]{\mathit{Kfor} ~ (#1,#2) ~ #3 ~ #4 ; ~ #5}
 \newcommand{\kforpost}[5]{\mathit{KforPost} ~ (#1,#2) ~ #3 ~ #4 ; ~ #5}
-\newcommand{\kcall}[4]{\mathit{Kcall} ~ #1 ~ #2 ~ #3; ~ #4}
+\newcommand{\kcall}[5]{\mathit{Kcall} ~ #1 ~ #2 ~ #3 ~ #4; ~ #5}
 \newcommand{\kreturn}[1]{\mathit{Kreturn}; ~ #1}
 \newcommand{\kswitcha}[3]{\mathit{Kswitch1} ~ #1 ~ #2; ~ #3}
 \newcommand{\kswitchb}[1]{\mathit{Kswitch2}; ~ #1}
@@ -102,9 +102,9 @@
 \newcommand{\expr}{e}
 \newcommand{\type}{ty}
 \newcommand{\defestate}[1]
-           {\estate{\PCT}{\mem}{#1}{\cont}}
+           {\estate{\PCT}{\mem,\lenv,\tenv}{#1}{\cont}}
 \newcommand{\defsstate}[1]
-           {\sstate{\PCT}{\mem}{#1}{\cont}}
+           {\sstate{\PCT}{\mem,\lenv,\tenv}{#1}{\cont}}
 
 \newcommand{\Int}{\mathit{int}}
 \newcommand{\AL}{\mathit{AL}}
