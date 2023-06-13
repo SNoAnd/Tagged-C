@@ -4,6 +4,7 @@ Require Import Integers.
 Require Import Floats.
 Require Import Values.
 Require Import String.
+Require Import Ctypes.
 
 Require Import List. Import ListNotations. (* list notations is a module inside list *)
 
@@ -16,11 +17,11 @@ Module Type Policy. (* anaaktge this is the interface for rules
                       terrible hack - give trival def,
                       then mod the ocaml code yourself 
                     *)
-
   Parameter tag : Type.
   Parameter tag_eq_dec : forall (t1 t2:tag), {t1 = t2} + {t1 <> t2}.
   Parameter def_tag : tag.
-
+  Parameter InitPCT : tag.
+  
     (* anaaktge parameterized by tag type but are shared regardless of policy
       and c/p them around would be really annoying. n copies is n-1 too many. 
 
@@ -36,40 +37,58 @@ Module Type Policy. (* anaaktge this is the interface for rules
   Arguments PolicySuccess {_} _. 
   Arguments PolicyFail {_} _ _.
 
-  Parameter InitPCT : tag.
+  Parameter CallT : tag -> tag -> PolicyResult tag.
 
-  Parameter GlobalT : ident -> nat -> tag * list tag.
-  
-  Parameter VarT : tag -> tag -> PolicyResult tag.
+  Parameter ArgT : tag -> tag -> ident -> ident -> PolicyResult (tag * tag).
 
-  Parameter LocalT : nat -> tag -> PolicyResult (tag * tag * list tag).
-  
-  Parameter ConstT : tag.
-
-  Parameter UnopT : tag -> tag -> PolicyResult (tag * tag).
-
-  Parameter BinopT : tag -> tag -> tag -> PolicyResult (tag * tag).
+  Parameter RetT : tag -> tag -> tag -> PolicyResult (tag * tag).
   
   Parameter LoadT : tag -> tag -> tag -> list tag -> PolicyResult tag.
 
-  Parameter StoreT : tag -> tag -> tag -> tag -> list tag -> PolicyResult (tag * tag * list tag).
+  Parameter StoreT : tag -> tag -> tag -> list tag -> PolicyResult (tag * tag * list tag).
 
-  Parameter IfSplitT : tag -> tag -> PolicyResult (tag * tag).
+  Parameter AccessT : tag -> tag -> PolicyResult tag.
 
-  Parameter IfJoinT : tag -> tag -> PolicyResult tag.
+  Parameter AssignT : tag -> tag -> tag -> PolicyResult (tag * tag).
 
-  Parameter IfEscapeT : tag -> tag -> PolicyResult tag.
+  Parameter UnopT : unary_operation -> tag -> tag -> PolicyResult (tag * tag).
 
-  Parameter LoopEnterGuarded : tag -> tag -> PolicyResult (tag * tag).
+  Parameter BinopT : binary_operation -> tag -> tag -> tag -> PolicyResult (tag * tag).
 
-  Parameter LoopExitGuarded : tag -> tag -> tag -> PolicyResult tag.
+  Parameter ConstT : tag -> PolicyResult tag.
 
-  Parameter LoopExitUnguarded : tag -> tag -> PolicyResult tag.
+  Parameter InitT : tag -> PolicyResult tag.
+
+  Parameter SplitT : tag -> tag -> option ident -> PolicyResult (tag * tag).
+
+  Parameter LabelT : tag -> ident -> PolicyResult tag.
+
+  Parameter ExprSplitT : tag -> tag -> PolicyResult (tag * tag).
+
+  Parameter JoinT : tag -> tag -> PolicyResult (tag * tag).
+  
+  Parameter GlobalT : ident -> type -> tag * tag * list tag.
+  
+  Parameter LocalT : tag -> type -> PolicyResult (tag * tag * list tag).
+
+  Parameter DeallocT : tag -> type -> PolicyResult (tag * tag * list tag).
+
+  Parameter MallocT : tag -> tag -> tag -> PolicyResult (tag * tag * tag * list tag).
+
+  Parameter FreeT : tag -> tag -> tag -> PolicyResult (tag * tag * tag * list tag).
+
+  Parameter FieldT : tag -> tag -> type -> ident -> PolicyResult tag.
+
+  Parameter PICastT : tag -> tag -> list tag -> type -> PolicyResult tag.
+  Parameter IPCastT : tag -> tag -> list tag -> type -> PolicyResult tag.
+  Parameter PPCastT : tag -> tag -> list tag -> type -> PolicyResult tag.
+  Parameter IICastT : tag -> tag -> type -> PolicyResult tag.
   
 End Policy.
 
 Module TagLib (P:Policy).
   Export P.
+  Export Values.
 
   Definition atom : Type := val * tag.
   Definition atom_map (f:val -> val) (a:atom) :=
@@ -117,34 +136,57 @@ Module NullPolicy <: Policy.
   Arguments PolicySuccess {_} _. 
   Arguments PolicyFail {_} _ _.
 
-  Definition GlobalT (id : ident) (align : nat) := (tt, repeat tt align).
-  
-  Definition VarT (pct pt : tag) := PolicySuccess tt.
+  Definition CallT (pct pt: tag) : PolicyResult tag := PolicySuccess tt.
 
-  Definition LocalT (align : nat) (pct : tag) : PolicyResult (tag * tag * list tag)%type := PolicySuccess (tt, tt, repeat tt align).
-  
-  Definition ConstT : tag := tt.
-  
-  Definition UnopT (pct vt : tag) : PolicyResult (tag * tag) := PolicySuccess (tt, tt).
+  Definition ArgT (pct vt : tag) (f x: ident) : PolicyResult (tag * tag) := PolicySuccess (tt,tt).
 
-  Definition BinopT (pct vt1 vt2 : tag) : PolicyResult (tag * tag) := PolicySuccess (tt, tt).
-  
+  Definition RetT (pct_clr pct_cle vt : tag) : PolicyResult (tag * tag) := PolicySuccess (tt,tt).
+
   Definition LoadT (pct pt vt : tag) (lts : list tag) : PolicyResult tag := PolicySuccess tt.
 
-  Definition StoreT (pct pt ovt vt : tag) (lts : list tag) : PolicyResult (tag * tag * list tag) := PolicySuccess (tt, tt, [tt]).
+  Definition StoreT (pct pt vt : tag) (lts : list tag) : PolicyResult (tag * tag * list tag) := PolicySuccess (tt, tt, [tt]).
 
-  Definition IfSplitT (pct vt : tag) : PolicyResult (tag * tag) := PolicySuccess (tt, tt).
+  Definition AccessT (pct vt : tag) : PolicyResult tag := PolicySuccess tt.
 
-  Definition IfJoinT (pct opct : tag) : PolicyResult tag := PolicySuccess tt.
+  Definition AssignT (pct vt1 vt2 : tag) : PolicyResult (tag * tag) := PolicySuccess (tt,tt).
 
-  Definition IfEscapeT (pct opct : tag) : PolicyResult tag := PolicySuccess tt.
+  Definition UnopT (op : unary_operation) (pct vt : tag) : PolicyResult (tag * tag) := PolicySuccess (tt, tt).
 
-  Definition LoopEnterGuarded (pct vt : tag) : PolicyResult (tag * tag) := PolicySuccess (tt, tt).
+  Definition BinopT (op : binary_operation) (pct vt1 vt2 : tag) : PolicyResult (tag * tag) := PolicySuccess (tt, tt).
 
-  Definition LoopExitGuarded (pct opct vt : tag) : PolicyResult tag := PolicySuccess tt.
+  Definition ConstT (pct : tag) : PolicyResult tag := PolicySuccess tt.
+  Definition InitT (pct : tag) : PolicyResult tag := PolicySuccess tt.
 
-  Definition LoopExitUnguarded (pct opct : tag) : PolicyResult tag := PolicySuccess tt.
-End NullPolicy.  
+  Definition SplitT (pct vt : tag) (id : option ident) : PolicyResult (tag * tag) := PolicySuccess (tt, tt).
+
+  Definition LabelT (pct : tag) (l : ident) : PolicyResult tag := PolicySuccess tt.
+
+  Definition ExprSplitT (pct vt : tag) : PolicyResult (tag * tag) := PolicySuccess (tt,tt).
+
+  Definition JoinT (pct vt : tag) : PolicyResult (tag * tag) := PolicySuccess (tt,tt).
+
+  Definition GlobalT (id : ident) (ty : type) : tag * tag * list tag := (tt, tt, []).
+  
+  Definition LocalT (pct : tag) (ty : type) : PolicyResult (tag * tag * list tag)%type :=
+    PolicySuccess (tt, tt, []).
+  
+  Definition DeallocT (pct : tag) (ty : type) : PolicyResult (tag * tag * list tag) :=
+    PolicySuccess (tt, tt, []).
+
+  Definition MallocT (pct pt vt : tag) : PolicyResult (tag * tag * tag * list tag) :=
+    PolicySuccess (tt, tt, tt, []).
+
+  Definition FreeT (pct pt vt : tag) : PolicyResult (tag * tag * tag * list tag) :=
+    PolicySuccess (tt, tt, tt, []).
+
+  Definition FieldT (pct vt : tag) (ty : type) (id : ident) : PolicyResult tag := PolicySuccess tt.
+
+  Definition PICastT (pct pt : tag)  (lts : list tag) (ty : type) : PolicyResult tag := PolicySuccess tt.
+  Definition IPCastT (pct vt : tag)  (lts : list tag) (ty : type) : PolicyResult tag := PolicySuccess tt.
+  Definition PPCastT (pct vt : tag) (lts : list tag) (ty : type) : PolicyResult tag := PolicySuccess tt.
+  Definition IICastT (pct vt : tag) (ty : type) : PolicyResult tag := PolicySuccess tt.
+
+End NullPolicy.
 
 (* anaaktge <: means subtype of *)
 Module PVI <: Policy.
@@ -398,3 +440,4 @@ Module IFC (S:IFC_Spec) <: Policy.
 
   Definition LoopExitUnguarded (pct opct : tag) : PolicyResult tag := PolicySuccess pct.
 End IFC.
+*)

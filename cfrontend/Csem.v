@@ -146,7 +146,7 @@ Inductive alloc_variables: tag -> env -> mem ->
   | alloc_variables_cons:
       forall PCT PCT' PCT'' e m id ty vars m1 lo1 hi1 pt lts m2 m3 e2,
         Mem.alloc m 0 (sizeof (snd ge) ty) = Some (m1, lo1, hi1) ->
-        LocalT (Z.to_nat (alignof (snd ge) ty)) PCT = PolicySuccess (PCT', pt, lts) ->
+        LocalT PCT ty = PolicySuccess (PCT', pt, lts) ->
         Mem.store (chunk_of_type (typ_of_type ty)) m1 lo1 (Vundef, def_tag) lts = Some m2 ->
         (* initialize location tags *)
         alloc_variables PCT' (PTree.set id (lo1, hi1, pt, ty) e) m2 vars PCT'' e2 m3 ->
@@ -229,9 +229,8 @@ Variable e: env.
 (** Head reduction for l-values. *)
 (* anaaktge - part of prop, we can asswert its valid if it succeeds *)
 Inductive lred: expr -> mem -> expr -> mem -> Prop :=
-| red_var_local: forall PCT x pt pt' ty m lo hi,
+| red_var_local: forall x pt ty m lo hi,
     e!x = Some(lo, hi, pt, ty) ->
-    VarT PCT pt = PolicySuccess pt' ->
     lred (Evar x ty) m
          (Eloc (Ptrofs.repr lo) pt Full ty) m
 | red_var_global: forall x ty m lo hi pt,
@@ -278,12 +277,12 @@ Inductive rred (PCT:tag) : expr -> mem -> trace -> tag -> expr -> mem -> Prop :=
          PCT (Eval (Vofptrsize (Ptrofs.signed ofs), pt') ty) m
 | red_unop: forall op v1 vt1 ty1 ty m v PCT' vt,
     sem_unary_operation op v1 ty1 m = Some v ->
-    PolicySuccess (PCT', vt) = UnopT PCT vt1 ->
+    PolicySuccess (PCT', vt) = UnopT op PCT vt1 ->
     rred PCT (Eunop op (Eval (v1,vt1) ty1) ty) m E0
          PCT' (Eval (v,vt) ty) m
 | red_binop: forall op v1 vt1 ty1 v2 vt2 ty2 ty m v vt' PCT',
     sem_binary_operation (snd ge) op v1 ty1 v2 ty2 m = Some v ->
-    PolicySuccess (PCT', vt') = BinopT PCT vt1 vt2 ->
+    PolicySuccess (PCT', vt') = BinopT op PCT vt1 vt2 ->
     rred PCT (Ebinop op (Eval (v1,vt1) ty1) (Eval (v2,vt2) ty2) ty) m E0
          PCT' (Eval (v,vt') ty) m
 | red_cast: forall ty v1 vt1 ty1 m v vt,
@@ -319,7 +318,7 @@ Inductive rred (PCT:tag) : expr -> mem -> trace -> tag -> expr -> mem -> Prop :=
 | red_assign: forall ofs ty1 pt bf v1 ovt v2 vt2 ty2 m v vt t1 t2 m' v' vt' lts lts',
     sem_cast v2 ty2 ty1 m = Some v ->
     deref_loc ty1 m ofs pt bf t1 (v1,ovt) lts ->
-    StoreT PCT pt ovt vt lts = PolicySuccess (PCT, vt', lts') ->
+    StoreT PCT pt vt lts = PolicySuccess (PCT, vt', lts') ->
     assign_loc ty1 m ofs pt bf (v,vt) t2 m' (v',vt) lts' ->
     rred PCT (Eassign (Eloc ofs pt bf ty1) (Eval (v2, vt2) ty2) ty1) m t2
          PCT (Eval (v',vt') ty1) m'
@@ -732,12 +731,12 @@ Inductive sstep: state -> trace -> state -> Prop :=
           E0 (ExprState f PCT a (Kifthenelse s1 s2 k) e m)
 | step_ifthenelse_2:  forall f PCT PCT' pct v vt ty s1 s2 k e m b,
     bool_val v ty m = Some b ->
-    IfSplitT PCT vt = PolicySuccess (PCT', pct) ->
+    SplitT PCT vt None = PolicySuccess (PCT', pct) ->
     sstep (ExprState f PCT (Eval (v,vt) ty) (Kifthenelse s1 s2 k) e m)
           E0 (State f PCT (if b then s1 else s2) k e m)
 | step_ifthenelse_2_fail:  forall f PCT PCT' pct v vt ty s1 s2 k e m b,
     bool_val v ty m = Some b ->
-    IfSplitT PCT vt = PolicySuccess (PCT', pct) ->
+    SplitT PCT vt None = PolicySuccess (PCT', pct) ->
     sstep (ExprState f PCT (Eval (v,vt) ty) (Kifthenelse s1 s2 k) e m)
           E0 Failstop
 

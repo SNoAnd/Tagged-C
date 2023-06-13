@@ -41,8 +41,9 @@ Module Csyntax (P:Policy).
   their types. *)
 
 Inductive expr : Type :=
-| Eval (v: atom) (ty: type)                                                  (**r constant *)
+| Eval (v: atom) (ty: type)                                           (**r evaluated fully *)
 | Evar (x: ident) (ty: type)                                                 (**r variable *)
+| Econst (v: val) (ty: type)                                                 (**r constant *)
 | Efield (l: expr) (f: ident) (ty: type)      (**r access to a member of a struct or union *)
 | Evalof (l: expr) (ty: type)                               (**r l-value used as a r-value *)
 | Ederef (r: expr) (ty: type)                         (**r pointer dereference (unary [*]) *)
@@ -133,6 +134,7 @@ Definition typeof (a: expr) : type :=
   | Ederef _ ty => ty
   | Efield _ _ ty => ty
   | Eval _ ty => ty
+  | Econst _ ty => ty
   | Evalof _ ty => ty
   | Eaddrof _ ty => ty
   | Eunop _ _ ty => ty

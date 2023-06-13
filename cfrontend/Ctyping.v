@@ -352,6 +352,9 @@ Inductive wt_rvalue : expr -> Prop :=
 | wt_Eval: forall v vt ty,
     wt_val v ty ->
     wt_rvalue (Eval (v,vt) ty)
+| wt_Econst: forall v ty,
+    wt_val v ty ->
+    wt_rvalue (Econst v ty)
 | wt_Evalof: forall l,
     wt_lvalue l ->
     wt_rvalue (Evalof l (typeof l))
@@ -666,22 +669,22 @@ Definition efield (ce: composite_env) (r: expr) (f: ident) : res expr :=
   end.
 
 Definition econst_int (n: int) (sg: signedness) : expr :=
-  (Eval (Vint n, ConstT) (Tint I32 sg noattr)).
+  (Econst (Vint n) (Tint I32 sg noattr)).
 
 Definition econst_ptr_int (n: int) (ty: type) : expr :=
-  (Eval (if Archi.ptr64 then Vlong (Int64.repr (Int.unsigned n)) else Vint n, ConstT) (Tpointer ty noattr)).
+  (Econst (if Archi.ptr64 then Vlong (Int64.repr (Int.unsigned n)) else Vint n) (Tpointer ty noattr)).
 
 Definition econst_long (n: int64) (sg: signedness) : expr :=
-  (Eval (Vlong n, ConstT) (Tlong sg noattr)).
+  (Econst (Vlong n) (Tlong sg noattr)).
 
 Definition econst_ptr_long (n: int64) (ty: type) : expr :=
-  (Eval (if Archi.ptr64 then Vlong n else Vint (Int64.loword n), ConstT) (Tpointer ty noattr)).
+  (Econst (if Archi.ptr64 then Vlong n else Vint (Int64.loword n)) (Tpointer ty noattr)).
 
 Definition econst_float (n: float) : expr :=
-  (Eval (Vfloat n, ConstT) (Tfloat F64 noattr)).
+  (Econst (Vfloat n) (Tfloat F64 noattr)).
 
 Definition econst_single (n: float32) : expr :=
-  (Eval (Vsingle n, ConstT) (Tfloat F32 noattr)).
+  (Econst (Vsingle n) (Tfloat F32 noattr)).
 
 Definition evalof (l: expr) : res expr :=
   do x <- check_lval l; OK (Evalof l (typeof l)).
@@ -754,8 +757,8 @@ Definition epostincrdecr (id: incr_or_decr) (l: expr) : res expr :=
 Definition epostincr (l: expr) := epostincrdecr Incr l.
 Definition epostdecr (l: expr) := epostincrdecr Decr l.
 
-Definition epreincr (l: expr) := eassignop Oadd l (Eval (Vint Int.one, ConstT) type_int32s).
-Definition epredecr (l: expr) := eassignop Osub l (Eval (Vint Int.one, ConstT) type_int32s).
+Definition epreincr (l: expr) := eassignop Oadd l (Econst (Vint Int.one) type_int32s).
+Definition epredecr (l: expr) := eassignop Osub l (Econst (Vint Int.one) type_int32s).
 
 Definition ecomma (r1 r2: expr) : res expr :=
   do x1 <- check_rval r1; do x2 <- check_rval r2;
@@ -816,17 +819,23 @@ Definition sswitch (a: expr) (sl: labeled_statements) : res statement :=
 
 Fixpoint retype_expr (ce: composite_env) (e: typenv) (a: expr) : res expr :=
   match a with
-  | Eval (Vint n, _) (Tint _ sg _) =>
+  | Eval (Vint n, _) (Tint _ sg _)
+  | Econst (Vint n) (Tint _ sg _) =>
       OK (econst_int n sg)
-  | Eval (Vint n, _) (Tpointer ty _) =>
+  | Eval (Vint n, _) (Tpointer ty _)
+  | Econst (Vint n) (Tpointer ty _) =>
       OK (econst_ptr_int n ty)
-  | Eval (Vlong n, _) (Tlong sg _) =>
+  | Eval (Vlong n, _) (Tlong sg _)
+  | Econst (Vlong n) (Tlong sg _) =>
       OK (econst_long n sg)
-  | Eval (Vfloat n, _) _ =>
+  | Eval (Vfloat n, _) _
+  | Econst (Vfloat n) _ =>
       OK (econst_float n)
-  | Eval (Vsingle n, _) _ =>
+  | Eval (Vsingle n, _) _
+  | Econst (Vsingle n) _ =>
       OK (econst_single n)
-  | Eval _ _ =>
+  | Eval _ _
+  | Econst _ _ =>
       Error (msg "bad literal")
   | Evar x _ =>
       evar e x
@@ -1354,6 +1363,11 @@ Proof.
       inv RT. apply econst_float_sound.
       inv RT. apply econst_single_sound.
     + eapply evar_sound; eauto.
+    + destruct v; try discriminate.
+      destruct ty; inv RT. apply econst_int_sound. apply econst_ptr_int_sound.
+      destruct ty; inv RT. apply econst_long_sound.
+      inv RT. apply econst_float_sound.
+      inv RT. apply econst_single_sound.
     + eapply efield_sound; eauto.
     + eapply evalof_sound; eauto.
     + eapply ederef_sound; eauto.

@@ -71,6 +71,7 @@ Fixpoint simple (a: expr) : bool :=
   | Eloc _ _ _ _ => true
   | Efloc _ _ _ => true
   | Evar _ _ => true
+  | Econst _ _ => true
   | Ederef r _ => simple r
   | Efield r _ _ => simple r
   | Eval _ _ => true
@@ -167,7 +168,7 @@ with eval_simple_rvalue: tag -> expr -> atom -> Prop :=
   | esr_binop: forall PCT' op r1 r2 ty v1 vt1 v2 vt2 v vt,
       eval_simple_rvalue PCT r1 (v1,vt1) -> eval_simple_rvalue PCT r2 (v2,vt2) ->
       sem_binary_operation (snd ge) op v1 (typeof r1) v2 (typeof r2) m = Some v ->
-      BinopT PCT vt1 vt2 = PolicySuccess (PCT', vt) ->
+      BinopT op PCT vt1 vt2 = PolicySuccess (PCT', vt) ->
       eval_simple_rvalue PCT' (Ebinop op r1 r2 ty) (v,vt)
   | esr_cast: forall ty r1 v1 vt v,
       eval_simple_rvalue PCT r1 (v1,vt) ->

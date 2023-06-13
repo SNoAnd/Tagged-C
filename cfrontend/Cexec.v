@@ -904,13 +904,11 @@ Fixpoint step_expr (k: kind) (pct: tag) (a: expr) (m: mem): reducts expr :=
       match e!x with
       | Some(base, bound, t, ty') =>
           check type_eq ty ty';
-          trule t' <- VarT pct t;
-          topred (Lred "red_var_local" (Eloc (Ptrofs.repr base) t' Full ty) m)
+          topred (Lred "red_var_local" (Eloc (Ptrofs.repr base) t Full ty) m)
       | None =>
           match Genv.find_symbol (fst ge) x with
           | Some (inr (base, bound, t)) =>
-              trule t' <- VarT pct t;
-              topred (Lred "red_var_global" (Eloc (Ptrofs.repr base) t' Full ty) m)
+              topred (Lred "red_var_global" (Eloc (Ptrofs.repr base) t Full ty) m)
           | Some (inl (b, t)) =>
               topred (Lred "red_var_func" (Efloc b t ty) m)
           | None => stuck
@@ -967,6 +965,9 @@ Fixpoint step_expr (k: kind) (pct: tag) (a: expr) (m: mem): reducts expr :=
           incontext (fun x => Efield x f ty) (step_expr RV pct r m)
       end
   | RV, Eval v ty => []
+  | RV, Econst v ty =>
+      trule vt <- ConstT pct;
+      topred (Rred "red_const" pct (Eval (v,vt) ty) m E0)
   | RV, Evalof l ty =>
       match is_loc l with
       | Some (ofs, pt, bf, ty') =>
@@ -1053,7 +1054,7 @@ Fixpoint step_expr (k: kind) (pct: tag) (a: expr) (m: mem): reducts expr :=
           do v <- sem_cast v2 ty2 ty1 m;
           do w',t,vvt,lts <- do_deref_loc w ty1 m ofs pt1 bf;
           let (_,vt1) := vvt in
-          trule pct',vt',lts' <- StoreT pct pt1 vt1 vt2 lts;
+          trule pct',vt',lts' <- StoreT pct pt1 vt2 lts;
           do w'',t,m',vvt' <- do_assign_loc w' ty1 m ofs pt1 bf (v,vt') lts';
           topred (Rred "red_assign" pct (Eval vvt' ty) m' t)
       | _, _ =>

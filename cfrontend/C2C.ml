@@ -778,13 +778,13 @@ let rec convertExpr env e =
       Ctyping.ealignof (convertTyp env ty1)
 
   | C.EUnop(C.Ominus, e1) ->
-      ewrap (Ctyping.eunop Cop.Oneg (convertExpr env e1))
+      ewrap (Ctyping.eunop Values.Oneg (convertExpr env e1))
   | C.EUnop(C.Oplus, e1) ->
       convertExpr env e1
   | C.EUnop(C.Olognot, e1) ->
-      ewrap (Ctyping.eunop Cop.Onotbool (convertExpr env e1))
+      ewrap (Ctyping.eunop Values.Onotbool (convertExpr env e1))
   | C.EUnop(C.Onot, e1) ->
-      ewrap (Ctyping.eunop Cop.Onotint (convertExpr env e1))
+      ewrap (Ctyping.eunop Values.Onotint (convertExpr env e1))
   | C.EUnop(C.Oaddrof, e1) ->
       ewrap (Ctyping.eaddrof (convertLvalue env e1))
   | C.EUnop(C.Opreincr, e1) ->
@@ -801,22 +801,22 @@ let rec convertExpr env e =
              e1, e2, tyres) ->
       let op' =
         match op with
-        | C.Oadd -> Cop.Oadd
-        | C.Osub -> Cop.Osub
-        | C.Omul -> Cop.Omul
-        | C.Odiv -> Cop.Odiv
-        | C.Omod -> Cop.Omod
-        | C.Oand -> Cop.Oand
-        | C.Oor  -> Cop.Oor
-        | C.Oxor -> Cop.Oxor
-        | C.Oshl -> Cop.Oshl
-        | C.Oshr -> Cop.Oshr
-        | C.Oeq  -> Cop.Oeq
-        | C.One  -> Cop.One
-        | C.Olt  -> Cop.Olt
-        | C.Ogt  -> Cop.Ogt
-        | C.Ole  -> Cop.Ole
-        | C.Oge  -> Cop.Oge
+        | C.Oadd -> Values.Oadd
+        | C.Osub -> Values.Osub
+        | C.Omul -> Values.Omul
+        | C.Odiv -> Values.Odiv
+        | C.Omod -> Values.Omod
+        | C.Oand -> Values.Oand
+        | C.Oor  -> Values.Oor
+        | C.Oxor -> Values.Oxor
+        | C.Oshl -> Values.Oshl
+        | C.Oshr -> Values.Oshr
+        | C.Oeq  -> Values.Oeq
+        | C.One  -> Values.One
+        | C.Olt  -> Values.Olt
+        | C.Ogt  -> Values.Ogt
+        | C.Ole  -> Values.Ole
+        | C.Oge  -> Values.Oge
         | _ -> assert false in
       ewrap (Ctyping.ebinop op' (convertExpr env e1) (convertExpr env e2))
   | C.EBinop(C.Oassign, e1, e2, _) ->
@@ -836,16 +836,16 @@ let rec convertExpr env e =
              e1, e2, tyres) ->
       let op' =
         match op with
-        | C.Oadd_assign -> Cop.Oadd
-        | C.Osub_assign -> Cop.Osub
-        | C.Omul_assign -> Cop.Omul
-        | C.Odiv_assign -> Cop.Odiv
-        | C.Omod_assign -> Cop.Omod
-        | C.Oand_assign -> Cop.Oand
-        | C.Oor_assign  -> Cop.Oor
-        | C.Oxor_assign -> Cop.Oxor
-        | C.Oshl_assign -> Cop.Oshl
-        | C.Oshr_assign -> Cop.Oshr
+        | C.Oadd_assign -> Values.Oadd
+        | C.Osub_assign -> Values.Osub
+        | C.Omul_assign -> Values.Omul
+        | C.Odiv_assign -> Values.Odiv
+        | C.Omod_assign -> Values.Omod
+        | C.Oand_assign -> Values.Oand
+        | C.Oor_assign  -> Values.Oor
+        | C.Oxor_assign -> Values.Oxor
+        | C.Oshl_assign -> Values.Oshl
+        | C.Oshr_assign -> Values.Oshr
         | _ -> assert false in
       let e1' = convertLvalue env e1 in
       let e2' = convertExpr env e2 in
@@ -932,7 +932,7 @@ let rec convertExpr env e =
       make_builtin_memcpy (convertExprList env args)
 
   | C.ECall({edesc = C.EVar {name = "__builtin_fabs"}}, [arg]) ->
-      ewrap (Ctyping.eunop Cop.Oabsfloat (convertExpr env arg))
+      ewrap (Ctyping.eunop Values.Oabsfloat (convertExpr env arg))
 
   | C.ECall({edesc = C.EVar {name = "__builtin_va_start"}} as fn, [arg]) ->
       Csyntax.Ecall(convertExpr env fn,
@@ -1000,7 +1000,7 @@ and convertLvalue env e =
       ewrap (Ctyping.efield !comp_env e3' (intern_string id))
   | C.EBinop(C.Oindex, e1, e2, _) ->
       let e1' = convertExpr env e1 and e2' = convertExpr env e2 in
-      let e3' = ewrap (Ctyping.ebinop Cop.Oadd e1' e2') in
+      let e3' = ewrap (Ctyping.ebinop Values.Oadd e1' e2') in
       ewrap (Ctyping.ederef e3')
   | C.EConst(C.CStr s) ->
       let ty = typeStringLiteral s in

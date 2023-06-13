@@ -157,7 +157,7 @@ let print_mem p m =
       match mv with
       | Mem.MD.Undef -> fprintf p " U |"; print_at (i+1) max
       | Mem.MD.Byte (b,t) -> fprintf p " %lu |" (camlint_of_coqint b); print_at (i+1) max
-      | Mem.MD.Fragment (v, q, n) -> fprintf p "| %a |" print_val v; print_at (i+(camlint_of_coqnat (Memdata.size_quantity_nat q))) max)
+      | Mem.MD.Fragment ((v,_), q, n) -> fprintf p "| %a |" print_val v; print_at (i+(camlint_of_coqnat (Memdata.size_quantity_nat q))) max)
     else () in
   print_at 1000 1015;
   fprintf p "\n"
@@ -179,11 +179,11 @@ let print_state p (prog, ge, s) =
       Printing.print_pointer_hook := print_pointer (fst ge) Maps.PTree.empty;
       fprintf p "calling@ @[<hov 2>%s(%a)@]"
               (name_of_fundef prog fd)
-              print_val_list args
+              print_val_list (List.map fst args)
   | Csem.Returnstate(pct, res, k, m) ->
       Printing.print_pointer_hook := print_pointer (fst ge) Maps.PTree.empty;
       fprintf p "returning@ %a"
-              print_val res
+              print_val (fst res)
   | Csem.Stuckstate ->
       fprintf p "stuck after an undefined expression"
   | Csem.Failstop ->

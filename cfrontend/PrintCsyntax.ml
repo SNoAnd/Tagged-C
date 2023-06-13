@@ -35,28 +35,28 @@ module Csyntax = Ctyping.Csem.Csyntax
 module Cop = Csyntax.Cop
 
 let name_unop = function
-  | Cop.Onotbool -> "!"
-  | Cop.Onotint  -> "~"
-  | Cop.Oneg     -> "-"
-  | Cop.Oabsfloat -> "__builtin_fabs"
+  | Values.Onotbool -> "!"
+  | Values.Onotint  -> "~"
+  | Values.Oneg     -> "-"
+  | Values.Oabsfloat -> "__builtin_fabs"
 
 let name_binop = function
-  | Cop.Oadd -> "+"
-  | Cop.Osub -> "-"
-  | Cop.Omul -> "*"
-  | Cop.Odiv -> "/"
-  | Cop.Omod -> "%"
-  | Cop.Oand -> "&"
-  | Cop.Oor  -> "|"
-  | Cop.Oxor -> "^"
-  | Cop.Oshl -> "<<"
-  | Cop.Oshr -> ">>"
-  | Cop.Oeq  -> "=="
-  | Cop.One  -> "!="
-  | Cop.Olt  -> "<"
-  | Cop.Ogt  -> ">"
-  | Cop.Ole  -> "<="
-  | Cop.Oge  -> ">="
+  | Values.Oadd -> "+"
+  | Values.Osub -> "-"
+  | Values.Omul -> "*"
+  | Values.Odiv -> "/"
+  | Values.Omod -> "%"
+  | Values.Oand -> "&"
+  | Values.Oor  -> "|"
+  | Values.Oxor -> "^"
+  | Values.Oshl -> "<<"
+  | Values.Oshr -> ">>"
+  | Values.Oeq  -> "=="
+  | Values.One  -> "!="
+  | Values.Olt  -> "<"
+  | Values.Ogt  -> ">"
+  | Values.Ole  -> "<="
+  | Values.Oge  -> ">="
 
 let name_inttype sz sg =
   match sz, sg with
@@ -154,6 +154,7 @@ let rec precedence = function
   | Csyntax.Ederef _ -> (15, RtoL)
   | Csyntax.Efield _ -> (16, LtoR)
   | Csyntax.Eval _ -> (16, NA)
+  | Csyntax.Econst _ -> (16, NA)
   | Csyntax.Evalof(l, _) -> precedence l
   | Csyntax.Esizeof _ -> (15, RtoL)
   | Csyntax.Ealignof _ -> (15, RtoL)
@@ -162,14 +163,14 @@ let rec precedence = function
   | Csyntax.Eunop _ -> (15, RtoL)
   | Csyntax.Eaddrof _ -> (15, RtoL)
   | Csyntax.Ecast _ -> (14, RtoL)
-  | Csyntax.Ebinop((Cop.Omul|Cop.Odiv|Cop.Omod), _, _, _) -> (13, LtoR)
-  | Csyntax.Ebinop((Cop.Oadd|Cop.Osub), _, _, _) -> (12, LtoR)
-  | Csyntax.Ebinop((Cop.Oshl|Cop.Oshr), _, _, _) -> (11, LtoR)
-  | Csyntax.Ebinop((Cop.Olt|Cop.Ogt|Cop.Ole|Cop.Oge), _, _, _) -> (10, LtoR)
-  | Csyntax.Ebinop((Cop.Oeq|Cop.One), _, _, _) -> (9, LtoR)
-  | Csyntax.Ebinop(Cop.Oand, _, _, _) -> (8, LtoR)
-  | Csyntax.Ebinop(Cop.Oxor, _, _, _) -> (7, LtoR)
-  | Csyntax.Ebinop(Cop.Oor, _, _, _) -> (6, LtoR)
+  | Csyntax.Ebinop((Values.Omul|Values.Odiv|Values.Omod), _, _, _) -> (13, LtoR)
+  | Csyntax.Ebinop((Values.Oadd|Values.Osub), _, _, _) -> (12, LtoR)
+  | Csyntax.Ebinop((Values.Oshl|Values.Oshr), _, _, _) -> (11, LtoR)
+  | Csyntax.Ebinop((Values.Olt|Values.Ogt|Values.Ole|Values.Oge), _, _, _) -> (10, LtoR)
+  | Csyntax.Ebinop((Values.Oeq|Values.One), _, _, _) -> (9, LtoR)
+  | Csyntax.Ebinop(Values.Oand, _, _, _) -> (8, LtoR)
+  | Csyntax.Ebinop(Values.Oxor, _, _, _) -> (7, LtoR)
+  | Csyntax.Ebinop(Values.Oor, _, _, _) -> (6, LtoR)
   | Csyntax.Eseqand _ -> (5, LtoR)
   | Csyntax.Eseqor _ -> (4, LtoR)
   | Csyntax.Econdition _ -> (3, RtoL)
@@ -188,21 +189,21 @@ let print_pointer_hook
 
 let print_typed_value p v ty =
   match v, ty with
-  | (Vint n,_), Ctypes.Tint(I32, Unsigned, _) ->
+  | Vint n, Ctypes.Tint(I32, Unsigned, _) ->
       fprintf p "%luU" (camlint_of_coqint n)
-  | (Vint n,_), _ ->
+  | Vint n, _ ->
       fprintf p "%ld" (camlint_of_coqint n)
-  | (Vfloat f,_), _ ->
+  | Vfloat f, _ ->
       fprintf p "%.15F" (camlfloat_of_coqfloat f)
-  | (Vsingle f,_), _ ->
+  | Vsingle f, _ ->
       fprintf p "%.15Ff" (camlfloat_of_coqfloat32 f)
-  | (Vlong n,_), Ctypes.Tlong(Unsigned, _) ->
+  | Vlong n, Ctypes.Tlong(Unsigned, _) ->
       fprintf p "%LuLLU" (camlint64_of_coqint n)
-  | (Vlong n,_), _ ->
+  | Vlong n, _ ->
       fprintf p "%LdLL" (camlint64_of_coqint n)
-  | (Vfptr b,_), _ ->
+  | Vfptr b, _ ->
       fprintf p "<ptr%a>" !print_pointer_hook (b,coqint_of_camlint 0l)
-  | (Vundef,_), _ ->
+  | Vundef, _ ->
       fprintf p "<undef>"
 
 let print_value p v = print_typed_value p v Tvoid
@@ -229,13 +230,15 @@ let rec expr p (prec, e) =
       fprintf p "%a.%s" expr (prec', a1) (extern_atom f)
   | Csyntax.Evalof(l, _) ->
       expr p (prec, l)
-  | Csyntax.Eval(v, ty) ->
+  | Csyntax.Eval((v, _), ty) ->
+      print_typed_value p v ty
+  | Csyntax.Econst(v, ty) ->
       print_typed_value p v ty
   | Csyntax.Esizeof(ty, _) ->
       fprintf p "sizeof(%s)" (name_type ty)
   | Csyntax.Ealignof(ty, _) ->
       fprintf p "__alignof__(%s)" (name_type ty)
-  | Csyntax.Eunop(Cop.Oabsfloat, a1, _) ->
+  | Csyntax.Eunop(Values.Oabsfloat, a1, _) ->
       fprintf p "__builtin_fabs(%a)" expr (2, a1)
   | Csyntax.Eunop(op, a1, _) ->
       fprintf p "%s%a" (name_unop op) expr (prec', a1)
