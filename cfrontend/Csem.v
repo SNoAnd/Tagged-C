@@ -729,14 +729,14 @@ Inductive sstep: state -> trace -> state -> Prop :=
 | step_ifthenelse_1: forall f PCT a s1 s2 k e m,
     sstep (State f PCT (Sifthenelse a s1 s2) k e m)
           E0 (ExprState f PCT a (Kifthenelse s1 s2 k) e m)
-| step_ifthenelse_2:  forall f PCT PCT' pct v vt ty s1 s2 k e m b,
+| step_ifthenelse_2:  forall f PCT PCT' v vt ty s1 s2 k e m b,
     bool_val v ty m = Some b ->
-    SplitT PCT vt None = PolicySuccess (PCT', pct) ->
+    SplitT PCT vt None = PolicySuccess PCT' ->
     sstep (ExprState f PCT (Eval (v,vt) ty) (Kifthenelse s1 s2 k) e m)
           E0 (State f PCT (if b then s1 else s2) k e m)
-| step_ifthenelse_2_fail:  forall f PCT PCT' pct v vt ty s1 s2 k e m b,
+| step_ifthenelse_2_fail:  forall f PCT PCT' v vt ty s1 s2 k e m b,
     bool_val v ty m = Some b ->
-    SplitT PCT vt None = PolicySuccess (PCT', pct) ->
+    SplitT PCT vt None = PolicySuccess PCT' ->
     sstep (ExprState f PCT (Eval (v,vt) ty) (Kifthenelse s1 s2 k) e m)
           E0 Failstop
 
