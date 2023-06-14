@@ -545,7 +545,7 @@ let diagnose_stuck_state p ge w = function
 
 let do_step p prog ge time s w =
   match Cexec.at_final_state s with
-  | Some r ->
+  | Some (Pol.PolicySuccess r) ->
       if !trace >= 1 then
         fprintf p "Time %d: program terminated (exit code = %ld)@."
                   time (camlint_of_coqint r);
@@ -553,24 +553,22 @@ let do_step p prog ge time s w =
       | All -> []
       | First | Random -> exit (Int32.to_int (camlint_of_coqint r))
       end
+  | Some (Pol.PolicyFail (n,ts)) ->
+      if !trace >= 1 then
+         (* anaaktge printing in the failstop *)
+         fprintf p "@[<hov 2>Failstop@]@.";
+         exit 0 (* anaaktge *)
+
   | None ->
       let l = Cexec.do_step ge do_external_function (*do_inline_assembly*) w s in
       if l = []
       || List.exists (fun (Cexec.TR(r,t,s)) -> s = Csem.Stuckstate) l
-      || List.exists (fun (Cexec.TR(r,t,s)) -> s = Csem.Failstop) l
       then begin
         pp_set_max_boxes p 1000;
-        if s = Csem.Failstop 
-        then begin (* anaaktge printing in the failstop *)
-                fprintf p "@[<hov 2>Failstop@]@.";
-                exit 0 (* anaaktge *)
-        end
-        else begin
-                fprintf p "@[<hov 2>Stuck state: %a@]@." print_state (prog, ge, s);
-                diagnose_stuck_state p ge w s;
-                fprintf p "ERROR: Undefined behavior@.";
-                exit 126
-        end
+        fprintf p "@[<hov 2>Stuck state: %a@]@." print_state (prog, ge, s);
+        diagnose_stuck_state p ge w s;
+        fprintf p "ERROR: Undefined behavior@.";
+        exit 126
       end else begin
         List.map (fun (Cexec.TR(r, t, s')) -> (r, s', do_events p ge time w t)) l
       end

@@ -974,7 +974,7 @@ Fixpoint step_expr (k: kind) (pct: tag) (a: expr) (m: mem): reducts expr :=
       end
   | RV, Eval v ty => []
   | RV, Econst v ty =>
-      at "red_const" trule vt <- ConstT pct;
+      at "red_const_tfail" trule vt <- ConstT pct;
       topred (Rred "red_const" pct (Eval (v,vt) ty) m E0)
   | RV, Evalof l ty =>
       match is_loc l with
@@ -982,7 +982,7 @@ Fixpoint step_expr (k: kind) (pct: tag) (a: expr) (m: mem): reducts expr :=
           check type_eq ty ty';
           do w',t,vvt,lts <- do_deref_loc w ty m ofs pt bf;
           let (v,vt) := vvt in
-          at "red_rvalof" trule vt' <- LoadT pct pt vt lts;
+          at "red_rvalof_tfail" trule vt' <- LoadT pct pt vt lts;
           topred (Rred "red_rvalof" pct (Eval (v,vt) ty) m t)
       | None =>
           match l with
@@ -1062,7 +1062,7 @@ Fixpoint step_expr (k: kind) (pct: tag) (a: expr) (m: mem): reducts expr :=
           do v <- sem_cast v2 ty2 ty1 m;
           do w',t,vvt,lts <- do_deref_loc w ty1 m ofs pt1 bf;
           let (_,vt1) := vvt in
-          at "red_assign" trule pct',vt',lts' <- StoreT pct pt1 vt2 lts;
+          at "red_assign_tfail" trule pct',vt',lts' <- StoreT pct pt1 vt2 lts;
           do w'',t,m',vvt' <- do_assign_loc w' ty1 m ofs pt1 bf (v,vt') lts';
           topred (Rred "red_assign" pct (Eval vvt' ty) m' t)
       | _, _ =>
@@ -1075,7 +1075,7 @@ Fixpoint step_expr (k: kind) (pct: tag) (a: expr) (m: mem): reducts expr :=
           check type_eq ty1 ty;
           do w',t,vvt,lts <- do_deref_loc w ty m ofs pt1 bf; (* anaaktge assn op *)
           let (v1,vt1) := vvt in (* grabbing tag *)
-          at "red_assignop" trule vt' <- LoadT pct pt1 vt1 lts; (* invoking the loadT rule *)
+          at "red_assignop_tfail" trule vt' <- LoadT pct pt1 vt1 lts; (* invoking the loadT rule *)
           let r' := Eassign (Eloc ofs pt1 bf ty1)
                            (Ebinop op (Eval (v1,vt') ty1) (Eval (v2,vt2) ty2) tyres) ty1 in
           topred (Rred "red_assignop" pct r' m t)
@@ -1089,7 +1089,7 @@ Fixpoint step_expr (k: kind) (pct: tag) (a: expr) (m: mem): reducts expr :=
           check type_eq ty1 ty;
           do w',t, vvt, lts <- do_deref_loc w ty m ofs pt1 bf;
           let (v1,vt1) := vvt in
-          at "red_postincr" trule vt' <- LoadT pct pt1 vt1 lts;
+          at "red_postincr_tfail" trule vt' <- LoadT pct pt1 vt1 lts;
           let op := match id with Incr => Oadd | Decr => Osub end in
           let r' :=
             Ecomma (Eassign (Eloc ofs pt1 bf ty)
@@ -2532,9 +2532,10 @@ Definition do_initial_state (p: program): option (Genv.t (Ctypes.fundef function
   check (type_eq (type_of_fundef f) (Tfunction Tnil type_int32s cc_default));
   Some (ge, Callstate f def_tag nil Kstop m0).
 
-Definition at_final_state (S: Csem.state): option int :=
+Definition at_final_state (S: Csem.state): option (PolicyResult int) :=
   match S with
-  | Returnstate _ (Vint r,_) Kstop m => Some r
+  | Returnstate _ (Vint r,_) Kstop m => Some (PolicySuccess r)
+  | Failstop => Some (PolicyFail "test" [])
   | _ => None
   end.
 
