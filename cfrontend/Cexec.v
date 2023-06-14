@@ -803,7 +803,7 @@ Inductive reduction: Type :=
 | Callred (rule: string) (fd: fundef) (args: list atom) (tyres: type) (m': mem)
 | Stuckred (*anaaktge enters impossible state or would have to take impossible step. 
               think like a /0 *)
-| Failstopred 
+| Failstopred (rule: string) (pol_res: PolicyResult unit)
            (* anaaktge - for tag fail stops add things here. dont add it to stuck *)
 .
 
@@ -834,9 +834,6 @@ Definition topred (r: reduction) : reducts expr :=
 
 Definition stuck : reducts expr :=
   ((fun (x: expr) => x), Stuckred) :: nil.
-
-Definition failstop : reducts expr :=
-  [((fun (x: expr) => x), Failstopred)].
 
 Definition incontext {A B: Type} (ctx: A -> B) (ll: reducts A) : reducts B :=
   map (fun z => ((fun (x: expr) => ctx(fst z x)), snd z)) ll.
@@ -878,19 +875,30 @@ Local Open Scope reducts_monad_scope.
 
 (* anaaktge - TODO does failstop give me the policy output yet? 
     probably should do something with the str and list from PolicyFail *)
-Notation "'trule' X <- A ; B" := (match A with PolicySuccess X => B | PolicyFail _ _ => failstop end)
+Notation "'at' S 'trule' X <- A ; B" := (match A with
+                                      | PolicySuccess X => B
+                                      | PolicyFail n ts => topred (Failstopred S (PolicyFail n ts))
+                                      end)
   (at level 200, X ident, A at level 100, B at level 200)
   : tag_monad_scope.
 
-Notation "'trule' X , Y <- A ; B" := (match A with PolicySuccess (X, Y) => B | PolicyFail _ _ => failstop end)
+Notation "'at' S 'trule' X , Y <- A ; B" := (match A with
+                                          | PolicySuccess (X, Y) => B
+                                          | PolicyFail n ts => topred (Failstopred S (PolicyFail n ts))
+                                          end)
   (at level 200, X ident, Y ident, A at level 100, B at level 200)
   : tag_monad_scope.
 
-Notation "'trule' X , Y , Z <- A ; B" := (match A with PolicySuccess (X, Y, Z) => B | PolicyFail _ _ => failstop end)
+Notation "'at' S 'trule' X , Y , Z <- A ; B" := (match A with
+                                              | PolicySuccess (X, Y, Z) => B
+                                              | PolicyFail n ts => topred (Failstopred S (PolicyFail n ts)) end)
   (at level 200, X ident, Y ident, Z ident, A at level 100, B at level 200)
   : tag_monad_scope.
 
-Notation "'trule' X , Y , Z , W <- A ; B" := (match A with PolicySuccess (X, Y, Z, W) => B | PolicyFail _ _ => failstop end)
+Notation "'at' S 'trule' X , Y , Z , W <- A ; B" := (match A with
+                                                  | PolicySuccess (X, Y, Z, W) => B
+                                                  | PolicyFail n ts => topred (Failstopred S (PolicyFail n ts))
+                                                  end)
   (at level 200, X ident, Y ident, Z ident, W ident, A at level 100, B at level 200)
   : tag_monad_scope.
 
@@ -966,7 +974,7 @@ Fixpoint step_expr (k: kind) (pct: tag) (a: expr) (m: mem): reducts expr :=
       end
   | RV, Eval v ty => []
   | RV, Econst v ty =>
-      trule vt <- ConstT pct;
+      at "red_const" trule vt <- ConstT pct;
       topred (Rred "red_const" pct (Eval (v,vt) ty) m E0)
   | RV, Evalof l ty =>
       match is_loc l with
@@ -974,7 +982,7 @@ Fixpoint step_expr (k: kind) (pct: tag) (a: expr) (m: mem): reducts expr :=
           check type_eq ty ty';
           do w',t,vvt,lts <- do_deref_loc w ty m ofs pt bf;
           let (v,vt) := vvt in
-          trule vt' <- LoadT pct pt vt lts;
+          at "red_rvalof" trule vt' <- LoadT pct pt vt lts;
           topred (Rred "red_rvalof" pct (Eval (v,vt) ty) m t)
       | None =>
           match l with
@@ -1054,7 +1062,7 @@ Fixpoint step_expr (k: kind) (pct: tag) (a: expr) (m: mem): reducts expr :=
           do v <- sem_cast v2 ty2 ty1 m;
           do w',t,vvt,lts <- do_deref_loc w ty1 m ofs pt1 bf;
           let (_,vt1) := vvt in
-          trule pct',vt',lts' <- StoreT pct pt1 vt2 lts;
+          at "red_assign" trule pct',vt',lts' <- StoreT pct pt1 vt2 lts;
           do w'',t,m',vvt' <- do_assign_loc w' ty1 m ofs pt1 bf (v,vt') lts';
           topred (Rred "red_assign" pct (Eval vvt' ty) m' t)
       | _, _ =>
@@ -1067,7 +1075,7 @@ Fixpoint step_expr (k: kind) (pct: tag) (a: expr) (m: mem): reducts expr :=
           check type_eq ty1 ty;
           do w',t,vvt,lts <- do_deref_loc w ty m ofs pt1 bf; (* anaaktge assn op *)
           let (v1,vt1) := vvt in (* grabbing tag *)
-          trule vt' <- LoadT pct pt1 vt1 lts; (* invoking the loadT rule *)
+          at "red_assignop" trule vt' <- LoadT pct pt1 vt1 lts; (* invoking the loadT rule *)
           let r' := Eassign (Eloc ofs pt1 bf ty1)
                            (Ebinop op (Eval (v1,vt') ty1) (Eval (v2,vt2) ty2) tyres) ty1 in
           topred (Rred "red_assignop" pct r' m t)
@@ -1081,7 +1089,7 @@ Fixpoint step_expr (k: kind) (pct: tag) (a: expr) (m: mem): reducts expr :=
           check type_eq ty1 ty;
           do w',t, vvt, lts <- do_deref_loc w ty m ofs pt1 bf;
           let (v1,vt1) := vvt in
-          trule vt' <- LoadT pct pt1 vt1 lts;
+          at "red_postincr" trule vt' <- LoadT pct pt1 vt1 lts;
           let op := match id with Incr => Oadd | Decr => Osub end in
           let r' :=
             Ecomma (Eassign (Eloc ofs pt1 bf ty)
@@ -2204,7 +2212,7 @@ Definition expr_final_state (f: function) (k: cont) (pct: tag) (e: env) (C_rd: (
   | Rred rule pct a m t => TR rule t (ExprState f pct (fst C_rd a) k e m)
   | Callred rule fd vargs ty m => TR rule E0 (Callstate fd pct vargs (Kcall f e (fst C_rd) ty k) m)
   | Stuckred => TR "step_stuck" E0 Stuckstate
-  | Failstopred => TR "monitor_failstop" E0 Failstop
+  | Failstopred rule res => TR "monitor_failstop" E0 Failstop
   end.
 
 Local Open Scope list_monad_scope.

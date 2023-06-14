@@ -67,17 +67,17 @@ Module Type Policy. (* anaaktge this is the interface for rules
 
   Parameter JoinT : tag -> tag -> PolicyResult (tag * tag).
   
-  Parameter GlobalT : ident -> type -> tag * tag * list tag.
+  Parameter GlobalT : composite_env -> ident -> type -> tag * tag * list tag.
   
-  Parameter LocalT : tag -> type -> PolicyResult (tag * tag * list tag).
+  Parameter LocalT : composite_env -> tag -> type -> PolicyResult (tag * tag * list tag).
 
-  Parameter DeallocT : tag -> type -> PolicyResult (tag * tag * list tag).
+  Parameter DeallocT : composite_env -> tag -> type -> PolicyResult (tag * tag * list tag).
 
   Parameter MallocT : tag -> tag -> tag -> PolicyResult (tag * tag * tag * tag).
 
   Parameter FreeT : tag -> tag -> tag -> PolicyResult (tag * tag * tag).
 
-  Parameter FieldT : tag -> tag -> type -> ident -> PolicyResult tag.
+  Parameter FieldT : composite_env -> tag -> tag -> type -> ident -> PolicyResult tag.
 
   Parameter PICastT : tag -> tag -> list tag -> type -> PolicyResult tag.
   Parameter IPCastT : tag -> tag -> list tag -> type -> PolicyResult tag.
@@ -165,12 +165,12 @@ Module NullPolicy <: Policy.
 
   Definition JoinT (pct vt : tag) : PolicyResult (tag * tag) := PolicySuccess (tt,tt).
 
-  Definition GlobalT (id : ident) (ty : type) : tag * tag * list tag := (tt, tt, []).
+  Definition GlobalT (ce : composite_env) (id : ident) (ty : type) : tag * tag * list tag := (tt, tt, []).
   
-  Definition LocalT (pct : tag) (ty : type) : PolicyResult (tag * tag * list tag)%type :=
+  Definition LocalT (ce : composite_env) (pct : tag) (ty : type) : PolicyResult (tag * tag * list tag)%type :=
     PolicySuccess (tt, tt, []).
   
-  Definition DeallocT (pct : tag) (ty : type) : PolicyResult (tag * tag * list tag) :=
+  Definition DeallocT (ce : composite_env) (pct : tag) (ty : type) : PolicyResult (tag * tag * list tag) :=
     PolicySuccess (tt, tt, []).
 
   Definition MallocT (pct pt vt : tag) : PolicyResult (tag * tag * tag * tag) :=
@@ -179,7 +179,7 @@ Module NullPolicy <: Policy.
   Definition FreeT (pct pt vt : tag) : PolicyResult (tag * tag * tag) :=
     PolicySuccess (tt, tt, tt).
 
-  Definition FieldT (pct vt : tag) (ty : type) (id : ident) : PolicyResult tag := PolicySuccess tt.
+  Definition FieldT (ce : composite_env) (pct vt : tag) (ty : type) (id : ident) : PolicyResult tag := PolicySuccess tt.
 
   Definition PICastT (pct pt : tag)  (lts : list tag) (ty : type) : PolicyResult tag := PolicySuccess tt.
   Definition IPCastT (pct vt : tag)  (lts : list tag) (ty : type) : PolicyResult tag := PolicySuccess tt.
@@ -190,8 +190,6 @@ End NullPolicy.
 
 (* anaaktge <: means subtype of *)
 Module PVI <: Policy.
-
-  Variable ce : composite_env.
   
   Inductive myTag :=
   | Glob (id:ident)
@@ -261,10 +259,11 @@ Module PVI <: Policy.
 
   Definition JoinT (pct vt : tag) : PolicyResult (tag * tag) := PolicySuccess (pct,vt).
 
-  Definition GlobalT (id : ident) (ty : type) : tag * tag * list tag := (Glob id, N, repeat (Glob id) (Z.to_nat (sizeof ce ty))).
+  Definition GlobalT (ce : composite_env) (id : ident) (ty : type) : tag * tag * list tag :=
+    (Glob id, N, repeat (Glob id) (Z.to_nat (sizeof ce ty))).
   (* anaaktge the % in exp preceding, treat ambigous ops as its type version*)
 
-  Definition LocalT (pct : tag) (ty : type) : PolicyResult (tag * tag * (list tag))%type :=
+  Definition LocalT (ce : composite_env) (pct : tag) (ty : type) : PolicyResult (tag * tag * (list tag))%type :=
     match pct with
     | Dyn c =>
         PolicySuccess (Dyn (S c), Dyn c, repeat (Dyn c) (Z.to_nat (sizeof ce ty)))
@@ -272,7 +271,7 @@ Module PVI <: Policy.
         PolicyFail "PVI::LocalT Failure" [pct]
     end.
   
-  Definition DeallocT (pct : tag) (ty : type) : PolicyResult (tag * tag * list tag) :=
+  Definition DeallocT (ce : composite_env) (pct : tag) (ty : type) : PolicyResult (tag * tag * list tag) :=
     PolicySuccess (pct, N, repeat N (Z.to_nat (sizeof ce ty))).
 
   Definition MallocT (pct pt vt : tag) : PolicyResult (tag * tag * tag * tag) :=
@@ -286,7 +285,7 @@ Module PVI <: Policy.
   Definition FreeT (pct pt vt : tag) : PolicyResult (tag * tag * tag) :=
     PolicySuccess (pct, N, N).
 
-  Definition FieldT (pct vt : tag) (ty : type) (id : ident) : PolicyResult tag := PolicySuccess vt.
+  Definition FieldT (ce : composite_env) (pct vt : tag) (ty : type) (id : ident) : PolicyResult tag := PolicySuccess vt.
 
   Definition PICastT (pct pt : tag)  (lts : list tag) (ty : type) : PolicyResult tag := PolicySuccess pt.
   Definition IPCastT (pct vt : tag)  (lts : list tag) (ty : type) : PolicyResult tag := PolicySuccess vt.

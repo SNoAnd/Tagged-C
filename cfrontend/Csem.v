@@ -146,7 +146,7 @@ Inductive alloc_variables: tag -> env -> mem ->
   | alloc_variables_cons:
       forall PCT PCT' PCT'' e m id ty vars m1 lo1 hi1 pt lts m2 m3 e2,
         Mem.alloc m 0 (sizeof (snd ge) ty) = Some (m1, lo1, hi1) ->
-        LocalT PCT ty = PolicySuccess (PCT', pt, lts) ->
+        LocalT (snd ge) PCT ty = PolicySuccess (PCT', pt, lts) ->
         Mem.store (chunk_of_type (typ_of_type ty)) m1 lo1 (Vundef, def_tag) lts = Some m2 ->
         (* initialize location tags *)
         alloc_variables PCT' (PTree.set id (lo1, hi1, pt, ty) e) m2 vars PCT'' e2 m3 ->

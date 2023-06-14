@@ -557,6 +557,7 @@ let do_step p prog ge time s w =
       let l = Cexec.do_step ge do_external_function (*do_inline_assembly*) w s in
       if l = []
       || List.exists (fun (Cexec.TR(r,t,s)) -> s = Csem.Stuckstate) l
+      || List.exists (fun (Cexec.TR(r,t,s)) -> s = Csem.Failstop) l
       then begin
         pp_set_max_boxes p 1000;
         if s = Csem.Failstop 
