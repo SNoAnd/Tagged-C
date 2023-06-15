@@ -623,8 +623,10 @@ Inductive state: Type :=
     (k: cont)
     (m: mem) : state
 | Stuckstate                          (**r undefined behavior occurred *)
-| Failstop.                           (**r tag failure occured  anaaktge might be adding it here*)
-
+| Failstop                            (**r tag failure occurred, propagate details *)
+    (r: string)
+    (params: list tag) : state
+.
 (** Find the statement and manufacture the continuation
   corresponding to a label. *)
 
@@ -703,7 +705,7 @@ Inductive estep: state -> trace -> state -> Prop :=
     rred PCT a m t PCT' (Efailstop ty) m' ->
     context RV RV C ->
     estep (ExprState f PCT (C a) k e m)
-          E0 Failstop.
+          E0 (Failstop "dummy msg" []). (* dummies to hold spot/typecheck*)
 
 Inductive sstep: state -> trace -> state -> Prop :=
 | step_do_1: forall f PCT x k e m,
@@ -738,7 +740,7 @@ Inductive sstep: state -> trace -> state -> Prop :=
     bool_val v ty m = Some b ->
     SplitT PCT vt None = PolicySuccess PCT' ->
     sstep (ExprState f PCT (Eval (v,vt) ty) (Kifthenelse s1 s2 k) e m)
-          E0 Failstop
+          E0 (Failstop "dummy msg" []) (* dummies to hold spot/typecheck*)
 
 | step_while: forall f PCT x s k e m,
     sstep (State f PCT (Swhile x s) k e m)
