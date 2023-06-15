@@ -49,8 +49,8 @@ Definition Vmone: val := Vint Int.mone.
 Definition Vtrue: val := Vint Int.one.
 Definition Vfalse: val := Vint Int.zero.
 
-Definition Vnullptr := if Archi.ptr64 then Vlong Int64.zero else Vint Int.zero.
-Definition Vofptrsize (z:Z) := if Archi.ptr64 then Vlong (Int64.repr z) else Vint (Int.repr z).
+Definition Vnullptr := Vlong Int64.zero.
+Definition Vofptrsize (z:Z) := Vlong (Int64.repr z).
 
 (** * Operations over values *)
 
@@ -78,10 +78,8 @@ Definition has_type (v: val) (t: typ) : Prop :=
   | Vlong _, Tlong => True
   | Vfloat _, Tfloat => True
   | Vsingle _, Tsingle => True
-  | Vfptr _, Tint => True
   | Vfptr _, Tlong => True
   | (Vint _ | Vsingle _), Tany32 => True
-  | Vfptr _, Tany32 => True
   | _, Tany64 => True
   | _, _ => False
   end.
@@ -126,11 +124,11 @@ Proof.
 - destruct t; auto.
 - destruct t; auto.
 - destruct t.
-  left; auto.
+  right; auto.
   right; auto.
   left; auto.
   right; auto.
-  left; auto.
+  right; auto.
   left; auto.
 Defined.
 
@@ -884,7 +882,7 @@ Definition normalize (v: val) (ty: typ) : val :=
   | Vlong _, Tlong => v
   | Vfloat _, Tfloat => v
   | Vsingle _, Tsingle => v
-  | Vfptr _, (Tint | Tany32 | Tlong) => v
+  | Vfptr _, Tlong => v
   | (Vint _ | Vsingle _), Tany32 => v
   | _, Tany64 => v
   | _, _ => Vundef
@@ -899,7 +897,7 @@ Proof.
 - destruct ty; exact I.
 - destruct ty; exact I.
 - destruct ty; exact I.
-- unfold has_type; destruct ty, Archi.ptr64; auto.
+- unfold has_type; destruct ty; auto.
 Qed.
 
 Lemma normalize_idem:
@@ -938,13 +936,11 @@ Definition load_result (chunk: memory_chunk) (v: val) :=
   | Mint16signed, Vint n => Vint (Int.sign_ext 16 n)
   | Mint16unsigned, Vint n => Vint (Int.zero_ext 16 n)
   | Mint32, Vint n => Vint n
-  | Mint32, Vfptr b => Vfptr b
   | Mint64, Vlong n => Vlong n
   | Mint64, Vfptr b => Vfptr b
   | Mfloat32, Vsingle f => Vsingle f
   | Mfloat64, Vfloat f => Vfloat f
   | Many32, (Vint _ | Vsingle _) => v
-  | Many32, Vfptr _ => v
   | Many64, _ => v
   | _, _ => Vundef
   end.
@@ -970,7 +966,7 @@ Lemma load_result_same:
   forall v ty, has_type v ty -> load_result (chunk_of_type ty) v = v.
 Proof.
   unfold has_type, load_result; intros.
-  destruct v; destruct ty; destruct Archi.ptr64; try contradiction; try discriminate; auto.
+  destruct v; destruct ty; try contradiction; try discriminate; auto.
 Qed.
 
 (** Theorems on arithmetic operations. *)

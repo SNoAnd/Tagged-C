@@ -96,27 +96,27 @@ Definition classify_cast (tfrom tto: type) : classify_cast_cases :=
   | Tint IBool _ _, Tfloat F64 _ => cast_case_f2bool
   | Tint IBool _ _, Tfloat F32 _ => cast_case_s2bool
   | Tint IBool _ _, (Tpointer _ _ | Tarray _ _ _ | Tfunction _ _ _) => 
-      if Archi.ptr64 then cast_case_l2bool else cast_case_i2bool
+      (*if Archi.ptr64 then*) cast_case_l2bool (*else cast_case_i2bool*)
   (* To [int] other than [_Bool] *)
   | Tint sz2 si2 _, Tint _ _ _ =>
-      if Archi.ptr64 then cast_case_i2i sz2 si2
-      else if intsize_eq sz2 I32 then cast_case_pointer
-      else cast_case_i2i sz2 si2
+      (*if Archi.ptr64 then*) cast_case_i2i sz2 si2
+      (*else if intsize_eq sz2 I32 then cast_case_pointer
+      else cast_case_i2i sz2 si2*)
   | Tint sz2 si2 _, Tlong _ _ => cast_case_l2i sz2 si2
   | Tint sz2 si2 _, Tfloat F64 _ => cast_case_f2i sz2 si2
   | Tint sz2 si2 _, Tfloat F32 _ => cast_case_s2i sz2 si2
   | Tint sz2 si2 _, (Tpointer _ _ | Tarray _ _ _ | Tfunction _ _ _) =>
-      if Archi.ptr64 then cast_case_l2i sz2 si2
-      else if intsize_eq sz2 I32 then cast_case_pointer
-      else cast_case_i2i sz2 si2
+      (*if Archi.ptr64 then*) cast_case_l2i sz2 si2
+      (*else if intsize_eq sz2 I32 then cast_case_pointer
+      else cast_case_i2i sz2 si2*)
   (* To [long] *)
   | Tlong _ _, Tlong _ _ =>
-      if Archi.ptr64 then cast_case_pointer else cast_case_l2l
+      (*if Archi.ptr64 then*) cast_case_pointer (*else cast_case_l2l*)
   | Tlong _ _, Tint sz1 si1 _ => cast_case_i2l si1
   | Tlong si2 _, Tfloat F64 _ => cast_case_f2l si2
   | Tlong si2 _, Tfloat F32 _ => cast_case_s2l si2
   | Tlong si2 _, (Tpointer _ _ | Tarray _ _ _ | Tfunction _ _ _) =>
-      if Archi.ptr64 then cast_case_pointer else cast_case_i2l si2
+      (*if Archi.ptr64 then*) cast_case_pointer (*else cast_case_i2l si2*)
   (* To [float] *)
   | Tfloat F64 _, Tint sz1 si1 _ => cast_case_i2f si1
   | Tfloat F32 _, Tint sz1 si1 _ => cast_case_i2s si1
@@ -128,9 +128,9 @@ Definition classify_cast (tfrom tto: type) : classify_cast_cases :=
   | Tfloat F32 _, Tfloat F64 _ => cast_case_f2s
   (* To pointer types *)
   | Tpointer _ _, Tint _ si _ =>
-      if Archi.ptr64 then cast_case_i2l si else cast_case_pointer
+      (*if Archi.ptr64 then*) cast_case_i2l si (*else cast_case_pointer*)
   | Tpointer _ _, Tlong _ _ =>
-      if Archi.ptr64 then cast_case_pointer else cast_case_l2i I32 Unsigned
+      (*if Archi.ptr64 then*) cast_case_pointer (*else cast_case_l2i I32 Unsigned*)
   | Tpointer _ _, (Tpointer _ _ | Tarray _ _ _ | Tfunction _ _ _) => cast_case_pointer
   (* To struct or union types *)
   | Tstruct id2 _, Tstruct id1 _ => cast_case_struct id1 id2
@@ -369,7 +369,7 @@ Inductive classify_bool_cases : Type :=
 Definition classify_bool (ty: type) : classify_bool_cases :=
   match typeconv ty with
   | Tint _ _ _ => bool_case_i
-  | Tpointer _ _ => if Archi.ptr64 then bool_case_l else bool_case_i
+  | Tpointer _ _ => (*if Archi.ptr64 then*) bool_case_l (*else bool_case_i*)
   | Tfloat F64 _ => bool_case_f
   | Tfloat F32 _ => bool_case_s
   | Tlong _ _ => bool_case_l
@@ -1204,8 +1204,6 @@ Inductive val_casted: val -> type -> Prop :=
       val_casted (Vlong n) (Tlong si attr)
   | val_casted_ptr_ptr: forall b ty attr,
       val_casted (Vfptr b) (Tpointer ty attr)
-  | val_casted_int_ptr: forall n ty attr,
-      val_casted (Vint n) (Tpointer ty attr)
   | val_casted_long_ptr: forall n ty attr,
       val_casted (Vlong n) (Tpointer ty attr)
   | val_casted_struct: forall id attr i,

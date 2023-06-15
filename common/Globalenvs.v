@@ -846,9 +846,9 @@ Definition bytes_of_init_data (i: init_data) (t:tag): list memval :=
   | Init_space n => List.repeat (Byte Byte.zero t) (Z.to_nat n)
   | Init_addrof id ofs =>
       match find_symbol ge id with
-      | Some (inl (b,pt)) => inj_value (if Archi.ptr64 then Q64 else Q32) (Vfptr b, pt)
-      | Some (inr (base,bound,pt)) => inj_value (if Archi.ptr64 then Q64 else Q32) (Vint (Int.repr base), t)
-      | None   => List.repeat Undef (if Archi.ptr64 then 8%nat else 4%nat)
+      | Some (inl (b,pt)) => inj_value Q64 (Vfptr b, pt)
+      | Some (inr (base,bound,pt)) => inj_value Q64 (Vint (Int.repr base), t)
+      | None   => List.repeat Undef 8%nat
       end
   end.
 

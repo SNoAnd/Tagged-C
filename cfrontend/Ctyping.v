@@ -44,10 +44,10 @@ Definition strict := false.
 Opaque strict.
 
 Definition size_t : type :=
-  if Archi.ptr64 then Tlong Unsigned noattr else Tint I32 Unsigned noattr.
+  Tlong Unsigned noattr.
 
 Definition ptrdiff_t : type :=
-  if Archi.ptr64 then Tlong Signed noattr else Tint I32 Signed noattr.
+  Tlong Signed noattr.
 
 (** * Operations over types *)
 
@@ -297,8 +297,6 @@ Inductive wt_val : val -> type -> Prop :=
   | wt_val_int: forall n sz sg a,
       wt_int n sz sg ->
       wt_val (Vint n) (Tint sz sg a)
-  | wt_val_ptr_int: forall b sg a,
-      wt_val (Vfptr b) (Tint I32 sg a)
   | wt_val_long: forall n sg a,
       wt_val (Vlong n) (Tlong sg a)
   | wt_val_ptr_long: forall b sg a,
@@ -309,8 +307,6 @@ Inductive wt_val : val -> type -> Prop :=
       wt_val (Vsingle f) (Tfloat F32 a)
   | wt_val_pointer: forall b ty a,
       wt_val (Vfptr b) (Tpointer ty a)
-  | wt_val_int_pointer: forall n ty a,
-      wt_val (Vint n) (Tpointer ty a)
   | wt_val_long_pointer: forall n ty a,
       wt_val (Vlong n) (Tpointer ty a)
   | wt_val_array: forall n ty sz a,
@@ -672,13 +668,13 @@ Definition econst_int (n: int) (sg: signedness) : expr :=
   (Econst (Vint n) (Tint I32 sg noattr)).
 
 Definition econst_ptr_int (n: int) (ty: type) : expr :=
-  (Econst (if Archi.ptr64 then Vlong (Int64.repr (Int.unsigned n)) else Vint n) (Tpointer ty noattr)).
+  (Econst (Vlong (Int64.repr (Int.unsigned n))) (Tpointer ty noattr)).
 
 Definition econst_long (n: int64) (sg: signedness) : expr :=
   (Econst (Vlong n) (Tlong sg noattr)).
 
 Definition econst_ptr_long (n: int64) (ty: type) : expr :=
-  (Econst (if Archi.ptr64 then Vlong n else Vint (Int64.loword n)) (Tpointer ty noattr)).
+  (Econst (Vlong n) (Tpointer ty noattr)).
 
 Definition econst_float (n: float) : expr :=
   (Econst (Vfloat n) (Tfloat F64 noattr)).
@@ -1032,7 +1028,6 @@ Proof.
           classify_cast (Tint i s a) t2 <> cast_case_default).
   {
     unfold classify_cast. destruct t2; try congruence. destruct f; congruence.
-    destruct Archi.ptr64; congruence.
   }
   destruct i; auto.
 Qed.
@@ -1662,7 +1657,7 @@ Proof.
   destruct v; auto with ty. constructor; red. apply Int.zero_ext_idem; lia.
   destruct v; auto with ty. constructor; red. apply Int.sign_ext_idem; lia.
   destruct v; auto with ty. constructor; red. apply Int.zero_ext_idem; lia.
-  destruct Archi.ptr64 eqn:SF; destruct v; auto with ty.
+  destruct v; auto with ty.
   destruct v; auto with ty. constructor; red. apply Int.zero_ext_idem; lia.
 - inv AC. destruct Archi.ptr64 eqn:SF; destruct v; auto with ty.
 - destruct f; inv AC; destruct v; auto with ty.
@@ -1709,8 +1704,7 @@ Proof.
   constructor. constructor. constructor.
 - inv ACC. unfold decode_val. destruct (proj_bytes vl); destruct o; destruct o0.
   constructor. constructor. constructor.
-  destruct Archi.ptr64 eqn:SF; auto with ty.
-  destruct (proj_value Q64 vl); simpl. destruct v; try constructor. constructor.
+  destruct (proj_value Q64 vl); simpl. destruct v; try constructor.
 - destruct f; inv ACC; unfold decode_val; destruct (proj_bytes vl);
     destruct o; destruct o0; constructor; auto with ty.
 - inv ACC. unfold decode_val. destruct (proj_bytes vl); destruct o; destruct o0; try constructor.
@@ -1786,7 +1780,6 @@ Lemma wt_cast_self:
 Proof.
   unfold wt_cast; intros. destruct t2; simpl in *; try congruence.
 - apply (wt_cast_int i s a i s a).
-- destruct Archi.ptr64; congruence.
 - destruct f; congruence.
 Qed.
 

@@ -71,9 +71,9 @@ Proof.
   intros; exists n; auto.
 Qed.
 
-Lemma size_chunk_Mptr: size_chunk Mptr = if Archi.ptr64 then 8 else 4.
+Lemma size_chunk_Mptr: size_chunk Mptr = 8.
 Proof.
-  unfold Mptr; destruct Archi.ptr64; auto.
+  unfold Mptr; auto.
 Qed.
 
 (** Memory reads and writes must respect alignment constraints:
@@ -106,9 +106,9 @@ Proof.
   intro. destruct chunk; simpl; lia.
 Qed.
 
-Lemma align_chunk_Mptr: align_chunk Mptr = if Archi.ptr64 then 8 else 4.
+Lemma align_chunk_Mptr: align_chunk Mptr = 8.
 Proof.
-  unfold Mptr; destruct Archi.ptr64; auto.
+  unfold Mptr; auto.
 Qed.
 
 Lemma align_size_chunk_divides:
@@ -419,9 +419,9 @@ Definition decode_val (chunk: memory_chunk) (vl: list memval) : atom :=
       end, t)
   | (None,None) =>
       (match chunk with
-      | Mint32 => if Archi.ptr64 then Vundef else Val.load_result chunk (fst (proj_value Q32 vl))
+      | Mint32 => Vundef
       | Many32 => Val.load_result chunk (fst (proj_value Q32 vl))
-      | Mint64 => if Archi.ptr64 then Val.load_result chunk (fst (proj_value Q64 vl)) else Vundef
+      | Mint64 => Val.load_result chunk (fst (proj_value Q64 vl))
       | Many64 => Val.load_result chunk (fst (proj_value Q64 vl))
       | _ => Vundef
       end, def_tag)
@@ -495,7 +495,6 @@ Definition decode_encode_val (v1: val) (chunk1 chunk2: memory_chunk) (v2: val) :
   | Vint n, Many64, Many64 => v2 = Vint n
   | Vint n, (Mint64 | Mfloat32 | Mfloat64 | Many64), _ => v2 = Vundef
   | Vint n, _, _ => True (**r nothing meaningful to say about v2 *)
-  | Vfptr b, (Mint32 | Many32), (Mint32 | Many32) => v2 = Vfptr b
   | Vfptr b, Mint64, (Mint64 | Many64) => v2 = Vfptr b
   | Vfptr b, Many64, Many64 => v2 = Vfptr b 
   | Vfptr b, Many64, Mint64 => v2 = Vfptr b

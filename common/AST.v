@@ -49,7 +49,7 @@ Global Opaque typ_eq.
 Definition list_typ_eq: forall (l1 l2: list typ), {l1=l2} + {l1<>l2}
                      := list_eq_dec typ_eq.
 
-Definition Tptr : typ := if Archi.ptr64 then Tlong else Tint.
+Definition Tptr : typ := Tlong.
 
 Definition typesize (ty: typ) : Z :=
   match ty with
@@ -64,8 +64,8 @@ Definition typesize (ty: typ) : Z :=
 Lemma typesize_pos: forall ty, typesize ty > 0.
 Proof. destruct ty; simpl; lia. Qed.
 
-Lemma typesize_Tptr: typesize Tptr = if Archi.ptr64 then 8 else 4.
-Proof. unfold Tptr; destruct Archi.ptr64; auto. Qed.
+Lemma typesize_Tptr: typesize Tptr = 8.
+Proof. unfold Tptr; auto. Qed.
 
 (** All values of size 32 bits are also of type [Tany32].  All values
   are of type [Tany64].  This corresponds to the following subtyping
@@ -174,7 +174,7 @@ Definition chunk_eq: forall (c1 c2: memory_chunk), {c1=c2} + {c1<>c2}.
 Proof. decide equality. Defined.
 Global Opaque chunk_eq.
 
-Definition Mptr : memory_chunk := if Archi.ptr64 then Mint64 else Mint32.
+Definition Mptr : memory_chunk := Mint64.
 
 (** The type (integer/pointer or float) of a chunk. *)
 
@@ -193,7 +193,7 @@ Definition type_of_chunk (c: memory_chunk) : typ :=
   end.
 
 Lemma type_of_Mptr: type_of_chunk Mptr = Tptr.
-Proof. unfold Mptr, Tptr; destruct Archi.ptr64; auto. Qed.
+Proof. unfold Mptr, Tptr; auto. Qed.
 
 (** Same, as a return type. *)
 
@@ -231,7 +231,7 @@ Definition chunk_of_type (ty: typ) :=
   end.
 
 Lemma chunk_of_Tptr: chunk_of_type Tptr = Mptr.
-Proof. unfold Mptr, Tptr; destruct Archi.ptr64; auto. Qed.
+Proof. unfold Mptr, Tptr; auto. Qed.
 
 (** Initialization data for global variables. *)
 
@@ -253,7 +253,7 @@ Definition init_data_size (i: init_data) : Z :=
   | Init_int64 _ => 8
   | Init_float32 _ => 4
   | Init_float64 _ => 8
-  | Init_addrof _ _ => if Archi.ptr64 then 8 else 4
+  | Init_addrof _ _ => 8
   | Init_space n => Z.max n 0
   end.
 
@@ -266,7 +266,7 @@ Fixpoint init_data_list_size (il: list init_data) {struct il} : Z :=
 Lemma init_data_size_pos:
   forall i, init_data_size i >= 0.
 Proof.
-  destruct i; simpl; try extlia. destruct Archi.ptr64; lia.
+  destruct i; simpl; try extlia.
 Qed.
 
 Lemma init_data_list_size_pos:

@@ -118,15 +118,15 @@ Definition empty_env: env := (PTree.empty (Z * Z * tag * type)).
       assign_loc ty m ofs pt Full v t m' v lts
   | assign_loc_copy: forall ofs' bytes lts m' pt',
       access_mode ty = By_copy ->
-      (alignof_blockcopy (snd ge) ty | ofs') ->
+      (alignof_blockcopy (snd ge) ty | Ptrofs.unsigned ofs') ->
       (alignof_blockcopy (snd ge) ty | Ptrofs.unsigned ofs) ->
-      ofs' = Ptrofs.unsigned ofs
-      \/ ofs' + sizeof (snd ge) ty <= Ptrofs.unsigned ofs
-      \/ Ptrofs.unsigned ofs + sizeof (snd ge) ty <= ofs' ->
-      Mem.loadbytes m ofs' (sizeof (snd ge) ty) = Some bytes ->
+      Ptrofs.unsigned ofs' = Ptrofs.unsigned ofs
+      \/ Ptrofs.unsigned ofs' + sizeof (snd ge) ty <= Ptrofs.unsigned ofs
+      \/ Ptrofs.unsigned ofs + sizeof (snd ge) ty <= Ptrofs.unsigned ofs' ->
+      Mem.loadbytes m (Ptrofs.unsigned ofs') (sizeof (snd ge) ty) = Some bytes ->
       (* check on this: Mem.loadtags m b' (Ptrofs.unsigned ofs') (sizeof (snd ge) ty) = Some lts ->*)
       Mem.storebytes m (Ptrofs.unsigned ofs) bytes lts = Some m' ->
-      assign_loc ty m ofs pt Full (Vofptrsize ofs', pt') E0 m' (Vofptrsize ofs', pt') lts
+      assign_loc ty m ofs pt Full (Vofptrsize (Ptrofs.unsigned ofs'), pt') E0 m' (Vofptrsize (Ptrofs.unsigned ofs'), pt') lts
   | assign_loc_bitfield: forall sz sg pos width v m' v' lts,
       store_bitfield ty sz sg pos width m (Ptrofs.unsigned ofs) pt v lts m' v' ->
       assign_loc ty m ofs pt (Bits sz sg pos width) v E0 m' v' lts.

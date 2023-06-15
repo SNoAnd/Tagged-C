@@ -400,13 +400,6 @@ Definition do_assign_loc (w: world) (ty: type) (m: mem) (ofs: ptrofs) (pt:tag) (
         end
     | By_copy =>
         match v with
-        | (Vint ofs',vt) =>
-            let ofs'' := (Ptrofs.of_int ofs') in
-            if check_assign_copy ty ofs ofs'' then
-              do bytes <- Mem.loadbytes m (Ptrofs.unsigned ofs'') (sizeof (snd ge) ty);
-              do m' <- Mem.storebytes m (Ptrofs.unsigned ofs) bytes lts;
-              Some(w, E0, m', v)
-            else None
         | (Vlong ofs',vt) =>
             let ofs'' := (Ptrofs.of_int64 ofs') in
             if check_assign_copy ty ofs ofs'' then
@@ -476,8 +469,8 @@ Lemma do_assign_loc_sound:
   forall w ty m ofs pt bf v w' t m' v' lts,
   do_assign_loc w ty m ofs pt bf v lts = Some(w', t, m', v') ->
   assign_loc ge ty m ofs pt bf v t m' v' lts /\ possible_trace w t w'.
-Admitted. (* TODO: point int/long stuff *)
-(*Proof.
+(* TODO: point int/long stuff *)
+Proof.
   unfold do_assign_loc; intros until lts.
   destruct bf.
 -  destruct (access_mode ty) eqn:?; mydestr.
@@ -485,37 +478,36 @@ Admitted. (* TODO: point int/long stuff *)
   split. destruct v'. eapply assign_loc_value; eauto. constructor.
   destruct v; mydestr. destruct a as [P [Q R]].
   split.
-  + replace (Vint i) with (Vint (Ptrofs.to_int (Ptrofs.of_int i))).
-    eapply assign_loc_copy; eauto.
-    rewrite Ptrofs.to_int_of_int; auto.
-  + constructor.
-  + replace (Vlong i) with (Vlong (Ptrofs.to_int64 (Ptrofs.of_int64 i))).
-    eapply assign_loc_copy; eauto.
-    rewrite Ptrofs.to_int_of_int; auto.
-    constructor.
+   + replace (Vlong i) with (Vlong (Ptrofs.to_int64 (Ptrofs.of_int64 i))).
+     eapply assign_loc_copy; eauto.
+     rewrite Ptrofs.to_int64_of_int64; auto.
+   + constructor.
 - mydestr. InvBooleans.
   destruct ty; mydestr. destruct v; mydestr. destruct v; mydestr. InvBooleans. subst s i.
   split. eapply assign_loc_bitfield; eauto. econstructor; eauto. constructor.
-Qed.*)
+Qed.
 
 Lemma do_assign_loc_complete:
   forall w ty m ofs pt bf v w' t m' v' lts,
   assign_loc ge ty m ofs pt bf v t m' v' lts -> possible_trace w t w' ->
   do_assign_loc w ty m ofs pt bf v lts = Some(w', t, m', v').
-(* TODO: same *)
-Admitted.
-(*Proof.
+Proof.
   unfold do_assign_loc; intros. inv H.
 - inv H0. rewrite H1; rewrite H2; rewrite H3; auto.
 - rewrite H1; rewrite H2. apply do_volatile_store_complete; auto.
-- rewrite H1. destruct (check_assign_copy ty ofs ofs').
-  inv H0. rewrite H5; rewrite H6; auto.
-  elim n. red; tauto.
-- inv H0. inv H1. 
+- rewrite H1. unfold Vofptrsize. unfold Ptrofs.of_int64.
+  rewrite Int64.unsigned_repr. rewrite Ptrofs.repr_unsigned.
+  destruct (check_assign_copy ty ofs ofs').
+  + inv H0. rewrite H5; rewrite H6; auto.
+  + elim n. red; tauto.
+  + pose (Ptrofs.unsigned_range ofs').
+    unfold Int64.max_unsigned. replace Int64.modulus with Ptrofs.modulus.
+    lia. unfold Ptrofs.modulus. unfold Int64.modulus.
+    auto.
+ - inv H0. inv H1. 
   unfold proj_sumbool; rewrite ! zle_true, ! zlt_true by lia. cbn.
-  rewrite ! dec_eq_true.
-  cbn in H12; rewrite H12. cbn in H17; rewrite H17. auto.
-Qed.*)
+  rewrite ! dec_eq_true. rewrite H4. cbn. rewrite H5. auto.
+Qed.
 
 (** External calls *)
 Variable do_external_function:
@@ -572,8 +564,7 @@ Definition do_ef_volatile_store_global (chunk: memory_chunk) (id: ident) (ofs: p
 
 Definition do_alloc_size (v: val) : option ptrofs :=
   match v with
-  | Vint n => if Archi.ptr64 then None else Some (Ptrofs.of_int n)
-  | Vlong n => if Archi.ptr64 then Some (Ptrofs.of_int64 n) else None
+  | Vlong n => Some (Ptrofs.of_int64 n)
   | _ => None
   end.
 
@@ -1199,11 +1190,11 @@ Definition invert_expr_prop (a: expr) (m: mem) : Prop :=
       e!x = Some (base, bound, pt, ty)
       \/ (e!x = None /\ Genv.find_symbol (fst ge) x = Some (inr (base,bound,pt)))
   | Ederef (Eval v ty1) ty =>
-      (exists ofs pt, v = (Vint ofs,pt)) \/ (exists ofs pt, v = (Vint ofs,pt))
+      (exists ofs pt, v = (Vint ofs,pt))
   | Eaddrof (Eloc ofs pt bf ty1) ty =>
       bf = Full
   | Efield (Eval v ty1) f ty =>
-      (exists ofs pt, v = (Vint ofs,pt)) \/ (exists ofs pt, v = (Vint ofs,pt)) /\
+      (exists ofs pt, v = (Vint ofs,pt)) /\
       match ty1 with
       | Tstruct id _ => exists co delta bf, (snd ge)!id = Some co /\ field_offset (snd ge) f (co_members co) = OK (delta, bf)
       | Tunion id _ => exists co delta bf, (snd ge)!id = Some co /\ union_field_offset (snd ge) f (co_members co) = OK (delta, bf)
@@ -1256,11 +1247,11 @@ Definition invert_expr_prop (a: expr) (m: mem) : Prop :=
 Lemma lred_invert:
   forall l m l' m', lred ge e l m l' m' -> invert_expr_prop l m.
 Admitted.
-(*Proof.
+  (*Proof.
   induction 1; red; auto.
-  exists b; auto.
-  exists b; auto.
-  exists b; exists ofs; auto.
+  exists lo, hi, pt; auto.
+  exists lo, hi, pt; auto.
+  exists ofs, vt; auto.
   exists b; exists ofs; split; auto. exists co, delta, bf; auto.
   exists b; exists ofs; split; auto. exists co, delta, bf; auto.
 Qed.*)

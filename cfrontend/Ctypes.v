@@ -334,7 +334,7 @@ Fixpoint alignof (env: composite_env) (t: type) : Z :=
       | Tlong _ _ => Archi.align_int64
       | Tfloat F32 _ => 4
       | Tfloat F64 _ => Archi.align_float64
-      | Tpointer _ _ => if Archi.ptr64 then 8 else 4
+      | Tpointer _ _ => (*if Archi.ptr64 then*) 8 (*else 4*)
       | Tarray t' _ _ => alignof env t'
       | Tfunction _ _ _ => 1
       | Tstruct id _ | Tunion id _ =>
@@ -365,7 +365,7 @@ Proof.
   destruct f.
     exists 2%nat; auto.
     unfold Archi.align_float64. destruct Archi.ptr64; ((exists 2%nat; reflexivity) || (exists 3%nat; reflexivity)).
-  exists (if Archi.ptr64 then 3%nat else 2%nat); destruct Archi.ptr64; auto.
+  exists (3%nat); destruct Archi.ptr64; auto.
   apply IHt.
   exists 0%nat; auto.
   destruct (env!i). apply co_alignof_two_p. exists 0%nat; auto.
