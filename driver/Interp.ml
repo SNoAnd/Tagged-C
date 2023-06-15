@@ -565,11 +565,12 @@ let do_step p prog ge time s w =
       | All -> []
       | First | Random -> exit (Int32.to_int (camlint_of_coqint r))
       end
-  | Some (Pol.PolicyFail (n,ts)) ->
+  | Some (Pol.PolicyFail (r,params)) ->
       if !trace >= 1 then
          (* anaaktge printing in the failstop *)
-         fprintf p "@[<hov 2>Failstop@]@.";
-         exit 0 (* anaaktge *)
+         fprintf p "@[<hov 2>Failstop on policy %s @]@." 
+            (String.of_seq (List.to_seq r));
+         exit 0
 
   | None ->
       let l = Cexec.do_step ge do_external_function (*do_inline_assembly*) w s in
