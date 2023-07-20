@@ -1,8 +1,11 @@
+#include <stdio.h>
+
 int f() {
 	return 0;
 }
 
 void publish(int x) {
+	printf("%d\n", x);
 	return;
 }
 

@@ -65,7 +65,7 @@ Module Type Policy. (* anaaktge this is the interface for rules
 
   Parameter ExprSplitT : tag -> tag -> PolicyResult (tag * tag).
 
-  Parameter JoinT : tag -> tag -> PolicyResult (tag * tag).
+  Parameter ExprJoinT : tag -> tag -> PolicyResult (tag * tag).
   
   Parameter GlobalT : composite_env -> ident -> type -> tag * tag * list tag.
   
@@ -163,7 +163,7 @@ Module NullPolicy <: Policy.
 
   Definition ExprSplitT (pct vt : tag) : PolicyResult (tag * tag) := PolicySuccess (tt,tt).
 
-  Definition JoinT (pct vt : tag) : PolicyResult (tag * tag) := PolicySuccess (tt,tt).
+  Definition ExprJoinT (pct vt : tag) : PolicyResult (tag * tag) := PolicySuccess (tt,tt).
 
   Definition GlobalT (ce : composite_env) (id : ident) (ty : type) : tag * tag * list tag := (tt, tt, []).
   
@@ -257,7 +257,7 @@ Module PVI <: Policy.
 
   Definition ExprSplitT (pct vt : tag) : PolicyResult (tag * tag) := PolicySuccess (pct,vt).
 
-  Definition JoinT (pct vt : tag) : PolicyResult (tag * tag) := PolicySuccess (pct,vt).
+  Definition ExprJoinT (pct vt : tag) : PolicyResult (tag * tag) := PolicySuccess (pct,vt).
 
   Definition GlobalT (ce : composite_env) (id : ident) (ty : type) : tag * tag * list tag :=
     (Glob id, N, repeat (Glob id) (Z.to_nat (sizeof ce ty))).

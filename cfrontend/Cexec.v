@@ -28,23 +28,23 @@ Local Open Scope list_scope.
 (** Error monad with options or lists *)
 
 Notation "'do' X <- A ; B" := (match A with Some X => B | None => None end)
-  (at level 200, X ident, A at level 100, B at level 200)
+  (at level 200, X name, A at level 100, B at level 200)
   : option_monad_scope.
 
 Notation "'do' X , Y <- A ; B" := (match A with Some (X, Y) => B | None => None end)
-  (at level 200, X ident, Y ident, A at level 100, B at level 200)
+  (at level 200, X name, Y name, A at level 100, B at level 200)
   : option_monad_scope.
 
 Notation "'do' X , Y , Z <- A ; B" := (match A with Some (X, Y, Z) => B | None => None end)
-  (at level 200, X ident, Y ident, Z ident, A at level 100, B at level 200)
+  (at level 200, X name, Y name, Z name, A at level 100, B at level 200)
   : option_monad_scope.
 
 Notation "'do' X , Y , Z , W <- A ; B" := (match A with Some (X, Y, Z, W) => B | None => None end)
-  (at level 200, X ident, Y ident, Z ident, W ident, A at level 100, B at level 200)
+  (at level 200, X name, Y name, Z name, W name, A at level 100, B at level 200)
   : option_monad_scope.
 
 Notation "'dol' X , Y <- A ; B" := (match A with Some (inl (X, Y)) => B | _ => None end)
-  (at level 200, X ident, Y ident, A at level 100, B at level 200)
+  (at level 200, X name, Y name, A at level 100, B at level 200)
   : option_monad_scope.
 
 Notation " 'check' A ; B" := (if A then B else None)
@@ -52,7 +52,7 @@ Notation " 'check' A ; B" := (if A then B else None)
   : option_monad_scope.
 
 Notation "'do' X <- A ; B" := (match A with Some X => B | None => nil end)
-  (at level 200, X ident, A at level 100, B at level 200)
+  (at level 200, X name, A at level 100, B at level 200)
   : list_monad_scope.
 
 Notation " 'check' A ; B" := (if A then B else nil)
@@ -243,7 +243,7 @@ Qed.*)
 
 (** Volatile memory accesses. *)
 Definition do_volatile_load (w: world) (chunk: memory_chunk) (m: mem) (ofs: ptrofs)
-                             : option (world * trace * atom * (list tag)) :=
+                             : option (world * trace * atom) :=
   if Genv.addr_is_volatile (fst ge) ofs then
     do id <- Genv.invert_symbol (fst ge) (inr ofs);
     match nextworld_vload w chunk id ofs with
@@ -251,12 +251,12 @@ Definition do_volatile_load (w: world) (chunk: memory_chunk) (m: mem) (ofs: ptro
     | Some(res, w') =>
         do vres <- val_of_eventval res (type_of_chunk chunk);
         Some(w', Event_vload chunk id ofs res :: nil,
-              atom_map (Val.load_result chunk) vres, load_ltags chunk m (Ptrofs.unsigned ofs))
+              atom_map (Val.load_result chunk) vres)
     end
   else
     do v <- Mem.load chunk m (Ptrofs.unsigned ofs);
     let lts := load_ltags chunk m (Ptrofs.unsigned ofs) in
-    Some(w, E0, v, lts).
+    Some(w, E0, v).
 
 Definition do_volatile_store (w: world) (chunk: memory_chunk) (m: mem) (ofs: ptrofs) (v: atom) (lts: list tag)
                              : option (world * trace * mem * atom) :=
@@ -270,9 +270,9 @@ Definition do_volatile_store (w: world) (chunk: memory_chunk) (m: mem) (ofs: ptr
     Some(w, E0, m', v).
 
 Lemma do_volatile_load_sound:
-  forall w chunk m ofs w' t v lts,
-  do_volatile_load w chunk m ofs = Some(w', t, v, lts) ->
-  volatile_load (fst ge) chunk m ofs t v lts /\ possible_trace w t w'.
+  forall w chunk m ofs w' t v,
+  do_volatile_load w chunk m ofs = Some(w', t, v) ->
+  volatile_load (fst ge) chunk m ofs t v /\ possible_trace w t w'.
 Admitted.
 (*Proof.
   intros until lts. unfold do_volatile_load. mydestr.
@@ -291,9 +291,9 @@ Admitted.
 Qed.*)
 
 Lemma do_volatile_load_complete:
-  forall w chunk m ofs w' t v lts,
-  volatile_load (fst ge) chunk m ofs t v lts -> possible_trace w t w' ->
-  do_volatile_load w chunk m ofs = Some(w', t, v, lts).
+  forall w chunk m ofs w' t v,
+  volatile_load (fst ge) chunk m ofs t v -> possible_trace w t w' ->
+  do_volatile_load w chunk m ofs = Some(w', t, v).
 Admitted.
 (*Proof.
   unfold do_volatile_load; intros.
@@ -342,7 +342,7 @@ Definition do_deref_loc (w: world) (ty: type) (m: mem) (ofs: ptrofs) (pt:tag) (b
     | By_value chunk =>
       match type_is_volatile ty with
       | false => do v <- Mem.load chunk m (Ptrofs.unsigned ofs); Some(w, E0, v, load_ltags chunk m (Ptrofs.unsigned ofs))
-      | true => (do_volatile_load w chunk m ofs)
+      | true => option_map (fun x => (x, load_ltags chunk m (Ptrofs.unsigned ofs))) (do_volatile_load w chunk m ofs)
       end
     | By_reference => Some(w, E0, (Vofptrsize (Ptrofs.unsigned ofs),pt), [])
     | By_copy => Some(w, E0, (Vofptrsize (Ptrofs.unsigned ofs),pt),[])
@@ -435,6 +435,7 @@ Proof.
     + intros. exploit do_volatile_load_sound; eauto.
       destruct (do_volatile_load w m0 m ofs) eqn:?; simpl in H; inv H. eauto.
       intuition. eapply deref_loc_volatile; eauto.
+      destruct (do_volatile_load w m0 m ofs); simpl in H; inv H. auto.
     + split.
       * eapply deref_loc_value; eauto;
         (destruct Archi.ptr64;
@@ -456,8 +457,8 @@ Lemma do_deref_loc_complete:
 Proof.
   unfold do_deref_loc; intros. inv H.
   - inv H0. rewrite H3; rewrite H4. rewrite H7; auto.
-  - rewrite H3; rewrite H6. apply (do_volatile_load_complete w _ _ _ w') in H8.
-    rewrite H8. simpl. auto. apply H0.
+  - rewrite H3; rewrite H4. apply (do_volatile_load_complete w _ _ _ w') in H7.
+    rewrite H7. simpl. auto. apply H0.
   - inv H0. rewrite H6. auto.
   - inv H0. rewrite H6. auto.
   - inv H0. inv H6.
@@ -511,18 +512,18 @@ Qed.
 
 (** External calls *)
 Variable do_external_function:
-  string -> signature -> Genv.t fundef type -> world -> list atom -> mem -> option (world * trace * atom * mem).
-
+  string -> signature -> Genv.t fundef type -> world -> list atom -> tag -> mem -> option (world * trace * atom * tag * mem).
+About external_functions_sem.
 Hypothesis do_external_function_sound:
-  forall id sg ge vargs m t vres m' w w',
-  do_external_function id sg ge w vargs m = Some(w', t, vres, m') ->
-  external_functions_sem id sg ge vargs m t vres m' /\ possible_trace w t w'.
+  forall id sg ge vargs pct m t vres pct' m' w w',
+  do_external_function id sg ge w vargs pct m = Some(w', t, vres, pct', m') ->
+  external_functions_sem id sg ge vargs pct m t vres pct' m' /\ possible_trace w t w'.
 
 Hypothesis do_external_function_complete:
-  forall id sg ge vargs m t vres m' w w',
-  external_functions_sem id sg ge vargs m t vres m' ->
-  possible_trace w t w' ->
-  do_external_function id sg ge w vargs m = Some(w', t, vres, m').
+  forall id sg ge vargs pct m t vres pct' m' w w',
+    external_functions_sem id sg ge vargs pct m t vres pct' m' ->
+    possible_trace w t w' ->
+    do_external_function id sg ge w vargs pct m = Some(w', t, vres, pct', m').
 
 
 (*Variable do_inline_assembly:
@@ -542,8 +543,8 @@ Hypothesis do_inline_assembly_complete:
 Definition do_ef_volatile_load (chunk: memory_chunk)
        (w: world) (vargs: list val) (m: mem) : option (world * trace * atom * mem) :=
   match vargs with
-  | Vint ofs :: nil => do w',t,v,lts <- do_volatile_load w chunk m (Ptrofs.of_int ofs); Some(w',t,v,m)
-  | Vlong ofs :: nil => do w',t,v,lts <- do_volatile_load w chunk m (Ptrofs.of_int64 ofs); Some(w',t,v,m)
+  | Vint ofs :: nil => do w',t,v <- do_volatile_load w chunk m (Ptrofs.of_int ofs); Some(w',t,v,m)
+  | Vlong ofs :: nil => do w',t,v <- do_volatile_load w chunk m (Ptrofs.of_int64 ofs); Some(w',t,v,m)
   | _ => None
   end.
 
@@ -564,18 +565,19 @@ Definition do_ef_volatile_store_global (chunk: memory_chunk) (id: ident) (ofs: p
 
 Definition do_alloc_size (v: val) : option ptrofs :=
   match v with
+  | Vint n => Some (Ptrofs.of_int n)
   | Vlong n => Some (Ptrofs.of_int64 n)
   | _ => None
   end.
 
 Definition do_ef_malloc
-       (w: world) (vargs: list atom) (m: mem) : option (world * trace * atom * mem) :=
+       (w: world) (vargs: list atom) (PCT: tag) (m: mem) : option (world * trace * atom * tag * mem) :=
   match vargs with
   | v :: nil =>
       do sz <- do_alloc_size (fst v);
-      match Mem.malloc m (- size_chunk Mptr) (Ptrofs.unsigned sz) with
+      match malloc m (- size_chunk Mptr) (Ptrofs.unsigned sz) with
       | Some (m', base, bound) =>
-          do m'' <- Mem.store Mptr m' (base - size_chunk Mptr) v (repeat def_tag (Z.to_nat (size_chunk Mptr)));
+          do m'' <- store Mptr m' (base - size_chunk Mptr) v (repeat def_tag (Z.to_nat (size_chunk Mptr)));
           Some(w, E0, (Vint (Int.repr base), def_tag), m'')
       | None => None
       end
@@ -646,12 +648,12 @@ Definition do_builtin_or_external (name: string) (sg: signature)
   | Some bf => match builtin_function_sem bf vargs with Some v => Some(w, E0, v, m) | None => None end
   | None    => do_external_function name sg (fst ge) w vargs m
   end.*)
-
-Definition do_external (ef: external_function) (PCT:tag):
-       world -> list atom -> mem -> option (world * trace * atom * mem) :=
+About do_ef_malloc.
+Definition do_external (ef: external_function) :
+       world -> list atom -> tag -> mem -> option (world * trace * atom * tag * mem) :=
   match ef with
   | EF_external name sg => do_external_function name sg (fst ge)
-(*  | EF_builtin name sg => do_builtin_or_external name sg
+  (*| EF_builtin name sg => do_builtin_or_external name sg
   | EF_runtime name sg => do_builtin_or_external name sg
   | EF_vload chunk => do_ef_volatile_load chunk
   | EF_vstore chunk => do_ef_volatile_store chunk*)
@@ -662,7 +664,7 @@ Definition do_external (ef: external_function) (PCT:tag):
   | EF_annot_val kind text targ => do_ef_annot_val text targ
   | EF_inline_asm text sg clob => do_inline_assembly text sg ge
   | EF_debug kind text targs => do_ef_debug kind text targs*)
-  | _ => fun _ _ _ => None
+  | _ => fun _ _ _ _ => None
   end.
 
 (*Lemma do_ef_external_sound:
@@ -835,27 +837,27 @@ Definition incontext2 {A1 A2 B: Type}
   incontext ctx1 ll1 ++ incontext ctx2 ll2.
 
 Notation "'do' X <- A ; B" := (match A with Some X => B | None => stuck end)
-  (at level 200, X ident, A at level 100, B at level 200)
+  (at level 200, X name, A at level 100, B at level 200)
   : reducts_monad_scope.
 
 Notation "'do' X , Y <- A ; B" := (match A with Some (X, Y) => B | None => stuck end)
-  (at level 200, X ident, Y ident, A at level 100, B at level 200)
+  (at level 200, X name, Y name, A at level 100, B at level 200)
   : reducts_monad_scope.
 
 Notation "'do' X , Y , Z <- A ; B" := (match A with Some (X, Y, Z) => B | None => stuck end)
-  (at level 200, X ident, Y ident, Z ident, A at level 100, B at level 200)
+  (at level 200, X name, Y name, Z name, A at level 100, B at level 200)
   : reducts_monad_scope.
 
 Notation "'do' X , Y , Z , W <- A ; B" := (match A with Some (X, Y, Z, W) => B | None => stuck end)
-  (at level 200, X ident, Y ident, Z ident, W ident, A at level 100, B at level 200)
+  (at level 200, X name, Y name, Z name, W name, A at level 100, B at level 200)
   : reducts_monad_scope.
 
 Notation "'dor' X , Y , Z <- A ; B" := (match A with Some (inr (X, Y, Z)) => B | _ => stuck end)
-  (at level 200, X ident, Y ident, Z ident, A at level 100, B at level 200)
+  (at level 200, X name, Y name, Z name, A at level 100, B at level 200)
   : reducts_monad_scope.
 
 Notation "'dol' X , Y <- A ; B" := (match A with Some (inl (X, Y)) => B | _ => stuck end)
-  (at level 200, X ident, Y ident, A at level 100, B at level 200)
+  (at level 200, X name, Y name, A at level 100, B at level 200)
   : reducts_monad_scope.
 
 Notation " 'check' A ; B" := (if A then B else stuck)
@@ -870,27 +872,27 @@ Notation "'at' S 'trule' X <- A ; B" := (match A with
                                       | PolicySuccess X => B
                                       | PolicyFail n ts => topred (Failstopred S (PolicyFail n ts))
                                       end)
-  (at level 200, X ident, A at level 100, B at level 200)
+  (at level 200, X name, A at level 100, B at level 200)
   : tag_monad_scope.
 
 Notation "'at' S 'trule' X , Y <- A ; B" := (match A with
                                           | PolicySuccess (X, Y) => B
                                           | PolicyFail n ts => topred (Failstopred S (PolicyFail n ts))
                                           end)
-  (at level 200, X ident, Y ident, A at level 100, B at level 200)
+  (at level 200, X name, Y name, A at level 100, B at level 200)
   : tag_monad_scope.
 
 Notation "'at' S 'trule' X , Y , Z <- A ; B" := (match A with
                                               | PolicySuccess (X, Y, Z) => B
                                               | PolicyFail n ts => topred (Failstopred S (PolicyFail n ts)) end)
-  (at level 200, X ident, Y ident, Z ident, A at level 100, B at level 200)
+  (at level 200, X name, Y name, Z name, A at level 100, B at level 200)
   : tag_monad_scope.
 
 Notation "'at' S 'trule' X , Y , Z , W <- A ; B" := (match A with
                                                   | PolicySuccess (X, Y, Z, W) => B
                                                   | PolicyFail n ts => topred (Failstopred S (PolicyFail n ts))
                                                   end)
-  (at level 200, X ident, Y ident, Z ident, W ident, A at level 100, B at level 200)
+  (at level 200, X name, Y name, Z name, W name, A at level 100, B at level 200)
   : tag_monad_scope.
 
 Local Open Scope tag_monad_scope.
@@ -926,7 +928,7 @@ Fixpoint step_expr (k: kind) (pct: tag) (a: expr) (m: mem): reducts expr :=
       end
   | LV, Efield r f ty =>
       match is_val r with
-      | Some (Vint ofs, t, ty') =>
+      (*| Some (Vint ofs, t, ty') =>
           match ty' with
           | Tstruct id _ =>
               do co <- (snd ge)!id;
@@ -941,20 +943,22 @@ Fixpoint step_expr (k: kind) (pct: tag) (a: expr) (m: mem): reducts expr :=
               | OK (delta, bf) => topred (Lred "red_field_union" (Eloc (Ptrofs.add (Ptrofs.of_int ofs) (Ptrofs.repr delta)) t bf ty) m)
               end
           | _ => stuck
-          end
-      | Some (Vlong ofs, t, ty') =>
+          end*)
+      | Some (Vlong ofs, pt, ty') =>
           match ty' with
           | Tstruct id _ =>
               do co <- (snd ge)!id;
+              at "red_field_tfail" trule pt' <- FieldT (snd ge) pct pt ty id;
               match field_offset (snd ge) f (co_members co) with
               | Error _ => stuck
-              | OK (delta, bf) => topred (Lred "red_field_struct" (Eloc (Ptrofs.add (Ptrofs.of_int64 ofs) (Ptrofs.repr delta)) t bf ty) m)
+              | OK (delta, bf) => topred (Lred "red_field_struct" (Eloc (Ptrofs.add (Ptrofs.of_int64 ofs) (Ptrofs.repr delta)) pt bf ty) m)
               end
           | Tunion id _ =>
               do co <- (snd ge)!id;
+              at "red_field_tfail" trule pt' <- FieldT (snd ge) pct pt ty id;
               match union_field_offset (snd ge) f (co_members co) with
               | Error _ => stuck
-              | OK (delta, bf) => topred (Lred "red_field_union" (Eloc (Ptrofs.add (Ptrofs.of_int64 ofs) (Ptrofs.repr delta)) t bf ty) m)
+              | OK (delta, bf) => topred (Lred "red_field_union" (Eloc (Ptrofs.add (Ptrofs.of_int64 ofs) (Ptrofs.repr delta)) pt bf ty) m)
               end
           | _ => stuck
           end
@@ -973,8 +977,9 @@ Fixpoint step_expr (k: kind) (pct: tag) (a: expr) (m: mem): reducts expr :=
           check type_eq ty ty';
           do w',t,vvt,lts <- do_deref_loc w ty m ofs pt bf;
           let (v,vt) := vvt in
-          at "red_rvalof_tfail" trule vt' <- LoadT pct pt vt lts;
-          topred (Rred "red_rvalof" pct (Eval (v,vt) ty) m t)
+          at "red_rvalof_load_tfail" trule vt' <- LoadT pct pt vt lts;
+          at "red_rvalof_access_tfail" trule vt'' <- AccessT pct vt';
+          topred (Rred "red_rvalof" pct (Eval (v,vt'') ty) m t)
       | None =>
           match l with
           | Efloc b pt ty =>
@@ -993,17 +998,19 @@ Fixpoint step_expr (k: kind) (pct: tag) (a: expr) (m: mem): reducts expr :=
       end
   | RV, Eunop op r1 ty =>
       match is_val r1 with
-      | Some(v1, t1, ty1) =>
+      | Some(v1, vt1, ty1) =>
           do v <- sem_unary_operation op v1 ty1 m;
-          topred (Rred "red_unop" pct (Eval (v,t1) ty) m E0)
+          at "red_unop_tfail" trule pct',vt' <- UnopT op pct vt1;
+          topred (Rred "red_unop" pct' (Eval (v,vt') ty) m E0)
       | None =>
           incontext (fun x => Eunop op x ty) (step_expr RV pct r1 m)
       end
   | RV, Ebinop op r1 r2 ty =>
       match is_val r1, is_val r2 with
-      | Some(v1, t1, ty1), Some(v2, t2, ty2) =>
+      | Some(v1, vt1, ty1), Some(v2, vt2, ty2) =>
           do v <- sem_binary_operation (snd ge) op v1 ty1 v2 ty2 m;
-          topred (Rred "red_binop" pct (Eval (v,t1) ty) m E0) (* TODO: control points *)
+          at "red_binop_tfail" trule pct',vt' <- BinopT op pct vt1 vt2;
+          topred (Rred "red_binop" pct' (Eval (v,vt') ty) m E0) (* TODO: control points *)
       | _, _ =>
          incontext2 (fun x => Ebinop op x r2 ty) (step_expr RV pct r1 m)
                     (fun x => Ebinop op r1 x ty) (step_expr RV pct r2 m)
@@ -1011,6 +1018,9 @@ Fixpoint step_expr (k: kind) (pct: tag) (a: expr) (m: mem): reducts expr :=
   | RV, Ecast r1 ty =>
       match is_val r1 with
       | Some(v1, t1, ty1) =>
+          let tr := match ty1, ty with
+                    | _, _ => IPCastT
+                    end in          
           do v <- sem_cast v1 ty1 ty m;
           topred (Rred "red_cast" pct (Eval (v,t1) ty) m E0)
       | None =>
@@ -1018,26 +1028,29 @@ Fixpoint step_expr (k: kind) (pct: tag) (a: expr) (m: mem): reducts expr :=
       end
   | RV, Eseqand r1 r2 ty =>
       match is_val r1 with
-      | Some(v1, t1, ty1) =>
+      | Some(v1, vt1, ty1) =>
           do b <- bool_val v1 ty1 m;
+          at "red_seqand_tfail" trule pct' <- ExprSplitT pct vt1;
           if b then topred (Rred "red_seqand_true" pct (Eparen r2 type_bool ty) m E0)
-               else topred (Rred "red_seqand_false" pct (Eval (Vint Int.zero,t1) ty) m E0)
+               else topred (Rred "red_seqand_false" pct (Eval (Vint Int.zero,vt1) ty) m E0)
       | None =>
           incontext (fun x => Eseqand x r2 ty) (step_expr RV pct r1 m)
       end
   | RV, Eseqor r1 r2 ty =>
       match is_val r1 with
-      | Some(v1, t1, ty1) =>
+      | Some(v1, vt1, ty1) =>
           do b <- bool_val v1 ty1 m;
-          if b then topred (Rred "red_seqor_true" pct (Eval (Vint Int.one, t1) ty) m E0)
+          at "red_seqor_tfail" trule pct' <- ExprSplitT pct vt1;
+          if b then topred (Rred "red_seqor_true" pct (Eval (Vint Int.one, vt1) ty) m E0)
                else topred (Rred "red_seqor_false" pct (Eparen r2 type_bool ty) m E0)
       | None =>
           incontext (fun x => Eseqor x r2 ty) (step_expr RV pct r1 m)
       end
   | RV, Econdition r1 r2 r3 ty =>
       match is_val r1 with
-      | Some(v1, t1, ty1) =>
+      | Some(v1, vt1, ty1) =>
           do b <- bool_val v1 ty1 m;
+          at "red_seqand_tfail" trule pct' <- ExprSplitT pct vt1;
           topred (Rred "red_condition" pct (Eparen (if b then r2 else r3) ty ty) m E0)
       | None =>
           incontext (fun x => Econdition x r2 r3 ty) (step_expr RV pct r1 m)
@@ -1053,9 +1066,10 @@ Fixpoint step_expr (k: kind) (pct: tag) (a: expr) (m: mem): reducts expr :=
           do v <- sem_cast v2 ty2 ty1 m;
           do w',t,vvt,lts <- do_deref_loc w ty1 m ofs pt1 bf;
           let (_,vt1) := vvt in
-          at "red_assign_tfail" trule pct',vt',lts' <- StoreT pct pt1 vt2 lts;
-          do w'',t,m',vvt' <- do_assign_loc w' ty1 m ofs pt1 bf (v,vt') lts';
-          topred (Rred "red_assign" pct (Eval vvt' ty) m' t)
+          at "red_assign_tfail1" trule pct',vt' <- AssigntT pct vt1 vt2;
+          at "red_assign_tfail2" trule pct'',vt'',lts' <- StoreT pct pt1 vt' lts;
+          do w'',t,m',vvt' <- do_assign_loc w' ty1 m ofs pt1 bf (v,vt'') lts';
+          topred (Rred "red_assign" pct'' (Eval vvt' ty) m' t)
       | _, _ =>
          incontext2 (fun x => Eassign x r2 ty) (step_expr LV pct l1 m)
                     (fun x => Eassign l1 x ty) (step_expr RV pct r2 m)
@@ -1101,9 +1115,10 @@ Fixpoint step_expr (k: kind) (pct: tag) (a: expr) (m: mem): reducts expr :=
       end
   | RV, Eparen r1 tycast ty =>
       match is_val r1 with
-      | Some (v1, t1, ty1) =>
+      | Some (v1, vt1, ty1) =>
           do v <- sem_cast v1 ty1 tycast m;
-          topred (Rred "red_paren" pct (Eval (v,t1) ty) m E0)
+          at "red_paren_tfail" trule pct',vt' <- ExprJoinT pct vt1;
+          topred (Rred "red_paren" pct' (Eval (v,vt') ty) m E0)
       | None =>
           incontext (fun x => Eparen x tycast ty) (step_expr RV pct r1 m)
       end
@@ -1122,17 +1137,17 @@ Fixpoint step_expr (k: kind) (pct: tag) (a: expr) (m: mem): reducts expr :=
           incontext2 (fun x => Ecall x rargs ty) (step_expr RV pct r1 m)
                      (fun x => Ecall r1 x ty) (step_exprlist pct rargs m)
       end
-(*  | RV, Ebuiltin ef tyargs rargs ty =>
+  | RV, Ebuiltin ef tyargs rargs ty =>
       match is_val_list rargs with
       | Some vtl =>
           do vargs <- sem_cast_arguments vtl tyargs m;
-          match do_external ef w vargs m with
+          match do_external ef pct w vargs m with
           | None => stuck
-          | Some(w',t,v,m') => topred (Rred "red_builtin" (Eval v ty) m' t)
+          | Some(w',t,v,m') => topred (Rred "red_builtin" pct' (Eval v ty) m' t)
           end
       | _ =>
           incontext (fun x => Ebuiltin ef tyargs x ty) (step_exprlist rargs m)
-      end *)
+      end
   | _, _ => stuck
   end
 
@@ -1588,7 +1603,7 @@ Admitted.
 (*Proof with (try (apply not_invert_ok; simpl; intro; myinv; intuition congruence; fail)).
   induction a; intros; simpl; destruct k; try (apply wrong_kind_ok; simpl; congruence).
 (* Eval *)
-  split; intros. tauto. simpl; congruence.
+  - split; intros. tauto. simpl; congruence.
 (* Evar *)
   destruct (e!x) as [[b ty']|] eqn:?.
   destruct (type_eq ty ty')...

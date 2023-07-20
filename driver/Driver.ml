@@ -36,9 +36,10 @@ let object_filename sourcename =
   else
     tmp_file ".o"
 
-(* Processing of a .c file *)
 let runner = ref (WithNull.run_i_file)
 let initter = ref (WithNull.init_with)
+
+(* Processing of a .c file *)
 
 let process_c_file sourcename =
   ensure_inputfile_exists sourcename;
@@ -46,12 +47,18 @@ let process_c_file sourcename =
     preprocess sourcename (output_filename_default "-");
     ""
   end else begin
+    let set_dest dst opt ext =
+      dst := if !opt then Some (output_filename sourcename ~suffix:ext)
+      else None in
+    set_dest WithNull.Printing.destination option_dcmedium ".compcert.c";
     let preproname = if !option_dprepro then
       output_filename sourcename ~suffix:".i"
     else
       tmp_file ".i" in
     preprocess sourcename preproname;
-    !runner sourcename preproname;
+    (*if !option_interp then begin*)
+      !runner sourcename preproname;
+    (*end;*)
     ""
   end
 

@@ -413,12 +413,12 @@ Inductive estep: Csem.state -> trace -> Csem.state -> Prop :=
       estep (ExprState f PCT (C (Ecall rf rargs ty)) k e m)
          E0 (Callstate fd PCT' vargs (Kcall f e C ty k) m)
 
-  | step_builtin: forall f C ef tyargs rargs ty k e m PCT vargs t vres m',
+  | step_builtin: forall f C ef tyargs rargs ty k e m PCT PCT' vargs t vres m',
       leftcontext RV RV C ->
       eval_simple_list e m PCT rargs tyargs vargs ->
-      external_call ef (fst ge) vargs m t vres m' ->
+      external_call ef (fst ge) vargs PCT m t vres PCT' m' ->
       estep (ExprState f PCT (C (Ebuiltin ef tyargs rargs ty)) k e m)
-          t (ExprState f PCT (C (Eval vres ty)) k e m').
+          t (ExprState f PCT' (C (Eval vres ty)) k e m').
 
 Definition step (S: Csem.state) (t: trace) (S': Csem.state) : Prop :=
   estep S t S' \/ sstep ge S t S'.
@@ -556,7 +556,7 @@ Fixpoint exprlist_all_values (rl: exprlist) : Prop :=
   | Econs _ _ => False
   end.
 
-Definition invert_expr_prop (a: expr) (m: mem) : Prop :=
+Definition invert_expr_prop (a: expr) (PCT: tag) (m: mem) : Prop :=
   match a with
   | Eloc ofs pt bf ty => False
   | Evar x ty =>
@@ -616,14 +616,14 @@ Definition invert_expr_prop (a: expr) (m: mem) : Prop :=
       /\ type_of_fundef fd = Tfunction tyargs tyres cconv
   | Ebuiltin ef tyargs rargs ty =>
       exprlist_all_values rargs ->
-      exists vargs, exists t, exists vres, exists m',
+      exists vargs, exists t, exists vres, exists PCT', exists m',
          cast_arguments m rargs tyargs vargs
-      /\ external_call ef (fst ge) vargs m t vres m'
+      /\ external_call ef (fst ge) vargs PCT m t vres PCT' m'
   | _ => True
   end.
 
 Lemma lred_invert:
-  forall l m l' m', lred ge e l m l' m' -> invert_expr_prop l m.
+  forall l PCT m l' m', lred ge e l m l' m' -> invert_expr_prop l PCT m.
 Admitted.
 (*Proof.
   induction 1; red; auto.
@@ -635,7 +635,7 @@ Admitted.
 Qed.*)
 
 Lemma rred_invert:
-  forall PCT PCT' r m t r' m', rred ge PCT r m t PCT' r' m' -> invert_expr_prop r m.
+  forall PCT PCT' r m t r' m', rred ge PCT r m t PCT' r' m' -> invert_expr_prop r PCT m.
 Admitted.
 (*Proof.
   induction 1; red; auto.
@@ -656,7 +656,7 @@ Qed.*)
 Lemma callred_invert:
   forall PCT PCT' r fd args ty m,
   callred ge PCT r m PCT' fd args ty ->
-  invert_expr_prop r m.
+  invert_expr_prop r PCT m.
 Proof.
   intros. inv H. simpl.
   intros. exists tyargs, tyres, cconv, fd, args; auto.
@@ -668,12 +668,12 @@ Combined Scheme context_contextlist_ind from context_ind2, contextlist_ind2.
 
 Lemma invert_expr_context:
   (forall from to C, context from to C ->
-   forall a m,
-   invert_expr_prop a m ->
-   invert_expr_prop (C a) m)
+   forall a PCT m,
+   invert_expr_prop a PCT m ->
+   invert_expr_prop (C a) PCT m)
 /\(forall from C, contextlist from C ->
-  forall a m,
-  invert_expr_prop a m ->
+  forall a PCT m,
+  invert_expr_prop a PCT m ->
   ~exprlist_all_values (C a)).
 Admitted.
 (*Proof.
@@ -705,28 +705,29 @@ Admitted.
 Qed.*)
 
 Lemma imm_safe_inv:
-  forall k a m,
+  forall k a PCT m,
   imm_safe ge e k a m ->
   match a with
   | Eloc _ _ _ _ => True
   | Eval _ _ => True
-  | _ => invert_expr_prop a m
+  | _ => invert_expr_prop a PCT m
   end.
-Proof.
+Admitted.
+(*Proof.
   destruct invert_expr_context as [A B].
   intros. inv H.
   auto.
   auto.
-  assert (invert_expr_prop (C e0) m).
+  - assert (invert_expr_prop (C e0) PCT m).
     eapply A; eauto. eapply lred_invert; eauto.
-  red in H. destruct (C e0); auto; contradiction.
-  assert (invert_expr_prop (C e0) m).
+    red in H. destruct (C e0); auto; contradiction.
+  - assert (invert_expr_prop (C e0) PCT m).
     eapply A; eauto. eapply rred_invert; eauto.
-  red in H. destruct (C e0); auto; contradiction.
+    red in H. destruct (C e0); auto; contradiction.
   assert (invert_expr_prop (C e0) m).
     eapply A; eauto. eapply callred_invert; eauto.
   red in H. destruct (C e0); auto; contradiction.
-Qed.
+Qed.*)
 
 Lemma safe_inv:
   forall k C f PCT a K m,
@@ -735,7 +736,7 @@ Lemma safe_inv:
   match a with
   | Eloc _ _ _ _ => True
   | Eval _ _ => True
-  | _ => invert_expr_prop a m
+  | _ => invert_expr_prop a PCT m
   end.
 Proof.
   intros. eapply imm_safe_inv; eauto. eapply safe_imm_safe; eauto.
@@ -1507,7 +1508,7 @@ Remark deref_loc_trace:
   deref_loc ge ty m ofs pt bf t (v,vt) lts ->
   match t with nil => True | ev :: nil => True | _ => False end.
 Proof.
-  intros. inv H; simpl; auto. inv H2; simpl; auto. inv H7; simpl; auto.
+  intros. inv H; simpl; auto. inv H2; simpl; auto. inv H6; simpl; auto.
 Qed.
 
 Remark deref_loc_receptive:

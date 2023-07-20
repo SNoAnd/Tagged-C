@@ -597,35 +597,32 @@ Fixpoint output_trace (t: trace) : Prop :=
   end.
 
 (** * Semantics of volatile memory accesses *)
-
+(* TODO: tags on vloads and vstores *)
 Inductive volatile_load (ge: Genv.t F V):
-                   memory_chunk -> mem -> ptrofs -> trace -> atom -> list tag -> Prop :=
-  | volatile_load_vol: forall chunk m base block pt ofs id ev v vt,
+                   memory_chunk -> mem -> ptrofs -> trace -> atom -> Prop :=
+  | volatile_load_vol: forall chunk m ofs id ev v vt,
       addr_is_volatile ge ofs = true ->
-      find_symbol ge id = Some (inr (base,block,pt)) ->
       eventval_match ge ev (type_of_chunk chunk) (v,vt) ->
       volatile_load ge chunk m ofs
                     (Event_vload chunk id ofs ev :: nil)
                     (Val.load_result chunk v,vt)
-                    (load_ltags chunk m (Ptrofs.unsigned ofs))
   | volatile_load_nonvol: forall chunk m ofs v,
       addr_is_volatile ge ofs = false ->
-      Mem.load chunk m (Ptrofs.unsigned ofs) = Some v ->
-      volatile_load ge chunk m ofs E0 v (load_ltags chunk m (Ptrofs.unsigned ofs)).
+      load chunk m (Ptrofs.unsigned ofs) = Some v ->
+      volatile_load ge chunk m ofs E0 v.
 
 Inductive volatile_store (ge: Genv.t F V):
-                  memory_chunk -> mem -> ptrofs -> atom -> list tag -> trace -> mem -> Prop :=
-  | volatile_store_vol: forall chunk m base block pt ofs id ev v vt lts,
+                  memory_chunk ->  mem -> ptrofs -> atom -> list tag -> trace -> mem -> Prop :=
+  | volatile_store_vol: forall chunk m ofs id ev v vt lts,
       Genv.addr_is_volatile ge ofs = true ->
-      Genv.find_symbol ge id = Some (inr (base,block,pt)) ->
       eventval_match ge ev (type_of_chunk chunk) (Val.load_result chunk v, vt) ->
       volatile_store ge chunk m ofs (v,vt) lts
                      (Event_vstore chunk id ofs ev :: nil)
                      m
-  | volatile_store_nonvol: forall chunk m ofs v lts m',
+  | volatile_store_nonvol: forall chunk m ofs  v vt lts m',
       Genv.addr_is_volatile ge ofs = false ->
-      Mem.store chunk m (Ptrofs.unsigned ofs) v lts = Some m' ->
-      volatile_store ge chunk m ofs v lts E0 m'.
+      store chunk m (Ptrofs.unsigned ofs) (v,vt) lts = Some m' ->
+      volatile_store ge chunk m ofs (v,vt) lts E0 m'.
   
 (** * Semantics of external functions *)
 
@@ -639,7 +636,7 @@ Inductive volatile_store (ge: Genv.t F V):
 *)
 
 Definition extcall_sem : Type :=
-  Genv.t F V -> list atom -> mem -> trace -> atom -> mem -> Prop.
+  Genv.t F V -> list atom -> tag -> mem -> trace -> atom -> tag -> mem -> Prop.
 
 (** We now specify the expected properties of this predicate. *)
 
@@ -735,11 +732,13 @@ Definition inject_separated (f f': meminj) (m1 m2: mem): Prop :=
 (** ** Semantics of volatile loads *)
 
 Inductive volatile_load_sem (chunk: memory_chunk) (ge: Genv.t F V):
-              list atom -> mem -> trace -> atom  -> mem -> Prop :=
-  | volatile_load_sem_intro: forall ofs pt m t v vt lts,
-      volatile_load ge chunk m ofs t (v,vt) lts ->
-      (*TODO: check tags *)
-      volatile_load_sem chunk ge ((Vint (Ptrofs.to_int ofs), pt) :: nil) m t (v,vt) m.
+              list atom -> tag -> mem -> trace -> atom  -> tag -> mem -> Prop :=
+| volatile_load_sem_intro: forall ofs pt m pct t v vt vt' vt'' lts,
+    load_ltags chunk m (Ptrofs.unsigned ofs) = lts ->
+    LoadT pct pt vt lts = PolicySuccess vt' ->
+    AccessT pct vt' = PolicySuccess vt'' ->
+    volatile_load ge chunk m ofs t (v,vt) ->
+    volatile_load_sem chunk ge ((Vint (Ptrofs.to_int ofs), pt) :: nil) pct m t (v,vt) pct m.
 
 (*Lemma volatile_load_preserved:
   forall ge1 ge2 chunk m b ofs t v vt lts,
@@ -790,9 +789,9 @@ Proof.
 Qed.*)
 
 Lemma volatile_load_receptive:
-  forall ge chunk m ofs t1 t2 v1  vt lts,
-  volatile_load ge chunk m ofs t1 (v1, vt) lts -> match_traces ge t1 t2 ->
-  exists v2, volatile_load ge chunk m ofs t2 (v2, vt) lts.
+  forall ge chunk m ofs t1 t2 v1 vt,
+    volatile_load ge chunk m ofs t1 (v1, vt) -> match_traces ge t1 t2 ->
+    exists v2, volatile_load ge chunk m ofs t2 (v2, vt).
 Admitted.
 (*Proof.
   intros. inv H; inv H0.
@@ -844,11 +843,14 @@ Qed.*)
 (** ** Semantics of volatile stores *)
 
 Inductive volatile_store_sem (chunk: memory_chunk) (ge: Genv.t F V):
-              list atom -> mem -> trace -> atom -> mem -> Prop :=
-  | volatile_store_sem_intro: forall ofs pt m1 v vt lts t m2,
+              list atom -> tag -> mem -> trace -> atom -> tag -> mem -> Prop :=
+  | volatile_store_sem_intro: forall ofs pt m1 pct pct' pct'' v0 vt0 v vt vt' vt'' lts lts' t m2,
+      load chunk m1 (Ptrofs.unsigned ofs) = Some (v0,vt0) -> 
+      load_ltags chunk m1 (Ptrofs.unsigned ofs) = lts -> 
+      AssignT pct vt0 vt = PolicySuccess (pct', vt') ->
+      StoreT pct' pt vt' lts = PolicySuccess (pct'',vt'',lts') ->
       volatile_store ge chunk m1 ofs (v,vt) lts t m2 ->
-      (* TODO: check tags *)
-      volatile_store_sem chunk ge ((Vint (Ptrofs.to_int ofs),pt) :: (v,vt) :: nil) m1 t (Vundef,def_tag) m2.
+      volatile_store_sem chunk ge ((Vint (Ptrofs.to_int ofs),pt) :: (v,vt) :: nil) pct' m1 t (Vundef,def_tag) pct'' m2.
 
 (*Lemma volatile_store_preserved:
   forall ge1 ge2 chunk m1 b ofs v lts t m2,
@@ -996,14 +998,14 @@ Proof.
 Qed.*)
 
 (** ** Semantics of dynamic memory allocation (malloc) *)
-
+(* TODO: def_tag -> function tag *)
 Inductive extcall_malloc_sem (ge: Genv.t F V):
-              list atom -> mem -> trace -> atom -> mem -> Prop :=
-| extcall_malloc_sem_intro: forall sz st m m' lo hi vt lts pt m'',
-    (* TODO: check tags *)
-    Mem.alloc m (- size_chunk Mptr) (Ptrofs.unsigned sz) = Some (m', lo, hi) ->
-    Mem.store Mptr m' (- size_chunk Mptr) (Vlong (Ptrofs.to_int64 sz), vt) lts = Some m'' ->
-    extcall_malloc_sem ge ((Vlong (Ptrofs.to_int64 sz),st) :: nil) m E0 (Vint (Int.repr lo), pt) m''.
+              list atom -> tag -> mem -> trace -> atom -> tag -> mem -> Prop :=
+| extcall_malloc_sem_intro: forall sz st pct m m' lo hi vt lt pt pct' m'',
+    malloc m (- size_chunk Mptr) (Ptrofs.unsigned sz) = Some (m', lo, hi) ->
+    MallocT pct def_tag st = PolicySuccess (pct', pt, vt, lt) ->
+    store Mptr m' (- size_chunk Mptr) (Vlong (Ptrofs.to_int64 sz), vt) (lt::nil) = Some m'' ->
+    extcall_malloc_sem ge ((Vlong (Ptrofs.to_int64 sz),st) :: nil) pct m E0 (Vint (Int.repr lo), pt) pct' m''.
 
 (*Lemma extcall_malloc_ok:
   extcall_properties extcall_malloc_sem
@@ -1084,15 +1086,16 @@ Qed.
 (** ** Semantics of dynamic memory deallocation (free) *)
 
 Inductive extcall_free_sem (ge: Genv.t F V):
-              list atom -> mem -> trace -> atom -> mem -> Prop :=
-| extcall_free_sem_ptr: forall lo pt sz vt m m',
-    (* TODO: check tags *)
-    Mem.load Mptr m (lo - size_chunk Mptr) = Some (Vlong (Ptrofs.to_int64 sz), vt) ->
+              list atom -> tag -> mem -> trace -> atom -> tag -> mem -> Prop :=
+| extcall_free_sem_ptr: forall lo pt sz vt vt' pct pct' m m' lt lt',
+    (* TODO: update mem *)
+    load Mptr m (lo - size_chunk Mptr) = Some (Vlong (Ptrofs.to_int64 sz), vt) ->
     Ptrofs.unsigned sz > 0 ->
-    Mem.free m (lo - size_chunk Mptr) (lo + Ptrofs.unsigned sz) = Some m' ->
-    extcall_free_sem ge ((Vint (Int.repr lo),pt) :: nil) m E0 (Vundef,def_tag) m'
-| extcall_free_sem_null: forall m pt,
-    extcall_free_sem ge ((Vnullptr,pt) :: nil) m E0 (Vundef,def_tag) m.
+    mfree m (lo - size_chunk Mptr) (lo + Ptrofs.unsigned sz) = Some m' ->
+    FreeT pct pt lt = PolicySuccess (pct', vt', lt') ->
+    extcall_free_sem ge ((Vint (Int.repr lo),pt) :: nil) pct m E0 (Vundef,def_tag) pct' m'
+| extcall_free_sem_null: forall pct pct' m pt,
+    extcall_free_sem ge ((Vnullptr,pt) :: nil) pct m E0 (Vundef,def_tag) pct' m.
 
 (*Lemma extcall_free_ok:
   extcall_properties extcall_free_sem
@@ -1181,8 +1184,8 @@ Qed.*)
 (** ** Semantics of [memcpy] operations. *)
 
 Inductive extcall_memcpy_sem (sz al: Z) (ge: Genv.t F V):
-                        list atom -> mem -> trace -> atom -> mem -> Prop :=
-  | extcall_memcpy_sem_intro: forall odst osrc pt1 pt2 m bytes lts m',
+                        list atom -> tag -> mem -> trace -> atom -> tag -> mem -> Prop :=
+  | extcall_memcpy_sem_intro: forall odst osrc pt1 pt2 pct m bytes lts m',
       al = 1 \/ al = 2 \/ al = 4 \/ al = 8 -> sz >= 0 -> (al | sz) ->
       (sz > 0 -> (al | osrc)) ->
       (sz > 0 -> (al | odst)) ->
@@ -1191,7 +1194,7 @@ Inductive extcall_memcpy_sem (sz al: Z) (ge: Genv.t F V):
       \/ odst + sz <= osrc ->
       Mem.loadbytes m (osrc) sz = Some bytes ->
       Mem.storebytes m (odst) bytes lts = Some m' ->
-      extcall_memcpy_sem sz al ge ((Vint (Int.repr odst),pt1) :: (Vint (Int.repr osrc),pt2) :: nil) m E0 (Vundef,def_tag) m'.
+      extcall_memcpy_sem sz al ge ((Vint (Int.repr odst),pt1) :: (Vint (Int.repr osrc),pt2) :: nil) pct m E0 (Vundef,def_tag) pct m'.
 
 (*Lemma extcall_memcpy_ok:
   forall sz al,
@@ -1293,10 +1296,10 @@ Qed.*)
 (** ** Semantics of annotations. *)
 
 Inductive extcall_annot_sem (text: string) (targs: list typ) (ge: Genv.t F V):
-              list atom -> mem -> trace -> atom -> mem -> Prop :=
-  | extcall_annot_sem_intro: forall vargs m args,
+              list atom -> tag -> mem -> trace -> atom -> tag -> mem -> Prop :=
+  | extcall_annot_sem_intro: forall vargs pct m args,
       eventval_list_match ge args targs vargs ->
-      extcall_annot_sem text targs ge vargs m (Event_annot text args :: E0) (Vundef,def_tag) m.
+      extcall_annot_sem text targs ge vargs pct m (Event_annot text args :: E0) (Vundef,def_tag) pct m.
 
 (*Lemma extcall_annot_ok:
   forall text targs,
@@ -1334,10 +1337,10 @@ Proof.
 Qed.*)
 
 Inductive extcall_annot_val_sem (text: string) (targ: typ) (ge: Genv.t F V):
-              list atom -> mem -> trace -> atom -> mem -> Prop :=
-  | extcall_annot_val_sem_intro: forall varg m arg,
+              list atom -> tag -> mem -> trace -> atom -> tag -> mem -> Prop :=
+  | extcall_annot_val_sem_intro: forall varg pct m arg,
       eventval_match ge arg targ varg ->
-      extcall_annot_val_sem text targ ge (varg :: nil) m (Event_annot text (arg :: nil) :: E0) varg m.
+      extcall_annot_val_sem text targ ge (varg :: nil) pct m (Event_annot text (arg :: nil) :: E0) varg pct m.
 
 (*Lemma extcall_annot_val_ok:
   forall text targ,
@@ -1375,9 +1378,9 @@ Proof.
 Qed.*)
 
 Inductive extcall_debug_sem (ge: Genv.t F V):
-              list atom -> mem -> trace -> atom -> mem -> Prop :=
-  | extcall_debug_sem_intro: forall vargs m,
-      extcall_debug_sem ge vargs m E0 (Vundef,def_tag) m.
+              list atom -> tag -> mem -> trace -> atom -> tag -> mem -> Prop :=
+  | extcall_debug_sem_intro: forall vargs pct m,
+      extcall_debug_sem ge vargs pct m E0 (Vundef,def_tag) pct m.
 
 (*Lemma extcall_debug_ok:
   forall targs,
@@ -1416,10 +1419,10 @@ Qed.*)
   These built-in functions have no observable effects and do not access memory. *)
 
 Inductive known_builtin_sem (bf: builtin_function) (ge: Genv.t F V):
-              list atom -> mem -> trace -> atom -> mem -> Prop :=
-  | known_builtin_sem_intro: forall vargs vres m,
+              list atom -> tag -> mem -> trace -> atom -> tag -> mem -> Prop :=
+  | known_builtin_sem_intro: forall vargs vres pct m,
       builtin_function_sem bf vargs = Some vres ->
-      known_builtin_sem bf ge (map (fun v => (v,def_tag)) vargs) m E0 (vres,def_tag) m.
+      known_builtin_sem bf ge (map (fun v => (v,def_tag)) vargs) pct m E0 (vres,def_tag) pct m.
 
 (*Lemma known_builtin_ok: forall bf,
   extcall_properties (known_builtin_sem bf) (builtin_function_sig bf).
@@ -1558,8 +1561,8 @@ Definition external_call_determ ef := ec_determ (external_call_spec ef).*)
 (** Corollary of [external_call_well_typed_gen]. *)
 
 Lemma external_call_well_typed:
-  forall ef ge vargs m1 t vres m2,
-  external_call ef ge vargs m1 t vres m2 ->
+  forall ef ge vargs pct1 m1 t vres pct2 m2,
+  external_call ef ge vargs pct1 m1 t vres pct2 m2 ->
   Val.has_type (fst vres) (proj_sig_res (ef_sig ef)).
 Admitted.
 (*Proof.
@@ -1603,9 +1606,9 @@ Qed.*)
 (** Corollaries of [external_call_determ]. *)
 
 Lemma external_call_match_traces:
-  forall ef ge vargs m t1 vres1 m1 t2 vres2 m2,
-  external_call ef ge vargs m t1 vres1 m1 ->
-  external_call ef ge vargs m t2 vres2 m2 ->
+  forall ef ge vargs pct m t1 vres1 pct1 m1 t2 vres2 pct2 m2,
+  external_call ef ge vargs pct m t1 vres1 pct1 m1 ->
+  external_call ef ge vargs pct m t2 vres2 pct2 m2 ->
   match_traces ge t1 t2.
 Admitted.
 (*Proof.
@@ -1613,9 +1616,9 @@ Admitted.
 Qed.*)
 
 Lemma external_call_deterministic:
-  forall ef ge vargs m t vres1 m1 vres2 m2,
-  external_call ef ge vargs m t vres1 m1 ->
-  external_call ef ge vargs m t vres2 m2 ->
+  forall ef ge vargs pct m t vres1 pct1 m1 vres2 pct2 m2,
+  external_call ef ge vargs pct m t vres1 pct1 m1 ->
+  external_call ef ge vargs pct m t vres2 pct2 m2 ->
   vres1 = vres2 /\ m1 = m2.
 Admitted.
 (*Proof.

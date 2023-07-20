@@ -77,12 +77,13 @@ Definition empty_env: env := (PTree.empty (Z * Z * tag * type)).
   | deref_loc_value: forall chunk v vt lts,
       access_mode ty = By_value chunk ->
       type_is_volatile ty = false ->
-      Mem.load chunk m (Ptrofs.unsigned ofs) = Some (v,vt) ->
-      Mem.load_ltags chunk m (Ptrofs.unsigned ofs) = lts ->
+      load chunk m (Ptrofs.unsigned ofs) = Some (v,vt) ->
+      load_ltags chunk m (Ptrofs.unsigned ofs) = lts ->
       deref_loc ty m ofs pt Full E0 (v,vt) lts
   | deref_loc_volatile: forall chunk t v vt lts,
       access_mode ty = By_value chunk -> type_is_volatile ty = true ->
-      volatile_load (fst ge) chunk m ofs t (v,vt) lts ->
+      volatile_load (fst ge) chunk m ofs t (v,vt) ->
+      load_ltags chunk m (Ptrofs.unsigned ofs) = lts ->
       deref_loc ty m ofs pt Full t (v,vt) lts
   | deref_loc_reference:
       access_mode ty = By_reference ->
@@ -110,7 +111,7 @@ Definition empty_env: env := (PTree.empty (Z * Z * tag * type)).
   | assign_loc_value: forall v vt lts chunk m',
       access_mode ty = By_value chunk ->
       type_is_volatile ty = false ->
-      Mem.store chunk m (Ptrofs.unsigned ofs) (v,vt) lts = Some m' ->
+      store chunk m (Ptrofs.unsigned ofs) (v,vt) lts = Some m' ->
       assign_loc ty m ofs pt Full (v,vt) E0 m' (v,vt) lts
   | assign_loc_volatile: forall v lts chunk t m',
       access_mode ty = By_value chunk -> type_is_volatile ty = true ->
@@ -347,11 +348,11 @@ Inductive rred (PCT:tag) : expr -> mem -> trace -> tag -> expr -> mem -> Prop :=
     sem_cast v1 ty1 ty2 m = Some v ->
     rred PCT (Eparen (Eval (v1,vt1) ty1) ty2 ty) m E0
          PCT (Eval (v,vt) ty) m
-| red_builtin: forall ef tyargs el ty m vargs t vres m',
+| red_builtin: forall ef tyargs el ty m vargs t vres PCT' m',
     cast_arguments m el tyargs vargs ->
-    external_call ef (fst ge) vargs m t vres m' ->
+    external_call ef (fst ge) vargs PCT m t vres PCT' m' ->
     rred PCT (Ebuiltin ef tyargs el ty) m t
-         PCT (Eval vres ty) m'.
+         PCT' (Eval vres ty) m'.
 
 (** Head reduction for function calls.
     (More exactly, identification of function calls that can reduce.) *)
@@ -853,10 +854,10 @@ Inductive sstep: state -> trace -> state -> Prop :=
     sstep (Callstate (Internal f) PCT vargs k m)
           E0 (State f PCT' f.(fn_body) k e m2)
 
-| step_external_function: forall ef PCT targs tres cc vargs k m vres t m',
-    external_call ef  (fst ge) vargs m t vres m' ->
+| step_external_function: forall ef PCT PCT' targs tres cc vargs k m vres t m',
+    external_call ef (fst ge) vargs PCT m t vres PCT' m' ->
     sstep (Callstate (External ef targs tres cc) PCT vargs k m)
-          t (Returnstate PCT vres k m')
+          t (Returnstate PCT' vres k m')
 
 | step_returnstate: forall v f PCT e C ty k m,
     sstep (Returnstate PCT v (Kcall f e C ty k) m)
