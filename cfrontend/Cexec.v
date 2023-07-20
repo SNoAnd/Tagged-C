@@ -2218,7 +2218,12 @@ Definition expr_final_state (f: function) (k: cont) (pct: tag) (e: env) (C_rd: (
   | Rred rule pct a m t => TR rule t (ExprState f pct (fst C_rd a) k e m)
   | Callred rule fd vargs ty m => TR rule E0 (Callstate fd pct vargs (Kcall f e (fst C_rd) ty k) m)
   | Stuckred => TR "step_stuck" E0 Stuckstate
-  | Failstopred rule res => TR "monitor_failstop" E0 Failstop
+  | Failstopred rule res => 
+      match res with
+      | PolicyFail r params => TR "monitor_failstop" E0 (Failstop r params)
+      | PolicySuccess resA => TR "step_stuck" E0 Stuckstate 
+          (* PolicySuccess should never happen, but the typechecker doesn't know that *)
+      end
   end.
 
 Local Open Scope list_monad_scope.
@@ -2278,26 +2283,6 @@ Definition do_step (w: world) (s: Csem.state) : list transition :=
       ret "step_continue_seq" (State f pct Scontinue k e m)
   | State f pct Sbreak (Kseq s k) e m =>
       ret "step_break_seq" (State f pct Sbreak k e m)
-
-  | State f pct Scontinue (Ktag rule k) e m =>
-      ret "step_continue_tag" (State f pct Sbreak k e m)
-  | State f pct Sbreak (Ktag rule k) e m =>
-      ret "step_break_tag" (State f pct Sbreak k e m)
-  | State f pct Sskip (Ktag rule k) e m =>
-      match rule pct with
-      | Some pct' => ret "step_tag_ok" (State f pct' Sskip k e m)
-      | None => ret "step_tag_fail" (Failstop) (* anaaktge see rule being invoked 
-              this is a control point. you can see it called on pc tag, comes back
-              with new pc tag or none 
-              return failstop w/ info 
-              call to rule needs to return something 
-              where in the program it occured ?
-              yes and i want the rule
-              module fn interact that returns 
-              API 
-              
-              rule from ktag is the ifjoint at line 2219*)
-      end
 
   | State f pct (Sifthenelse a s1 s2) k e m =>
       ret "step_ifthenelse_1" (ExprState f pct a (Kifthenelse s1 s2 k) e m)
@@ -2541,7 +2526,7 @@ Definition do_initial_state (p: program): option (Genv.t (Ctypes.fundef function
 Definition at_final_state (S: Csem.state): option (PolicyResult int) :=
   match S with
   | Returnstate _ (Vint r,_) Kstop m => Some (PolicySuccess r)
-  | Failstop => Some (PolicyFail "test" [])
+  | Failstop r params => Some (PolicyFail r params )
   | _ => None
   end.
 

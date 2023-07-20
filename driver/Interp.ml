@@ -186,8 +186,19 @@ let print_state p (prog, ge, s) =
               print_val (fst res)
   | Csem.Stuckstate ->
       fprintf p "stuck after an undefined expression"
-  | Csem.Failstop ->
-      fprintf p "failstop"
+  | Csem.Failstop(r, params) ->
+      fprintf p "@[failstop on policy @ %s@]@." (String.of_seq (List.to_seq r))
+      (*  anaaktge 
+          Notes 
+          We need a function that converts tags to strings in ocaml
+          fprintf p (String.concat"@[<1>%failstop =@ %s@]@." 
+                  (List.map fn_tags_to_str params)) r
+          https://ocaml.org/docs/formatting-text
+          https://stackoverflow.com/questions/9134929/print-a-list-in-ocaml
+          r is char list, not string...
+            https://stackoverflow.com/questions/29957418/how-to-convert-char-list-to-string-in-ocaml 
+
+      *)
 
 (* Comparing memory states *)
 
@@ -268,7 +279,7 @@ let rank_state = function
   | Csem.Callstate _ -> 2
   | Csem.Returnstate _ -> 3
   | Csem.Stuckstate -> assert false
-  | Csem.Failstop -> 4
+  | Csem.Failstop _ -> 4
 
 let mem_state = function
   | Csem.State(f, pct, s, k, e, m) -> m
@@ -276,7 +287,8 @@ let mem_state = function
   | Csem.Callstate(fd, pct, args, k, m) -> m
   | Csem.Returnstate(pct, res, k, m) -> m
   | Csem.Stuckstate -> assert false
-  | Csem.Failstop -> assert false
+  | Csem.Failstop(r, params) -> assert false 
+  (* SNA: shoud this change beyond the args? *)
 
 let compare_state s1 s2 =
   if s1 == s2 then 0 else
@@ -553,11 +565,12 @@ let do_step p prog ge time s w =
       | All -> []
       | First | Random -> exit (Int32.to_int (camlint_of_coqint r))
       end
-  | Some (Pol.PolicyFail (n,ts)) ->
+  | Some (Pol.PolicyFail (r,params)) ->
       if !trace >= 1 then
          (* anaaktge printing in the failstop *)
-         fprintf p "@[<hov 2>Failstop@]@.";
-         exit 0 (* anaaktge *)
+         fprintf p "@[<hov 2>Failstop on policy %s @]@." 
+            (String.of_seq (List.to_seq r));
+         exit 0
 
   | None ->
       let l = Cexec.do_step ge do_external_function (*do_inline_assembly*) w s in
