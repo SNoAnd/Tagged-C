@@ -399,6 +399,14 @@
               \PCT,\mem,\tenv,\val{v'}{\vt'}\)}}
 
 % rred_binop
+\newcommand{\binopstepnolabel}
+{\judgmenttwobrlong[]{\(v_1 \left\langle \oplus \right\rangle v_2 = v'\)}
+  {\(\trule{\binoptres}{\binopt}\)}
+  {\(\expr = \binop{\oplus}{(\val{v_1}{\vt_1})}{(\val{v_2}{\vt_2})}\)}
+  {\(\PCT,\mem,\tenv,\expr
+    \Rightarrow_\rh
+    \PCT,\mem,\tenv,\val{v'}{\vt'}\)}}
+
 \newcommand{\binopstep}
 {\judgmenttwobrlong[RredBinop]{\(v_1 \left\langle \oplus \right\rangle v_2 = v'\)}
   {\(\trule{\binoptres}{\binopt}\)}
