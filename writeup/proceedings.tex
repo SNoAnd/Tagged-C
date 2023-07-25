@@ -117,7 +117,7 @@ To address these problems, we introduce a \emph{source-level} specification fram
 which allows engineers to describe policies in terms of familiar C-level concepts, with tags attached to
 C functions, variables and data values, and rules triggered at \emph{control points} that correspond to
 significant execution events, such as function calls, expression evaluation, and pointer-based memory accesses. 
-Control points resemble ``advice points'' in aspect-oriented programming, but the ``advice''
+Control points resemble ``join points'' in aspect-oriented programming, but the ``advice''
 in this case can only take the form of manipulating tags, not data.
 In previous work on the Tagine project~\cite{Chhak21:Tagine}, we outlined such a framework for a toy
 source language and showed how high-level policies could be compiled to ISA-level policies and 
@@ -710,7 +710,7 @@ location tag.
 
 \end{tikzpicture}
 
-\caption{Memory Safety and Pointer Casts, Tracing {\tt y} and {\tt r}. (Assume {\tt int} and pointers are 32 bits.)
+\caption{Memory safety and pointer casts, tracing {\tt y} and {\tt r}. (Assume {\tt int} and pointers are 32 bits.)
 Line (5) is always legal, (6) is illegal in CompCert C, (7) is also illegal in PVI, and (8) is illegal in all models.}
 \label{fig:memsafe}
 \end{figure}
@@ -855,9 +855,8 @@ effectively required for most software to function yet represent a supply-chain 
 them prevents vulnerabilities in the library from compromising critical code,
 and limits the tools available to attackers in the event of a compromise.
 
-Let's assume that we have been given a compartmentalization policy, with at least two compartments, to add to the system
-after development. The compartments and what belongs in them are represented in the policy by a set of compartment identifiers that 
-are ranged over by \(C\), and a set of function and global identifiers mapped to compartments identified by \(\mathit{comp}(id)\).
+Assume we have been given a compartmentalization policy, with at least two compartments, to add to the system
+after development. The compartments and what belongs in them are represented in the policy by a set of compartment identifiers, ranged over by \(C\), and a map from function and global identifiers to compartments, written as \(\mathit{comp}(id)\).
 
 \paragraph*{Implementation}
 
@@ -963,6 +962,7 @@ which global variables they can access, and with which other compartments they c
 memory.
 
 \subsection{Secure Information Flow}
+\label{sec:SIF}
 
 Finally, we return to the family of 
 {\em secure information flow} (SIF)~\cite{Denning77:SecureInformationFlow} policies
@@ -1016,7 +1016,7 @@ errors or undefined behaviors.
     (l3.north) |- (table3.west);  
 
 \end{tikzpicture}
-\caption{Not an Implicit Flow}
+\caption{Not an Implicit Flow\apt{missing usual background shading; spurious comma in first box(?)}}
 \label{fig:sifex3}
 \end{figure}
 
@@ -1095,7 +1095,7 @@ if it wasn't already.
 %in the presence of goto, break, and continue statements, the join point of a conditional might be
 %arbitrarily distant from the split point.
 The internal syntactic form of each conditional statement (if, switch, while, do-while, and for)
-takes this label (optionally, since there might be a join point).
+takes this label (optionally, since there might \apt{``not'' (??)} be a join point).
 If the conditional branches on a high value, \(\splittname\) adds the label to the set
 in the PC tag. Later, when execution reaches a label, \(\labeltname\) deletes it from the
 set. If the set is non-empty, there is at least one high split point that has not
@@ -1210,9 +1210,9 @@ by dedicated circuits to perform simple operations, like equality comparison.
 
 A compiler from Tagged C must apply a policy that protects the basic control-flow and
 private data of the language (the ``baseline'' policy), and can also embed a high-level
-policy. We will write low-level tags in orange, tags and rules inherited from the high-level
+policy. We will write low-level tags in orange\apt{doesn't show well in B\&W}, tags and rules inherited from the high-level
 policy, still in blue. This embedding strategy centers around the low-level instruction tags.
-Consider the simple function in \cref{fig:compile}, and the result of compiling it to a simplified
+Consider the simple function in \cref{fig:compilation}, and the result of compiling it to a simplified
 RISC-V-like assembly with a non-optimizing compiler.
 
 %When compiling a policy from Tagged C to run alongside
@@ -1281,18 +1281,21 @@ most of the tag size for the source-level policy. [Cite that one guy's work on t
 
 Aspect-oriented Programming (AOP) aims to separate disparate concerns ({\em aspects}),
 that cannot be localized inside modules, such as security and logging \cite{Kiczales97:AOP}. % OG paper
-An AOP language distributes {\em advice points} throughout its semantics,
+An AOP language distributes {\em join points}\footnote{Not to be confused with the control-flow graph join points
+discussed in \cref{sec:SIF}.}
+throughout its semantics, 
 and the programmer separately writes {\em advice} in the form of
-additional code that should execute before or after the advice point. The compiler
+additional code that should execute before or after various join points according to
+a {\em pointcut} specification. The compiler
 then {\em weaves} the advice together with the main code. 
-Advice points are conceptually very similar to our notion of control points, 
-but advice is arbitrary code that can affect the main program's state,
-whereas tag rules are constrained to inspect tags and are evaluated separately
+Our control points are conceptually very similar to join points, 
+and tag rules combine the roles of pointcuts and advice.
+However, whereas advice is arbitrary code that can affect the main program's state,
+tag rules are constrained to inspect only tags and are evaluated separately
 from the system being monitored; they cannot interfere in the execution except to cause a failstop.
 This means that
-Tagged C policies cannot ``correct'' bad behavior, but also
-that attaching a given policy to any program in Tagged C will never result
-in a regression, only potential failstops.
+Tagged C policies cannot ``correct'' bad behavior; on the other hand, they also cannot introduce
+new bad behavior, only potential failstops. 
 
 C runtime verification (RV) systems such as {\sc Rmor}~\cite{Havelund08:RVC} and
 SLIC~\cite{Ball02:slic}
@@ -1344,7 +1347,7 @@ The way Tagged C currently handles {\tt malloc} is unsatisfactory. First, there 
 easy way to distinguish different static {\tt malloc} call locations; our use of
 variant names (\cref{sec:compartments}) is something of a hack.
 A more principled solution might draw on pointcuts to identify specific calls to {\tt malloc}
-as in Havelund \cite{Havelund08:RVC}.
+as in {\sc Rmor}~\cite{Havelund08:RVC}.
 %  would probably involve building a general mechanism for identifying particular
 %  static points within functions, but we have so far intentionally avoided this.
 %  \apt{Need to add something earlier in the paper about our rationale for attaching rules
