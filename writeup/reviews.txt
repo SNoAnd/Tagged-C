@@ -37,15 +37,14 @@ It is quite similar for memory safety: I **believe** that it is fine, but I cann
 - Related Work: I think the part about (RV of) C code is a bit weak. Even if I am not aware of work such as yours, you could present a few works that specifically target the security properties that are investigated in your paper: memory safety, SIF, compartmentalization. I know no work about compartmentalization, but it does not mean that it does not exist :). For memory safety and SIF, several works do exist.
 
 Typos:
-p3: [23],[24] --> [23, 24]
-p3: appear --> appears (last line of Sec. 1)
-p5: \it{binoptname} --> BinOpT (probably \binoptname is a LaTeX macro)
-p7, Tbl 1: oads --> loads
-p7: formal rules: LaTeX's overfull hbox
-p8: in Section 4 --> in Section 4. (dot missing at the end of the sentence)
-p9: toogether --> together
-p10: (Section 4.1) --> (Fig. 7)
-
+FIXED p3: [23],[24] --> [23, 24]
+FIXED p3: appear --> appears (last line of Sec. 1)
+FIXED p5: \it{binoptname} --> BinOpT (probably \binoptname is a LaTeX macro)
+FIXED p7, Tbl 1: oads --> loads
+FIXED p7: formal rules: LaTeX's overfull hbox
+FIXED p8: in Section 4 --> in Section 4. (dot missing at the end of the sentence)
+FIXED p9: toogether --> together
+FIXED p10: (Section 4.1) --> (Fig. 7)
 
 
 ----------------------- REVIEW 2 ---------------------
@@ -73,8 +72,13 @@ The paper is well-written and easy to follow. The introductory examples are clea
 ============
 Weaknesses
 ============
-The experimental section is not very strong. First, the implementation seems to be not available. It is unclear how this approach can be applied to real programs. As the author also pointed out in Section 6, the control points is quite manually created and it is possible that it will fail to conduct the enforcement since the set of control points is too limited. Furthermore, for security policy enforcement, the authors should also compare with other approaches such as faceted evaluation [ref], which can also force failstop when the insecure information flow (i.e., H->L) happens. The comparison is important because faceted evaluation can also guarantee secure information flow (SIF). 
+The experimental section is not very strong.
 
+First, the implementation seems to be not available. It is unclear how this approach can be applied to real programs.
+
+ADDRESSED with "Selecting Control Points" - As the author also pointed out in Section 6, the control points is quite manually created and it is possible that it will fail to conduct the enforcement since the set of control points is too limited.
+
+Furthermore, for security policy enforcement, the authors should also compare with other approaches such as faceted evaluation [ref], which can also force failstop when the insecure information flow (i.e., H->L) happens. The comparison is important because faceted evaluation can also guarantee secure information flow (SIF). 
 
 [ref] Austin, Thomas H., and Cormac Flanagan. "Multiple facets for dynamic information flow." Proceedings of the 39th annual ACM SIGPLAN-SIGACT symposium on Principles of programming languages. 2012.
 
@@ -90,9 +94,9 @@ Comments for author(s)
 
 
 Typos: 
-Section1, last paragraph: 			descibes -> describes 
-Section2, one to the last paragraph: 	ommitting -> omitting 
-Section4, first paragraph: 			toogether -> together
+FIXED Section1, last paragraph: 			descibes -> describes 
+FIXED Section2, one to the last paragraph: 	ommitting -> omitting 
+FIXED Section4, first paragraph: 			toogether -> together
 
 
 
@@ -134,10 +138,10 @@ Minor points:
 
 - Again, the claim that we can use this approach for MAC leaves me wondering how much complexity we can encode in tags
 
-- “prooperties" typo
+FIXED - “prooperties" typo
 
 - I think you’re implying that you haven’t done the Proofs you want to do. Please just say that. If that’s not the case then this bit needs to be clearer.
 
 - Are there alternatives to PIPE? This is hard to ask as the details are missing from the paper but could something like CHERI be used for a limited subset of tags that apply only to locations/pointers? Can you compile to a software implementation for execution on non-PIPE-supported processors? 
 
-- The paper ends abruptly. Usually, it’s kind to the reader to spend a paragraph “Concluding” i.e. reminding me what you think you just told me
+FIXED (could do more) - The paper ends abruptly. Usually, it’s kind to the reader to spend a paragraph “Concluding” i.e. reminding me what you think you just told me
