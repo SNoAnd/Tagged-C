@@ -1862,7 +1862,7 @@ Proof.
 - (* condition *) constructor. destruct b; auto. destruct b; auto. red; auto.
 - (* sizeof *)  unfold size_t, Vofptrsize; destruct Archi.ptr64; constructor; auto with ty.
 - (* alignof *)  unfold size_t, Vofptrsize; destruct Archi.ptr64; constructor; auto with ty.
-- (* assign *) inversion H6. constructor. eapply wt_assign_loc in H2; eauto. eapply pres_sem_cast; eauto. inv H7. auto.
+- (* assign *) inversion H6. constructor. eapply wt_assign_loc in H3; eauto. eapply pres_sem_cast; eauto. inv H8. auto.
 - (* assignop *) subst tyres l r. constructor. auto.
   constructor. constructor. eapply wt_deref_loc in H; eauto.
   auto. auto. auto.
@@ -1895,7 +1895,7 @@ Proof.
   subst. constructor.
   destruct vargs0; try discriminate. simpl in H5. inv H5.
   destruct vargs0; try discriminate. simpl in H10. inv H10.
-  destruct vargs0; try discriminate. simpl in H11. inv H11.
+  destruct vargs0; try discriminate. simpl in H9. inv H9.
   destruct vargs0; try discriminate.
   inv H1.
   assert (C: val_casted v' ty).
@@ -2090,19 +2090,19 @@ with wt_stmt_cont: typenv -> function -> cont -> Prop :=
       wt_stmt_cont te f (Kswitch2 k)
   | wt_Kstop': forall te f,
       wt_stmt_cont te f Kstop
-  | wt_Kcall': forall te f f' e C ty k,
-      wt_call_cont (Kcall f' e C ty k) ty ->
+  | wt_Kcall': forall te f f' e pct C ty k,
+      wt_call_cont (Kcall f' e pct C ty k) ty ->
       ty = f.(fn_return) ->
-      wt_stmt_cont te f (Kcall f' e C ty k)
+      wt_stmt_cont te f (Kcall f' e pct C ty k)
 
 with wt_call_cont: cont -> type -> Prop :=
   | wt_Kstop: forall ty,
       wt_call_cont Kstop ty
-  | wt_Kcall: forall te f e C ty k,
+  | wt_Kcall: forall te f e pct C ty k,
       wt_expr_cont te f k ->
       wt_stmt ce te f.(fn_return) f.(fn_body) ->
       (forall v vt, wt_val v ty -> wt_rvalue ce te (C (Eval (v,vt) ty))) ->
-      wt_call_cont (Kcall f e C ty k) ty.
+      wt_call_cont (Kcall f e pct C ty k) ty.
 
 Lemma is_wt_call_cont:
   forall te f k,
@@ -2232,10 +2232,10 @@ Proof.
   eapply wt_rred; eauto. change (wt_expr_kind ce te RV a). eapply wt_subexpr; eauto.
 - (* call *)
   assert (A: wt_expr_kind ce te RV a) by (eapply wt_subexpr; eauto).
-  simpl in A. inv H. inv A. simpl in H9; rewrite H4 in H9; inv H9.
+  simpl in A. inv H. inv A. simpl in H10; rewrite H5 in H10; inv H10.
   assert (fundef_return fd = ty).
   { destruct fd; simpl in *.
-    unfold type_of_function in H3. congruence.
+    unfold type_of_function in H4. congruence.
     congruence. }
   econstructor.
   rewrite H. econstructor; eauto.
@@ -2282,7 +2282,7 @@ Proof.
 - inv WTK; eauto with ty.
 - econstructor. eapply call_cont_wt; eauto. constructor.
 - inv WTS. eauto with ty.
-- inv WTK. destruct v2. econstructor. eapply call_cont_wt; eauto.
+- inv WTK. econstructor. eapply call_cont_wt; eauto.
   inv WTE. eapply pres_sem_cast; eauto.
 - econstructor. eapply is_wt_call_cont; eauto. constructor.
 - inv WTS; eauto with ty.

@@ -136,26 +136,24 @@ Definition find_funct (ge: t) (v: val) : option F :=
 
 (** [invert_symbol ge addr] returns the name associated with the given address, if any *)
 
-Definition invert_symbol (ge: t) (bofs: block + ptrofs) : option ident :=
-  match bofs with
-  | inl b =>
-      PTree.fold
-        (fun res id stuff =>
-           match stuff with
-           | inr (base,bound,pt) => res
-           | inl (b',t) => if (b =? b')%positive then Some id else res
-           end) ge.(genv_symb) None
-  | inr ofs =>
-      let z := Ptrofs.signed ofs in
-      PTree.fold
-        (fun res id stuff =>
-           match stuff with
-           | inr (base,bound,pt) =>
-               if (base <=? z) && (z <? bound) then Some id else res
-           | inl (b,t) => res
-           end)
-        ge.(genv_symb) None
-  end.
+Definition invert_symbol_block (ge: t) (b: block) : option ident :=
+  PTree.fold
+    (fun res id stuff =>
+       match stuff with
+       | inr (base,bound,pt) => res
+       | inl (b',t) => if (b =? b')%positive then Some id else res
+       end) ge.(genv_symb) None.
+
+Definition invert_symbol_ofs (ge: t) (ofs: ptrofs) : option ident :=
+  let z := Ptrofs.signed ofs in
+  PTree.fold
+    (fun res id stuff =>
+       match stuff with
+       | inr (base,bound,pt) =>
+           if (base <=? z) && (z <? bound) then Some id else res
+       | inl (b,t) => res
+       end)
+    ge.(genv_symb) None.
 
 (** [find_var_info ge addr] returns the information attached to the variable
    at address [ofs]. *)
@@ -499,14 +497,15 @@ Qed.*)
 
 Theorem invert_find_symbol_block:
   forall ge id b,
-    invert_symbol ge (inl b) = Some id ->
+    invert_symbol_block ge b = Some id ->
     exists t, find_symbol ge id = Some (inl (b,t)).
 Admitted.
 
 Theorem invert_find_symbol_ofs:
   forall ge id ofs,
-    invert_symbol ge (inr ofs) = Some id ->
-    exists bound t, find_symbol ge id = Some (inr (Ptrofs.signed ofs,bound,t)).
+    invert_symbol_ofs ge ofs = Some id ->
+    exists base bound pt, find_symbol ge id = Some (inr (base,bound,pt)) /\
+                            base <= (Ptrofs.unsigned ofs) /\ (Ptrofs.unsigned ofs) < bound.
 Admitted.
 (*Proof.
   intros until b; unfold find_symbol, invert_symbol.

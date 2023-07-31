@@ -411,7 +411,7 @@ Inductive estep: Csem.state -> trace -> Csem.state -> Prop :=
       Genv.find_funct (fst ge) vf = Some fd ->
       type_of_fundef fd = Tfunction targs tres cconv ->
       estep (ExprState f PCT (C (Ecall rf rargs ty)) k e m)
-         E0 (Callstate fd PCT' vargs (Kcall f e C ty k) m)
+         E0 (Callstate fd PCT' vargs (Kcall f e PCT C ty k) m)
 
   | step_builtin: forall f C ef tyargs rargs ty k e m PCT PCT' vargs t vres m',
       leftcontext RV RV C ->

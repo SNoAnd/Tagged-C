@@ -227,7 +227,6 @@ let rank_cont = function
   | Csem.Kswitch2 _ -> 12
   | Csem.Kreturn _ -> 13
   | Csem.Kcall _ -> 14
-  | Csem.Ktag _ -> 15
 
 let rec compare_cont k1 k2 =
   if k1 == k2 then 0 else
@@ -265,8 +264,8 @@ let rec compare_cont k1 k2 =
       if c <> 0 then c else compare_cont k1 k2
   | Csem.Kreturn k1, Csem.Kreturn k2 ->
       compare_cont k1 k2
-  | Csem.Kcall(f1, e1, c1, ty1, k1), Csem.Kcall(f2, e2, c2, ty2, k2) ->
-      let c = compare (f1, e1, c1 some_expr, ty1) (f2, e2, c2 some_expr, ty2) in
+  | Csem.Kcall(f1, e1, pct1, c1, ty1, k1), Csem.Kcall(f2, e2, pct2, c2, ty2, k2) ->
+      let c = compare (f1, e1, pct1, c1 some_expr, ty1) (f2, e2, pct2, c2 some_expr, ty2) in
       if c <> 0 then c else compare_cont k1 k2
   | _, _ ->
       compare (rank_cont k1) (rank_cont k2)
@@ -445,7 +444,7 @@ let rec convert_external_args ge vl tl =
       convert_external_args ge vl tyl >>= fun el -> Some (e1 :: el)
   | _, _ -> None
 
-let do_external_function id sg ge w args m =
+let do_external_function id sg ge w args pct m =
   match camlstring_of_coqstring id, args with
   | "printf", (Vlong ofs,pt) :: args' ->
       extract_string m ofs >>= fun fmt ->
@@ -454,7 +453,7 @@ let do_external_function id sg ge w args m =
       Format.print_string fmt';
       flush stdout;
       convert_external_args ge args sg.sig_args >>= fun eargs ->
-      Some(((w, [Events.Event_syscall(id, eargs, Events.EVint (len,Pol.def_tag))]), (Vint len,Pol.def_tag)), m)
+      Some((((w, [Events.Event_syscall(id, eargs, Events.EVint (len,Pol.def_tag))]), (Vint len,Pol.def_tag)), pct), m)
   | _ ->
       None
 
@@ -532,7 +531,7 @@ let diagnose_stuck_expr p ge w f a kont pct e m =
     | Csem.RV, Csyntax.Ebuiltin(ef, tyargs, rargs, ty) -> diagnose_list rargs
     | _, _ -> false in
   if found then true else begin
-    let l = Cexec.step_expr ge (*do_external_function do_inline_assembly*) e w k pct a m in
+    let l = Cexec.step_expr ge do_external_function (*do_inline_assembly*) e w k pct a m in
     if List.exists (fun (ctx,red) -> red = Cexec.Stuckred) l then begin
       Printing.print_pointer_hook := print_pointer (fst ge) e;
       fprintf p "@[<hov 2>Stuck subexpression:@ %a@]@."

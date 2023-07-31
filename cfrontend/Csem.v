@@ -212,9 +212,9 @@ Fixpoint seq_of_labeled_statement (sl: labeled_statements) : statement :=
 Inductive cast_arguments (m: mem): exprlist -> typelist -> list atom -> Prop :=
   | cast_args_nil:
       cast_arguments m Enil Tnil nil
-  | cast_args_cons: forall v ty el targ1 targs v1 vl,
-      sem_cast (fst v) ty targ1 m = Some v1 -> cast_arguments m el targs vl ->
-      cast_arguments m (Econs (Eval v ty) el) (Tcons targ1 targs) ((v1, snd v) :: vl).
+  | cast_args_cons: forall v vt ty el targ1 targs v1 vl,
+      sem_cast v ty targ1 m = Some v1 -> cast_arguments m el targs vl ->
+      cast_arguments m (Econs (Eval (v,vt) ty) el) (Tcons targ1 targs) ((v1, vt) :: vl).
 
 (** ** Reduction semantics for expressions *)
 
@@ -245,22 +245,12 @@ Inductive lred: expr -> mem -> expr -> mem -> Prop :=
 | red_deref_long: forall ofs vt ty1 ty m,
     lred (Ederef (Eval (Vlong ofs,vt) ty1) ty) m
          (Eloc (Ptrofs.of_int64 ofs) vt Full ty) m
-| red_field_struct_short: forall ofs vt id co a f ty m delta bf,
-    (snd ge)!id = Some co ->
-    field_offset (snd ge) f (co_members co) = OK (delta, bf) ->
-    lred (Efield (Eval (Vint ofs, vt) (Tstruct id a)) f ty) m
-         (Eloc (Ptrofs.add (Ptrofs.of_int ofs) (Ptrofs.repr delta)) vt bf ty) m
-| red_field_struct_long: forall ofs vt id co a f ty m delta bf,
+| red_field_struct: forall ofs vt id co a f ty m delta bf,
     (snd ge)!id = Some co ->
     field_offset (snd ge) f (co_members co) = OK (delta, bf) ->
     lred (Efield (Eval (Vlong ofs, vt) (Tstruct id a)) f ty) m
          (Eloc (Ptrofs.add (Ptrofs.of_int64 ofs) (Ptrofs.repr delta)) vt bf ty) m
-| red_field_union_short: forall ofs vt id co a f ty m delta bf,
-    (snd ge)!id = Some co ->
-    union_field_offset (snd ge) f (co_members co) = OK (delta, bf) ->
-    lred (Efield (Eval (Vint ofs, vt) (Tunion id a)) f ty) m
-         (Eloc (Ptrofs.add (Ptrofs.of_int ofs) (Ptrofs.repr delta)) vt bf ty) m
-| red_field_union_long: forall ofs vt id co a f ty m delta bf,
+| red_field_union: forall ofs vt id co a f ty m delta bf,
     (snd ge)!id = Some co ->
     union_field_offset (snd ge) f (co_members co) = OK (delta, bf) ->
     lred (Efield (Eval (Vlong ofs, vt) (Tunion id a)) f ty) m
@@ -316,13 +306,14 @@ Inductive rred (PCT:tag) : expr -> mem -> trace -> tag -> expr -> mem -> Prop :=
 | red_alignof: forall ty1 ty m vt,
     rred PCT (Ealignof ty1 ty) m E0
          PCT (Eval (Vofptrsize (alignof (snd ge) ty1), vt) ty) m
-| red_assign: forall ofs ty1 pt bf v1 ovt v2 vt2 ty2 m v vt t1 t2 m' v' vt' lts lts',
-    sem_cast v2 ty2 ty1 m = Some v ->
-    deref_loc ty1 m ofs pt bf t1 (v1,ovt) lts ->
-    StoreT PCT pt vt lts = PolicySuccess (PCT, vt', lts') ->
-    assign_loc ty1 m ofs pt bf (v,vt) t2 m' (v',vt) lts' ->
+| red_assign: forall ofs ty1 pt bf v1 vt1 v2 vt2 ty2 m t1 t2 m' v' PCT' vt' PCT'' vt'' lts lts',
+    sem_cast v2 ty2 ty1 m = Some v' ->
+    deref_loc ty1 m ofs pt bf t1 (v1,vt1) lts ->
+    AssignT PCT vt1 vt2 = PolicySuccess (PCT',vt') ->
+    StoreT PCT' pt vt' lts = PolicySuccess (PCT'', vt'', lts') ->
+    assign_loc ty1 m ofs pt bf (v',vt'') t2 m' (v',vt'') lts' ->
     rred PCT (Eassign (Eloc ofs pt bf ty1) (Eval (v2, vt2) ty2) ty1) m t2
-         PCT (Eval (v',vt') ty1) m'
+         PCT'' (Eval (v',vt'') ty1) m'
 | red_assignop: forall op ofs pt ty1 bf v2 ty2 tyres m t v1 vt1 vt1' lts,
     deref_loc ty1 m ofs pt bf t (v1,vt1) lts ->
     LoadT PCT pt vt1 lts = PolicySuccess vt1' -> (* Do we want to do this in this order? *)
@@ -358,13 +349,14 @@ Inductive rred (PCT:tag) : expr -> mem -> trace -> tag -> expr -> mem -> Prop :=
     (More exactly, identification of function calls that can reduce.) *)
 
 Inductive callred: tag -> expr -> mem -> tag -> fundef -> list atom -> type -> Prop :=
-  | red_call: forall PCT vf vft tyf m tyargs tyres cconv el ty fd vargs,
+  | red_call: forall PCT PCT' vf vft tyf m tyargs tyres cconv el ty fd vargs,
       Genv.find_funct (fst ge) vf = Some fd ->
       cast_arguments m el tyargs vargs ->
+      CallT PCT vft = PolicySuccess PCT' ->
       type_of_fundef fd = Tfunction tyargs tyres cconv ->
       classify_fun tyf = fun_case_f tyargs tyres cconv ->
       callred PCT (Ecall (Eval (vf,vft) tyf) el ty) m
-              PCT fd vargs ty.
+              PCT' fd vargs ty.
 
 (** Reduction contexts.  In accordance with C's nondeterministic semantics,
   we allow reduction both to the left and to the right of a binary operator.
@@ -556,10 +548,10 @@ Inductive cont: Type :=
 | Kreturn: cont -> cont        (**r [Kreturn k] = after [e] in [return e;] *)
 | Kcall: function ->           (**r calling function *)
          env ->                (**r local env of calling function *)
+         tag ->                (**r PC tag before call *)
          (expr -> expr) ->     (**r context of the call *)
          type ->               (**r type of call expression *)
-         cont -> cont
-| Ktag: (tag -> option tag) -> cont -> cont.
+         cont -> cont.
 
 (** Pop continuation until a call or stop *)
 
@@ -579,14 +571,13 @@ Fixpoint call_cont (k: cont) : cont :=
   | Kswitch1 ls k => call_cont k
   | Kswitch2 k => call_cont k
   | Kreturn k => call_cont k
-  | Kcall _ _ _ _ _ => k
-  | Ktag _ k => call_cont k
+  | Kcall _ _ _ _ _ _ => k
   end.
 
 Definition is_call_cont (k: cont) : Prop :=
   match k with
   | Kstop => True
-  | Kcall _ _ _ _ _ => True
+  | Kcall _ _ _ _ _ _ => True
   | _ => False
   end.
 
@@ -683,11 +674,11 @@ This makes it easy to express different reduction strategies for expressions:
 the second group of rules can be reused as is. *)
 
 Inductive estep: state -> trace -> state -> Prop :=
-| step_lred: forall C f PCT PCT' a k e m a' m',
+| step_lred: forall C f PCT a k e m a' m',
     lred e a m a' m' ->
     context LV RV C ->
     estep (ExprState f PCT (C a) k e m)
-          E0 (ExprState f PCT' (C a') k e m')
+          E0 (ExprState f PCT (C a') k e m')
 | step_rred: forall C f PCT PCT' a k e m t a' m',
     rred PCT a m t PCT' a' m' ->
     context RV RV C ->
@@ -697,7 +688,7 @@ Inductive estep: state -> trace -> state -> Prop :=
     callred PCT a m PCT' fd vargs ty ->
     context RV RV C ->
     estep (ExprState f PCT (C a) k e m)
-          E0 (Callstate fd PCT' vargs (Kcall f e C ty k) m)
+          E0 (Callstate fd PCT' vargs (Kcall f e PCT C ty k) m)
 | step_stuck: forall C f PCT a k e m K,
     context K RV C -> ~(imm_safe e K a m) ->
     estep (ExprState f PCT (C a) k e m)
@@ -736,23 +727,23 @@ Inductive sstep: state -> trace -> state -> Prop :=
     bool_val v ty m = Some b ->
     SplitT PCT vt None = PolicySuccess PCT' ->
     sstep (ExprState f PCT (Eval (v,vt) ty) (Kifthenelse s1 s2 k) e m)
-          E0 (State f PCT (if b then s1 else s2) k e m)
-| step_ifthenelse_2_fail:  forall f PCT PCT' v vt ty s1 s2 k e m b,
+          E0 (State f PCT' (if b then s1 else s2) k e m)
+| step_ifthenelse_2_fail:  forall f PCT msg ts v vt ty s1 s2 k e m b,
     bool_val v ty m = Some b ->
-    SplitT PCT vt None = PolicySuccess PCT' ->
+    SplitT PCT vt None = PolicyFail msg ts ->
     sstep (ExprState f PCT (Eval (v,vt) ty) (Kifthenelse s1 s2 k) e m)
-          E0 (Failstop "dummy msg" []) (* dummies to hold spot/typecheck*)
+          E0 (Failstop msg ts)
 
 | step_while: forall f PCT x s k e m,
     sstep (State f PCT (Swhile x s) k e m)
           E0 (ExprState f PCT x (Kwhile1 x s k) e m)
-| step_while_false: forall f PCT v ty x s k e m,
-    bool_val (fst v) ty m = Some false ->
-    sstep (ExprState f PCT (Eval v ty) (Kwhile1 x s k) e m)
+| step_while_false: forall f PCT v vt ty x s k e m,
+    bool_val v ty m = Some false ->
+    sstep (ExprState f PCT (Eval (v,vt) ty) (Kwhile1 x s k) e m)
           E0 (State f PCT Sskip k e m)
-| step_while_true: forall f PCT v ty x s k e m ,
-    bool_val (fst v) ty m = Some true ->
-    sstep (ExprState f PCT (Eval v ty) (Kwhile1 x s k) e m)
+| step_while_true: forall f PCT v vt ty x s k e m ,
+    bool_val v ty m = Some true ->
+    sstep (ExprState f PCT (Eval (v,vt) ty) (Kwhile1 x s k) e m)
           E0 (State f PCT s (Kwhile2 x s k) e m)
 | step_skip_or_continue_while: forall f PCT s0 x s k e m,
     s0 = Sskip \/ s0 = Scontinue ->
@@ -769,13 +760,13 @@ Inductive sstep: state -> trace -> state -> Prop :=
     s0 = Sskip \/ s0 = Scontinue ->
     sstep (State f PCT s0 (Kdowhile1 x s k) e m)
           E0 (ExprState f PCT x (Kdowhile2 x s k) e m)
-| step_dowhile_false: forall f PCT v ty x s k e m,
-    bool_val (fst v) ty m = Some false ->
-    sstep (ExprState f PCT (Eval v ty) (Kdowhile2 x s k) e m)
+| step_dowhile_false: forall f PCT v vt ty x s k e m,
+    bool_val v ty m = Some false ->
+    sstep (ExprState f PCT (Eval (v,vt) ty) (Kdowhile2 x s k) e m)
           E0 (State f PCT Sskip k e m)
-| step_dowhile_true: forall f PCT v ty x s k e m,
-    bool_val (fst v) ty m = Some true ->
-    sstep (ExprState f PCT (Eval v ty) (Kdowhile2 x s k) e m)
+| step_dowhile_true: forall f PCT v vt ty x s k e m,
+    bool_val v ty m = Some true ->
+    sstep (ExprState f PCT (Eval (v,vt) ty) (Kdowhile2 x s k) e m)
           E0 (State f PCT (Sdowhile x s) k e m)
 | step_break_dowhile: forall f PCT a s k e m,
     sstep (State f PCT Sbreak (Kdowhile1 a s k) e m)
@@ -788,13 +779,13 @@ Inductive sstep: state -> trace -> state -> Prop :=
 | step_for: forall f PCT a2 a3 s k e m,
     sstep (State f PCT (Sfor Sskip a2 a3 s) k e m)
           E0 (ExprState f PCT a2 (Kfor2 a2 a3 s k) e m)
-| step_for_false: forall f PCT v ty a2 a3 s k e m,
-    bool_val (fst v) ty m = Some false ->
-    sstep (ExprState f PCT (Eval v ty) (Kfor2 a2 a3 s k) e m)
+| step_for_false: forall f PCT v vt ty a2 a3 s k e m,
+    bool_val v ty m = Some false ->
+    sstep (ExprState f PCT (Eval (v,vt) ty) (Kfor2 a2 a3 s k) e m)
           E0 (State f PCT Sskip k e m)
-| step_for_true: forall f PCT v ty a2 a3 s k e m,
-    bool_val (fst v) ty m = Some true ->
-    sstep (ExprState f PCT (Eval v ty) (Kfor2 a2 a3 s k) e m)
+| step_for_true: forall f PCT v vt ty a2 a3 s k e m,
+    bool_val v ty m = Some true ->
+    sstep (ExprState f PCT (Eval (v,vt) ty) (Kfor2 a2 a3 s k) e m)
           E0 (State f PCT s (Kfor3 a2 a3 s k) e m)
 | step_skip_or_continue_for3: forall f PCT x a2 a3 s k e m,
     x = Sskip \/ x = Scontinue ->
@@ -814,11 +805,11 @@ Inductive sstep: state -> trace -> state -> Prop :=
 | step_return_1: forall f PCT x k e m,
     sstep (State f PCT (Sreturn (Some x)) k e m)
           E0 (ExprState f PCT x (Kreturn k) e  m)
-| step_return_2:  forall f PCT v1 ty k e m v2 m',
-    sem_cast (fst v1) ty f.(fn_return) m = Some (fst v2) ->
+| step_return_2:  forall f PCT v vt ty k e m v' m',
+    sem_cast v ty f.(fn_return) m = Some v' ->
     Mem.free_list m (blocks_of_env e) = Some m' ->
-    sstep (ExprState f PCT (Eval v1 ty) (Kreturn k) e m)
-          E0 (Returnstate PCT v2 (call_cont k) m')
+    sstep (ExprState f PCT (Eval (v,vt) ty) (Kreturn k) e m)
+          E0 (Returnstate PCT (v',vt) (call_cont k) m')
 | step_skip_call: forall f PCT k e m m',
     is_call_cont k ->
     Mem.free_list m (blocks_of_env e) = Some m' ->
@@ -828,9 +819,9 @@ Inductive sstep: state -> trace -> state -> Prop :=
 | step_switch: forall f PCT x sl k e m,
     sstep (State f PCT (Sswitch x sl) k e m)
           E0 (ExprState f PCT x (Kswitch1 sl k) e m)
-| step_expr_switch: forall f PCT ty sl k e m v n,
-    sem_switch_arg (fst v) ty = Some n ->
-    sstep (ExprState f PCT (Eval v ty) (Kswitch1 sl k) e m)
+| step_expr_switch: forall f PCT ty sl k e m v vt n,
+    sem_switch_arg v ty = Some n ->
+    sstep (ExprState f PCT (Eval (v,vt) ty) (Kswitch1 sl k) e m)
           E0 (State f PCT (seq_of_labeled_statement (select_switch n sl)) (Kswitch2 k) e m)
 | step_skip_break_switch: forall f PCT x k e m,
     x = Sskip \/ x = Sbreak ->
@@ -861,9 +852,10 @@ Inductive sstep: state -> trace -> state -> Prop :=
     sstep (Callstate (External ef targs tres cc) PCT vargs k m)
           t (Returnstate PCT' vres k m')
 
-| step_returnstate: forall v f PCT e C ty k m,
-    sstep (Returnstate PCT v (Kcall f e C ty k) m)
-          E0 (ExprState f PCT (C (Eval v ty)) k e m)
+| step_returnstate: forall v vt vt' f PCT oldpct PCT' e C ty k m,
+    RetT PCT oldpct vt = PolicySuccess (PCT', vt') ->
+    sstep (Returnstate PCT (v,vt) (Kcall f e oldpct C ty k) m)
+          E0 (ExprState f PCT' (C (Eval (v,vt') ty)) k e m)
 .
 
 Definition step (S: state) (t: trace) (S': state) : Prop :=
