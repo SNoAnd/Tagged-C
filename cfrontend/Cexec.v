@@ -2229,20 +2229,20 @@ Definition do_step (w: world) (s: Csem.state) : list transition :=
                 Sean thinks its ok to do the same here, and itll be replaced in the merge.
                 Confirm after merge this is what we want.  *)
             ret "step_ifthenelse_2" (State f pct (if b then s1 else s2) k e m)
-        | Kwhile1 x s k =>
+        | Kwhile1 loc x s k =>
             do b <- bool_val v ty m;
             if b
-            then ret "step_while_true" (State f pct s (Kwhile2 x s k) e m)
+            then ret "step_while_true" (State f pct s (Kwhile2 loc x s k) e m)
             else ret "step_while_false" (State f pct Sskip k e m)
-        | Kdowhile2 x s k =>
+        | Kdowhile2 loc x s k =>
             do b <- bool_val v ty m;
             if b
-            then ret "step_dowhile_true" (State f pct (Sdowhile x s) k e m)
+            then ret "step_dowhile_true" (State f pct (Sdowhile loc x s) k e m)
             else ret "step_dowhile_false" (State f pct Sskip k e m)
-        | Kfor2 a2 a3 s k =>
+        | Kfor2 loc a2 a3 s k =>
             do b <- bool_val v ty m;
             if b
-            then ret "step_for_true" (State f pct s (Kfor3 a2 a3 s k) e m)
+            then ret "step_for_true" (State f pct s (Kfor3 loc a2 a3 s k) e m)
             else ret "step_for_false" (State f pct Sskip k e m)
         | Kreturn k =>
             do v' <- sem_cast v ty f.(fn_return) m;
@@ -2258,64 +2258,64 @@ Definition do_step (w: world) (s: Csem.state) : list transition :=
           map (expr_final_state f k pct e) (step_expr e w RV pct a m)
       end
 
-  | State f pct (Sdo x) k e m =>
+  | State f pct (Sdo loc x) k e m =>
       ret "step_do_1" (ExprState f pct x (Kdo k) e m)
   | State f pct (Ssequence s1 s2) k e m =>
       ret "step_seq" (State f pct s1 (Kseq s2 k) e m)
   | State f pct Sskip (Kseq s k) e m =>
       ret "step_skip_seq" (State f pct s k e m)
-  | State f pct Scontinue (Kseq s k) e m =>
-      ret "step_continue_seq" (State f pct Scontinue k e m)
-  | State f pct Sbreak (Kseq s k) e m =>
-      ret "step_break_seq" (State f pct Sbreak k e m)
+  | State f pct (Scontinue loc) (Kseq s k) e m =>
+      ret "step_continue_seq" (State f pct (Scontinue loc) k e m)
+  | State f pct (Sbreak loc) (Kseq s k) e m =>
+      ret "step_break_seq" (State f pct (Sbreak loc) k e m)
 
-  | State f pct (Sifthenelse a s1 s2) k e m =>
+  | State f pct (Sifthenelse loc a s1 s2) k e m =>
       ret "step_ifthenelse_1" (ExprState f pct a (Kifthenelse s1 s2 k) e m)
 
-  | State f pct (Swhile x s) k e m =>
-      ret "step_while" (ExprState f pct x (Kwhile1 x s k) e m)
-  | State f pct (Sskip|Scontinue) (Kwhile2 x s k) e m =>
-      ret "step_skip_or_continue_while" (State f pct (Swhile x s) k e m)
-  | State f pct Sbreak (Kwhile2 x s k) e m =>
+  | State f pct (Swhile loc x s) k e m =>
+      ret "step_while" (ExprState f pct x (Kwhile1 loc x s k) e m)
+  | State f pct (Sskip|Scontinue _) (Kwhile2 loc x s k) e m =>
+      ret "step_skip_or_continue_while" (State f pct (Swhile loc x s) k e m)
+  | State f pct (Sbreak _) (Kwhile2 loc x s k) e m =>
       ret "step_break_while" (State f pct Sskip k e m)
 
-  | State f pct (Sdowhile a s) k e m =>
-      ret "step_dowhile" (State f pct s (Kdowhile1 a s k) e m)
-  | State f pct (Sskip|Scontinue) (Kdowhile1 x s k) e m =>
-      ret "step_skip_or_continue_dowhile" (ExprState f pct x (Kdowhile2 x s k) e m)
-  | State f pct Sbreak (Kdowhile1 x s k) e m =>
+  | State f pct (Sdowhile loc a s) k e m =>
+      ret "step_dowhile" (State f pct s (Kdowhile1 loc a s k) e m)
+  | State f pct (Sskip|Scontinue _) (Kdowhile1 loc x s k) e m =>
+      ret "step_skip_or_continue_dowhile" (ExprState f pct x (Kdowhile2 loc x s k) e m)
+  | State f pct (Sbreak _) (Kdowhile1 _ x s k) e m =>
       ret "step_break_dowhile" (State f pct Sskip k e m)
 
-  | State f pct (Sfor a1 a2 a3 s) k e m =>
+  | State f pct (Sfor loc a1 a2 a3 s) k e m =>
       if is_skip a1
-      then ret "step_for" (ExprState f pct a2 (Kfor2 a2 a3 s k) e m)
-      else ret "step_for_start" (State f pct a1 (Kseq (Sfor Sskip a2 a3 s) k) e m)
-  | State f pct (Sskip|Scontinue) (Kfor3 a2 a3 s k) e m =>
-      ret "step_skip_or_continue_for3" (State f pct a3 (Kfor4 a2 a3 s k) e m)
-  | State f pct Sbreak (Kfor3 a2 a3 s k) e m =>
+      then ret "step_for" (ExprState f pct a2 (Kfor2 loc a2 a3 s k) e m)
+      else ret "step_for_start" (State f pct a1 (Kseq (Sfor loc Sskip a2 a3 s) k) e m)
+  | State f pct (Sskip|Scontinue _) (Kfor3 loc a2 a3 s k) e m =>
+      ret "step_skip_or_continue_for3" (State f pct a3 (Kfor4 loc a2 a3 s k) e m)
+  | State f pct (Sbreak _) (Kfor3 _ a2 a3 s k) e m =>
       ret "step_break_for3" (State f pct Sskip k e m)
-  | State f pct Sskip (Kfor4 a2 a3 s k) e m =>
-      ret "step_skip_for4" (State f pct (Sfor Sskip a2 a3 s) k e m)
+  | State f pct Sskip (Kfor4 loc a2 a3 s k) e m =>
+      ret "step_skip_for4" (State f pct (Sfor loc Sskip a2 a3 s) k e m)
 
-  | State f pct (Sreturn None) k e m =>
+  | State f pct (Sreturn loc None) k e m =>
       do m' <- Mem.free_list m (blocks_of_env e);
       ret "step_return_0" (Returnstate pct (Vundef,def_tag) (call_cont k) m')
-  | State f pct (Sreturn (Some x)) k e m =>
+  | State f pct (Sreturn loc (Some x)) k e m =>
       ret "step_return_1" (ExprState f pct x (Kreturn k) e m)
   | State f pct Sskip ((Kstop | Kcall _ _ _ _ _) as k) e m =>
       do m' <- Mem.free_list m (blocks_of_env e);
       ret "step_skip_call" (Returnstate pct (Vundef, def_tag) k m')
 
-  | State f pct (Sswitch x sl) k e m =>
+  | State f pct (Sswitch loc x sl) k e m =>
       ret "step_switch" (ExprState f pct x (Kswitch1 sl k) e m)
-  | State f pct (Sskip|Sbreak) (Kswitch2 k) e m =>
+  | State f pct (Sskip|Sbreak _) (Kswitch2 k) e m =>
       ret "step_skip_break_switch" (State f pct Sskip k e m)
-  | State f pct Scontinue (Kswitch2 k) e m =>
-      ret "step_continue_switch" (State f pct Scontinue k e m)
+  | State f pct (Scontinue loc) (Kswitch2 k) e m =>
+      ret "step_continue_switch" (State f pct (Scontinue loc) k e m)
 
   | State f pct (Slabel lbl s) k e m =>
       ret "step_label" (State f pct s k e m)
-  | State f pct (Sgoto lbl) k e m =>
+  | State f pct (Sgoto loc lbl) k e m =>
       match find_label lbl f.(fn_body) (call_cont k) with
       | Some(s', k') => ret "step_goto" (State f pct s' k' e m)
       | None => nil

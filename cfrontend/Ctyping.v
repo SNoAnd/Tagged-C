@@ -477,42 +477,42 @@ Variable rt: type.
 Inductive wt_stmt: statement -> Prop :=
   | wt_Sskip:
       wt_stmt Sskip
-  | wt_Sdo: forall r,
-      wt_rvalue r -> wt_stmt (Sdo r)
+  | wt_Sdo: forall r loc,
+      wt_rvalue r -> wt_stmt (Sdo loc r)
   | wt_Ssequence: forall s1 s2,
       wt_stmt s1 -> wt_stmt s2 -> wt_stmt (Ssequence s1 s2)
-  | wt_Sifthenelse: forall r s1 s2,
+  | wt_Sifthenelse: forall r s1 s2 loc,
       wt_rvalue r -> wt_stmt s1 -> wt_stmt s2 -> wt_bool (typeof r) ->
-      wt_stmt (Sifthenelse r s1 s2)
-  | wt_Swhile: forall r s,
+      wt_stmt (Sifthenelse loc r s1 s2)
+  | wt_Swhile: forall r s loc,
       wt_rvalue r -> wt_stmt s -> wt_bool (typeof r) ->
-      wt_stmt (Swhile r s)
-  | wt_Sdowhile: forall r s,
+      wt_stmt (Swhile loc r s)
+  | wt_Sdowhile: forall r s loc,
       wt_rvalue r -> wt_stmt s -> wt_bool (typeof r) ->
-      wt_stmt (Sdowhile r s)
-  | wt_Sfor: forall s1 r s2 s3,
+      wt_stmt (Sdowhile loc r s)
+  | wt_Sfor: forall s1 r s2 s3 loc,
       wt_rvalue r -> wt_stmt s1 -> wt_stmt s2 -> wt_stmt s3 ->
       wt_bool (typeof r) ->
-      wt_stmt (Sfor s1 r s2 s3)
-  | wt_Sbreak:
-      wt_stmt Sbreak
-  | wt_Scontinue:
-      wt_stmt Scontinue
-  | wt_Sreturn_none:
-      wt_stmt (Sreturn None)
-  | wt_Sreturn_some: forall r,
+      wt_stmt (Sfor loc s1 r s2 s3)
+  | wt_Sbreak: forall loc,
+      wt_stmt (Sbreak loc)
+  | wt_Scontinue: forall loc,
+      wt_stmt (Scontinue loc)
+  | wt_Sreturn_none: forall loc,
+      wt_stmt (Sreturn loc None)
+  | wt_Sreturn_some: forall r loc,
       wt_rvalue r ->
       wt_cast (typeof r) rt ->
-      wt_stmt (Sreturn (Some r))
-  | wt_Sswitch: forall r ls sg sz a,
+      wt_stmt (Sreturn loc (Some r))
+  | wt_Sswitch: forall r ls sg sz a loc,
       wt_rvalue r ->
       typeof r = Tint sz sg a \/ typeof r = Tlong sg a ->
       wt_lblstmts ls ->
-      wt_stmt (Sswitch r ls)
+      wt_stmt (Sswitch loc r ls)
   | wt_Slabel: forall lbl s,
       wt_stmt s -> wt_stmt (Slabel lbl s)
-  | wt_Sgoto: forall lbl,
-      wt_stmt (Sgoto lbl)
+  | wt_Sgoto: forall lbl loc,
+      wt_stmt (Sgoto loc lbl)
 
 with wt_lblstmts : labeled_statements -> Prop :=
   | wt_LSnil:
@@ -784,29 +784,29 @@ Definition eselection (r1 r2 r3: expr) : res expr :=
   do ty <- type_conditional (typeof r2) (typeof r3);
   OK (Eselection r1 r2 r3 ty).
 
-Definition sdo (a: expr) : res statement :=
-  do x <- check_rval a; OK (Sdo a).
+Definition sdo loc (a: expr) : res statement :=
+  do x <- check_rval a; OK (Sdo loc a).
 
-Definition sifthenelse (a: expr) (s1 s2: statement) : res statement :=
-  do x <- check_rval a; do y <- check_bool (typeof a); OK (Sifthenelse a s1 s2).
+Definition sifthenelse loc (a: expr) (s1 s2: statement) : res statement :=
+  do x <- check_rval a; do y <- check_bool (typeof a); OK (Sifthenelse loc a s1 s2).
 
-Definition swhile (a: expr) (s: statement) : res statement :=
-  do x <- check_rval a; do y <- check_bool (typeof a); OK (Swhile a s).
+Definition swhile loc (a: expr) (s: statement) : res statement :=
+  do x <- check_rval a; do y <- check_bool (typeof a); OK (Swhile loc a s).
 
-Definition sdowhile (a: expr) (s: statement) : res statement :=
-  do x <- check_rval a; do y <- check_bool (typeof a); OK (Sdowhile a s).
+Definition sdowhile loc (a: expr) (s: statement) : res statement :=
+  do x <- check_rval a; do y <- check_bool (typeof a); OK (Sdowhile loc a s).
 
-Definition sfor (s1: statement) (a: expr) (s2 s3: statement) : res statement :=
-  do x <- check_rval a; do y <- check_bool (typeof a); OK (Sfor s1 a s2 s3).
+Definition sfor loc (s1: statement) (a: expr) (s2 s3: statement) : res statement :=
+  do x <- check_rval a; do y <- check_bool (typeof a); OK (Sfor loc s1 a s2 s3).
 
-Definition sreturn (rt: type) (a: expr) : res statement :=
+Definition sreturn loc (rt: type) (a: expr) : res statement :=
   do x <- check_rval a; do y <- check_cast (typeof a) rt;
-  OK (Sreturn (Some a)).
+  OK (Sreturn loc (Some a)).
 
-Definition sswitch (a: expr) (sl: labeled_statements) : res statement :=
+Definition sswitch loc (a: expr) (sl: labeled_statements) : res statement :=
   do x <- check_rval a;
   match typeof a with
-  | Tint _ _ _ | Tlong _ _ => OK (Sswitch a sl)
+  | Tint _ _ _ | Tlong _ _ => OK (Sswitch loc a sl)
   | _ => Error (msg "wrong type for argument of switch")
   end.
 
@@ -895,43 +895,43 @@ Fixpoint retype_stmt (ce: composite_env) (e: typenv) (rt: type) (s: statement) :
   match s with
   | Sskip =>
       OK Sskip
-  | Sdo a =>
-      do a' <- retype_expr ce e a; sdo a'
+  | Sdo loc a =>
+      do a' <- retype_expr ce e a; sdo loc a'
   | Ssequence s1 s2 =>
       do s1' <- retype_stmt ce e rt s1; do s2' <- retype_stmt ce e rt s2; OK (Ssequence s1' s2')
-  | Sifthenelse a s1 s2 =>
+  | Sifthenelse loc a s1 s2 =>
       do a' <- retype_expr ce e a;
       do s1' <- retype_stmt ce e rt s1; do s2' <- retype_stmt ce e rt s2;
-      sifthenelse a' s1' s2'
-  | Swhile a s =>
+      sifthenelse loc a' s1' s2'
+  | Swhile loc a s =>
       do a' <- retype_expr ce e a;
       do s' <- retype_stmt ce e rt s;
-      swhile a' s'
-  | Sdowhile a s =>
+      swhile loc a' s'
+  | Sdowhile loc a s =>
       do a' <- retype_expr ce e a;
       do s' <- retype_stmt ce e rt s;
-      sdowhile a' s'
-  | Sfor s1 a s2 s3 =>
+      sdowhile loc a' s'
+  | Sfor loc s1 a s2 s3 =>
       do a' <- retype_expr ce e a;
       do s1' <- retype_stmt ce e rt s1; do s2' <- retype_stmt ce e rt s2; do s3' <- retype_stmt ce e rt s3;
-      sfor s1' a' s2' s3'
-  | Sbreak =>
-      OK Sbreak
-  | Scontinue =>
-      OK Scontinue
-  | Sreturn None =>
-      OK (Sreturn None)
-  | Sreturn (Some a) =>
+      sfor loc s1' a' s2' s3'
+  | Sbreak loc =>
+      OK (Sbreak loc)
+  | Scontinue loc =>
+      OK (Scontinue loc)
+  | Sreturn loc None =>
+      OK (Sreturn loc None)
+  | Sreturn loc (Some a) =>
       do a' <- retype_expr ce e a;
-      sreturn rt a'
-  | Sswitch a sl =>
+      sreturn loc rt a'
+  | Sswitch loc a sl =>
       do a' <- retype_expr ce e a;
       do sl' <- retype_lblstmts ce e rt sl;
-      sswitch a' sl'
+      sswitch loc a' sl'
   | Slabel lbl s =>
       do s' <- retype_stmt ce e rt s; OK (Slabel lbl s')
-  | Sgoto lbl =>
-      OK (Sgoto lbl)
+  | Sgoto loc lbl =>
+      OK (Sgoto loc lbl)
   end
 
 with retype_lblstmts (ce: composite_env) (e: typenv) (rt: type) (sl: labeled_statements) : res labeled_statements :=
@@ -1297,34 +1297,34 @@ Proof.
 Qed.
 
 Lemma sdo_sound:
-  forall a s, sdo a = OK s -> wt_expr ce e a -> wt_stmt ce e rt s.
+  forall a s loc, sdo loc a = OK s -> wt_expr ce e a -> wt_stmt ce e rt s.
 Proof.
   intros. monadInv H. eauto with ty.
 Qed.
 
 Lemma sifthenelse_sound:
-  forall a s1 s2 s, sifthenelse a s1 s2 = OK s ->
+  forall a s1 s2 s loc, sifthenelse loc a s1 s2 = OK s ->
   wt_expr ce e a -> wt_stmt ce e rt s1 -> wt_stmt ce e rt s2 -> wt_stmt ce e rt s.
 Proof.
   intros. monadInv H. eauto with ty.
 Qed.
 
 Lemma swhile_sound:
-  forall a s1 s, swhile a s1 = OK s ->
+  forall a s1 s loc, swhile loc a s1 = OK s ->
   wt_expr ce e a -> wt_stmt ce e rt s1 -> wt_stmt ce e rt s.
 Proof.
   intros. monadInv H. eauto with ty.
 Qed.
 
 Lemma sdowhile_sound:
-  forall a s1 s, sdowhile a s1 = OK s ->
+  forall a s1 s loc, sdowhile loc a s1 = OK s ->
   wt_expr ce e a -> wt_stmt ce e rt s1 -> wt_stmt ce e rt s.
 Proof.
   intros. monadInv H. eauto with ty.
 Qed.
 
 Lemma sfor_sound:
-  forall s1 a s2 s3 s, sfor s1 a s2 s3 = OK s ->
+  forall s1 a s2 s3 s loc, sfor loc s1 a s2 s3 = OK s ->
   wt_stmt ce e rt s1 -> wt_expr ce e a -> wt_stmt ce e rt s2 -> wt_stmt ce e rt s3 ->
   wt_stmt ce e rt s.
 Proof.
@@ -1332,13 +1332,13 @@ Proof.
 Qed.
 
 Lemma sreturn_sound:
-  forall a s, sreturn rt a = OK s -> wt_expr ce e a -> wt_stmt ce e rt s.
+  forall a s loc, sreturn loc rt a = OK s -> wt_expr ce e a -> wt_stmt ce e rt s.
 Proof.
   intros. monadInv H; eauto with ty.
 Qed.
 
 Lemma sswitch_sound:
-  forall a sl s, sswitch a sl = OK s ->
+  forall a sl s loc, sswitch loc a sl = OK s ->
   wt_expr ce e a -> wt_lblstmts ce e rt sl -> wt_stmt ce e rt s.
 Proof.
   intros. monadInv H. destruct (typeof a) eqn:TA; inv EQ0.
@@ -2041,19 +2041,19 @@ Inductive wt_expr_cont: typenv -> function -> cont -> Prop :=
       wt_stmt_cont te f k ->
       wt_stmt ce te f.(fn_return) s1 -> wt_stmt ce te f.(fn_return) s2 ->
       wt_expr_cont te f (Kifthenelse s1 s2 k)
-  | wt_Kwhile1: forall te f r s k,
+  | wt_Kwhile1: forall te f loc r s k,
       wt_stmt_cont te f k ->
       wt_rvalue ce te r -> wt_stmt ce te f.(fn_return) s -> wt_bool (typeof r) ->
-      wt_expr_cont te f (Kwhile1 r s k)
-  | wt_Kdowhile2: forall te f r s k,
+      wt_expr_cont te f (Kwhile1 loc r s k)
+  | wt_Kdowhile2: forall te f loc r s k,
       wt_stmt_cont te f k ->
       wt_rvalue ce te r -> wt_stmt ce te f.(fn_return) s -> wt_bool (typeof r) ->
-      wt_expr_cont te f (Kdowhile2 r s k)
-  | wt_Kfor2: forall te f r s2 s3 k,
+      wt_expr_cont te f (Kdowhile2 loc r s k)
+  | wt_Kfor2: forall te f loc r s2 s3 k,
       wt_stmt_cont te f k ->
       wt_rvalue ce te r -> wt_stmt ce te f.(fn_return) s2 -> wt_stmt ce te f.(fn_return) s3 ->
       classify_bool (typeof r) <> bool_default ->
-      wt_expr_cont te f (Kfor2 r s2 s3 k)
+      wt_expr_cont te f (Kfor2 loc r s2 s3 k)
   | wt_Kswitch1: forall te f ls k,
       wt_stmt_cont te f k ->
       wt_lblstmts ce te f.(fn_return) ls ->
@@ -2067,24 +2067,24 @@ with wt_stmt_cont: typenv -> function -> cont -> Prop :=
       wt_stmt_cont te f k ->
       wt_stmt ce te f.(fn_return) s ->
       wt_stmt_cont te f (Kseq s k)
-  | wt_Kwhile2: forall te f r s k,
+  | wt_Kwhile2: forall te f loc r s k,
       wt_stmt_cont te f k ->
       wt_rvalue ce te r -> wt_stmt ce te f.(fn_return) s -> wt_bool (typeof r) ->
-      wt_stmt_cont te f (Kwhile2 r s k)
-  | wt_Kdowhile1: forall te f r s k,
+      wt_stmt_cont te f (Kwhile2 loc r s k)
+  | wt_Kdowhile1: forall te f loc r s k,
       wt_stmt_cont te f k ->
       wt_rvalue ce te r -> wt_stmt ce te f.(fn_return) s -> wt_bool (typeof r) ->
-      wt_stmt_cont te f (Kdowhile1 r s k)
-  | wt_Kfor3: forall te f r s2 s3 k,
+      wt_stmt_cont te f (Kdowhile1 loc r s k)
+  | wt_Kfor3: forall te f r loc s2 s3 k,
       wt_stmt_cont te f k ->
       wt_rvalue ce te r -> wt_stmt ce te f.(fn_return) s2 -> wt_stmt ce te f.(fn_return) s3 ->
       wt_bool (typeof r) ->
-      wt_stmt_cont te f (Kfor3 r s2 s3 k)
-  | wt_Kfor4: forall te f r s2 s3 k,
+      wt_stmt_cont te f (Kfor3 loc r s2 s3 k)
+  | wt_Kfor4: forall te f r loc s2 s3 k,
       wt_stmt_cont te f k ->
       wt_rvalue ce te r -> wt_stmt ce te f.(fn_return) s2 -> wt_stmt ce te f.(fn_return) s3 ->
       wt_bool (typeof r) ->
-      wt_stmt_cont te f (Kfor4 r s2 s3 k)
+      wt_stmt_cont te f (Kfor4 loc r s2 s3 k)
   | wt_Kswitch2: forall te f k,
       wt_stmt_cont te f k ->
       wt_stmt_cont te f (Kswitch2 k)
@@ -2199,9 +2199,9 @@ Proof.
     eauto with ty.
   + eauto with ty.
   + eauto with ty.
-  + destruct (find_label lbl s1 (Kseq (Sfor Sskip r s2 s3) k)) as [[sx kx] | ] eqn:F.
+  + destruct (find_label lbl s1 (Kseq (Sfor loc Sskip r s2 s3) k)) as [[sx kx] | ] eqn:F.
     inv H7. eauto with ty.
-    destruct (find_label lbl s3 (Kfor3 r s2 s3 k)) as [[sx kx] | ] eqn:F2.
+    destruct (find_label lbl s3 (Kfor3 loc r s2 s3 k)) as [[sx kx] | ] eqn:F2.
     inv H7. eauto with ty.
     eauto with ty.
   + eauto with ty.
