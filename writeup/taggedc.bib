@@ -682,3 +682,20 @@ keywords = {The Coq theorem prover, Semantic preservation, Program proof, Formal
   biburl       = {https://dblp.org/rec/journals/jar/BlazyL09.bib},
   bibsource    = {dblp computer science bibliography, https://dblp.org}
 }
+
+@inproceedings{Cassel19:FlowNotation,
+author = {Cassel, Darion and Huang, Yan and Jia, Limin},
+title = {Uncovering Information Flow Policy Violations in C Programs (Extended Abstract)},
+year = {2019},
+isbn = {978-3-030-29961-3},
+publisher = {Springer-Verlag},
+address = {Berlin, Heidelberg},
+url = {https://doi.org/10.1007/978-3-030-29962-0_2},
+doi = {10.1007/978-3-030-29962-0_2},
+abstract = {Programmers of cryptographic applications written in C need to avoid common mistakes such as sending private data over public channels or improperly ordering protocol steps. These secrecy, integrity, and sequencing policies can be cumbersome to check with existing general-purpose tools. We have developed a novel means of specifying and uncovering violations of these policies that allows for a much lighter-weight approach than previous tools. We embed the policy annotations in C’s type system via a source-to-source translation and leverage existing C compilers to check for policy violations, achieving high performance and scalability. We show through case studies of recent cryptographic libraries and applications that our work is able to express detailed policies for large bodies of C code and can find subtle policy violations. We show formal connections between the policy annotations and an information flow type system and prove a noninterference guarantee of our design.},
+booktitle = {Computer Security – ESORICS 2019: 24th European Symposium on Research in Computer Security, Luxembourg, September 23–27, 2019, Proceedings, Part II},
+pages = {26–46},
+numpages = {21},
+keywords = {Information flow, Type systems, Security},
+location = {Luxembourg, Luxembourg}
+}

@@ -51,7 +51,7 @@ and a reference interpreter for Tagged C.
 Many essential technologies rely on new and old C code.
 Operating systems (Linux, Windows, OSX, BSD), databases (Oracle, sqlite3), the internet
 (Apache, NGNIX, NetBSD, Cisco IOS), and the 
-embedded devices that run our homes and hospitals are built in and on C \cite{Munoz:PoweredbyC}. 
+embedded devices that run our homes and hospitals are built in and on C.% \cite{Munoz:PoweredbyC}. 
 %C is not a relic; more than a third of professional programmers report active developing
 %in C today \cite{stackoverflow22:dev-survey}. \apt{That sentence seems off topic of ``essential technologies.''}
 The safety of these technologies
@@ -80,9 +80,10 @@ Tag-based policies are especially well-suited for efficient hardware enforcement
 processor extensions such as ARM MTE~\cite{arm-mte},
 STAR~\cite{Gollapudi+23}, and
 PIPE.  PIPE\footnote{ Variants of PIPE have
-been called PUMP~\cite{Dhawan+14,Dhawan+15},
-SDMP~\cite{Dover16,RoesslerD18} or CoreGuard~\cite{Dover20}.} 
-(Processor Interlocks for Policy Enforcement)~\cite{Dhawan+15,Azevedo+16,Azevedo+15},
+been called PUMP~\cite{Dhawan+14}, %Dhawan+15},
+SDMP~\cite{Dover16}%,RoesslerD18}
+or CoreGuard~\cite{Dover20}.} 
+(Processor Interlocks for Policy Enforcement)~\cite{Azevedo+16,Azevedo+15},%Dhawan+15,
 the specific motivator for our work, 
 is a programmable hardware mechanism that supports monitoring 
 at the granularity of individual instructions. 
@@ -1027,10 +1028,10 @@ errors or undefined behaviors.
 \label{fig:sifex3}
 \end{figure}
 
-In \cref{fig:sifex3}, the program checks the format of the passkey {\tt psk}, which is tagged  \(\high\),
-and uses a switch statement to perform
-operations on it based on the result. As in \cref{fig:ex2}, this means that the policy
-should ``raise'' the PC tag to \(\high\) to indicated that the program's control-flow depends on {\tt psk}.
+In \cref{fig:sifex3}, the program checks the format of the passkey {\tt psk}, which is tagged
+\(\high\), and uses a switch statement to perform operations on it based on the result.
+As in \cref{fig:ex2}, this means that the policy should ``raise'' the PC tag to \(\high\) to
+indicated that the program's control-flow depends on {\tt psk}.
 But in \cref{fig:sifex3}, after the branches of the switch statement have completed, this is no
 longer necessary---no information can be gleaned from the store to {\tt psk} once execution has
 reached label {\tt J}. {\tt J} is a {\em join point}: the point in a control-flow graph where all
@@ -1038,12 +1039,13 @@ possible routes from the split to a return have re-converged, which can be ident
 statically as the immediate post-dominator of the split point \cite{Denning77:SecureInformationFlow}.
 
 In order to support policies that reason about splits and joins, we introduce the \(\splittname\) and
- \(\labeltname\) tag rules. Every transition that tests a
-value as part of a conditional or loop contains a control point that calls \(\splittname\), with an optional
-label that is part of Tagged C's abstract syntax (optional both because some policies may not care about join
-points and because some functions have multiple exits and no join points). This way, the policy can react when execution
-reaches that label via the \(\labeltname\) rule. In the full SIF policy, we keep track of
-the pending join points within the PC tag, and lower the PC tag when execution reaches the join point.
+\(\labeltname\) tag rules. Every transition that tests a value as part of a conditional or loop
+contains a control point that calls \(\splittname\), with an optional
+label that is part of Tagged C's abstract syntax (optional both because some policies may not care
+about join points and because some functions have multiple exits and no join points). This way,
+the policy can react when execution reaches that label via the \(\labeltname\) rule.
+In the full SIF policy, we keep track of the pending join points within the PC tag, and
+lower the PC tag when execution reaches the join point.
 A similar approach applies to conditional expressions, but we omit the details here.
 
 \begin{figure}[t]
@@ -1201,8 +1203,7 @@ the corresponding changes to the relevant code.
 In the interest of modularity, we define a Coq module type for policies, containing
 an instantiation of the tag type and of each of the tag rules. The entire formal semantics
 and the interpreter are then parameterized by a policy. For example, the code of the
-PVI-memory-safety policy is shown in \cref{fig:fullcode}; it comprises only 60 lines of Gallina,
-plus some boilerplate.
+PVI-memory-safety policy is shown in full in \cref{fig:fullcode}.
 
 The interpreter simulates policies in software. The policies must be written directly in
 Galina, and the entire package of the interpreter and its policies are extracted
@@ -1222,92 +1223,63 @@ The PC tag takes on the role of carrying whatever state the policy needs. In pra
 the underlying policy can maintain its own state separate from the primary application.
 In the future we may revisit this choice.
 
-\begin{figure}
+\begin{figure}[t]
 
   {\tt \scriptsize
   \begin{tabular}{l l}
-    Module PVI:Policy. \\ \\
+    Module PVI:Policy. \\[0.5em]
 
-    Variable ce : composite\_env. & Definition ConstT pct := PolSuccess N. \\
-
-    & Definition InitT pct := PolSuccess N. \\
-    
-    Inductive tag := & Definition CallT pct pt := PolSuccess pct. \\
-    | Glob (id:ident) & Definition ArgT pct vt f x := PolSuccess (pct,vt). \\
-    | Dyn (c:nat) & Definition RetT pct\_clr pct\_cle vt := PolSuccess (pct\_cle,vt). \\
-    | N. &     Definition FieldT pct vt ty id := PolSuccess vt. \\
-    & Definition AccessT pct vt := PolSuccess vt. \\
-
-    Definition def\_tag := N. & Definition AssignT pct vt1 vt2 := PolSuccess (pct,vt2). \\
-    Definition InitPCT := Dyn 0. ~ &     Definition UnopT op pct vt := PolSuccess (pct, vt). \\ \\
-
+    Inductive tag := & Definition ConstT pct := PolSuccess N. \\
+    | Glob (id:ident) & Definition InitT pct := PolSuccess N. \\
+    | Dyn (c:nat) & Definition CallT pct pt := PolSuccess pct. \\
+    | N. & Definition ArgT pct vt f x := PolSuccess (pct,vt). \\
+    Definition def\_tag := N. & Definition RetT pct oldpct vt := PolSuccess (pct,vt). \\
+    Definition InitPCT := Dyn 0. & Definition FieldT pct vt ty id := PolSuccess vt. \\[0.5em]
   \end{tabular}
   
-  \begin{tabular}{l}
-    Definition BinopT (op: binary\_operation) (pct vt1 vt2: tag) := \\
-    ~ ~ match vt1, vt2 with \\
-    ~ ~ | Dyn n, X =>  PolSuccess (pct, vt1) \\
-    ~ ~ | Glob id, X => PolSuccess (pct, vt1) \\
-    ~ ~ | \_, \_ => PolSuccess (pct, vt2) \\
-    ~ ~ end. \\ \\
+  \begin{tabular}{l l}
+    Definition BinopT op pct vt1 vt2 :=     & Definition UnopT op pct vt := \\
+    ~ match vt1, vt2 with                   & ~ PolSuccess (pct, vt). \\
+    ~ | Dyn n, X =>  PolSuccess (pct, vt1)  & Definition AccessT pct vt := \\
+    ~ | Glob id, X => PolSuccess (pct, vt1) & ~ PolSuccess vt. \\
+    ~ | \_, \_ => PolSuccess (pct, vt2)     & Definition AssignT pct vt1 vt2 := \\
+    ~ end.                                  & ~ PolSuccess (pct,vt2). \\[0.5em]
 
-    Definition LoadT (pct pt vt: tag) (lts : list tag) := \\
-    ~ ~ match pt with \\
-    ~ ~ | N => PolFail "PVI::LoadT N" ([pct;pt;vt]++lts) \\
-    ~ ~ | \_ => if forallb (tag\_eq\_dec pt) lts then PolSuccess vt  \\
-    ~ ~ ~ ~ else (PolFail "PVI::LoadT Ptr" ([pct;pt;vt]++lts)) \\
-    ~ ~ end. \\ \\
+    Definition LoadT pct pt vt lts :=   & Definition StoreT pct pt vt lts := \\
+    ~ match pt with                     & ~ match pt with \\
+    ~ | N => PolFail "PVI::LoadT N"     & ~ | N => PolFail "PVI::StoreT N" \\
+    ~ | \_ => if forallb (=? pt) lts    & ~ | \_ => if forallb (=? pt) lts \\
+    ~ ~ then PolSuccess vt              & ~ ~ then PolSuccess (pct,vt,lts) \\
+    ~ ~ else PolFail "PVI::LoadT Ptr"   & ~ ~ else PolFail "PVI::StoreT Ptr" \\
+    ~ end. & ~ end. \\[0.5em]
 
-    Definition StoreT (pct pt vt: tag) (lts: list tag) := \\
-    ~ ~ match pt with \\
-    ~ ~ | N => (PolFail "PVI::StoreT N" ([pct;pt;vt]++lts)) \\
-    ~ ~ | \_ => if forallb (tag\_eq\_dec pt) lts then PolSuccess (pct,vt,lts) \\
-    ~ ~ ~ ~ else (PolFail "PVI::StoreT Ptr" ([pct;pt;vt]++lts)) \\
-    ~ ~ end. \\ \\
+    Definition LocalT pct ty :=                &  Definition MallocT pct pt vt :=\\
+    ~ match pct with                           & ~ match pct with \\
+    ~ | Dyn c => PolSuccess (Dyn (S c),        & ~ | Dyn c => \\
+    ~ ~ Dyn c, repeat (Dyn c) (sizeof ty))          & ~ ~ PolSuccess (Dyn (S c), Dyn c, N, Dyn c) \\
+    ~ | \_ => PolFail "PVI::LocalT"            & ~ | \_ => PolFail "PVI::MallocT" \\
+    ~ end.                                     & ~ end. \\[0.5em]
 
-    Definition LocalT (pct: tag) (ty: type) := \\
-    ~ ~ match pct with \\
-    ~ ~ | Dyn c => PolSuccess (Dyn (S c), Dyn c, repeat (Dyn c) (sizeof ce ty)) \\
-    ~ ~ | \_ => PolFail "PVI::LocalT Failure" [pct] \\
-    ~ ~ end. \\ \\
-  
-    Definition DeallocT (pct: tag) (ty: type) := \\
-    ~ ~ PolSuccess (pct, N, repeat N (Z.to\_nat (sizeof ce ty))). \\ \\
-
-    Definition MallocT (pct pt vt: tag) := \\
-    ~ ~ match pct with \\
-    ~ ~ | Dyn c => PolSuccess (Dyn (S c), Dyn c, N, Dyn c) \\
-    ~ ~ | \_ => PolFail "PVI::MallocT Failure" [pct;pt;vt] \\
-    ~ ~ end. \\ \\
-
-    Definition FreeT (pct pt vt: tag) (lts: list tag) := \\
-    ~ ~ match pt with \\
-    ~ ~ | Dyn c => if forallb (tag\_eq\_dec pt) lts then PolSuccess (pct, N, N). \\
-    ~ ~ ~ ~ else PolFail ``PVI::FreeT Failure'' [pct;pt;vt] \\
-    ~ ~ | \_, \_ => PolFail ``PVI::FreeT Failure'' [pct;pt;vt] \\
-    ~ ~ end. \\ \\
-
-
-    Definition PICastT (pct pt: tag)  (lts: list tag) (ty: type) := PolSuccess pt. \\
-    Definition IPCastT (pct vt: tag)  (lts: list tag) (ty: type) := PolSuccess vt. \\
-    Definition PPCastT (pct vt: tag) (lts: list tag) (ty: type) := PolSuccess vt. \\
-    Definition IICastT (pct vt: tag) (ty: type) := PolSuccess vt. \\
-  \end{tabular} }
+    Definition FreeT pct pt vt lts :=   & Definition DeallocT pct ty := \\
+    ~ match pt with                     & ~ PolSuccess (pct, N, repeat N (sizeof ty))) \\
+    ~ | Dyn c => if forallb (=? pt) lts & Definition PICastT pct pt lts ty := PolSuccess pt. \\
+    ~ ~ then PolSuccess (pct, N, N)     & Definition IPCastT pct vt lts ty := PolSuccess vt. \\
+    ~ ~ else PolFail ``PVI::FreeT''     & Definition PPCastT pct vt lts ty := PolSuccess vt. \\
+    ~ | \_ => PolFail ``PVI::FreeT''    & Definition IICastT pct vt ty := PolSuccess vt. \\
+    ~ end. \\[0.5em]
+      \end{tabular} }
     
   \caption{The Complete PVI memory safety policy}
   \label{fig:fullcode}
 \end{figure}
-
-
 
 \section{Related Work}
 \label{sec:related}
 
 Aspect-oriented Programming (AOP) aims to separate disparate concerns ({\em aspects}),
 that cannot be localized inside modules, such as security and logging \cite{Kiczales97:AOP}. % OG paper
-An AOP language distributes {\em join points}\footnote{Not to be confused with the control-flow graph join points
-discussed in \cref{sec:SIF}.}
-throughout its semantics, 
+An AOP language distributes {\em join points}\footnote{Not to be confused with the control-flow graph
+join points discussed in \cref{sec:SIF}.} throughout its semantics, 
 and the programmer separately writes {\em advice} in the form of
 additional code that should execute before or after various join points according to
 a {\em pointcut} specification. The compiler
@@ -1331,6 +1303,11 @@ an inline monitor \cite{Lundblad13:IRM}, or run offline on a log file \cite{Have
 In general, all of these systems are more expressive than Tagged C, because the
 monitor can access system values, not just keep track of provenance. But that expressiveness
 requires software-based implementation, whereas we are focused on using PIPE hardware.
+
+Various systems have targeted information flow, memory safety, and compartmentalization in C.
+Cassel et al.'s FlowNotations use type annotations to specify ``tainted'' and ``trusted'' data,
+and statically check a program's information flow using the C type system. Their annotation system
+could easily be an input to a SIF policy, replacing the static checks with dynamic enforcement.
 
 \section{Limitations and Future Work}
 \label{sec:limitations}
@@ -1376,19 +1353,20 @@ as in {\sc Rmor}~\cite{Havelund08:RVC}.
 %  static points within functions, but we have so far intentionally avoided this.
 %  \apt{Need to add something earlier in the paper about our rationale for attaching rules
 %    to ``externally visible'' things like function calls and globals.}
-  Further, {\tt malloc} does not get access to type information;
-  it takes just a size and returns a {\tt void *}, which the caller must
-  cast to a pointer of the desired type (at an arbitrary future point).
-  Therefore, Tagged C cannot easily
-  enforce substructural memory safety (i.e. protecting fields within a single struct
-  from overflowing into each other) or other properties that call for allocated
-  regions to be tagged according to their types.
-  This is a well-known impediment to improving C memory safety;
-  previous work  (e.g. \cite{Michael23:MSWASM}) has often adopted non-standard
-  versions of {\tt malloc} that take more informative parameters. This is
-  not satisfactory for protecting legacy code, but we do not yet see a good alternative.
+Further, {\tt malloc} does not get access to type information;
+it takes just a size and returns a {\tt void *}, which the caller must
+cast to a pointer of the desired type (at an arbitrary future point).
+Therefore, Tagged C cannot easily
+enforce substructural memory safety (i.e. protecting fields within a single struct
+from overflowing into each other) or other properties that call for allocated
+regions to be tagged according to their types.
+This is a well-known impediment to improving C memory safety;
+previous work  (e.g. \cite{Michael23:MSWASM}) has often adopted non-standard
+versions of {\tt malloc} that take more informative parameters. This is
+not satisfactory for protecting legacy code, but we do not yet see a good alternative.
 
 \paragraph*{Proofs}
+
 One reason for prototyping Tagged C in the Coq Proof Assistant is to lay the groundwork
 for formal proofs of its properties. We prove the correctness of the interpreter with respect
 to the Tagged C semantics, and we aim to prove properties of the policies.
@@ -1411,5 +1389,5 @@ Grant No. 2048499, Specifying and Verifying Secure Compilation of C Code to Tagg
 
 \bibliographystyle{splncs04}
 \bibliography{taggedc.bib}
-
+  
 \end{document}
