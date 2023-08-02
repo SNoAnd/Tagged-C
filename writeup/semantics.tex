@@ -402,10 +402,10 @@
 \newcommand{\binopstepnolabel}
 {\judgmenttwobrlong[]{\(v_1 \left\langle \oplus \right\rangle v_2 = v'\)}
   {\(\trule{\binoptres}{\binopt}\)}
-  {\(\expr = \binop{\oplus}{(\val{v_1}{\vt_1})}{(\val{v_2}{\vt_2})}\)}
+  {\(\expr = \binop{\oplus}{v_1 \tagat \vt[_1]}{v_2 \tagat \vt[_2]}\)}
   {\(\PCT,\mem,\tenv,\expr
     \Rightarrow_\rh
-    \PCT,\mem,\tenv,\val{v'}{\vt'}\)}}
+    \PCT,\mem,\tenv,v' \tagat \vt[']\)}}
 
 \newcommand{\binopstep}
 {\judgmenttwobrlong[RredBinop]{\(v_1 \left\langle \oplus \right\rangle v_2 = v'\)}
@@ -418,9 +418,7 @@
 \newcommand{\binopsteptagless}
 {\judgmentbr{\(v_1 \left\langle \oplus \right\rangle v_2 = v'\)}
   {\(\expr = \binop{\oplus}{v_1}{v_2}\)}
-  {\((\mem,\expr)
-    \Rightarrow_\rh
-    (\mem,\val{v'}{\vt'})\)}}
+  {\(\mem,\expr \Rightarrow_\rh \mem, v'\)}}
 
 
 % rred_cast

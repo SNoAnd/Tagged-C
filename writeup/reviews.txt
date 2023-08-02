@@ -116,32 +116,54 @@ However, I believe that there would still be merit to this paper if the missing 
 
 Minor points:
 
+### SNA: nothing to address
+
 - Including page numbers makes this job easier!
+
+### SNA: ADDRESSED. Removed {\cal P} from the constt rule, it wasn't supposed to come up in these examples.
 
 - Fig 1. I’m not sure if there is a good solution to this but I struggled to read Fig 1 at the point it was first referenced as the syntax for tags and the meaning of some symbols (e.g. {\cal P}) had not yet been introduced (it comes at the top of the next page)
 
+### SNA: ADDRESSED by having tags be initially H in both cases, and plugged directly in
+
 - Fig 2. I assume the rule to tag the input to f as High is artificial and that in reality, we would expect the passkey to get High security when it is first generated and then this would be traced to the input of f by propagating tags. Indeed, in part 2 of the example I don’t see the ArgT rule being extended to tag the input to g. For me, things would be more convincing if the input to f were not tagged but the assumption that psk will have been tagged H is made.
+
+###
 
 - Section 3. I didn’t pick up a clear intuition behind the value/pointer/location tag distinction. I think I can infer this but I didn’t see it discussed.
 
+### SNA: FIXIED
+
 - In the example expression step reduction for binary operations the left reduction is meant to be tag-less but has a tag. On the right side, I’m unsure why the premise gains two Eval calls. There is also some inconsistency in how the state is presented e.g. parenthesised (on the left) or not (on the right).
 
+###
+
 - In the paragraph on Memory it is unclear why you have the distinction between public and private. The point that it is strong enough to support a reasonable notion of semantics-preserving compilation doesn’t give us much detail. I assume the reason that PIPE isn’t used to enforce memory safety throughout is due to overhead? This is important as it’s a motivator for the whole work - if we could use PIPE for memory safety then we wouldn’t need Tagged C. So, why can’t we use PIPE?
+
+### SNA: ADDRESSED
 
 - Fig 6. Should we be concerned about overflow with CLR(c + 1)? In general, I’m unclear how expressive we can get with data stored in tags and the computations on this data as we’re missing the necessary information about implementation - later it’s mentioned that we could use the PC tag to track live objects, which sounds like we’re storing unbounded information in tags.
 
 - Fig 6. I assume that assert means if(not condition) then failstop, but this isn’t stated
 
+### SNA: FIXED
+
 - The reference to Section 4.1 should probably be a reference to Fig 7. I got very confused in this paragraph due to this mistake. It’s never explicitly stated that you combine the rules from Fig 6 with those from Fig 7, although implied.
+
+###
 
 - In the compartmentalisation example, could you use a special gate function instead of introducing malloc_share? If the source code needs altering anyway wouldn’t it be easier to introduce a gate function at the point memory is allowed to pass between compartments and then intercept this gate function in the rules. I expect that needing to use malloc_share would lead to more data being tagged as shareable than should be.
 
 - Again, the claim that we can use this approach for MAC leaves me wondering how much complexity we can encode in tags
 
-FIXED - “prooperties" typo
+### SNA: FIXED - “prooperties" typo ###
 
 - I think you’re implying that you haven’t done the Proofs you want to do. Please just say that. If that’s not the case then this bit needs to be clearer.
 
 - Are there alternatives to PIPE? This is hard to ask as the details are missing from the paper but could something like CHERI be used for a limited subset of tags that apply only to locations/pointers? Can you compile to a software implementation for execution on non-PIPE-supported processors? 
 
-FIXED (could do more) - The paper ends abruptly. Usually, it’s kind to the reader to spend a paragraph “Concluding” i.e. reminding me what you think you just told me
+### SNA: FIXED (could do more) - The paper ends abruptly. Usually, it’s kind to the reader to spend a paragraph “Concluding” i.e. reminding me what you think you just told me ###
+
+### SNA: Non-review TODOs
+1: check postscripts after tags!
+2: check margins; pp 7 and 11 are particularly bad

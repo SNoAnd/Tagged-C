@@ -74,7 +74,7 @@ encountered, the program failstops.
 Although monitoring based on metadata tags is less flexible and powerful than monitoring based on the
 underlying data values, it can still enforce many useful security properties, including
 both low-level concerns, such as fine-grained memory safety~\cite{Witchel02:MondrianMem}, and high-level
-properties like secure information flow~\cite{Denning76:SFIlattice} and mandatory access control~\cite{USDoD85:OrangeBook}. 
+properties like secure information flow~\cite{Denning76:SFIlattice} and mandatory access control~\cite{USDoD85:OrangeBook}.
 
 Tag-based policies are especially well-suited for efficient hardware enforcement, using 
 processor extensions such as ARM MTE~\cite{arm-mte},
@@ -210,14 +210,14 @@ such a leak. (Of course, this particular leak could also be easily found using s
          {
            \node[anchor=north] {\tt f}; \&
            \node[anchor=north, fill=gray!20] {\(\mathtt{psk} \mapsto i \tagat \vt[_1]\) \\ \(\mathtt{x} \mapsto \vundef \tagat \vt[_2]\)}; \&
-           \node[anchor=north, fill=blue!10] {\(\vt[_1] \leftarrow \argtname(\vt[_0],\FN[f],\AN[psk])\) \\ \(\vt[_2] \leftarrow \constt\)};\\
+           \node[anchor=north, fill=blue!10] {\(\vt[_1] \leftarrow \argtname(\high,\FN[f],\AN[psk])\) \\ \(\vt[_2] \leftarrow \consttname\)};\\
          };
 
     \node[matrix, ampersand replacement=\&, node distance=4.5em, below=of table1.west,draw,anchor=west] (table2)
          {
            \node[anchor=north] {\tt f}; \&
            \node[anchor=north, fill=gray!20] {\(\mathtt{psk} \mapsto i \tagat \vt[_1]\) \\ \(\mathtt{x} \mapsto (i+5) \tagat \vt[_4]\)}; \&
-           \node[anchor=north, fill=blue!10] {\(\vt[_3] \leftarrow \constt\) \\
+           \node[anchor=north, fill=blue!10] {\(\vt[_3] \leftarrow \consttname\) \\
              \(\vt[_4] \leftarrow \binoptname(+,\vt[_2],\vt[_3])\) }; \\
          };
 
@@ -246,17 +246,25 @@ such a leak. (Of course, this particular leak could also be easily found using s
 \end{figure}
 
 \begin{figure}[t]
-    \(\tau::=\high | \low\)
+  \begin{minipage}{0.25\textwidth}
+    \center
+    \[\tau::=\high | \low\]
+    \truleblock{\(\consttname\)}{\(\vt' := \low\)}
+  \end{minipage}
+  \begin{minipage}{0.45\textwidth}
+    \center
     \argtexruleblock
-        {\caseofthree{\((\vt,\FN,\AN)\)}
+        {\caseoftwo{\((\vt,\FN,\AN)\)}
           {(\(\high,\mathtt{printi},\underline{~~}\))}{\(\fail\)}
-          {(\(\underline{~~},\mathtt{f},\mathtt{psk}\))}{\(\vt':=\high\)}
           {\(\underline{~~~}\)}{\(\vt':=\vt\)}}
-    \consttruleblock{\(\vt' := \low\)}
+  \end{minipage}
+  \begin{minipage}{0.25\textwidth}
+    \center
     \binoptexruleblock
         {\caseoftwo{\((\vt[_1],\vt[_2])\)}
           {(\(\low,\low\))}{\(\vt':=\low\)}
           {\(\underline{~~~}\)}{\(\vt':=\high\)}}
+  \end{minipage}
 
   \caption{Tag rule instantiations for secure information flow (pt. 1)}
   \label{fig:example1rules}
@@ -264,14 +272,14 @@ such a leak. (Of course, this particular leak could also be easily found using s
 
 In Tagged C, all values carry a metadata tag. Whenever execution reaches a control point, it consults
 an associated tag rule, to check whether the next execution step should be allowed to continue and
-if so, to update the tags. A policy consists of a tag type definition and instantiations of the tag rules for every control point.
-For a simple SIF policy like this one, the tag type is an enumeration containing \(\high\) (high security)
-and \(\low\) (low security).
-In this case, when {\tt f} processes its arguments, a program-specific tag rule 
-will tag {\tt psk} as \(\high\). This tag will be propagated along with the value through variable accesses,
+if so, to update the tags. A policy consists of a tag type definition and instantiations of the tag
+rules for every control point. For a simple SIF policy like this one, the tag type is an enumeration
+containing \(\high\) (high security) and \(\low\) (low security).
+In this case, the input {\tt psk} arrives in {\tt f} with the tag \(\high\).
+This tag will be propagated along with the value through variable accesses,
 assignments, and arithmetic, according to generic rules that are not specific to this program.
-Finally, a program-specific argument-handling rule for {\tt printi} will check that the tag is \(\low\);
-since it is not, the rule will cause a failstop.
+Finally, a program-specific argument-handling rule for {\tt printi} will check that the tag is
+\(\low\); since it is not, the rule will cause a failstop.
 
 To explain the mechanics of Tagged C, we first show in \cref{fig:ex1} the policy-independent details of how
 tags flow and where tag rules are triggered in this program; then in \cref{fig:example1rules}
@@ -287,10 +295,9 @@ Tags that are derived from identifiers are subscripted with the identifier names
 \(\FN[f]\) is the tag associated with the function name {\tt f}.  
 \(\vundef\) denotes an uninitialized value.
 
-Suppose {\tt f} is called with an actual argument \(i\tagat \vt[_0]\).
-The tag on {\tt psk} comes from \(\argtname\), which is parameterized by the tag \(\vt[_0]\) from the argument
-value and by the names of both the function
-and the argument. The initial tag \(\vt[_2]\) on local
+Suppose {\tt f} is called with an actual argument \(i \tagat \high\).
+The tag on {\tt psk} is checked by \(\argtname\), which is also parameterized by the
+names of both the function and the argument. The initial tag \(\vt[_2]\) on local
 variable {\tt x} is the default tag \(\consttname\).
 The result of the addition on line 2 is tagged by \(\binoptname\), which is parameterized
 by the kind of operation as well as the tags on its inputs.
@@ -306,8 +313,8 @@ In tag rules,
 the assignment operator := denotes an assignment to the named tag-rule output, by convention
 written as primed metavariables \(\gentag[']\).  The \(\binoptname\) rule is a
 generic SIF rule that says the result tag is the higher of the two operand tags. 
-\(\argtname\) connects the policy to the specifics of the program, identifying {\tt psk}
-as high-security data and treating {\tt printi} as a low-security output channel by
+\(\argtname\) connects the policy to the specifics of the program,
+treating {\tt printi} as a low-security output channel by
 triggering a failstop if it receives high-security data.
 
 As a second example, \cref{fig:ex2} steps through the execution of a function {\tt g} that adds two new wrinkles:
@@ -338,8 +345,8 @@ an outside observer of {\tt mm} can deduce one bit of the key (an {\em implicit 
            \(\mathtt{psk} \mapsto i \tagat \vt[_2]\)
          }; \&
          \node[anchor=north, fill=blue!10] {\(\pt[_1], \vt[_1],\lt[_1] \leftarrow \globaltname(\GN[mm])\) \\
-           \(\PCT[_1] \leftarrow \calltname(\PCT[_0], \FN[g])\)  \\
-           \(\vt[_2] \leftarrow \argtname(\vt[_0],\FN[g],\AN[psk])\)}; \\
+           \(\PCT[_1] \leftarrow \calltname(\low, \FN[g])\)  \\
+           \(\vt[_2] \leftarrow \argtname(\high,\FN[g],\AN[psk])\)}; \\
        };
        
  \node[matrix, ampersand replacement=\&, node distance=5em, below=of table1.west,draw,anchor=west] (table2)         
@@ -349,7 +356,7 @@ an outside observer of {\tt mm} can deduce one bit of the key (an {\em implicit 
           \(p:\fbox{\(0 \tagat \vt[_1] \tagat \lt[_1]\)}\) \\
           \(\mathtt{psk} \mapsto i \tagat \vt[_2]\)
         }; \&
-        \node[anchor=north, fill=blue!10] {\(\vt[_3] \leftarrow \constt\) \\
+        \node[anchor=north, fill=blue!10] {\(\vt[_3] \leftarrow \consttname\) \\
           \(\vt[_4] \leftarrow \binoptname(>,\vt[_2],\vt[_3])\) \\ 
           \(\PCT[_2] \leftarrow \splittname(\PCT[_1], \vt[_4])\)}; \\
       };
@@ -361,7 +368,7 @@ an outside observer of {\tt mm} can deduce one bit of the key (an {\em implicit 
           \(p:\fbox{\(1 \tagat \vt[_6] \tagat \lt[_2]\)}\) \\
           \(\mathtt{psk} \mapsto i \tagat \vt[_2] \)
         }; \&
-        \node[anchor=north, fill=blue!10] {\(\vt[_5] \leftarrow \constt\) \\
+        \node[anchor=north, fill=blue!10] {\(\vt[_5] \leftarrow \consttname\) \\
           \(\PCT[_3],\vt[_6],\lt[_2] \leftarrow \storetname(\PCT[_2],\pt[_1],\vt[_5],\lt[_1])\)}; \\
       };
 
@@ -383,7 +390,8 @@ In addition to tags on values, Tagged C attaches tags to memory locations ({\em 
 \(\lt\)) and tracks a special global tag called the PC tag (ranged over by \(\PCT\), and attached to the
 function name in our diagrams).
 Tagged C initializes the tags on {\tt mm} with the \(\globaltname\) rule. The PC tag
-at the point of call, \(\PCT[_0]\), is fed to \(\calltname\) to determine a new PC tag
+at the point of call, which we assume to be \(\low\), is fed to \(\calltname\) to determine
+a new PC tag
 inside of {\tt g}. And the if-statement consults the \(\splittname\) rule to update the PC tag
 inside of its branch based on the value-tag of the expression {\tt psk < 0}. Once inside the
 conditional, when the program assigns to {\tt mm}, it must consult the \(\storetname\) rule because
@@ -403,7 +411,7 @@ then, at the write to {\tt mm}, \(\storetname\) will fail rather than write to a
 in a high context.
 
 \begin{figure}[t]
-  \globaltruleblock{
+  \truleblock{\(\globaltname(\GN)\)}{
     \(\vt':=\low\); \(\pt':=\low\) \\
     \caseoftwo{x}
               {\tt mm}{\(\lt':=\low\)}
@@ -481,8 +489,7 @@ in a high context.
 Tagged C contains almost all features of full ISO C 99.\footnote{
 It inherits the limitations of CompCert C, primarily that {\tt setjump} and {\tt longjump}
 may not work, and variable-length arrays are not supported.~\cite[Ch. 5]{Leroy22:CompCertManual}.}
-Its semantics (given in full in the Appendix)
-are based on that of CompCert C~\cite{Leroy09:CompCert},
+Its semantics are based on that of CompCert C~\cite{Leroy09:CompCert},
 a formalization of the C standard into a small-step reduction semantics.
 Tagged C's semantics differ from CompCert C's in two key respects: tag support and memory model.
 
@@ -506,7 +513,7 @@ for binary operations:
 On the left, the ordinary ``tagless'' version of the rule reduces a
 binary operation on two inputs to a single value.
 On the right, the Tagged C version adds tags to the operands and tags the result
-based on the \(\binoptname\) rule. \sna{Instance of a tag rule?}
+based on the \(\binoptname\) rule.
 
 The tag rule itself is instantiated as a partial function; if a policy leaves a tag rule
 undefined on some inputs, then those inputs violate the policy, sending
@@ -672,7 +679,7 @@ Operations that are valid on pointers in a given memory model
 maintain the pointer's color, and loads and stores are legal if the pointer tag matches the target memory
 location tag.
 
-The specific memory models (\cref{fig:memspecial})  behave differently when pointers are cast to integers and back.
+The specific memory models (\cref{fig:memspecial}) behave differently when pointers are cast to integers and back.
 The CompCert C variant marks that the integer has been cast from a valid pointer, and
 restores that provenance when cast back. But, \(\binoptname\) will failstop if it is
 actually modified between the casts. PVI simply keeps the provenance and allows all operations
@@ -815,8 +822,8 @@ Line (5) is always legal, (6) is illegal in CompCert C, (7) is also illegal in P
     \caption{PNVI Rules}
     \label{subfig:pnvi}
   \end{subfigure}
-    \label{fig:memspecial}
     \caption{Specialized Memory Safety Rules}
+    \label{fig:memspecial}
   \end{figure}
 
 Memory safety also informs the design of control points related to allocating, deallocating, and
@@ -1177,104 +1184,121 @@ routine and a high level to the outputs of its corresponding decryption routine.
 %%   points could also (or instead) be made in the introduction, to justify why tag-based
 %%   policies are generally interesting and worthwhile even in the absence of hardware support.}
 
-\section{Interpretation and Compilation}
+\section{Implementation}
 
-In this work we focus on the source semantics of Tagged C, and give a proof of concept
-in the form of a reference interpreter based on that of CompCert \cite[Ch. 4]{Leroy22:CompCertManual}.
-It supports a restricted set of standard library functions.
+In order to implement Tagged C on top of the CompCert semantics and interpreter,
+we replace the standard block-offset memory with a concrete one,
+leaving the block-based system to handle only function pointers. We also rework
+global environments to separate (symbolic) function pointers from other (concrete)
+pointers. Memory and global environments are shared between the formal
+semantics and the interpreter, so these changes only need to be made once.
 
-The interpreter simulates micro-policies in software. Policies are written directly in
+We also add a temporary environment to contain non-memory variables,
+and semantic rules to deal with them. Most importantly, we thread the PC tag into the state,
+and add control points to the relevant semantic rules. In the interpreter, we make
+the corresponding changes to the relevant code.
+
+In the interest of modularity, we define a Coq module type for policies, containing
+an instantiation of the tag type and of each of the tag rules. The entire formal semantics
+and the interpreter are then parameterized by a policy. For example, the code of the
+PVI-memory-safety policy is shown in \cref{fig:fullcode}; it comprises only 60 lines of Gallina,
+plus some boilerplate.
+
+The interpreter simulates policies in software. The policies must be written directly in
 Galina, and the entire package of the interpreter and its policies are extracted
 to Ocaml.
 
-\subsection{Compilation to Tagged Assembly}
+\paragraph{Practicalities: Tag Sizes, Policy States}
 
-We have briefly introduced our previous work on Tagine, a verified compiler for a toy version
-of Tagged C \cite{Chhak21:Tagine}. We envision a Tagged C compiler taking the same approach.
-First, we need a summary of how PIPE policies work at the assembly level. At each step of execution,
-the PIPE system consults a lookup table whose keys are a tuple of the following information:
-\begin{itemize}
-\item The ``group'' that the instruction belongs to, e.g. ``arithmetic operations,'' ``loads,''
-  or ``stores,'' with each group sharing a signature
-\item Tags on all of the inputs in the instruction group's signature, including any memory that
-  it accesses
-\item The PC tag
-\item The tag on the instruction being executed
-\end{itemize}
+In modeling Tagged C, we assume unbounded tags. In practice, PIPE tags are large, but
+bounded. This means that, for instance, the na\"{i}ve implementation of PVI memory safety
+described here runs the risk of overflowing the number of possible colors. 
+Temporal safety will not be feasible in long-running programs that regularly allocate memory,
+even if their total memory footprint is bounded, unless the policy can reclaim the tags
+on previously freed objects. 
 
-Entries in the table are the tags to place on the outputs of the operation, matching the
-group's signature. If there is no entry for a particular set of tags, the system failstops.
-In practice the lookup table may be implemented as a cache that does not hold all of the
-combinations at once, but recomputes them on a miss; or it may be a fixed table supplemented
-by dedicated circuits to perform simple operations, like equality comparison.
-
-A compiler from Tagged C must apply a policy that protects the basic control-flow and
-private data of the language (the ``baseline'' policy), and can also embed a high-level
-policy. We will write low-level tags in orange\apt{doesn't show well in B\&W}, tags and rules inherited from the high-level
-policy, still in blue. This embedding strategy centers around the low-level instruction tags.
-Consider the simple function in \cref{fig:compilation}, and the result of compiling it to a simplified
-RISC-V-like assembly with a non-optimizing compiler.
-
-%When compiling a policy from Tagged C to run alongside
-%a low-level policy with tag type \({\color{orange} \mathbb{T}_0}\), the combined policy
-%has the tag type \(\mathbb{\color{orange} T} ::= {\color{orange} \mathbb{T}_0} \times
-%{\color{blue} \tau}\), where \(\color{blue} \tau\) is the tag type of the source-level
-%policy.
-
+Tagged C also assumes that the only state carried by the policy is encoded in its tags.
+The PC tag takes on the role of carrying whatever state the policy needs. In practice,
+the underlying policy can maintain its own state separate from the primary application.
+In the future we may revisit this choice.
 
 \begin{figure}
-  \begin{subfigure}[t]{0.2\textwidth}
-\begin{verbatim}
-f() {
-  int x[1];
-  int y[1];
-  x[1] = 42;
-  x[-1] = 42;
-}
-\end{verbatim}
-  \end{subfigure}
-  \begin{subfigure}[t]{0.79\textwidth}
-    \begin{tabular}{|l l|}
-      \hline
-      {\tt 1  addi sp(-16),zero,sp}    & {\color{orange} @ Code,HeadSeq1}  \\
-      {\tt 2  sd ra,sp(0)}             & {\color{orange} @ Code,HeadSeq2}  \\
-      {\tt 3  addi zero(8),sp,t1}      & {\color{orange} @ Code,SrcVar({\tt \color{blue} x})} \\
-      {\tt 4  addi zero(4),t1,t2}      & {\color{orange} @ Code,SrcRule(\(\binoptname(+)\))} \\
-      {\tt 5  addi zero(42),zero,t0}   & {\color{orange} @ Code,SrcRule(\(\consttname\))} \\
-      {\tt 6  sw t0,t1}                & {\color{orange} @ Code,SrcRule(\(\storetname \circ^{\vt\leftarrow\vt'}_{\PCT\leftarrow\PCT'} \assigntname\))} \\
-      {\tt 7  addi zero(8),sp,t1}      & {\color{orange} @ Code,SrcVar({\tt \color{blue} x})} \\
-      {\tt 8  addi zero(-4),t1,t2}     & {\color{orange} @ Code,SrcRule(\(\binoptname(-)\))} \\
-      {\tt 9  addi zero(42),zero,t0}   & {\color{orange} @ Code,SrcRule(\(\consttname\))} \\
-      {\tt 10 sw t0,t1}                & {\color{orange} @ Code,SrcRule(\(\storetname \circ^{\vt\leftarrow\vt'}_{\PCT\leftarrow\PCT'} \assigntname\))} \\
-      {\tt 11 ld sp(0),ra}             & {\color{orange} @ Code,RetSeq1} \\
-      {\tt 12 addi sp(16),zero,sp}     & {\color{orange} @ Code,RetSeq2} \\
-      {\tt 13 jalr ra}                 & {\color{orange} @ Code,RetSeq3} \\
-      \hline
-    \end{tabular}
-  \end{subfigure}
 
-  \caption{A Simple Compilation Scheme}
-  \label{fig:compilation}
+  {\tt \scriptsize
+  \begin{tabular}{l l}
+    Module PVI:Policy. \\ \\
+
+    Variable ce : composite\_env. & Definition ConstT pct := PolSuccess N. \\
+
+    & Definition InitT pct := PolSuccess N. \\
+    
+    Inductive tag := & Definition CallT pct pt := PolSuccess pct. \\
+    | Glob (id:ident) & Definition ArgT pct vt f x := PolSuccess (pct,vt). \\
+    | Dyn (c:nat) & Definition RetT pct\_clr pct\_cle vt := PolSuccess (pct\_cle,vt). \\
+    | N. &     Definition FieldT pct vt ty id := PolSuccess vt. \\
+    & Definition AccessT pct vt := PolSuccess vt. \\
+
+    Definition def\_tag := N. & Definition AssignT pct vt1 vt2 := PolSuccess (pct,vt2). \\
+    Definition InitPCT := Dyn 0. ~ &     Definition UnopT op pct vt := PolSuccess (pct, vt). \\ \\
+
+  \end{tabular}
+  
+  \begin{tabular}{l}
+    Definition BinopT (op: binary\_operation) (pct vt1 vt2: tag) := \\
+    ~ ~ match vt1, vt2 with \\
+    ~ ~ | Dyn n, X =>  PolSuccess (pct, vt1) \\
+    ~ ~ | Glob id, X => PolSuccess (pct, vt1) \\
+    ~ ~ | \_, \_ => PolSuccess (pct, vt2) \\
+    ~ ~ end. \\ \\
+
+    Definition LoadT (pct pt vt: tag) (lts : list tag) := \\
+    ~ ~ match pt with \\
+    ~ ~ | N => PolFail "PVI::LoadT N" ([pct;pt;vt]++lts) \\
+    ~ ~ | \_ => if forallb (tag\_eq\_dec pt) lts then PolSuccess vt  \\
+    ~ ~ ~ ~ else (PolFail "PVI::LoadT Ptr" ([pct;pt;vt]++lts)) \\
+    ~ ~ end. \\ \\
+
+    Definition StoreT (pct pt vt: tag) (lts: list tag) := \\
+    ~ ~ match pt with \\
+    ~ ~ | N => (PolFail "PVI::StoreT N" ([pct;pt;vt]++lts)) \\
+    ~ ~ | \_ => if forallb (tag\_eq\_dec pt) lts then PolSuccess (pct,vt,lts) \\
+    ~ ~ ~ ~ else (PolFail "PVI::StoreT Ptr" ([pct;pt;vt]++lts)) \\
+    ~ ~ end. \\ \\
+
+    Definition LocalT (pct: tag) (ty: type) := \\
+    ~ ~ match pct with \\
+    ~ ~ | Dyn c => PolSuccess (Dyn (S c), Dyn c, repeat (Dyn c) (sizeof ce ty)) \\
+    ~ ~ | \_ => PolFail "PVI::LocalT Failure" [pct] \\
+    ~ ~ end. \\ \\
+  
+    Definition DeallocT (pct: tag) (ty: type) := \\
+    ~ ~ PolSuccess (pct, N, repeat N (Z.to\_nat (sizeof ce ty))). \\ \\
+
+    Definition MallocT (pct pt vt: tag) := \\
+    ~ ~ match pct with \\
+    ~ ~ | Dyn c => PolSuccess (Dyn (S c), Dyn c, N, Dyn c) \\
+    ~ ~ | \_ => PolFail "PVI::MallocT Failure" [pct;pt;vt] \\
+    ~ ~ end. \\ \\
+
+    Definition FreeT (pct pt vt: tag) (lts: list tag) := \\
+    ~ ~ match pt with \\
+    ~ ~ | Dyn c => if forallb (tag\_eq\_dec pt) lts then PolSuccess (pct, N, N). \\
+    ~ ~ ~ ~ else PolFail ``PVI::FreeT Failure'' [pct;pt;vt] \\
+    ~ ~ | \_, \_ => PolFail ``PVI::FreeT Failure'' [pct;pt;vt] \\
+    ~ ~ end. \\ \\
+
+
+    Definition PICastT (pct pt: tag)  (lts: list tag) (ty: type) := PolSuccess pt. \\
+    Definition IPCastT (pct vt: tag)  (lts: list tag) (ty: type) := PolSuccess vt. \\
+    Definition PPCastT (pct vt: tag) (lts: list tag) (ty: type) := PolSuccess vt. \\
+    Definition IICastT (pct vt: tag) (ty: type) := PolSuccess vt. \\
+  \end{tabular} }
+    
+  \caption{The Complete PVI memory safety policy}
+  \label{fig:fullcode}
 \end{figure}
 
-All of the code is tagged {\color{orange} Code}, and the baseline policy ensures that
-only addresses with that tag will be executed. The header and return sequences are tagged
-as such, and the baseline policy ensures that they are executed in order, and appropriately
-tag the return address to protect it from being overwritten. The remaining code is tagged with
-the {\color{orange} SrcRule} (or {\color{orange} SrcVar}) with the identity of the tag rule
-that should execute along with that instruction. [TODO: initialize frame.]
-In the case of loads and stores, the rules in question are the composition of two high-level rules,
-with their outputs mapped to inputs as indicated.
 
-In the example in \cref{fig:compilation}, the store at line 10 attempts to overwrite
-the return pointer, and is prevented by the baseline policy regardless of the source
-policy. But under a PNVI policy, the program failstops at line 6.
-
-\paragraph{Tag sizes}
-
-In modeling Tagged C, we assume unbounded tags. In practice, PIPE tags are assumed to be
-word-sized. [Say something here about how big the baseline policy is.] That leaves
-most of the tag size for the source-level policy. [Cite that one guy's work on the GC for tags.]
 
 \section{Related Work}
 \label{sec:related}
@@ -1366,12 +1390,8 @@ as in {\sc Rmor}~\cite{Havelund08:RVC}.
 
 \paragraph*{Proofs}
 One reason for prototyping Tagged C in the Coq Proof Assistant is to lay the groundwork
-for formal proofs of its properties.  In particular, we would like to show that
-(i) the Tagged C semantics and interpreter have equivalent behavior; (ii) Tagged C running
-with a trivial ``do-nothing'' policy behaves like ordinary CompCert C, and (iii) Tagged C policies
-do not change program behavior outside of potentially causing failstops.
-%
-Besides properties Tagged C itself, we aim to prove properties of the policies.
+for formal proofs of its properties. We prove the correctness of the interpreter with respect
+to the Tagged C semantics, and we aim to prove properties of the policies.
 For each family of policies that we discuss, we will give a higher-level formal
 specification (e.g., a non-interference property for SIF) and prove that it holds on all
 programs run under that property.
