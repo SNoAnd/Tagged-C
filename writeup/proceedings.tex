@@ -171,8 +171,9 @@ In summary we offer the following contributions:
 \item Tagged C policies enforcing (1) compartmentalization, including a novel compartmentalization policy
   with separate public and private memory, (2) memory safety, with realistic memory models that allow
   low-level idioms to varying degrees, and (3) secure information flow.
-\item A full formal semantic definition for Tagged C, formalized in Coq, describing how the control points
-  interact with programs, and an interpreter, implemented in Coq and extracted to OCaml.
+\item A full formal semantic definition for Tagged C, formalized in Coq, describing how the
+  control points interact with programs, and an interpreter, implemented and verified in Coq
+  and extracted to OCaml.
 \end{itemize}
 
 The paper is organized as follows.
@@ -1249,6 +1250,10 @@ We also add a temporary environment to contain non-memory variables,
 and semantic rules to deal with them. Most importantly, we thread the PC tag into the state,
 and add control points to the relevant semantic rules. In the interpreter, we make
 the corresponding changes to the relevant code.
+
+The correctness proof of the interpreter is based on that of the original CompCert C
+interpreter, but we have needed to incorporate all of the above changes and update
+the proof automation to handle concrete memory and tags.
 
 In the interest of modularity, we define a Coq module type for policies, containing
 an instantiation of the tag type and of each of the tag rules. The entire formal semantics
