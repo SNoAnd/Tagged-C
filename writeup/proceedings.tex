@@ -61,8 +61,7 @@ undefined behavior (UB) such as memory errors (e.g. buffer overflows, use-after-
 logic errors (e.g. SQL injection, input-sanitization flaws), or
 larger-scale architectural flaws (e.g. over-provisioning access rights).
 
-Although static
-analyses can detect and mitigate many C insecurities, a last line of
+Although static analyses can detect and mitigate many C insecurities, a last line of
 defense against undetected or unfixable vulnerabilities is runtime
 enforcement of {\em security policies} using a reference
 monitor~\cite{Anderson72:PlanningStudy}. In particular, 
@@ -73,8 +72,9 @@ rules that check and update the metadata tags at key points during execution; if
 encountered, the program failstops. 
 Although monitoring based on metadata tags is less flexible and powerful than monitoring based on the
 underlying data values, it can still enforce many useful security properties, including
-both low-level concerns, such as fine-grained memory safety~\cite{Witchel02:MondrianMem}, and high-level
-properties like secure information flow~\cite{Denning76:SFIlattice} and mandatory access control~\cite{USDoD85:OrangeBook}.
+both low-level concerns, such as fine-grained memory safety~\cite{Witchel02:MondrianMem},
+and high-level properties like secure information flow~\cite{Denning76:SFIlattice} and
+mandatory access control~\cite{USDoD85:OrangeBook}.
 
 Tag-based policies are especially well-suited for efficient hardware enforcement, using 
 processor extensions such as ARM MTE~\cite{arm-mte},
@@ -82,7 +82,7 @@ STAR~\cite{Gollapudi+23}, and
 PIPE.  PIPE\footnote{ Variants of PIPE have
 been called PUMP~\cite{Dhawan+14}, %Dhawan+15},
 SDMP~\cite{Dover16}%,RoesslerD18}
-or CoreGuard~\cite{Dover20}.} 
+or CoreGuard.} 
 (Processor Interlocks for Policy Enforcement)~\cite{Azevedo+16,Azevedo+15},%Dhawan+15,
 the specific motivator for our work, 
 is a programmable hardware mechanism that supports monitoring 
@@ -115,9 +115,10 @@ features that are not preserved at machine level, such as function
 arguments, structured types, and structured control flow.
 
 To address these problems, we introduce a \emph{source-level} specification framework, \emph{Tagged C},
-which allows engineers to describe policies in terms of familiar C-level concepts, with tags attached to
-C functions, variables and data values, and rules triggered at \emph{control points} that correspond to
-significant execution events, such as function calls, expression evaluation, and pointer-based memory accesses. 
+which allows engineers to describe policies in terms of familiar C-level concepts, with tags attached
+to C functions, variables and data values, and rules triggered at \emph{control points} that
+correspond to significant execution events, such as function calls, expression evaluation,
+and pointer-based memory accesses. 
 Control points resemble ``join points'' in aspect-oriented programming, but the ``advice''
 in this case can only take the form of manipulating tags, not data.
 In previous work on the Tagine project~\cite{Chhak21:Tagine}, we outlined such a framework for a toy
@@ -133,9 +134,10 @@ including compartmentalization, memory protection, and secure information flow.
 %Importantly, a security policy can be modified without recompilation unless it is optimized as described in
 %\cref{sec:optionals}.
 
-Formally, Tagged C is defined as a variant C semantics that instruments ordinary execution with control points.
-At each control point, a user-defined set of tag rules is consulted to propagate tags and potentially cause
-execution to failstop. In the limiting case where no tag rules are defined, the semantics are similar to
+Formally, Tagged C is defined as a variant C semantics that instruments ordinary execution with
+control points. At each control point, a user-defined set of tag rules is consulted to propagate
+tags and potentially cause execution to failstop. In the limiting case where no tag rules are
+defined, the semantics are similar to
 those of ordinary C, except that the memory model is very concrete; 
 data pointers are just integers, and all globals, dynamically-allocated objects,
 and address-taken objects are allocated in the same integer-addressed memory space. Memory behaviors
@@ -152,7 +154,7 @@ Tag types and rules are also written directly in Gallina.
 The choice of control points and their associations with tag rules, as well as the tag rules'
 signatures, form the essence of Tagged C's design. 
 We have validated this design on the three classes of policies explored in this paper,
-and, outside of a few known limitations discussed in \cref{sec:limitations}, % , such as substructural memory safety,
+and, outside of a few known limitations related to malloc \cref{sec:limitations}, % , such as substructural memory safety,
 we believe it is sufficiently expressive to describe most other flow-based policies, although 
 further experience is needed to confirm this.
 
@@ -181,8 +183,8 @@ needs inform our choices of control points.
 %\Cref{sec:evaluation} assesses the degree to
 %which the design meets our goals of flexibility and applicability to realistic
 %security concerns.
-\Cref{sec:related} discusses related work, and \cref{sec:futurework} describes limitations
-and future work. The full formal Tagged C semantics appears in our appendix.
+\Cref{sec:related} discusses related work, and \cref{sec:conclusion}
+describes future work.
 
 \section{Metadata Tags and Policies, by Example}
 \label{sec:example}
@@ -211,7 +213,7 @@ such a leak. (Of course, this particular leak could also be easily found using s
          {
            \node[anchor=north] {\tt f}; \&
            \node[anchor=north, fill=gray!20] {\(\mathtt{psk} \mapsto i \tagat \vt[_1]\) \\ \(\mathtt{x} \mapsto \vundef \tagat \vt[_2]\)}; \&
-           \node[anchor=north, fill=blue!10] {\(\vt[_1] \leftarrow \argtname(\high,\FN[f],\AN[psk])\) \\ \(\vt[_2] \leftarrow \consttname\)};\\
+           \node[anchor=north, fill=blue!10] {\(\vt[_1] \leftarrow \argtname(\vt[_0],\FN[f],\AN[psk])\) \\ \(\vt[_2] \leftarrow \consttname\)};\\
          };
 
     \node[matrix, ampersand replacement=\&, node distance=4.5em, below=of table1.west,draw,anchor=west] (table2)
@@ -282,28 +284,31 @@ assignments, and arithmetic, according to generic rules that are not specific to
 Finally, a program-specific argument-handling rule for {\tt printi} will check that the tag is
 \(\low\); since it is not, the rule will cause a failstop.
 
-To explain the mechanics of Tagged C, we first show in \cref{fig:ex1} the policy-independent details of how
-tags flow and where tag rules are triggered in this program; then in \cref{fig:example1rules}
-we describe how the tag rules are instantiated for a particular policy like the one above.
+% Emphasize difference between framework and instantiation
+To explain the mechanics of Tagged C, we first show in \cref{fig:ex1} the policy-independent
+framework of where tag rules are triggered in this program: the initial tag on {\tt psk} (\(\vt[_0]\))
+passes through the \(\argtname\) tag rule, is combined with the tag on the constant 5 via
+the \(\binoptname\) tag rule, and then is passed to \(\argtname\) again on the call to
+again to obtain the tag on the parameter inside {\tt printi} (here called {\tt a}).
 \Cref{fig:ex1} maps three points in the execution of {\tt f} to descriptions of the program
 state at that point, with the input value and all tags treated symbolically.
-% APT: It is very confusing and irritating that these points are not (in general) control points.
-In each state, the first column (white) shows the active function, the second (gray) gives the symbolic values and tags
-of variables in the local environment, and the third (blue) shows the rules that produce those tags.
+In each state, the first column (white) shows the active function, the second (gray) gives
+the symbolic values and tags of variables in the local environment, and the third (blue)
+shows the rules that produce those tags.
 Throughout the paper, we highlight tag-related metavariables, rules, etc. in {\color{blue}blue}.
 We write \(v\tagat \vt\) for value \(v\) tagged with \(\vt\).
 Tags that are derived from identifiers are subscripted with the identifier namespace, e.g.
 \(\FN[f]\) is the tag associated with the function name {\tt f}.  
 \(\vundef\) denotes an uninitialized value.
 
-Suppose {\tt f} is called with an actual argument \(i \tagat \high\).
-The tag on {\tt psk} is checked by \(\argtname\), which is also parameterized by the
-names of both the function and the argument. The initial tag \(\vt[_2]\) on local
-variable {\tt x} is the default tag \(\consttname\).
-The result of the addition on line 2 is tagged by \(\binoptname\), which is parameterized
-by the kind of operation as well as the tags on its inputs.
-After the final step, execution is in the function {\tt printi}, which consults
-\(\argtname\) again to obtain the tag on its parameter (here called {\tt a}).\footnote{
+In \cref{fig:example1rules} we describe how the tag rules are instantiated for a particular
+policy like the one above. Suppose {\tt f} is called with an argument value \(i \tagat \high\).
+The first call \(\argtname\) simply passes the \(\high\) tag on, because \(\argtname\)
+is parameterized by the names of the function and the argument, and does not impact {\tt f}.
+The initial tag \(\vt[_2]\) on local variable {\tt x} comes from \(\consttname\),
+and it \(\low\). The result of the addition on line 2 is tagged by \(\binoptname\) as the
+higher of the two inputs. And finally, in the execution of {\tt printi}, \(\argtname\)
+uses its specialized rule and failstops, because the input is \(\high\).\footnote{
 For simplicity, we omit showing tag rules \(\accesstname\) and \(\assigntname\), 
 which are triggered each time a variable is read and assigned, respectively, because these
 don't play an interesting role in this example.}
@@ -346,8 +351,8 @@ an outside observer of {\tt mm} can deduce one bit of the key (an {\em implicit 
            \(\mathtt{psk} \mapsto i \tagat \vt[_2]\)
          }; \&
          \node[anchor=north, fill=blue!10] {\(\pt[_1], \vt[_1],\lt[_1] \leftarrow \globaltname(\GN[mm])\) \\
-           \(\PCT[_1] \leftarrow \calltname(\low, \FN[g])\)  \\
-           \(\vt[_2] \leftarrow \argtname(\high,\FN[g],\AN[psk])\)}; \\
+           \(\PCT[_1] \leftarrow \calltname(\PCT[_0], \FN[g])\)  \\
+           \(\vt[_2] \leftarrow \argtname(\vt[_0],\FN[g],\AN[psk])\)}; \\
        };
        
  \node[matrix, ampersand replacement=\&, node distance=5em, below=of table1.west,draw,anchor=west] (table2)         
@@ -357,7 +362,7 @@ an outside observer of {\tt mm} can deduce one bit of the key (an {\em implicit 
           \(p:\fbox{\(0 \tagat \vt[_1] \tagat \lt[_1]\)}\) \\
           \(\mathtt{psk} \mapsto i \tagat \vt[_2]\)
         }; \&
-        \node[anchor=north, fill=blue!10] {\(\vt[_3] \leftarrow \consttname\) \\
+        \node[anchor=north, fill=blue!10] {\(\vt[_3] \leftarrow \consttname(\PCT[_1])\) \\
           \(\vt[_4] \leftarrow \binoptname(>,\vt[_2],\vt[_3])\) \\ 
           \(\PCT[_2] \leftarrow \splittname(\PCT[_1], \vt[_4])\)}; \\
       };
@@ -369,7 +374,7 @@ an outside observer of {\tt mm} can deduce one bit of the key (an {\em implicit 
           \(p:\fbox{\(1 \tagat \vt[_6] \tagat \lt[_2]\)}\) \\
           \(\mathtt{psk} \mapsto i \tagat \vt[_2] \)
         }; \&
-        \node[anchor=north, fill=blue!10] {\(\vt[_5] \leftarrow \consttname\) \\
+        \node[anchor=north, fill=blue!10] {\(\vt[_5] \leftarrow \consttname(\PCT[_2])\) \\
           \(\PCT[_3],\vt[_6],\lt[_2] \leftarrow \storetname(\PCT[_2],\pt[_1],\vt[_5],\lt[_1])\)}; \\
       };
 
@@ -391,8 +396,8 @@ In addition to tags on values, Tagged C attaches tags to memory locations ({\em 
 \(\lt\)) and tracks a special global tag called the PC tag (ranged over by \(\PCT\), and attached to the
 function name in our diagrams).
 Tagged C initializes the tags on {\tt mm} with the \(\globaltname\) rule. The PC tag
-at the point of call, which we assume to be \(\low\), is fed to \(\calltname\) to determine
-a new PC tag
+at the point of call, \(\PCT[_0]\), which we assume to be \(\low\), is fed to \(\calltname\)
+to determine a new PC tag
 inside of {\tt g}. And the if-statement consults the \(\splittname\) rule to update the PC tag
 inside of its branch based on the value-tag of the expression {\tt psk < 0}. Once inside the
 conditional, when the program assigns to {\tt mm}, it must consult the \(\storetname\) rule because
@@ -400,42 +405,50 @@ it is storing to memory (again omitting \(\assigntname\)).
 
 \Cref{fig:example2rules} shows an instantiation of these rules that extend our previous SIF policy.
 The rule for globals initializes the location tag of {\tt mm} to \(\low\),
-as a low-security output channel, and marks all other addresses \(\high\). Whenever execution branches on
+as a low-security output channel, and marks all other addresses \(\high\).
+Whenever execution branches on
 a high-tagged value, the PC tag will be set to \(\high\). We modify the previous rules so that
 all expressions propagate the {\em higher} of the PC tag and the relevant value tag(s) (e.g., the
 updated \(\binoptname\) in \cref{fig:example2rules}).
+% show all updated rules now?
 When an assignment is to a memory location, the store rule will check the tag on
 that location against the value being written, 
 and failstop if a high value would be written to a low location.
-For this program, \(\splittname\) will set the PC tag to \high, as it branches on a value derived from {\tt psk}; 
+For this program, \(\splittname\) will set the PC tag to \high, as it branches on a value derived
+from {\tt psk}; 
 then, at the write to {\tt mm}, \(\storetname\) will fail rather than write to a low address
 in a high context.
 
 \begin{figure}[t]
+  \begin{minipage}{0.3\textwidth}
+    \truleblock{\(\constt\)}{
+      \(\vt' := \PCT\)
+    }
   \truleblock{\(\globaltname(\GN)\)}{
-    \(\vt':=\low\); \(\pt':=\low\) \\
+    \(\vt[']:=\low\); \(\pt[']:=\low\) \\
     \caseoftwo{x}
-              {\tt mm}{\(\lt':=\low\)}
-              {\(\underline{~~~}\)}{\(\lt':=\high\)}}
+              {\tt mm}{\(\lt[']:=\low\)}
+              {\(\underline{~~~}\)}{\(\lt[']:=\high\)}}
+  \end{minipage}
   \begin{minipage}{0.3\textwidth}
   \truleblock{\(\splittname(\PCT,\vt)\)}{
     \caseoftwo{(\(\PCT,\vt\))}
-              {(\(\low,\low\))}{\(\PCT':=\low\)}
-              {\(\underline{~~~}\)}{\(\PCT':=\high\)}
+              {(\(\low,\low\))}{\(\PCT[']:=\low\)}
+              {\(\underline{~~~}\)}{\(\PCT[']:=\high\)}
   }
   \binoptruleblock{
     \caseoftwo{\((\PCT,\vt[_1],\vt[_2])\)}
-              {(\(\low,\low,\low\))}{\(\vt':=\low\)}
-              {\(\underline{~~~}\)}{\(\vt':=\high\)}
+              {(\(\low,\low,\low\))}{\(\vt[']:=\low\)}
+              {\(\underline{~~~}\)}{\(\vt[']:=\high\)}
   }
   \end{minipage}
   \storetruleblock{
-    \(\lt':=\lt\); \(\PCT':=\PCT\) \\
+    \(\lt':=\lt\); \(\PCT[']:=\PCT\) \\
     \caseofthree{(\(\PCT,\vt,\lt\))}
                 {(\(\high,\underline{~~},\high\)) \\
                   (\(\underline{~~},\high,\high\))
-                }{\(\vt':=\high\)}
-                {(\(\low,\low,\low\))}{\(\vt':=\low\)}
+                }{\(\vt[']:=\high\)}
+                {(\(\low,\low,\low\))}{\(\vt[']:=\low\)}
                 {\(\underline{~~~}\)}{\(\fail\)}
   }
 \caption{Tag rule instantiations for secure information flow (pt. 2)}
@@ -549,6 +562,15 @@ the new type is a pointer, or both.
 
 \paragraph{Selecting Control Points}
 
+Tagged C relies on a fixed number of predefined control points, which we keep small
+in order to simplify and organize the task of the policy designer.
+Care needs to be taken in designing control points that are amenable
+to compilation for PIPE: tag rule evaluation has a complicated interaction with
+compiler optimization~\cite{Chhak21:Tagine}, and some potentially useful tag
+rule signatures (such as updating tags on operation inputs to enforce uniqueness
+constraints) would require the compiler to generate extra instructions to work
+around limitations of the PIPE hardware.
+
 We choose where to place control points based on a simple set of criteria.
 First, we divide expressions into classes: {\em silent expressions},
 {\em pure expressions}, and {\em impure expressions}. An expression is
@@ -577,6 +599,11 @@ And, in order to support arbitrary changes in tags, for instance at statically i
 join points for a SIF policy, we add the \(\labeltname\) rule.
 Finally, function calls and returns aim to support as much access to tags as possible,
 as they are key points of separation between different parts of the program.
+
+There is always the chance that new policies might arise for which our current set of
+control points proves to be inadequate. There is no conceptual reason why
+control points cannot be added or given modified signatures as needed,
+but extending the interpreter and (eventually) the compiler would be non-trivial.
 
 \paragraph{Memory} The second major semantic distinction of Tagged C is that, unlike CompCert C,
 it has no memory-related UB. CompCert C models memory as a collection of disjoint blocks,
@@ -688,7 +715,7 @@ between casts. PNVI accesses the memory pointed to by the (soon-to-be) pointer a
 location tag.
 
 \begin{figure}[t]
-  \small
+  \scriptsize
 \begin{tikzpicture}[every text node part/.style={align=left}]
   \node[matrix, ampersand replacement=\%, anchor=west] (code)
         {
@@ -969,15 +996,37 @@ Here, a table explicitly identifies which compartments may call one another's fu
 which global variables they can access, and with which other compartments they can share
 memory.
 
+\paragraph*{Malloc Limitations}
+\label{sec:limitations}
+
+The way Tagged C currently handles {\tt malloc} is unsatisfactory. First, there is no
+easy way to distinguish different static {\tt malloc} call locations; our use of
+variant names (\cref{sec:compartments}) is something of a hack.
+A more principled solution might draw on pointcuts to identify specific calls to {\tt malloc}
+as in {\sc Rmor}~\cite{Havelund08:RVC}.
+%  would probably involve building a general mechanism for identifying particular
+%  static points within functions, but we have so far intentionally avoided this.
+%  \apt{Need to add something earlier in the paper about our rationale for attaching rules
+%    to ``externally visible'' things like function calls and globals.}
+Further, {\tt malloc} does not get access to type information;
+it takes just a size and returns a {\tt void *}, which the caller must
+cast to a pointer of the desired type (at an arbitrary future point).
+Therefore, Tagged C cannot easily
+enforce substructural memory safety (i.e. protecting fields within a single struct
+from overflowing into each other) or other properties that call for allocated
+regions to be tagged according to their types.
+This is a well-known impediment to improving C memory safety;
+previous work  (e.g. \cite{Michael23:MSWASM}) has often adopted non-standard
+versions of {\tt malloc} that take more informative parameters. This is
+not satisfactory for protecting legacy code, but we do not yet see a good alternative.
+
 \subsection{Secure Information Flow}
 \label{sec:SIF}
 
 Finally, we return to the family of 
 {\em secure information flow} (SIF)~\cite{Denning77:SecureInformationFlow} policies
 introduced in \cref{sec:example}. 
-SIF deals entirely with enforcing
-higher-level security concerns, regardless of whether the code that they protect contains
-errors or undefined behaviors.
+SIF deals entirely with enforcing higher-level security concerns, even in code with no errors.
 
 \begin{figure}[t]
 \begin{tikzpicture}[every text node part/.style={align=left}]
@@ -999,19 +1048,20 @@ errors or undefined behaviors.
 
     \node[matrix, ampersand replacement=\&, node distance=15em, right=of l2.north,draw] (table1)
          {
-           \node[anchor=north] {\(\mathtt{h}\tagat\PCT[_1]\), \(\mathtt{fmt}\tagat\vt[_1]\)};\\
+           \node[anchor=north,fill=gray!20] {\(\mathtt{h}\tagat\PCT[_1]\)}; \&
+           \node[anchor=north,fill=blue!10] {\(\mathtt{fmt}\tagat\vt[_1]\)};\\
          };
 
     \node[matrix, ampersand replacement=\&, node distance=4.5em, below=of table1.west,draw,anchor=west] (table2)
          {
-           \node[anchor=north] {\(\mathtt{h}\tagat\PCT[_2]\)}; \&
-           \node[anchor=north] {\(\PCT[_2] \leftarrow \splittname(\PCT[_1], \vt_1)\) }; \\
+           \node[anchor=north,fill=gray!20] {\(\mathtt{h}\tagat\PCT[_2]\)}; \&
+           \node[anchor=north,fill=blue!10] {\(\PCT[_2] \leftarrow \splittname(\PCT[_1], \vt_1)\) }; \\
          };
 
     \node[matrix, ampersand replacement=\&, node distance=4.5em, below=of table2.west,draw,anchor=west] (table3)  
          {
-           \node[anchor=north] {\(\mathtt{h}\tagat\PCT[_3]\)}; \&
-           \node[anchor=north] {\(\PCT[_3] \leftarrow \labeltname(\PCT[_2], \LN[J])\)}; \\
+           \node[anchor=north,fill=gray!20] {\(\mathtt{h}\tagat\PCT[_3]\)}; \&
+           \node[anchor=north,fill=blue!10] {\(\PCT[_3] \leftarrow \labeltname(\PCT[_2], \LN[J])\)}; \\
          };
 
     \draw[Circle-]
@@ -1024,7 +1074,7 @@ errors or undefined behaviors.
     (l3.north) |- (table3.west);  
 
 \end{tikzpicture}
-\caption{Not an Implicit Flow\apt{missing usual background shading; spurious comma in first box(?)}}
+\caption{Not an Implicit Flow\apt{missing usual background shading}}
 \label{fig:sifex3}
 \end{figure}
 
@@ -1104,7 +1154,7 @@ if it wasn't already.
 %in the presence of goto, break, and continue statements, the join point of a conditional might be
 %arbitrarily distant from the split point.
 The internal syntactic form of each conditional statement (if, switch, while, do-while, and for)
-takes this label (optionally, since there might \apt{``not'' (??)} be a join point).
+takes this label (optionally, since there might not be a join point).
 If the conditional branches on a high value, \(\splittname\) adds the label to the set
 in the PC tag. Later, when execution reaches a label, \(\labeltname\) deletes it from the
 set. If the set is non-empty, there is at least one high split point that has not
@@ -1202,12 +1252,9 @@ the corresponding changes to the relevant code.
 
 In the interest of modularity, we define a Coq module type for policies, containing
 an instantiation of the tag type and of each of the tag rules. The entire formal semantics
-and the interpreter are then parameterized by a policy. For example, the code of the
-PVI-memory-safety policy is shown in full in \cref{fig:fullcode}.
-
-The interpreter simulates policies in software. The policies must be written directly in
-Galina, and the entire package of the interpreter and its policies are extracted
-to Ocaml.
+and the interpreter are then parameterized by a policy, written directly in Gallina.
+For example, the code of the PVI-memory-safety policy is shown in full in \cref{fig:fullcode}.
+The entire package of the interpreter and its policies are extracted to Ocaml.
 
 \paragraph{Practicalities: Tag Sizes, Policy States}
 
@@ -1235,9 +1282,7 @@ In the future we may revisit this choice.
     | N. & Definition ArgT pct vt f x := PolSuccess (pct,vt). \\
     Definition def\_tag := N. & Definition RetT pct oldpct vt := PolSuccess (pct,vt). \\
     Definition InitPCT := Dyn 0. & Definition FieldT pct vt ty id := PolSuccess vt. \\[0.5em]
-  \end{tabular}
-  
-  \begin{tabular}{l l}
+
     Definition BinopT op pct vt1 vt2 :=     & Definition UnopT op pct vt := \\
     ~ match vt1, vt2 with                   & ~ PolSuccess (pct, vt). \\
     ~ | Dyn n, X =>  PolSuccess (pct, vt1)  & Definition AccessT pct vt := \\
@@ -1308,78 +1353,37 @@ Various systems have targeted information flow, memory safety, and compartmental
 Cassel et al.'s FlowNotations use type annotations to specify ``tainted'' and ``trusted'' data,
 and statically check a program's information flow using the C type system. Their annotation system
 could easily be an input to a SIF policy, replacing the static checks with dynamic enforcement.
+The CHERI hardware capability system has been used by Tsampas et al. for compartmentalization
+\cite{Tsampas2017:TowardsAC}, and by Filardo et al. for temporal memory safety
+\cite{NWF20:Cornucopia}. Like PIPE, CHERI can support a range of security policies,
+although it is ill-suited for information-flow-style policies. Despite this, it would
+be worth exploring whether a useful subset of Tagged C's control points could be implemented
+by a CHERI backend.
 
-\section{Limitations and Future Work}
-\label{sec:limitations}
-\label{sec:futurework}
+\section{Conclusion and Future Work}
+\label{sec:conclusion}
 
-Although we believe that our examples validate the features of Tagged C, 
-there are some limitations in the design and important tasks that we
-hope to address.
+We have introduced a C variant that provides a general mechanism to describe security
+policies, exemplified by memory safety, compartmentalization, and secure-information-flow
+policies. Each category of policy can be applied flexibly to meet the security needs of
+a particular program. From this proof of concept, we can see several natural extensions
+to make Tagged C more practical to use.
 
-\paragraph*{Compilation}
 An interpreter is useful for testing policies, but our main goal has always been to
 produce a compiler from Tagged C to machine code for a PIPE-equipped processor.
 The basic strategy for compilation was outlined in the Tagine project~\cite{Chhak21:Tagine}.
 We are currently working to extend the CompCert compiler to handle Tagged C, with the ultimate
 goal of also extending CompCert's semantics preservation guarantees to cover tagged semantics.
 
-\paragraph*{Fixed set of Control Points}
-We deliberately designed Tagged C to rely on a fixed number of predefined
-control points. This simplifies and organizes the task of the policy designer, but of course
-new policies might arise for which our current set of
-control points proves to be inadequate.  There is no conceptual reason why
-control points cannot be added or given modified signatures as needed,
-but extending the interpreter and (eventually) the compiler would be non-trivial.
-Care needs to be taken in designing control points that are amenable
-to compilation for PIPE: tag rule evaluation has a complicated interaction with
-compiler optimization~\cite{Chhak21:Tagine}, and some potentially useful tag
-rule signatures (such as updating tags on operation inputs to enforce uniqueness
-constraints) would require the compiler to generate extra instructions to work
-around limitations of the PIPE hardware.
-
-\paragraph*{Policy DSL}
 Currently, policies are written in Gallina, the language embedded in Coq~\cite{coq}. This is fine for a
 proof-of-concept, but not satisfactory for real use by software engineers.
 We plan to develop a domain-specific policy language to make it easier to write Tagged C policies.
 
-\paragraph*{Heap Memory Tagging}
-The way Tagged C currently handles {\tt malloc} is unsatisfactory. First, there is no
-easy way to distinguish different static {\tt malloc} call locations; our use of
-variant names (\cref{sec:compartments}) is something of a hack.
-A more principled solution might draw on pointcuts to identify specific calls to {\tt malloc}
-as in {\sc Rmor}~\cite{Havelund08:RVC}.
-%  would probably involve building a general mechanism for identifying particular
-%  static points within functions, but we have so far intentionally avoided this.
-%  \apt{Need to add something earlier in the paper about our rationale for attaching rules
-%    to ``externally visible'' things like function calls and globals.}
-Further, {\tt malloc} does not get access to type information;
-it takes just a size and returns a {\tt void *}, which the caller must
-cast to a pointer of the desired type (at an arbitrary future point).
-Therefore, Tagged C cannot easily
-enforce substructural memory safety (i.e. protecting fields within a single struct
-from overflowing into each other) or other properties that call for allocated
-regions to be tagged according to their types.
-This is a well-known impediment to improving C memory safety;
-previous work  (e.g. \cite{Michael23:MSWASM}) has often adopted non-standard
-versions of {\tt malloc} that take more informative parameters. This is
-not satisfactory for protecting legacy code, but we do not yet see a good alternative.
-
-\paragraph*{Proofs}
-
 One reason for prototyping Tagged C in the Coq Proof Assistant is to lay the groundwork
-for formal proofs of its properties. We prove the correctness of the interpreter with respect
-to the Tagged C semantics, and we aim to prove properties of the policies.
-For each family of policies that we discuss, we will give a higher-level formal
+for formal proofs of its properties. We have not yet proven the correctness of our example
+policies. For each family of policies that we discuss, we will give a higher-level formal
 specification (e.g., a non-interference property for SIF) and prove that it holds on all
 programs run under that property.
-
-\section{Conclusion}
-
-We have introduced a C variant that provides a general mechanism to describe security
-policies, exemplified by memory safety, compartmentalization, and secure-information-flow
-policies. Each category of policy can be applied flexibly to meet the security needs of
-a particular program.
 
 \paragraph{Acknowledgements}
 

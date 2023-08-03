@@ -30,13 +30,18 @@ It is quite similar for memory safety: I **believe** that it is fine, but I cann
 
 - Fig. 5:"(7) is also illegal in PVI". From ISO C99, Sect. 6.5.6, §9, "when two pointers are subtracted, both shall points to elements of the same array object, or one past the last element of the array object". Therefore, I believe that your example is legal in the PNVI model because it is fully flat and so arrays x and y are in contiguous 32-bit memory locations (so without padding bits in-between). If so, I think it would be worth adding a few words to make it clear. If I misunderstood, please explain why (7) is legal in the PNVI model.
 
+### SNA: FIXED by just saying less
+
 - p13: "regardless of whether the code that they protect contains errors or undefined behaviors". I do not understand this part of the sentence. Indeed, if the code contains an UB, one can have no guarantee about the SIF policy since the execution of the code is, by definition, undefined (e.g., it could be removed at compile time, or it could lead to execute another piece of code). Usually, soundness theorems about information flows (or other semantic-based C properties) look like "if there is no UB, then [...]" (or "if the program point P is reachable, [...]", which is usually not possible when the program has an error between the start of the program and P)
+
+###
 
 - p14: "The internal syntactic form of each conditional statement": what about (possibly unnatural) loops encoded through gotos?
 
 - Related Work: I think the part about (RV of) C code is a bit weak. Even if I am not aware of work such as yours, you could present a few works that specifically target the security properties that are investigated in your paper: memory safety, SIF, compartmentalization. I know no work about compartmentalization, but it does not mean that it does not exist :). For memory safety and SIF, several works do exist.
 
 Typos:
+### SNA
 FIXED p3: [23],[24] --> [23, 24]
 FIXED p3: appear --> appears (last line of Sec. 1)
 FIXED p5: \it{binoptname} --> BinOpT (probably \binoptname is a LaTeX macro)
@@ -45,7 +50,7 @@ FIXED p7: formal rules: LaTeX's overfull hbox
 FIXED p8: in Section 4 --> in Section 4. (dot missing at the end of the sentence)
 FIXED p9: toogether --> together
 FIXED p10: (Section 4.1) --> (Fig. 7)
-
+###
 
 ----------------------- REVIEW 2 ---------------------
 SUBMISSION: 34
