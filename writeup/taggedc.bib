@@ -74,7 +74,7 @@ series = {CPP 2021}
     keywords = {control-flow integrity, memory safety, metadata, security, tagged architecture, taint tracking}
 }
 
-@INPROCEEDINGS{NWF20:Cornucopia,  author={Wesley Filardo, Nathaniel and Gutstein, Brett F. and Woodruff, Jonathan and Ainsworth, Sam and Paul-Trifu, Lucian and Davis, Brooks and Xia, Hongyan and Tomasz Napierala, Edward and Richardson, Alexander and Baldwin, John and Chisnall, David and Clarke, Jessica and Gudka, Khilan and Joannou, Alexandre and Theodore Markettos, A. and Mazzinghi, Alfredo and Norton, Robert M. and Roe, Michael and Sewell, Peter and Son, Stacey and Jones, Timothy M. and Moore, Simon W. and Neumann, Peter G. and Watson, Robert N. M.},  booktitle={2020 IEEE Symposium on Security and Privacy (SP)},   title={Cornucopia: Temporal Safety for CHERI Heaps},   year={2020},  volume={},  number={},  pages={608-625},  doi={10.1109/SP40000.2020.00098}}
+@INPROCEEDINGS{NWF20:Cornucopia,  author={Wesley Filardo, Nathaniel and Gutstein, Brett F. and Woodruff, Jonathan and Ainsworth, Sam and Paul-Trifu, Lucian and Davis, Brooks and Xia, Hongyan and Tomasz Napierala, Edward and Richardson, Alexander and Baldwin, John and Chisnall, David and Clarke, Jessica and Gudka, Khilan and Joannou, Alexandre and Theodore Markettos, A. and Mazzinghi, Alfredo and Norton, Robert M. and Roe, Michael and Sewell, Peter and Son, Stacey and Jones, Timothy M. and Moore, Simon W. and Neumann, Peter G. and Watson, Robert N. M.},  booktitle={2020 IEEE Symposium on Security and Privacy (SP)},   title={Cornucopia: Temporal Safety for {CHERI} Heaps},   year={2020},  volume={},  number={},  pages={608-625},  doi={10.1109/SP40000.2020.00098}}
 
 @article{Skorstengaard19:stktokens,
   title={{StkTokens: Enforcing Well-bracketed Control Flow and Stack Encapsulation using Linear Capabilities}},
@@ -113,10 +113,20 @@ series = {CPP 2021}
   year = 1982
 }
 
+@phdthesis{Erlingsson04:IRM,
+  author       = {{\'{U}}lfar Erlingsson},
+  title        = {The Inlined Reference Monitor Approach to Security Policy Enforcement},
+  school       = {Cornell University, {USA}},
+  year         = {2004},
+  timestamp    = {Wed, 30 Mar 2022 16:07:49 +0200},
+  biburl       = {https://dblp.org/rec/phd/us/Erlingsson04.bib},
+  bibsource    = {dblp computer science bibliography, https://dblp.org}
+}
+
 ﻿@phdthesis{Lundblad13:IRM,
    author = {Lundblad, Andreas},
    institution = {KTH, Theoretical Computer Science, TCS},
-   note = {QC 20130220},
+   note = {{QC} 20130220},
    pages = {viii, 20},
    school = {KTH, Theoretical Computer Science, TCS},
    title = {Inlined Reference Monitors : Certification,Concurrency and Tree Based Monitoring},
@@ -361,6 +371,12 @@ author="{Dover Microsystems}",
 title="Coreguard Overview",
 url="https://www.dovermicrosystems.com/solutions/coreguard/"
 }
+
+@misc{DraperISP,
+author="Draper Laboratories",
+title="Inherently Secure Processor",
+url="https://www.draper.com/explore-solutions/inherently-secure-processor",
+}                  
 
 @InProceedings{Dover16,
   author =	 {
@@ -685,13 +701,12 @@ keywords = {The Coq theorem prover, Semantic preservation, Program proof, Formal
 
 @inproceedings{Cassel19:FlowNotation,
 author = {Cassel, Darion and Huang, Yan and Jia, Limin},
-title = {Uncovering Information Flow Policy Violations in C Programs (Extended Abstract)},
+title = {Uncovering Information Flow Policy Violations in {C} Programs (Extended Abstract)},
 year = {2019},
 isbn = {978-3-030-29961-3},
 publisher = {Springer-Verlag},
 address = {Berlin, Heidelberg},
 url = {https://doi.org/10.1007/978-3-030-29962-0_2},
-doi = {10.1007/978-3-030-29962-0_2},
 abstract = {Programmers of cryptographic applications written in C need to avoid common mistakes such as sending private data over public channels or improperly ordering protocol steps. These secrecy, integrity, and sequencing policies can be cumbersome to check with existing general-purpose tools. We have developed a novel means of specifying and uncovering violations of these policies that allows for a much lighter-weight approach than previous tools. We embed the policy annotations in C’s type system via a source-to-source translation and leverage existing C compilers to check for policy violations, achieving high performance and scalability. We show through case studies of recent cryptographic libraries and applications that our work is able to express detailed policies for large bodies of C code and can find subtle policy violations. We show formal connections between the policy annotations and an information flow type system and prove a noninterference guarantee of our design.},
 booktitle = {Computer Security – ESORICS 2019: 24th European Symposium on Research in Computer Security, Luxembourg, September 23–27, 2019, Proceedings, Part II},
 pages = {26–46},
@@ -701,7 +716,7 @@ location = {Luxembourg, Luxembourg}
 }
 
 @inproceedings{Tsampas2017:TowardsAC,
-  title={Towards Automatic Compartmentalization of C Programs on Capability Machines},
+  title={Towards Automatic Compartmentalization of {C} Programs on Capability Machines},
   author={Stelios Tsampas and Akram El-Korashy and Marco Patrignani and Dominique Devriese and Deepak Garg and Frank Piessens},
   year={2017},
   url={https://api.semanticscholar.org/CorpusID:32838507}
