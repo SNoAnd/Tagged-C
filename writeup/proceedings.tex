@@ -1301,9 +1301,11 @@ require updating the proof automation to handle concrete memory and tags.
 
 In the interest of modularity, we define a Coq module type for policies, containing
 an instantiation of the tag type and of each of the tag rules. The entire formal semantics
-and the interpreter are then parameterized by a policy, written directly in Gallina.
-For example, the code of the PVI-memory-safety policy is shown in full in \cref{fig:fullcode}.
-The entire package of the interpreter and its policies are extracted to Ocaml.
+and the interpreter are then parameterized by a policy, written directly in Gallina,
+then extracted to Ocaml.
+For example, \cref{fig:fullcode} shows part of the policy module's signature, its instantiation
+in the PVI policy, and how those rules are accessed in the Coq semantics. The full
+policy fits into 70 lines of Gallina.
 
 \paragraph{PIPE, tag sizes, and policy states.}
 Ultimately, we wish to compile Tagged C to run efficiently on PIPE-equipped hardware, which
@@ -1324,48 +1326,47 @@ rule invocations. This approach may support more efficient policy designs.
 \begin{figure}[t]
 
   {\tt \scriptsize
-  \begin{tabular}{l l}
-    Module PVI:Policy. \\[0.5em]
+    \begin{tabular}{l l}
+      Module Type Policy. \\[0.5em]
 
-    Inductive tag := & Definition ConstT pct := PolSuccess N. \\
-    | Glob (id:ident) & Definition InitT pct := PolSuccess N. \\
-    | Dyn (c:nat) & Definition CallT pct pt := PolSuccess pct. \\
-    | N. & Definition ArgT pct vt f x := PolSuccess (pct,vt). \\
-    Definition def\_tag := N. & Definition RetT pct oldpct vt := PolSuccess (pct,vt). \\
-    Definition InitPCT := Dyn 0. & Definition FieldT pct vt ty id := PolSuccess vt. \\[0.5em]
+      Parameter tag : Type.     & Inductive PolResult (A: Type) := \\
+      Parameter def\_tag : tag. & | PolSuccess (res: A) \\
+      Parameter InitPCT : tag.  & | PolFail (r: string) \\[0.5em]
+  
+      \multicolumn{2}{l}{Parameter BinopT : binary\_operation ->
+        tag -> tag -> tag -> PolResult (tag * tag).} \\
+      \multicolumn{2}{l}{Parameter LoadT : tag -> tag -> tag ->
+        list tag -> PolResult tag.} \\
 
-    Definition BinopT op pct vt1 vt2 :=     & Definition UnopT op pct vt := \\
-    ~ match vt1, vt2 with                   & ~ PolSuccess (pct, vt). \\
-    ~ | Dyn n, X =>  PolSuccess (pct, vt1)  & Definition AccessT pct vt := \\
-    ~ | Glob id, X => PolSuccess (pct, vt1) & ~ PolSuccess vt. \\
-    ~ | \_, \_ => PolSuccess (pct, vt2)     & Definition AssignT pct vt1 vt2 := \\
-    ~ end.                                  & ~ PolSuccess (pct,vt2). \\[0.5em]
+      ... \\[1em]
+      Module PVI:Policy. \\[0.5em]
 
-    Definition LoadT pct pt vt lts :=   & Definition StoreT pct pt vt lts := \\
-    ~ match pt with                     & ~ match pt with \\
-    ~ | N => PolFail "PVI::LoadT N"     & ~ | N => PolFail "PVI::StoreT N" \\
-    ~ | \_ => if forallb (=? pt) lts    & ~ | \_ => if forallb (=? pt) lts \\
-    ~ ~ then PolSuccess vt              & ~ ~ then PolSuccess (pct,vt,lts) \\
-    ~ ~ else PolFail "PVI::LoadT Ptr"   & ~ ~ else PolFail "PVI::StoreT Ptr" \\
-    ~ end. & ~ end. \\[0.5em]
+      Inductive tag := & Definition def\_tag := N.  \\
+      | N. & Definition InitPCT := Dyn 0. \\
+      | Dyn (c:nat) & Definition ConstT pct := PolSuccess N. \\
+      & \\[0.5em]
 
-    Definition LocalT pct ty :=                &  Definition MallocT pct pt vt :=\\
-    ~ match pct with                           & ~ match pct with \\
-    ~ | Dyn c => PolSuccess (Dyn (S c),        & ~ | Dyn c => \\
-    ~ ~ Dyn c, repeat (Dyn c) (sizeof ty))          & ~ ~ PolSuccess (Dyn (S c), Dyn c, N, Dyn c) \\
-    ~ | \_ => PolFail "PVI::LocalT"            & ~ | \_ => PolFail "PVI::MallocT" \\
-    ~ end.                                     & ~ end. \\[0.5em]
-
-    Definition FreeT pct pt vt lts :=   & Definition DeallocT pct ty := \\
-    ~ match pt with                     & ~ PolSuccess (pct, N, repeat N (sizeof ty))) \\
-    ~ | Dyn c => if forallb (=? pt) lts & Definition PICastT pct pt lts ty := PolSuccess pt. \\
-    ~ ~ then PolSuccess (pct, N, N)     & Definition IPCastT pct vt lts ty := PolSuccess vt. \\
-    ~ ~ else PolFail "PVI::FreeT"     & Definition PPCastT pct vt lts ty := PolSuccess vt. \\
-    ~ | \_ => PolFail "PVI::FreeT"    & Definition IICastT pct vt ty := PolSuccess vt. \\
-    ~ end. \\[0.5em]
+      Definition BinopT op pct vt1 vt2 :=       & Definition LoadT pct pt vt lts := \\
+      ~ match vt1, vt2 with                     & ~ match pt with \\
+      ~ | Dyn c, N =>  PolSuccess (pct, Dyn c)  & ~ | N => PolFail "PVI::LoadT N" \\
+      ~ | N, Dyn c => PolSuccess (pct, Dyn c)   & ~ | \_ => if forallb (=? pt) lts \\
+      ~ | N, N => PolSuccess (pct, N)           & ~ ~ then PolSuccess vt \\
+      ~ | Dyn c1, Dyn c2 => PolSuccess (pct, N) &  ~ ~ else PolFail "PVI::LoadT Ptr" \\
+      ~ end.                                    & ~ end. \\
+      ... \\[1em]
+    \end{tabular}
+    
+    \begin{tabular}{l}
+      Inductive rred (PCT:tag) : expr -> mem -> trace -> tag -> expr -> mem -> Prop := \\
+      ...\\
+      | red\_const: forall v ty m vt', PolSuccess vt' = ConstT PCT -> \\
+      ~ rred PCT (Econst v ty) m E0 PCT (Eval (v,vt') ty) m \\
+      | red\_rvalof: forall ofs pt lts bf ty m tr v vt vt', deref\_loc ty m ofs pt bf tr (v,vt) lts -> \\
+      ~ PolSuccess vt' = LoadT PCT pt vt lts -> PolSuccess vt'' = AccessT PCT vt' \\
+      ~ rred PCT (Evalof (Eloc ofs pt bf ty) ty) m tr PCT (Eval (v,vt'') ty) m
       \end{tabular} }
     
-  \caption{The Complete PVI memory safety policy}
+  \caption{Instantiating Policy Module with PVI}
   \label{fig:fullcode}
 \end{figure}
 
