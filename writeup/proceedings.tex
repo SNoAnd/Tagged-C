@@ -88,7 +88,7 @@ Tag-based policies are especially well-suited for efficient hardware enforcement
 processor extensions such as ARM MTE~\cite{arm-mte},
 STAR~\cite{Gollapudi+23}, and
 PIPE.  PIPE\footnote{ Variants of PIPE have
-been called PUMP~\cite{Dhawan+15}, %Dhawan+14},
+been called PUMP~\cite{Dhawan+15} or %Dhawan+14},
 SDMP~\cite{RoesslerD18}% ,Dover16}},
 and marketed commercially under the names Dover CoreGuard and Draper Inherently Secure Processor.}
 (Processor Interlocks for Policy Enforcement)~\cite{Azevedo+16,Azevedo+15},%Dhawan+15,
@@ -155,7 +155,7 @@ We build the Tagged C semantics on top of the CompCert C semantics, which is for
 as part of the CompCert verified compiler \cite{Leroy09:CompCert,Leroy09:CompCertBackend}.
 For prototyping and executing example policies,
 we provide a reference interpreter \footnote{Available at [github]\apt{FIX ME!}},
-also based on that of CompCert~\cite[Ch. 4]{Leroy22:CompCertManual},
+also based on that of CompCert~\cite[Ch. 4]{Leroy23:CompCertManual},
 written in the Gallina functional language of the Coq Proof Assistant~\cite{coq}.
 Tag types and rules are also written directly in Gallina. 
 
