@@ -510,7 +510,7 @@ in a high context.
 
 Tagged C contains almost all features of full ISO C 99.\footnote{
 It inherits the limitations of CompCert C, primarily that {\tt setjump} and {\tt longjump}
-may not work, and variable-length arrays are not supported.~\cite[Ch. 5]{Leroy22:CompCertManual}.}
+may not work, and variable-length arrays are not supported.~\cite[Ch. 5]{Leroy23:CompCertManual}.}
 Its semantics is based on that of CompCert C~\cite{Leroy09:CompCert},
 a formalization of the C standard into a small-step reduction semantics.
 Tagged C's semantics differs from CompCert C's in two key respects: tag support and memory model.
@@ -1285,27 +1285,35 @@ routine and a high level to the outputs of its corresponding decryption routine.
 \section{Implementation}
 \label{sec:implementation}
 
-In order to implement Tagged C on top of the CompCert semantics and interpreter,
-we replace the standard block-offset memory with a concrete one,
-leaving the block-based system to handle only function pointers. We also rework
-global environments to separate (symbolic) function pointers from other (concrete)
-pointers. Memory and global environments are shared between the formal
-semantics and the interpreter, so these changes only need to be made once.
+Our current Coq-based implementation of Tagged C consists of a formal semantics and
+a matching interpreter written in Coq's Gallina language (similar to functional
+languages such as OCaml or Haskell).
+These are based on the {\tt Csem} and {\tt Cexec} modules from the CompCert compiler
+(version 3.10)~\cite{CompCert3.10}.  The interpreter can be extracted to a stand-alone OCaml program
+that can then be further compiled to machine code.
 
+To adapt CompCert, we replace the standard block-offset memory with a concrete one,
+leaving the block-based system to handle only function pointers. We rework
+global environments to separate (symbolic) function pointers from other (concrete)
+pointers. %Memory and global environments are shared between the formal
+%semantics and the interpreter, so these changes only need to be made once.
 We also add a temporary environment to contain non-memory variables,
 and semantic rules to deal with them. Most importantly, we thread the PC tag into the state,
-and add control points to the relevant semantic rules. In the interpreter, we make
-the corresponding changes to the relevant code.
-To reprove the correctness of the interpreter with respect to the semeantics
-require updating the proof automation to handle concrete memory and tags.
+and add control points to the relevant semantic rules. These changes appear in both
+the semantics and the corresponding interpreter code. 
+To extend the existing CompCert proof that the interpreter is correct with respect to the semantics
+requires updating the proof automation to handle concrete memory and tags.
 
-In the interest of modularity, we define a Coq module type for policies, containing
-an instantiation of the tag type and of each of the tag rules. The entire formal semantics
-and the interpreter are then parameterized by a policy, written directly in Gallina,
-then extracted to Ocaml.
-For example, \cref{fig:fullcode} shows part of the policy module's signature, its instantiation
-in the PVI policy, and how those rules are accessed in the Coq semantics. The full
-policy fits into 70 lines of Gallina.
+The semantics and interpreter are parameterized by a Coq module type {\tt Policy}, which specifies
+the type signatures of the tag rules. A policy is written directly in Gallina as a module that
+instantiates {\tt Policy} by defining the type of tags and the body of each tag rule.  
+To illustrate, \cref{fig:fullcode} shows fragments of the {\tt Policy} signature, its instantiation
+in the PVI memory safety policy, and how its rules are accessed in the Coq semantics. The full
+PVI policy fits into 70 lines of Gallina.  \apt{I think this figure is pretty good (I added a bit
+  of indentation) -- but why do you show the {\tt red\_const} rule instead of {\tt red\_binop} ?
+  [Also, the rules don't seem to match the code I see in the repo.
+    And the details of {\tt LoadT} involve the vector of byte tags that you have hopefully banished
+    elsewhere, but I guess it is safe not to worry about that.] }
 
 \paragraph{PIPE, tag sizes, and policy states.}
 Ultimately, we wish to compile Tagged C to run efficiently on PIPE-equipped hardware, which
@@ -1313,15 +1321,15 @@ raises some issues that are not currently visible at the level of the Coq interp
 the Coq model of Tagged C allows unbounded tags. In reality, PIPE tags are large, but
 bounded. This means that, for instance, the na\"{i}ve implementation of PVI memory safety
 described here runs the risk of overflowing the number of possible colors. 
-Temporal safety will not be feasible in long-running programs that regularly allocate memory,
+Enforcement of temporal safety will not be feasible in long-running programs that regularly allocate memory,
 even if their total memory footprint is bounded, unless the policy can reclaim the tags
 on previously freed objects. 
 
 Also, the Coq model assumes that all tag rules are pure functions of the tag inputs;
 any state carried by the policy must be encoded in the PC tag.
 In practice, PIPE allows tag rules to be implemented by arbitrary code, which can  persist
-private state (separate from the underlying application being monitored) over multiple
-rule invocations. This approach may support more efficient policy designs.
+private state (separate from the application being monitored) over multiple
+rule invocations; this approach may support more efficient policy designs.
 
 \begin{figure}[t]
 
@@ -1329,44 +1337,48 @@ rule invocations. This approach may support more efficient policy designs.
     \begin{tabular}{l l}
       Module Type Policy. \\[0.5em]
 
-      Parameter tag : Type.     & Inductive PolResult (A: Type) := \\
-      Parameter def\_tag : tag. & | PolSuccess (res: A) \\
-      Parameter InitPCT : tag.  & | PolFail (r: string) \\[0.5em]
+      \ \ \ Parameter tag : Type.     & Inductive PolResult (A: Type) := \\
+      \ \ \  Parameter def\_tag : tag. & | PolSuccess (res: A) \\
+      \ \ \ Parameter InitPCT : tag.  & | PolFail (r: string) \\[0.5em]
   
-      \multicolumn{2}{l}{Parameter BinopT : binary\_operation ->
+      \multicolumn{2}{l}{\ \ \ Parameter BinopT : binary\_operation ->
         tag -> tag -> tag -> PolResult (tag * tag).} \\
-      \multicolumn{2}{l}{Parameter LoadT : tag -> tag -> tag ->
+      \multicolumn{2}{l}{\ \ \ Parameter LoadT : tag -> tag -> tag ->
         list tag -> PolResult tag.} \\
 
-      ... \\[1em]
+      \ \ \ ... \\[1em]
+
       Module PVI:Policy. \\[0.5em]
 
-      Inductive tag := & Definition def\_tag := N.  \\
-      | N. & Definition InitPCT := Dyn 0. \\
-      | Dyn (c:nat) & Definition ConstT pct := PolSuccess N. \\
+      \ \ \ Inductive tag := & Definition def\_tag := N.  \\
+      \ \ \ | N. & Definition InitPCT := Dyn 0. \\
+      \ \ \ | Dyn (c:nat) & Definition ConstT pct := PolSuccess N. \\
       & \\[0.5em]
 
-      Definition BinopT op pct vt1 vt2 :=       & Definition LoadT pct pt vt lts := \\
-      ~ match vt1, vt2 with                     & ~ match pt with \\
-      ~ | Dyn c, N =>  PolSuccess (pct, Dyn c)  & ~ | N => PolFail "PVI::LoadT N" \\
-      ~ | N, Dyn c => PolSuccess (pct, Dyn c)   & ~ | \_ => if forallb (=? pt) lts \\
-      ~ | N, N => PolSuccess (pct, N)           & ~ ~ then PolSuccess vt \\
-      ~ | Dyn c1, Dyn c2 => PolSuccess (pct, N) &  ~ ~ else PolFail "PVI::LoadT Ptr" \\
-      ~ end.                                    & ~ end. \\
-      ... \\[1em]
+      \ \ \ Definition BinopT op pct vt1 vt2 :=       & Definition LoadT pct pt vt lts := \\
+      \ \ \ ~ match vt1, vt2 with                     & ~ match pt with \\
+      \ \ \ ~ | Dyn c, N =>  PolSuccess (pct, Dyn c)  & ~ | N => PolFail "PVI::LoadT N" \\
+      \ \ \ ~ | N, Dyn c => PolSuccess (pct, Dyn c)   & ~ | \_ => if forallb (=? pt) lts \\
+      \ \ \ ~ | N, N => PolSuccess (pct, N)           & ~ ~ ~ ~ ~then PolSuccess vt \\
+      \ \ \ ~ | Dyn c1, Dyn c2 => PolSuccess (pct, N) &  ~ ~ ~ ~ ~else PolFail "PVI::LoadT Ptr" \\
+      \ \ \ ~ end.                                    & ~ end. \\
+      \ \ \ ... \\[1em]
     \end{tabular}
     
     \begin{tabular}{l}
-      Inductive rred (PCT:tag) : expr -> mem -> trace -> tag -> expr -> mem -> Prop := \\
-      ...\\
-      | red\_const: forall v ty m vt', PolSuccess vt' = ConstT PCT -> \\
-      ~ rred PCT (Econst v ty) m E0 PCT (Eval (v,vt') ty) m \\
-      | red\_rvalof: forall ofs pt lts bf ty m tr v vt vt', deref\_loc ty m ofs pt bf tr (v,vt) lts -> \\
-      ~ PolSuccess vt' = LoadT PCT pt vt lts -> PolSuccess vt'' = AccessT PCT vt' \\
-      ~ rred PCT (Evalof (Eloc ofs pt bf ty) ty) m tr PCT (Eval (v,vt'') ty) m
+      Module Csem (Import P: Policy). \\
+      \\
+      \ \ Inductive rred (PCT:tag) : expr -> mem -> trace -> tag -> expr -> mem -> Prop := \\
+      \ \ | red\_const: forall v ty m vt', PolSuccess vt' = ConstT PCT -> \\
+      \ \ ~ rred PCT (Econst v ty) m E0 PCT (Eval (v,vt') ty) m \\
+      \ \ | red\_rvalof: forall ofs pt lts bf ty m tr v vt vt', deref\_loc ty m ofs pt bf tr (v,vt) lts -> \\
+      \ \ ~ PolSuccess vt' = LoadT PCT pt vt lts -> PolSuccess vt'' = AccessT PCT vt' \\
+      \ \ ~ rred PCT (Evalof (Eloc ofs pt bf ty) ty) m tr PCT (Eval (v,vt'') ty) m \\
+      \ \ | ...\\
+      \ \ ...
       \end{tabular} }
     
-  \caption{Instantiating Policy Module with PVI}
+  \caption{Fragments of Coq implementation.}
   \label{fig:fullcode}
 \end{figure}
 
