@@ -33,15 +33,17 @@ Portland, OR, USA}
 \maketitle
 
 \begin{abstract}
-Today's computing infrastructure is built atop layers of legacy C code, 
-which is often insecure, poorly understood, and difficult to maintain.
-Security can be improved by using runtime reference monitors, including those
-implemented using hardware support, such as the PIPE (Processor
-Interlocks for Policy Enforcement) processor extensions. Unfortunately,
-existing PIPE-based systems require security policies to be expressed at the ISA level,
-which makes them opaque to C developers and hard to apply to higher-level language features.
-To address this problem, we introduce Tagged C, a novel C variant with
-built-in tag-based reference monitoring that can be enforced by PIPE.
+%% Today's computing infrastructure is built atop layers of legacy C code, 
+%% which is often insecure, poorly understood, and difficult to maintain.
+%% Security can be improved by using runtime reference monitors, including those
+%% implemented using hardware support, such as the PIPE (Processor
+%% Interlocks for Policy Enforcement) processor extensions. Unfortunately,
+%% existing PIPE-based systems require security policies to be expressed at the ISA level,
+%% which makes them opaque to C developers and hard to apply to higher-level language features.
+%%To address this problem,
+We introduce Tagged C, a novel C variant with
+built-in tag-based reference monitoring that can be enforced by hardware
+mechanisms such as the PIPE (Processor Interlocks for Policy Enforcement) processor extension.
 Tagged C expresses security policies at the level of C source code.
 It is designed to express a variety of dynamic security policies,  
 individually or in combination, and enforce them with compiler and hardware support.
@@ -1455,6 +1457,8 @@ We thank the reviewers for their valuable feedback, and Roberto Blanco for his a
 the writing process. This work was supported by the National Science Foundation under
 Grant No. 2048499, Specifying and Verifying Secure Compilation of C Code to Tagged Hardware.
 
+\vfill
+\eject
 \bibliographystyle{splncs04}
 \bibliography{taggedc.bib}
   

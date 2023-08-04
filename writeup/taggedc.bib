@@ -48,8 +48,6 @@ author = {Chhak, CHR and Tolmach, Andrew and Anderson, Sean},
 title = {Towards Formally Verified Compilation of Tag-Based Policy Enforcement},
 year = {2021},
 isbn = {9781450382991},
-publisher = {Association for Computing Machinery},
-address = {New York, NY, USA},
 url = {https://doi.org/10.1145/3437992.3439929},
 abstract = {Hardware-assisted reference monitoring is receiving increasing attention as a way to improve the security of existing software. One example is the PIPE architecture extension, which attaches metadata tags to register and memory values and executes tag-based rules at each machine instruction to enforce a software-defined security policy. To use PIPE effectively, engineers should be able to write security policies in terms of source-level concepts like functions, local variables, and structured control operators, which are not visible at machine level. It is the job of the compiler to generate PIPE-aware machine code that enforces these source-level policies. The compiler thus becomes part of the monitored system’s trusted computing base---and hence a prime candidate for verification. To formalize compiler correctness in this setting, we extend the source language semantics with its own form of user-specified tag-based monitoring, and show that the compiler preserves that monitoring behavior. The challenges of compilation include mapping source-level monitoring policies to instruction-level tag rules, preserving fail-stop behaviors, and satisfying the surprisingly complex preconditions for conventional optimizations. In this paper, we describe the design and verification of Tagine, a small prototype compiler that translates a simple tagged WHILE language to a tagged register transfer language and performs simple optimizations. Tagine is based on the RTLgen and Deadcode phases of the CompCert compiler, and hence is written and verified in Coq. This work is a first step toward verification of a full-scale compiler for a realistic tagged source language.},
 booktitle = {Proceedings of the 10th ACM SIGPLAN International Conference on Certified Programs and Proofs},
@@ -57,8 +55,10 @@ pages = {137–151},
 numpages = {15},
 keywords = {tag-based secure hardware, reference monitors, verified compilers, Coq proof assistant},
 location = {Virtual, Denmark},
-series = {CPP 2021}
 }
+% series = {CPP 2021}
+%publisher = {Association for Computing Machinery},
+%address = {New York, NY, USA},
 
 @inproceedings{Dhawan14:PUMP,
     title = {{PUMP: A Programmable Unit for Metadata Processing}},
@@ -178,7 +178,7 @@ numpages = {9}
 @misc{Leroy23:CompCertManual,
 title = {The {CompCert} {C} verified compiler: Documentation and user's manual, Version 3.13},
 author={Xavier Leroy},
-month = july,
+month = jul,
 year = 2023,
 url = {https://compcert.org/man/}
 }
@@ -299,10 +299,10 @@ pages = {2974-2989},
 abstract = {Control flow attacks exploit software vulnerabilities to divert the flow of control into unintended paths to ultimately execute attack code. This paper explores the use of instruction and data tagging as a general means of thwarting such control flow attacks, including attacks that rely on violating pointer integrity. Using specific types of narrow-width data tags along with narrow-width instruction tags embedded within the binary facilitates the security policies required to protect against such attacks, leading to a practically viable solution. Co-locating instruction tags close to their corresponding instructions within cache lines eliminates the need for separate mechanisms for instruction tag accesses. Information gleaned from the analysis phase of a compiler is augmented and used to generate the instruction and data tags. A full-stack implementation that consists of a modified LLVM compiler, modified Linux OS support for tags and a FPGA-implemented CPU hardware prototype for enforcing CFI, data pointer and code pointer integrity is demonstrated. With a modest hardware enhancement, the execution time of benchmark applications on the prototype system is shown to be limited to low, single-digit percentages of a baseline system without tagging.},
 keywords = {control-flow-integrity,-hardware-security,-pointer-integrity,-security-architectures,-security-and-privacy-policies},
 url = {https://doi.ieeecomputersociety.org/10.1109/SP46215.2023.00102},
-publisher = {IEEE Computer Society},
-address = {Los Alamitos, CA, USA},
 month = may
 }
+%publisher = {IEEE Computer Society},
+%address = {Los Alamitos, CA, USA},
 
 
 
@@ -310,7 +310,6 @@ month = may
  author = {Dhawan, Udit and Hritcu, Catalin and Rubin, Raphael and Vasilakis, Nikos and Chiricescu, Silviu and Smith, Jonathan M. and Knight,Jr., Thomas F. and Pierce, Benjamin C. and DeHon, Andre},
  title = {Architectural Support for Software-Defined Metadata Processing},
  booktitle = {Proceedings of the Twentieth International Conference on Architectural Support for Programming Languages and Operating Systems},
- series = {ASPLOS '15},
  year = {2015},
  isbn = {978-1-4503-2835-7},
  location = {Istanbul, Turkey},
@@ -318,10 +317,13 @@ month = may
  numpages = {16},
  url = {http://doi.acm.org/10.1145/2694344.2694383},
  acmid = {2694383},
- publisher = {ACM},
- address = {New York, NY, USA},
  keywords = {CFI, memory safety, metadata, security, tagged architecture, taint tracking},
 }
+% series = {ASPLOS '15},
+%publisher = {ACM},
+% address = {New York, NY, USA},
+ 
+
 @article{Azevedo+16,
   author    = {Arthur {Azevedo de Amorim} and
                Nathan Collins and
@@ -347,16 +349,18 @@ month = may
 @inproceedings{Azevedo+15,
   title = {Micro-Policies: Formally Verified, Tag-Based Security Monitors},
   author = {Arthur {Azevedo de Amorim} and Maxime Dénès and Nick Giannarakis and Catalin Hritcu and Benjamin C. Pierce and Antal Spector-Zabusky and Andrew P. Tolmach},
+  month = may,
   year = {2015},
   url = {http://dx.doi.org/10.1109/SP.2015.55},
   researchr = {https://researchr.org/publication/AmorimDGHPST15},
   cites = {0},
   citedby = {0},
   pages = {813-830},
-  booktitle = {2015 IEEE Symposium on Security and Privacy, SP 2015, San Jose, CA, USA, May 17-21, 2015},
-  publisher = {IEEE Computer Society},
-  isbn = {978-1-4673-6949-7},
+  booktitle = {2015 IEEE Symposium on Security and Privacy},
 }
+%  booktitle = {2015 IEEE Symposium on Security and Privacy, SP 2015, San Jose, CA, USA, May 17-21, 2015},
+%  publisher = {IEEE Computer Society},
+%  isbn = {978-1-4673-6949-7},
                   
 @inproceedings{Dhawan+14,
     title = {{PUMP: A Programmable Unit for Metadata Processing}},
@@ -408,8 +412,7 @@ url="https://www.draper.com/explore-solutions/inherently-secure-processor",
   author    = {Nick Roessler and
                Andr{\'{e}} DeHon},
   title     = {Protecting the Stack with Metadata Policies and Tagged Hardware},
-  booktitle = {2018 {IEEE} Symposium on Security and Privacy, {SP} 2018, Proceedings,
-               21-23 May 2018, San Francisco, California, {USA}},
+  booktitle = {Proc. 2018 {IEEE} Symposium on Security and Privacy, {SP} 2018},
   pages     = {478--495},
   year      = {2018},
   url       = {https://doi.org/10.1109/SP.2018.00066},
@@ -423,8 +426,6 @@ author = {Clause, James and Doudalis, Ioannis and Orso, Alessandro and Prvulovic
 title = {Effective Memory Protection Using Dynamic Tainting},
 year = {2007},
 isbn = {9781595938824},
-publisher = {Association for Computing Machinery},
-address = {New York, NY, USA},
 url = {https://doi.org/10.1145/1321631.1321673},
 abstract = {Programs written in languages that provide direct access tomemory through pointers often contain memory-related faults, which may cause non-deterministic failures and even security vulnerabilities. In this paper, we present a new technique based on dynamic tainting for protecting programs from illegal memory accesses. When memory is allocated, at runtime, our technique taints both the memory and the corresponding pointer using the same taint mark. Taint marks are then suitably propagated while the program executes and are checked every time a memory address m is accessed through a pointer p; if the taint marks associated with mand p differ, the execution is stopped and the illegalaccess is reported. To allow for a low-overhead, hardware-assisted implementation of the approach, we make several key technical and engineering decisions in the definition of our technique. In particular, we use a configurable, low number of reusable taint marks instead of a unique mark for each area of memory allocated, which reduces the overhead of the approach without limiting its flexibility and ability to target most memory-related faults and attacks known to date. We also define the technique at the binary level, which lets us handle the (very) common case of applications that use third-party libraries whose source code is unavailable. To investigate the effectiveness and practicality of our approach, we implemented it for heap-allocated memory and performed a preliminary empirical study on a set of programs. Our results show that (1) our technique can identify a large class of memory-related faults, even when using only two unique taint marks, and (2)a hardware-assisted implementation of the technique could achieve overhead in the single digits},
 booktitle = {Proceedings of the 22nd IEEE/ACM International Conference on Automated Software Engineering},
@@ -432,8 +433,10 @@ pages = {284–292},
 numpages = {9},
 keywords = {hardware support, illegal memory accesses, dynamic tainting},
 location = {Atlanta, Georgia, USA},
-series = {ASE '07}
 }
+%publisher = {Association for Computing Machinery},
+%series = {ASE '07}
+%address = {New York, NY, USA},
 
 @article{Michael23:MSWASM,
 author = {Michael, Alexandra E. and Gollamudi, Anitha and Bosamiya, Jay and Johnson, Evan and Denlinger, Aidan and Disselkoen, Craig and Watt, Conrad and Parno, Bryan and Patrignani, Marco and Vassena, Marco and Stefan, Deian},
@@ -453,21 +456,6 @@ numpages = {30},
 keywords = {Secure Compilation, Memory-safety, WebAssembly, Semantics}
 }
 
-@INPROCEEDINGS { Gollapudi23:STARnarrowTags,
-author = {R. Gollapudi and G. Yuksek and D. Demicco and M. Cole and G. N. Kothari and R. H. Kulkarni and X. Zhang and K. Ghose and A. Prakash and Z. Umrigar},
-booktitle = {2023 2023 IEEE Symposium on Security and Privacy (SP) (SP)},
-title = {Control Flow and Pointer Integrity Enforcement in a Secure Tagged Architecture},
-year = {2023},
-volume = {},
-issn = {},
-pages = {2974-2989},
-abstract = {Control flow attacks exploit software vulnerabilities to divert the flow of control into unintended paths to ultimately execute attack code. This paper explores the use of instruction and data tagging as a general means of thwarting such control flow attacks, including attacks that rely on violating pointer integrity. Using specific types of narrow-width data tags along with narrow-width instruction tags embedded within the binary facilitates the security policies required to protect against such attacks, leading to a practically viable solution. Co-locating instruction tags close to their corresponding instructions within cache lines eliminates the need for separate mechanisms for instruction tag accesses. Information gleaned from the analysis phase of a compiler is augmented and used to generate the instruction and data tags. A full-stack implementation that consists of a modified LLVM compiler, modified Linux OS support for tags and a FPGA-implemented CPU hardware prototype for enforcing CFI, data pointer and code pointer integrity is demonstrated. With a modest hardware enhancement, the execution time of benchmark applications on the prototype system is shown to be limited to low, single-digit percentages of a baseline system without tagging.},
-keywords = {control-flow-integrity,-hardware-security,-pointer-integrity,-security-architectures,-security-and-privacy-policies},
-url = {https://doi.ieeecomputersociety.org/10.1109/SP46215.2023.00102},
-publisher = {IEEE Computer Society},
-address = {Los Alamitos, CA, USA},
-month = may
-}
 
 % google claims 300, acm 100, contains the phrase "We present CHERI"
 @article{10.1145/2678373.2665740,
@@ -589,14 +577,15 @@ title = {Specification-Based Monitoring In {C++}},
 year = {2022},
 isbn = {978-3-031-19848-9},
 publisher = {Springer-Verlag},
-address = {Berlin, Heidelberg},
 url = {https://doi.org/10.1007/978-3-031-19849-6_5},
 abstract = {Software systems cannot in general be assumed proven correct before deployment. Testing is still the most common approach to demonstrate a satisfactory level of correctness. However, some errors will survive verification efforts, and it is therefore reasonable to monitor a system after deployment, to determine whether it executes correctly. Both for testing and post-deployment monitoring, it may be desirable to be able to formalize correctness properties that can be monitored against program executions. This is also referred to as runtime verification. We present a specification language and a monitoring system for monitoring such specifications against event streams. The monitoring engine front-end, written in Scala, translates the specification to C++, whereas the back-end (the monitoring engine), written in C++, interprets the generated C++ monitor on an event stream. This makes it feasible to monitor the execution of C and C++ programs online.},
-booktitle = {Leveraging Applications of Formal Methods, Verification and Validation. Verification Principles: 11th International Symposium, ISoLA 2022, Rhodes, Greece, October 22–30, 2022, Proceedings, Part I},
+booktitle = {Leveraging Applications of Formal Methods, Verification and Validation. Verification Principles: 11th International Symposium, ISoLA 2022, Proceedings, Part I},
 pages = {65–87},
 numpages = {23},
 location = {Rhodes, Greece}
 }
+%booktitle = {Leveraging Applications of Formal Methods, Verification and Validation. Verification Principles: 11th International Symposium, ISoLA 2022, Rhodes, Greece, October 22–30, 2022, Proceedings, Part I},
+%address = {Berlin, Heidelberg},
 
 @article{Schneider00:Automata,
 author = {Schneider, Fred B.},
@@ -630,12 +619,14 @@ and Matsuoka, Satoshi",
 title="Aspect-oriented programming",
 booktitle="ECOOP'97 --- Object-Oriented Programming",
 year="1997",
-publisher="Springer Berlin Heidelberg",
-address="Berlin, Heidelberg",
+publisher="Springer",
 pages="220--242",
 abstract="We have found many programming problems for which neither procedural nor object-oriented programming techniques are sufficient to clearly capture some of the important design decisions the program must implement. This forces the implementation of those design decisions to be scattered throughout the code, resulting in ``tangled'' code that is excessively difficult to develop and maintain. We present an analysis of why certain design decisions have been so difficult to clearly capture in actual code. We call the properties these decisions address aspects, and show that the reason they have been hard to capture is that they cross-cut the system's basic functionality. We present the basis for a new programming technique, called aspect-oriented programming, that makes it possible to clearly express programs involving such aspects, including appropriate isolation, composition and reuse of the aspect code. The discussion is rooted in systems we have built using aspect-oriented programming.",
 isbn="978-3-540-69127-3"
 }
+%editor="Ak{\c{s}}it, Mehmet
+%and Matsuoka, Satoshi",
+%address="Berlin, Heidelberg",
 
 @article{Lampson74:Protection,
 author = {Lampson, Butler W.},
@@ -711,15 +702,16 @@ title = {Uncovering Information Flow Policy Violations in {C} Programs (Extended
 year = {2019},
 isbn = {978-3-030-29961-3},
 publisher = {Springer-Verlag},
-address = {Berlin, Heidelberg},
 url = {https://doi.org/10.1007/978-3-030-29962-0_2},
 abstract = {Programmers of cryptographic applications written in C need to avoid common mistakes such as sending private data over public channels or improperly ordering protocol steps. These secrecy, integrity, and sequencing policies can be cumbersome to check with existing general-purpose tools. We have developed a novel means of specifying and uncovering violations of these policies that allows for a much lighter-weight approach than previous tools. We embed the policy annotations in C’s type system via a source-to-source translation and leverage existing C compilers to check for policy violations, achieving high performance and scalability. We show through case studies of recent cryptographic libraries and applications that our work is able to express detailed policies for large bodies of C code and can find subtle policy violations. We show formal connections between the policy annotations and an information flow type system and prove a noninterference guarantee of our design.},
-booktitle = {Computer Security – ESORICS 2019: 24th European Symposium on Research in Computer Security, Luxembourg, September 23–27, 2019, Proceedings, Part II},
+booktitle = {Proc. Computer Security – ESORICS 2019, Part II},
 pages = {26–46},
 numpages = {21},
 keywords = {Information flow, Type systems, Security},
 location = {Luxembourg, Luxembourg}
 }
+% address = {Berlin, Heidelberg},
+%: 24th European Symposium on Research in Computer Security, Luxembourg, September 23–27, 2019, Proceedings, Part II},
 
 @inproceedings{Tsampas2017:TowardsAC,
   title={Towards Automatic Compartmentalization of {C} Programs on Capability Machines},
