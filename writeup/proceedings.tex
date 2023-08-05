@@ -323,10 +323,10 @@ higher of the two inputs, so \(\vt[_4]\) is \(\high\). Finally, upon entry into 
 is invoked again; this time it failstops, because the first arm of the case matches.
 Note that in this policy, \(\argtname\) is code-specific (it checks for a particular function name {\tt printi})
 whereas the other rules are generic to SIF.\footnote{
-For simplicity, we omit showing tag rules that play no interesting role in this example.
-In this case, \(\accesstname\) and \(\assigntname\), 
+For simplicity, we omit showing tag rules that play no interesting role in this example: 
+\(\accesstname\) and \(\assigntname\), 
 which are triggered each time a variable is read and assigned, respectively,
-as well as \(\calltname\), which is triggered by the call itself.}
+and \(\calltname\), which is triggered by the call itself.}
 
 As a second example, \cref{fig:ex2} steps through the execution of a function {\tt g} that adds two new wrinkles:
 we need to keep track of metadata associated with
@@ -401,9 +401,9 @@ In addition to tags on values, Tagged C attaches tags to memory locations ({\em 
 \(\lt\)) and tracks a special global tag called the PC tag (ranged over by \(\PCT\), and attached to the
 function name in our diagrams).
 Tagged C initializes the tags on {\tt mm} with the \(\globaltname\) rule. The PC tag
-at the point of call, \(\PCT[_0]\) is fed to \(\calltname\) to determine a new PC tag
+at the point of call, \(\PCT[_0]\), is fed to \(\calltname\) to determine a new PC tag
 inside of {\tt g}.
-And the if-statement consults the \(\splittname\) rule to update the PC tag
+And the {\tt if}-statement consults the \(\splittname\) rule to update the PC tag
 inside of its branch based on the value-tag of the expression {\tt psk < 0}. Once inside the
 conditional, when the program assigns to {\tt mm}, it must consult the \(\storetname\) rule because
 it is storing to memory.% (again omitting \(\assigntname\)).
@@ -411,6 +411,7 @@ it is storing to memory.% (again omitting \(\assigntname\)).
 \Cref{fig:example2rules} shows an instantiation of these rules that extend our previous SIF policy.
 The rule for globals initializes the location tag of {\tt mm} to \(\low\),
 as a low-security output channel, and marks all other addresses \(\high\).
+\(\calltname\) sets the PC tag to \(\low\) on entry to each function.
 Whenever execution branches on
 a high-tagged value, the PC tag will be set to \(\high\). We modify the previous rules so that
 all expressions propagate the higher of the PC tag and the relevant value tag(s). This is shown
@@ -468,8 +469,8 @@ in a high context.
 
 \section{The Tagged C Language: Syntax and Semantics}
 \label{sec:language}
-
 \begin{table}[t]
+\begin{center}
   \begin{tabular}{|l|l|l|l|}
     \hline
     Rule Name & Inputs & Outputs & Control Points \\
@@ -502,9 +503,10 @@ in a high context.
     \(\iicasttname\)    & \(\iicasttargs\)       & \(\iicasttres\)    & Cast between scalars \\
     \hline
   \end{tabular}
+\end{center}
 
-  \caption{Full list of tag-rule signatures and control points. Key to metavariables:
-    \(\PCT\): PC tag, \(\vt\): value tag, \(\pt\): pointer tag, \(\lt\): location tag,
+  \caption{Full list of tag-rule signatures and control points. %Key to metavariables:
+%    \(\PCT\): PC tag, \(\vt\): value tag, \(\pt\): pointer tag, \(\lt\): location tag,
 }
   \label{fig:controlpoints}
 \end{table}
@@ -590,11 +592,11 @@ variable itself is independent of where it is stored. Public variables
 additionally use the \(\loadtname\) and \(\storetname\) rules to add restrictions to how
 variables in memory are accessed.
 
-The \(\exprsplittname\) tag rule updates the PC tag when an expression branches control
-flow based on a value; it is paired with \(\exprjointname\), which updates the PC tag again
+The \(\exprsplittname\) tag rule updates the PC tag when an expression branches
+based on a value; it is paired with \(\exprjointname\), which updates the PC tag again
 when the branches have rejoined. Similarly, \(\splittname\) updates the PC during
-branching statements. The \(\labeltname\) rule changes the PCT tag at any point in execution,
-and can handle join points following branch statements if they are statically known.
+branching statements. The \(\labeltname\) rule can changes the PC tag at any labeled point in execution,
+and handles join points following branch statements. % if they are statically known.
 
 \(\calltname\) and \(\rettname\) update the PC tag on entry and exit from a function.
 \(\calltname\) is parameterized by the function pointer being called and the PC tag.
@@ -603,20 +605,25 @@ and the callee's (\(\PCT[_{\color{blue} CLE}]\)); it can also update the return 
 \(\argtname\) updates tags on any arguments, based on the function and argument names.
 
 Newly initialized variables are tagged according to the \(\inittname\) rule, as
-well as \(\localtname\) if they are public locals. Global variables are initialized
-before runtime based on the \(\globaltname\) rule. \(\dealloctname\) re-tags deallocated
-locals.
+well as \(\localtname\) if they are public locals; the \(\lt'\) tag returned by 
+the latter is used to tag the memory occupied by the variable.
+Similarly, global variables are initialized
+before runtime based on the \(\globaltname\) rule. \(\dealloctname\) returns an
+\(\lt'\) tag used to re-tags the memory of deallocated locals.
 
-The heap equivalents of \(\localtname\) and \(\dealloctname\), \(\malloctname\) and
-\(\freetname\), are special, because {\tt malloc} and {\tt free} are library functions.
-Because they are so central to memory safety policies, we separate them out as individual
-control points, but in general library functions have the tags of their results tagged
-by the \(\extcallt\) tag rule.
+The heap equivalents of \(\localtname\) and \(\dealloctname\) are \(\malloctname\) and
+\(\freetname\). Again, the \(\lt'\) tags returned by these functions are used
+to tag and re-tag the allocated memory.
+%are special, because {\tt malloc} and {\tt free} are library functions.
+%Because they are so central to memory safety policies, we separate them out as individual
+%control points,
+Other library functions have the tags of their results tagged
+by the \(\extcalltname\) tag rule.\apt{Right? please double-check}
 
 The cast rules are specialized based on whether the original type or the new type
 is a pointer, or both, because casts to and from pointers can make use of the
-location tags at their targets. This enables our PNVI memory safety policy, and
-generally policies that keep track of the correspondence between pointers and their
+location tags at their targets. This enables our PNVI memory safety policy (\cref{sec:memsafe}), and
+more generally policies that keep track of the correspondence between pointers and their
 targets.
 
 There is always the chance that new policies might arise for which our current set of
@@ -969,13 +976,13 @@ determines which parent property applies.
         \caseoftwo{\(\pt\)}
                   {\(\FN[malloc]\)}{\color{blue} \(\mathbf{MallocT}_{C}({\color{blue} C},\pt,\vt)\)}
                   {\(\FN[malloc\_share]\)}
-                  {\\\multicolumn{3}{l}{~~\({\color{blue} \textnormal{\sc clr}(c')},\pt['],\vt['],\lt['] \leftarrow {\color{blue} \mathbf{MallocT}_{\mathit{MS}}(\PCT,\pt,\vt)}\)} \\
+                  {\\\multicolumn{3}{l}{~~\({\color{blue} \textnormal{\sc clr}(c')},\pt['],\vt['],\lt['] \leftarrow {\color{blue} \mathbf{MallocT}_{\mathit{MS}}(\clr,\pt,\vt)}\)} \\
                     \multicolumn{3}{l}{~~\(\PCT[']:= {\color{blue} (C,\textnormal{\sc clr}(c'))};\pt['] := \pt[']\)} \\
                     \multicolumn{3}{l}{~~\(\vt['] := {\color{blue} \vt[']};\lt['] := \lt[']\)} \\}
       }
   \end{minipage}
   
-  \caption{Selected rules for Compartmentalization with Shared Capabilities, combining Compartmentalization rules (\cref{fig:compartments}, subscript \(C\)) with Memory Safety rules (\cref{fig:memsafe}, subscript \(\mathit{MS}\)) (Selected Rules)}
+  \caption{Selected rules for Compartmentalization with Shared Capabilities, combining Compartmentalization rules (subscript \(C\), \cref{fig:compartments}) with Memory Safety rules (subscript \(\mathit{MS}\), \cref{fig:memgen})\apt{I made a change to line 6 on right; double-check!}}
   \label{fig:sharing}
 \end{figure}
 
