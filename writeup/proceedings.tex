@@ -1330,35 +1330,35 @@ rule invocations; this approach may support more efficient policy designs.
 \section{Related Work}
 \label{sec:related}
 
-Aspect-oriented Programming (AOP) aims to separate disparate concerns ({\em aspects}),
-that cannot be localized inside modules, such as security and logging \cite{Kiczales97:AOP}. % OG paper
+Like many monitoring systems, Tagged C can be seen as a species of 
+aspect-oriented programming (AOP)~\cite{Kiczales97:AOP}. % OG paper
 An AOP language distributes {\em join points}\footnote{Not to be confused with the control-flow graph
 join points discussed in \cref{sec:SIF}.} throughout its semantics, 
 and the programmer separately writes {\em advice} in the form of
 additional code that should execute before or after various join points according to
-a {\em pointcut} specification. The compiler
-then {\em weaves} the advice together with the main code. 
-Our control points are conceptually very similar to join points, 
-and tag rules combine the roles of pointcuts and advice.
-However, whereas advice is arbitrary code that can affect the main program's state,
-tag rules are constrained to inspect only tags and are evaluated separately
-from the system being monitored; they cannot interfere in the execution except to cause a failstop.
-This means that
-Tagged C policies cannot ``correct'' bad behavior; on the other hand, they also cannot introduce
-new bad behavior, only potential failstops. 
+a {\em pointcut} specification. The compiler or runtime 
+{\em weaves} the advice together with the main code.
+Our control points are a kind of join point, and our tag rules combine the roles of pointcuts and advice; weaving
+is done at runtime according to the tagged semantics. Unlike advice in most AOP systems, our
+tag rules are constrained to inspect only tags, not arbitrary parts of program state, which limits their expressiveness. 
+Also, tag rules are evaluated separately from the system being monitored and so cannot be used to ``correct'' bad
+behavior; all they can do is cause a failstop.  
+%This means that Tagged C policies cannot ``correct'' bad behavior; on the other hand, they also cannot introduce
+%new bad behavior, only potential failstops.  
+These limitations follow from our goal of implementing Tagged C using efficient PIPE hardware. 
 
-C runtime verification (RV) systems such as {\sc Rmor}~\cite{Havelund08:RVC} and
-SLIC~\cite{Ball02:slic}
-are more directly comparable to Tagged C. In an RV system, specified junctures in
-execution are treated as events in a trace, and a user defines valid traces
-in terms of state machines~\cite{Schneider00:Automata}, regular expressions, or temporal logics.
-Trace checking can be interleaved into the program as
-an inline monitor \cite{Erlingsson04:IRM}, or run offline on a log file \cite{Havelund22:LogScope}.
-In general, all of these systems are more expressive than Tagged C, because the
-monitor can access system values, not just keep track of provenance. But that expressiveness
-requires software-based implementation, whereas we are focused on using PIPE hardware.
+Many existing AOP-like systems for C runtime verification treat join points as events in a trace, and specify
+valid traces using a particular formalism such as state machines (e.g. {\sc Rmor}~\cite{Havelund08:RVC} and SLIC~\cite{Ball02:slic})
+or temporal logics (e.g.~\cite{Chabot+15}).
+Trace checking of this kind can be readily implemented on top of Tagged C, as long as events do not rely on values.
+Events are typically coarse-grained (e.g. function entries and exits), although some systems (e.g.~\cite{engler2000checking})
+support very general forms of event definition based on matching syntactic patterns in code. 
+Tagged C is unusual in that it supports very low-level and fine-grained events (e.g. individual
+arithmetic operations and casts) and because a monitoring action (perhaps a no-op) is specified for every potential event point;
+again, these characteristics are natural for an implementation using PIPE hardware.
 
-Various systems have targeted information flow, memory safety, and compartmentalization in C.\apt{A wild understatement, at least wrt memory safety!}
+Numerous systems have targeted information flow, memory safety, and compartmentalization in C; we can consider just a few here.
+\apt{Do you want to mention Faceted IFC to avoid making an enemy of reviewer 2?}
 Cassel et al.'s FlowNotations~\cite{Cassel19:FlowNotation} use type annotations to specify ``tainted'' and ``trusted'' data,
 and statically check a program's information flow using the C type system. Their annotation system
 could easily be an input to a SIF policy, replacing the static checks with dynamic enforcement.\apt{But why would one possibly want to do that? Can we make a comparison about how the annotations work in practice? }
