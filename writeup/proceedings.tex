@@ -588,6 +588,25 @@ two have corresponding deallocation rules \(\dealloctname\) and \(\freetname\),
 respectively. The cast rules are specialized based on whether the original type or
 the new type is a pointer, or both.
 
+\paragraph{Memory} Unlike CompCert C, Tagged C has no memory-related UB.
+CompCert C models memory as a collection of disjoint blocks,
+and treats each variable as having its own block. Pointers are described by a (block, offset) pair,
+and invalid pointer accesses (out-of-bounds, use after free, etc.) produce UB.
+Tagged C instead separates variables
+into public and private data. Public data (all heap data, globals, arrays, structs, and
+address-taken locals) share a single flat address space (possibly with holes), and pointers are
+offsets into this space. Pointer accesses outside of this space cause
+an explicit failstop, rather than UB. 
+Private data (non-address-taken locals, parameters) live in a separate, abstract environment.
+Program-specified stores, e.g. writes through pointers, can cause arbitrary damage to public
+data, but do not affect private data. 
+This model is strong enough to support a reasonable
+notion of semantics-preserving compilation, without making any commitment about fine-grained
+memory safety, which is intentionally left for explicit tag policies to specify
+(see \cref{sec:memsafe}).
+In an implementation that compiles to PIPE, the private data can be protected by a small number of
+``built-in'' tags.
+
 \paragraph{Rationale for Control Point Design}
 
 \apt{Flow here is awkward. This first sentence should go earlier. Also, the whole rationale subsection
@@ -622,12 +641,11 @@ In our scheme, silent expressions do not contain control points. Pure expression
 do: they take as arguments the PC tag and any operand tags, and produce a tag for the
 result of the expression. Impure expressions additionally produce a new PC tag.
 
-A wrinkle comes in when we consider that variables might be stored in memory or in
-an environment. \apt{This is semantics terminology, which readers probably won't understand;
-  need to phrase in terms of public/private memory, as described later.}
+A wrinkle comes in when we consider that variables can be private (non-address-taken)
+or public (allocated in public memory). 
 Here we follow the principle that the tag behavior of the variable's
 contents ought to be the same regardless of where it is stored, although additional
-constraints might be placed on memory accesses. For this reason, memory loads and stores
+constraints can be placed on public memory accesses. For this reason, memory loads and stores
 process the \(\accesstname\) and \(\assigntname\) tag rules separately from their
 \(\loadtname\) and \(\storetname\) rules.
 
@@ -636,32 +654,15 @@ condition control flow on some value, and those that do not. The ones that do mu
 have control points to update the PC tag.
 And, in order to support arbitrary changes in tags, for instance at statically identified
 join points for a SIF policy, we add the \(\labeltname\) rule.
-Finally, function calls and returns aim to support as much access to tags as possible\apt{this is very unclear},
-as they are key points of separation between different parts of the program.
+Function calls update the PC tag and can update the tags on any arguments,
+while returns are given access to both the PC tag at the time of return and
+the one that was active before the call.
 
 There is always the chance that new policies might arise for which our current set of
 control points proves to be inadequate. There is no conceptual reason why
 control points cannot be added or given modified signatures as needed,
 but extending the interpreter and (eventually) the compiler would be non-trivial.
 
-\paragraph{Memory} Unlike CompCert C, Tagged C has no memory-related UB.
-CompCert C models memory as a collection of disjoint blocks,
-and treats each variable as having its own block. Pointers are described by a (block, offset) pair,
-and invalid pointer accesses (out-of-bounds, use after free, etc.) produce UB.
-Tagged C instead separates variables
-into public and private data. Public data (all heap data, globals, arrays, structs, and
-address-taken locals) share a single flat address space (possibly with holes), and pointers are
-offsets into this space. Pointer accesses outside of this space cause
-an explicit failstop, rather than UB. 
-Private data (non-address-taken locals, parameters) live in a separate, abstract environment.
-Program-specified stores, e.g. writes through pointers, can cause arbitrary damage to public
-data, but do not affect private data. 
-This model is strong enough to support a reasonable
-notion of semantics-preserving compilation, without making any commitment about fine-grained
-memory safety, which is intentionally left for explicit tag policies to specify
-(see \cref{sec:memsafe}).
-In an implementation that compiles to PIPE, the private data can be protected by a small number of
-``built-in'' tags.
 %In terms of exploits, it prevents control-only attacks,
 %but allows data-only and data-bending attacks/
 
@@ -741,12 +742,12 @@ Whenever an object is allocated, it is assigned a unique ``color,'' and its memo
 as its pointer are tagged with that color, written \(\clr\).
 The default tag \(\N\) indicates a non-pointer or non-allocated location.
 The PC tag will also be \(\clr\),
-tracking the next available color for new allocations. These rules are given in \cref{fig:memgen,fig:memspecial}.
-Operations that are valid on pointers in a given memory model
-maintain the pointer's color, and loads and stores are legal if the pointer tag matches the target memory
-location tag. \apt{Briefly explain {\tt assert}.}
+tracking the next available color for new allocations. These rules are given in \cref{fig:memgen,fig:memspecial}. Operations that are valid on pointers in a given memory model
+maintain the pointer's color, and loads and stores are legal if the pointer tag matches
+the target memory location tag. (The {\tt assert} command failstops if its argument does not hold.)
 
-The specific memory models (\cref{fig:memspecial}) behave differently when pointers are cast to integers and back.
+The specific memory models (\cref{fig:memspecial}) behave differently when pointers are cast to
+integers and back.
 The CompCert C variant marks that the integer has been cast from a valid pointer, and
 restores that provenance when cast back. But \(\binoptname\) will failstop if the integer is
 actually modified between the casts. PVI simply keeps the provenance and allows all operations
@@ -756,29 +757,29 @@ location tag.
 \begin{figure}[t]
   \scriptsize
 \begin{tikzpicture}[every text node part/.style={align=left}]
-  \node[matrix, ampersand replacement=\%, anchor=west] (code)
+  \node[matrix, column sep=1em, ampersand replacement=\%, anchor=west] (code)
         {
           \node {\tt 1  int x[1],y[1];}; \%
-          \node[fill=gray!20] {\(\mathtt{y} \mapsto a\tagat\pt_1\)}; \%
-          \node[fill=blue!10] {\(\PCT_1,\pt_1,\lt_1 \leftarrow \localtname(\PCT[_0], \TN[int])\)}; \\
+          \node[fill=gray!20, draw] {\(\mathtt{y} \mapsto a\tagat\pt_1\)}; \%
+          \node[fill=blue!10, draw] {\(\PCT_1,\pt_1,\lt_1 \leftarrow \localtname(\PCT[_0], \TN[int])\)}; \\
           \node {\tt 2  int p = (int) x;}; \%
-          \node[fill=gray!20] {\(\mathtt{q} \mapsto a\tagat\vt[_1]\)}; \%
-          \node[fill=blue!10] {\(\vt[_1] \leftarrow \picasttname(\PCT[_1],\pt[_1],\lt[_1], \TN[int])\)}; \\          
+          \node[fill=gray!20, draw] {\(\mathtt{q} \mapsto a\tagat\vt[_1]\)}; \%
+          \node[fill=blue!10, draw] {\(\vt[_1] \leftarrow \picasttname(\PCT[_1],\pt[_1],\lt[_1], \TN[int])\)}; \\          
           \node {\tt 3  int q = (int) y;}; \%
           \%
-          \node[fill=blue!10] {\(\vt[_2] \leftarrow \consttname(\PCT[_1])\)}; \\
+          \node[fill=blue!10, draw] {\(\vt[_2] \leftarrow \consttname(\PCT[_1])\)}; \\
           \node {\tt 4  int r = q | 0x1;}; \%
-          \node[fill=gray!20] {\(\mathtt{r} \mapsto a\tagat\vt[_3]\)}; \%
-          \node[fill=blue!10] {\(\vt[_3] \leftarrow \binoptname(\mid, \PCT[_1], \vt[_1], \vt[_2])\)}; \\
+          \node[fill=gray!20, draw] {\(\mathtt{r} \mapsto a\tagat\vt[_3]\)}; \%
+          \node[fill=blue!10, draw] {\(\vt[_3] \leftarrow \binoptname(\mid, \PCT[_1], \vt[_1], \vt[_2])\)}; \\
           \node {\tt 5  *(int *) p = 0;}; \%
           \%
-          \node[fill=blue!10] {\(\vt[_4] \leftarrow \binoptname(\&, \PCT[_1], \vt[_3], \vt[_2]\)}; \\
+          \node[fill=blue!10, draw] {\(\vt[_4] \leftarrow \binoptname(\&, \PCT[_1], \vt[_3], \vt[_2]\)}; \\
           \node {\tt 6  *(int *) (r \& 0xfffffffe) = 0;}; \%
-          \node[fill=gray!20] {\(a:\fbox{\(0 \tagat \vt[_5] \tagat \lt[_2]\)}\)}; \%
-          \node[fill=blue!10] {\(\pt[_2] \leftarrow \ipcasttname(\PCT[_1],\vt[_4],\lt[_1],\TN[int *])\)}; \\
+          \node[fill=gray!20, draw] {\(a:\fbox{\(0 \tagat \vt[_5] \tagat \lt[_2]\)}\)}; \%
+          \node[fill=blue!10, draw] {\(\pt[_2] \leftarrow \ipcasttname(\PCT[_1],\vt[_4],\lt[_1],\TN[int *])\)}; \\
           \node {\tt 7  *(int *) (p + (q - p)) = 0;}; \%
           \%
-          \node[fill=blue!10] {\(\PCT[_2],\vt[_5],\lt[_2] \leftarrow \storetname(\PCT[_1],\pt[_2],\vt[_2],\lt[_1]\))}; \\
+          \node[fill=blue!10, draw] {\(\PCT[_2],\vt[_5],\lt[_2] \leftarrow \storetname(\PCT[_1],\pt[_2],\vt[_2],\lt[_1]\))}; \\
           \node {\tt 8  x[1] = 0;}; \\
        };
 
@@ -867,7 +868,7 @@ Line (5) is always legal, (6) is illegal in CompCert C, (7) is also illegal in P
           {\((\N,\N)\) \\ \((\clr[c_1], \clr[c_2])\)}{\(\vt['] := \N\)}
     }
     
-    \caption{PVI Rules\apt{Changed \((\N\,\N)\) rule -- double check!}}
+    \caption{PVI Rules}
     \label{subfig:pvi}
   \end{subfigure}
   \begin{subfigure}{0.5\textwidth}
@@ -1020,7 +1021,7 @@ determines which parent property applies.\apt{Labelling of parent rule names nee
         \caseoftwo{\(\pt\)}
                   {\(\FN[malloc]\)}{\color{blue} \(\mathbf{MallocT}_{C}(\PCT,\pt,\vt)\)}
                   {\(\FN[malloc\_share]\)}
-                  {\\\multicolumn{3}{l}{~~\({\color{blue} \clr'},\pt['],\lt['] \leftarrow {\color{blue} \mathbf{MallocT}_{\mathit{PVI}}(\PCT,\pt,\vt)}\)} \\
+                  {\\\multicolumn{3}{l}{~~\({\color{blue} \clr'},\pt['],\lt['] \leftarrow {\color{blue} \mathbf{MallocT}_{\mathit{MS}}(\PCT,\pt,\vt)}\)} \\
                     \multicolumn{3}{l}{~~\(\PCT[']:= {\color{blue} (C,\clr')};\pt['] := \pt\)} \\
                     \multicolumn{3}{l}{~~\(\vt['] := {\color{blue} \N'};\lt['] := \clr\)} \\}
       }
@@ -1044,13 +1045,7 @@ memory.
 The way Tagged C currently handles {\tt malloc} is unsatisfactory. First, as noted above, there is no
 easy way to distinguish different static {\tt malloc} call locations; our use of
 variant names is something of a hack.
-A more principled solution might draw on pointcuts to identify specific calls to {\tt malloc}
-as in {\sc Rmor}~\cite{Havelund08:RVC}.\apt{But actually, {\sc Rmor} cannot specify specific calls
-  with this much precision, I believe. So maybe omit the reference here.}
-%  would probably involve building a general mechanism for identifying particular
-%  static points within functions, but we have so far intentionally avoided this.
-%  \apt{Need to add something earlier in the paper about our rationale for attaching rules
-%    to ``externally visible'' things like function calls and globals.}
+A more principled solution might draw on pointcuts to identify specific calls to {\tt malloc}.
 Further, {\tt malloc} does not get access to type information;
 it takes just a size and returns a {\tt void *}, which the caller must
 cast to a pointer of the desired type (at an arbitrary future point).
