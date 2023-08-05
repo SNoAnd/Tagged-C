@@ -53,8 +53,6 @@ and secure information flow policies. We also give a full formalized semantics
 and a reference interpreter for Tagged C.
 \end{abstract}
 
-\apt{A lot of very slightly overfull boxes. Fortunately, many of them are internal minibox overflows.}
-
 \section{Introduction}
 Many essential technologies rely on new and old C code.
 Operating systems (Linux, Windows, OSX, BSD), databases (Oracle, sqlite3), the internet
@@ -154,7 +152,7 @@ consistent with the behavior of a typical compiler.
 We build the Tagged C semantics on top of the CompCert C semantics, which is formalized 
 as part of the CompCert verified compiler \cite{Leroy09:CompCert,Leroy09:CompCertBackend}.
 For prototyping and executing example policies,
-we provide a reference interpreter \footnote{Available at [github]\apt{FIX ME!}},
+we provide a reference interpreter \footnote{Available at \url{https://github.com/SNoAnd/Tagged-C}},
 also based on that of CompCert~\cite[Ch. 4]{Leroy23:CompCertManual},
 written in the Gallina functional language of the Coq Proof Assistant~\cite{coq}.
 Tag types and rules are also written directly in Gallina. 
@@ -205,25 +203,25 @@ local variable {\tt x}.  We now explain how a monitor specified in Tagged C coul
 such a leak. (Of course, this particular leak could also be easily found using static analysis.)
 
 \begin{figure}[t]
+  \begin{subfigure}{0.7\textwidth}
+  \scriptsize
   \begin{tikzpicture}[every text node part/.style={align=left}]
     \node[matrix, ampersand replacement=\&, anchor=west] (code)
          {
            \node (l1) {\tt 1 void f(int psk) \{}; \\
-           \node (l2) {\tt 2 ~ ~ int x = psk+5;}; \\
-           \node (l3) {\tt 3 ~ ~ printi(x);}; \\
+           \node (l2) {\tt 2 ~ int x = psk+5;}; \\
+           \node (l3) {\tt 3 ~ printi(x);}; \\
            \node {\tt 4 \}}; \\
          };
-
-    \node[node distance=5em, right=of code.north] (mid1) {};
   
-    \node[matrix, ampersand replacement=\&, node distance=6em, right=of code.north,draw] (table1)
+    \node[matrix, ampersand replacement=\&, node distance=13em, right=of code.north, draw, anchor=south] (table1)
          {
            \node[anchor=north] {\tt f}; \&
            \node[anchor=north, fill=gray!20] {\(\mathtt{psk} \mapsto i \tagat \vt[_1]\) \\ \(\mathtt{x} \mapsto \vundef \tagat \vt[_2]\)}; \&
            \node[anchor=north, fill=blue!10] {\(\vt[_1] \leftarrow \argtname(\vt[_0],\FN[f],\AN[psk])\) \\ \(\vt[_2] \leftarrow \consttname\)};\\
          };
 
-    \node[matrix, ampersand replacement=\&, node distance=4.5em, below=of table1.west,draw,anchor=west] (table2)
+    \node[matrix, ampersand replacement=\&, node distance=7em, below=of table1.east,draw,anchor=east] (table2)
          {
            \node[anchor=north] {\tt f}; \&
            \node[anchor=north, fill=gray!20] {\(\mathtt{psk} \mapsto i \tagat \vt[_1]\) \\ \(\mathtt{x} \mapsto (i+5) \tagat \vt[_4]\)}; \&
@@ -231,7 +229,7 @@ such a leak. (Of course, this particular leak could also be easily found using s
              \(\vt[_4] \leftarrow \binoptname(+,\vt[_2],\vt[_3])\) }; \\
          };
 
-    \node[matrix, ampersand replacement=\&, node distance=4.5em, below=of table2.west,draw,anchor=west] (table3)  
+    \node[matrix, ampersand replacement=\&, node distance=3em, below=of table2.east,draw,anchor=east] (table3)  
          {
            \node[anchor=north] {\tt printi}; \&
            \node[anchor=north, fill=gray!20] {\(\mathtt{a} \mapsto i \tagat \vt[_5]\)}; \&
@@ -239,45 +237,38 @@ such a leak. (Of course, this particular leak could also be easily found using s
          };
 
     \draw[Circle-]
-    (l1.south) -| (mid1.center);
-    \draw
-    (mid1.center) -- (table1.west);
+    (l1.south) -| (table1.south);
 
     \draw[Circle-]
-    (l2.south) -| (table2.west);
+    (l2.south) -| (table2.north);
 
     \draw[Circle-]
     (l3.south) |- (table3.west);  
 
   \end{tikzpicture}
 
-  \caption{Example program execution showing tag rules and tag propagation.}
+  \caption{Example execution showing tag rules and propagation.}
   \label{fig:ex1}
-\end{figure}
-
-\begin{figure}[t]
-  \begin{minipage}{0.25\textwidth}
-    \center
-    \[\tau::=\high | \low\]
+  \end{subfigure}
+  \begin{subfigure}{0.29\textwidth}
+    \scriptsize
+    \(\tau::=\high | \low\)
     \truleblock{\(\consttname\)}{\(\vt' := \low\)}
-  \end{minipage}
-  \begin{minipage}{0.45\textwidth}
-    \center
-    \argtexruleblock
-        {\caseoftwo{\((\vt,\FN,\AN)\)}
-          {(\(\high,\mathtt{printi},\underline{~~}\))}{\(\fail\)}
-          {\(\underline{~~~}\)}{\(\vt':=\vt\)}}
-  \end{minipage}
-  \begin{minipage}{0.27\textwidth}
-    \center
+
     \binoptexruleblock
         {\caseoftwo{\((\vt[_1],\vt[_2])\)}
           {(\(\low,\low\))}{\(\vt':=\low\)}
           {\(\underline{~~~}\)}{\(\vt':=\high\)}}
-  \end{minipage}
 
-  \caption{Tag rule instantiations for secure information flow (pt. 1)}
+    \argtexruleblock
+        {\caseoftwo{\((\vt,\FN,\AN)\)}
+          {(\(\high,\mathtt{printi},\underline{~~}\))}{\(\fail\)}
+          {\(\underline{~~~}\)}{\(\vt':=\vt\)}}
+  
+  \caption{Secure information flow instantiation (pt. 1)}
   \label{fig:example1rules}
+  \end{subfigure}
+
 \end{figure}
 
 In Tagged C, all values carry a metadata tag. Whenever execution reaches a control point, it consults
@@ -337,6 +328,8 @@ it does so indirectly: since the store to {\tt mm} is conditional on testing {\t
 an outside observer of {\tt mm} can deduce one bit of the key (an {\em implicit flow}~\cite{Denning76:SFIlattice}).
 
 \begin{figure}[t]
+  \scriptsize
+  \center
 \begin{tikzpicture}[every text node part/.style={align=left}]
   \node[matrix, ampersand replacement=\&, anchor=west] (code)
        {
@@ -427,6 +420,7 @@ then, at the write to {\tt mm}, \(\storetname\) will fail rather than write to a
 in a high context.
 
 \begin{figure}[t]
+  \scriptsize
   \begin{minipage}{0.3\textwidth}
     \truleblock{\(\constt\)}{
       \(\vt' := \PCT\)
@@ -530,10 +524,10 @@ A control point consists of the name of a {\em tag rule}
 and the bindings of its inputs and outputs. For example, consider the expression step reduction
 for binary operations:
 
-\begin{minipage}[t]{0.37\textwidth}
+\begin{minipage}[t]{0.24\textwidth}
   \binopsteptagless
 \end{minipage}
-\begin{minipage}[t]{0.6\textwidth}
+\begin{minipage}[t]{0.75\textwidth}
   \binopstepnolabel
 \end{minipage}
 
@@ -614,11 +608,8 @@ before runtime based on the \(\globaltname\) rule. \(\dealloctname\) returns an
 The heap equivalents of \(\localtname\) and \(\dealloctname\) are \(\malloctname\) and
 \(\freetname\). Again, the \(\lt'\) tags returned by these functions are used
 to tag and re-tag the allocated memory.
-%are special, because {\tt malloc} and {\tt free} are library functions.
-%Because they are so central to memory safety policies, we separate them out as individual
-%control points,
 Other library functions have the tags of their results tagged
-by the \(\extcalltname\) tag rule.\apt{Right? please double-check}
+by the \(\extcalltname\) tag rule.
 
 The cast rules are specialized based on whether the original type or the new type
 is a pointer, or both, because casts to and from pointers can make use of the
@@ -715,7 +706,7 @@ location tag.
 \begin{figure}[t]
   \scriptsize
 \begin{tikzpicture}[every text node part/.style={align=left}]
-  \node[matrix, column sep=1em, ampersand replacement=\%, anchor=west] (code)
+  \node[matrix, column sep=0.5em, ampersand replacement=\%, anchor=west] (code)
         {
           \node {\tt 1  int x[1],y[1];}; \%
           \node[fill=gray!20, draw] {\(\mathtt{y} \mapsto a\tagat\pt_1\)}; \%
@@ -743,21 +734,21 @@ location tag.
 
 \end{tikzpicture}
 
-\caption{Memory safety and pointer casts, tracing {\tt y}, {tt q}, and {\tt r}. (Assume {\tt int} and pointers are 32 bits.)
-Line (5) is always legal, (6) is illegal in CompCert C, (7) is also illegal in PVI, and (8) is illegal in all models.}
+\caption{Memory safety and pointer casts, tracing {\tt y}, {\tt q}, and {\tt r}. (Assume {\tt int} and pointers are 32 bits.)
+Line (5) is always legal, (6) is illegal in CompCert C due to bitwise arithmetic not preserving provenance, (7) is also illegal in PVI due to combining provenance of multiple objects, and (8) is illegal in all models.}
 \label{fig:memsafe}
 \end{figure}
 
 \begin{figure}[t]
+  \scriptsize
   \color{blue}
-  \begin{minipage}{0.3\textwidth}
+  \begin{minipage}{0.2\textwidth}
     \(\begin{array}{lllr}
       \tau & ::= & \clr & c \in \mathbb{N} \\
       & | & \N \\
 %      & | & \mathit{CAST}(\clr) & \textnormal{(CompCert only)} \\
     \end{array}\)
   \end{minipage}
-  \scriptsize
   \begin{minipage}{0.22\textwidth}
     \localtruleblock
         {let \(\clr := \PCT\) in \\
@@ -766,9 +757,8 @@ Line (5) is always legal, (6) is illegal in CompCert C, (7) is also illegal in P
           \(\vt['] := \N\);
           \(\lt['] := \PCT\)
         }
-    \loadtruleblock{\(\mathbf{assert} ~ \pt = \lt\) \\ \(\vt['] := \vt\)}
   \end{minipage}
-  \begin{minipage}{0.2\textwidth}
+  \begin{minipage}{0.22\textwidth}
     \malloctruleblock
         {let \(\clr := \PCT\) in \\
           \(\PCT['] := \clr[c+1]\) \\
@@ -776,6 +766,9 @@ Line (5) is always legal, (6) is illegal in CompCert C, (7) is also illegal in P
           \(\vt['] := \N\);
           \(\lt['] := \PCT\)
         }
+  \end{minipage}
+  \begin{minipage}{0.3\textwidth}
+    \loadtruleblock{\(\mathbf{assert} ~ \pt = \lt\) \\ \(\vt['] := \vt\)}
     \storetruleblock{\(\mathbf{assert} ~ \pt = \lt\) \\
       \(\PCT['] := \PCT\);
       \(\vt['] := \vt\); 
@@ -786,33 +779,34 @@ Line (5) is always legal, (6) is illegal in CompCert C, (7) is also illegal in P
   \label{fig:memgen}
 \end{figure}
 \begin{figure}[t]
-  \begin{subfigure}{\textwidth}
+  \begin{subfigure}{0.9\textwidth}
     \centering
     \color{blue}
-    %
     \scriptsize
     %
-    \begin{minipage}{0.4\textwidth}
+    \begin{minipage}{0.49\textwidth}
       \picasttruleblock{\caseoftwo{\(\pt\)}{\(\clr\)}{\(\vt['] := \CAST(\clr)\)}{\(\underline{~ ~ ~}\)}{\(\vt['] := \pt\)}}
       \ipcasttruleblock{\caseoftwo{\(\vt\)}{\(\CAST(\clr)\)}{\(\pt['] := \clr\)}{\underline{~ ~ ~}}{\(\vt['] := \pt\)}}
     \end{minipage}
     \begin{minipage}{0.5\textwidth}
-    \vspace{-2em}
-    \(\color{blue} \tau ::= \ldots | \CAST(\clr)\)
+      \center
+      \vspace{-0.5em}
+      \[\color{blue} \tau ::= \ldots | \CAST(\clr)\]
 
-    \binoptruleblock{
-      \caseofthree
-          {\((\oplus, \vt_1, \vt_2)\)}
-          {\((+,\clr,\N)\) \\ \((+,\N,\clr)\)}{\(\vt['] := \clr\)}
-          {\((\underline{~ ~},\N,\N)\) \\ \((-,\clr,\clr)\)}{\(\vt['] := \N\)}
-          {\(\underline{~ ~ ~}\)}{\(\fail\)}
-    }
+      \vspace{-1.5em}
+      \binoptruleblock{
+        \caseofthree
+            {\((\oplus, \vt_1, \vt_2)\)}
+            {\((+,\clr,\N)\) \\ \((+,\N,\clr)\)}{\(\vt['] := \clr\)}
+            {\((\underline{~ ~},\N,\N)\) \\ \((-,\clr,\clr)\)}{\(\vt['] := \N\)}
+            {\(\underline{~ ~ ~}\)}{\(\fail\)}
+      }
     \end{minipage}
     
     \caption{CompCert C Rules}
     \label{subfig:memcompcert}
   \end{subfigure}
-  \begin{subfigure}{0.5\textwidth}
+  \begin{subfigure}{0.49\textwidth}
     \scriptsize
 
     \ipcasttruleblock{\(\pt['] := \vt\)}
@@ -829,7 +823,7 @@ Line (5) is always legal, (6) is illegal in CompCert C, (7) is also illegal in P
     \caption{PVI Rules}
     \label{subfig:pvi}
   \end{subfigure}
-  \begin{subfigure}{0.5\textwidth}
+  \begin{subfigure}{0.49\textwidth}
     \scriptsize
     
     \ipcasttruleblock{\(\pt['] := \lt\)}
@@ -910,6 +904,7 @@ identifier or the default \(\N\) tag. The PC tag always carries the compartment 
 active function, kept up to date by the \(\calltname\) and \(\rettname\) rules.
 
 \begin{figure}[t]
+  \scriptsize
   \color{blue}
   \begin{minipage}[t]{0.3\textwidth}
     \vspace{-2em}
@@ -919,12 +914,11 @@ active function, kept up to date by the \(\calltname\) and \(\rettname\) rules.
   
     \rettruleblock{\(\PCT['] := \PCT_{\color{blue} CLR};\vt[']:=\vt\)}
   \end{minipage}
-  \scriptsize
-  \begin{minipage}[t]{0.25\textwidth}
+  \begin{minipage}[t]{0.3\textwidth}
     \malloctruleblock{\(\PCT['] := \PCT; \pt['] := \N;\) \\ \(\vt['] := \N; \lt['] := \PCT\)}
     \localtruleblock{\(\PCT['] := \PCT; \pt['] := \N;\) \\ \(\vt['] := \N; \lt['] := \PCT\)}
   \end{minipage}
-  \begin{minipage}[t]{0.25\textwidth}
+  \begin{minipage}[t]{0.3\textwidth}
     \loadtruleblock{\(\mathbf{assert} ~ \PCT = \lt\) \\ \(\vt['] := \vt\)}
     
     \storetruleblock{\(\mathbf{assert} ~ \PCT = \lt\) \\
@@ -959,17 +953,18 @@ During loads and stores, the location tag of the target address
 determines which parent property applies.
 
 \begin{figure}[t]
+  \scriptsize  
   \color{blue}
-  \begin{minipage}{0.5\textwidth}
+  \begin{minipage}{0.4\textwidth}
+    \center
     \[\tau ::= \N \mid C \mid \clr \mid (C,\clr)\]
-    \scriptsize
     \storetruleblock
         {let  \({\color{blue}(C,\clr)} := \PCT\) in \\
           \caseoftwo{\(\lt\)}
                     {\color{blue} \(C'\)}{\color{blue} \(\mathbf{StoreT}_C(C,\N,\vt,C')\)}
                     {\underline{~ ~}}{\color{blue} \(\mathbf{StoreT}_{\mathit{MS}}(\clr,\pt,\vt,\lt)\)}}
   \end{minipage}
-  \begin{minipage}{0.5\textwidth}
+  \begin{minipage}{0.59\textwidth}
     \scriptsize
     \malloctruleblock
       {let \({\color{blue} (C,\clr)} := \PCT\) in \\
@@ -982,14 +977,15 @@ determines which parent property applies.
       }
   \end{minipage}
   
-  \caption{Selected rules for Compartmentalization with Shared Capabilities, combining Compartmentalization rules (subscript \(C\), \cref{fig:compartments}) with Memory Safety rules (subscript \(\mathit{MS}\), \cref{fig:memgen})\apt{I made a change to line 6 on right; double-check!}}
+  \caption{Selected rules for Compartmentalization with Shared Capabilities, combining Compartmentalization rules (subscript \(C\), \cref{fig:compartments}) with Memory Safety rules (subscript \(\mathit{MS}\), \cref{fig:memgen})}
   \label{fig:sharing}
 \end{figure}
 
 \paragraph*{Compartmentalization Variants}
 
-Using program-specific tags for globals and functions, a compartmentalization policy
-like the one above can be extended with a Mandatory Access Control (MAC) policy \cite{Lampson74:Protection}.
+Using program-specific tags for globals and functions, a policy
+like the one above can be extended with a Mandatory Access Control (MAC) policy
+~\cite{Lampson74:Protection}.
 Here, a table explicitly identifies which compartments may call one another's functions,
 which global variables they can access, and with which other compartments they can share
 memory.
@@ -1114,7 +1110,7 @@ This way, the policy can react when execution reaches that label via the \(\labe
     \end{cases}\]
   \end{minipage}
   \scriptsize
-  \begin{minipage}{0.25\textwidth}
+  \begin{minipage}{0.33\textwidth}
     \splittruleblock{
       \caseoftwo{\(\PCT, \vt\)}
                 {\(\pctaint{\FN}{\LNS}, \high\)}
@@ -1146,11 +1142,10 @@ In order to use this version of SIF, the program must undergo a minor automatic 
 by the compiler or interpreter, introducing
 explicit labels at all join points that don't already have one. 
 So in the example {\tt J} becomes an explicit label in the code, if it wasn't already. 
-%This is a relatively minor transformation, and is necessary because\apt{don't follow the logic},
-%in the presence of goto, break, and continue statements, the join point of a conditional might be
-%arbitrarily distant from the split point.
-The internal syntactic form of each conditional statement ({\tt if}, {\tt switch}, {\tt while}, {\tt do-while}, and {\tt for})
-carries this label (optionally, since there might not be a join point if all arms of the conditional execute an explicit {\tt return}).
+The internal syntactic form of each conditional statement
+({\tt if}, {\tt switch}, {\tt while}, {\tt do-while}, and {\tt for})
+carries this label (optionally, since there might not be a join point if all arms of the
+conditional execute an explicit {\tt return}).
 If the conditional branches on a high value, \(\splittname\) adds the label to the set
 in the PC tag. Later, when execution reaches a label, \(\labeltname\) deletes it from the
 set. If the set is non-empty, there is at least one high split point that has not
@@ -1321,7 +1316,8 @@ rule invocations; this approach may support more efficient policy designs.
       \ \ Inductive rred (PCT:tag) : expr -> mem -> trace -> tag -> expr -> mem -> Prop := \\
       \ \ | red\_const: forall v ty m vt', PolSuccess vt' = ConstT PCT -> \\
       \ \ ~ rred PCT (Econst v ty) m E0 PCT (Eval (v,vt') ty) m \\
-      \ \ | red\_rvalof: forall ofs pt lts bf ty m tr v vt vt', deref\_loc ty m ofs pt bf tr (v,vt) lts -> \\
+      \ \ | red\_rvalof: forall ofs pt lts bf ty m tr v vt vt', \\
+      \ \ ~ deref\_loc ty m ofs pt bf tr (v,vt) lts -> \\
       \ \ ~ PolSuccess vt' = LoadT PCT pt vt lts -> PolSuccess vt'' = AccessT PCT vt' \\
       \ \ ~ rred PCT (Evalof (Eloc ofs pt bf ty) ty) m tr PCT (Eval (v,vt'') ty) m \\
       \ \ | ...\\
