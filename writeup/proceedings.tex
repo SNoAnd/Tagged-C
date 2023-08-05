@@ -323,9 +323,10 @@ higher of the two inputs, so \(\vt[_4]\) is \(\high\). Finally, upon entry into 
 is invoked again; this time it failstops, because the first arm of the case matches.
 Note that in this policy, \(\argtname\) is code-specific (it checks for a particular function name {\tt printi})
 whereas the other rules are generic to SIF.\footnote{
-For simplicity, we omit showing tag rules \(\accesstname\) and \(\assigntname\), 
-which are triggered each time a variable is read and assigned, respectively, because these
-don't play an interesting role in this example.}
+For simplicity, we omit showing tag rules that play no interesting role in this example.
+In this case, \(\accesstname\) and \(\assigntname\), 
+which are triggered each time a variable is read and assigned, respectively,
+as well as \(\calltname\), which is triggered by the call itself.}
 
 As a second example, \cref{fig:ex2} steps through the execution of a function {\tt g} that adds two new wrinkles:
 we need to keep track of metadata associated with
@@ -400,12 +401,8 @@ In addition to tags on values, Tagged C attaches tags to memory locations ({\em 
 \(\lt\)) and tracks a special global tag called the PC tag (ranged over by \(\PCT\), and attached to the
 function name in our diagrams).
 Tagged C initializes the tags on {\tt mm} with the \(\globaltname\) rule. The PC tag
-at the point of call, \(\PCT[_0]\), which we assume to be \(\low\), is fed to \(\calltname\)
-to determine a new PC tag
+at the point of call, \(\PCT[_0]\) is fed to \(\calltname\) to determine a new PC tag
 inside of {\tt g}.
-\apt{Need to show the instantiation of \(\calltname\) and also to use either it in Fig. 1 or apologize
-  for its absence, e.g. in the footnote.   Also: shouldn't the \(\calltname\) rule be where the PC
-  tag is set to \(\low\), rather than ``assuming it is low'' on entry??}
 And the if-statement consults the \(\splittname\) rule to update the PC tag
 inside of its branch based on the value-tag of the expression {\tt psk < 0}. Once inside the
 conditional, when the program assigns to {\tt mm}, it must consult the \(\storetname\) rule because
@@ -418,8 +415,7 @@ Whenever execution branches on
 a high-tagged value, the PC tag will be set to \(\high\). We modify the previous rules so that
 all expressions propagate the higher of the PC tag and the relevant value tag(s). This is shown
 for the updated \(\binoptname\) in \cref{fig:example2rules}; the \(\argtname\) rule needs a similar
-adjustment.\apt{I've updated the \(\argtname\) in Fig. 3 to pass the PC tag; double-check please!
-Alas, this violates the right margin.}
+adjustment.
 % show all updated rules now?
 When an assignment is to a memory location, the store rule will check the tag on
 that location against the value being written, 
@@ -434,11 +430,15 @@ in a high context.
     \truleblock{\(\constt\)}{
       \(\vt' := \PCT\)
     }
-  \truleblock{\(\globaltname(\GN)\)}{
-    \(\vt[']:=\low\); \(\pt[']:=\low\) \\
-    \caseoftwo{x}
-              {\tt mm}{\(\lt[']:=\low\)}
-              {\(\underline{~~~}\)}{\(\lt[']:=\high\)}}
+    \truleblock{\(\globaltname(\GN)\)}{
+      \(\vt[']:=\low\); \(\pt[']:=\low\) \\
+      \caseoftwo{x}
+                {\tt mm}{\(\lt[']:=\low\)}
+                {\(\underline{~~~}\)}{\(\lt[']:=\high\)}
+    }
+    \truleblock{\(\callt\)}{
+      \(\PCT := \low\)
+    }
   \end{minipage}
   \begin{minipage}{0.3\textwidth}
   \truleblock{\(\splittname(\PCT,\vt)\)}{
@@ -505,8 +505,7 @@ in a high context.
 
   \caption{Full list of tag-rule signatures and control points. Key to metavariables:
     \(\PCT\): PC tag, \(\vt\): value tag, \(\pt\): pointer tag, \(\lt\): location tag,
-    \(\FN\): function identifier, \(\AN\): function argument, \(\GN\): global
-    variable name, \(\LN\): label, \(\TN\): type.}
+}
   \label{fig:controlpoints}
 \end{table}
 
@@ -522,7 +521,10 @@ Tagged C's values
 and states are annotated with metadata tags, and its reductions contain
 control points, which are hooks within the
 operational semantics at which the tag policy is consulted and either tags are updated, or the system
-failstops. A control point consists of the name of a {\em tag rule}
+failstops.
+Tagged C relies on a fixed number of predefined control points, which we keep small
+in order to simplify and organize the task of the policy designer.
+A control point consists of the name of a {\em tag rule}
 and the bindings of its inputs and outputs. For example, consider the expression step reduction
 for binary operations:
 
@@ -543,52 +545,14 @@ The tag rule itself is instantiated as a partial function; if a policy leaves a 
 undefined on some inputs, then those inputs violate the policy, sending
 execution into a special failstop state. The names and signatures of all the tag rules,
 and their corresponding control points, are listed in \Cref{fig:controlpoints}.
-We briefly summarize the rules here, and give motivating examples of their use in
+In these signatures, we use the metavariable \(\PCT\) to denote the PC tag,
+\(\pt\) for tags that will be attached to pointer values, \(\vt\) for tags that will be
+attached to values in general, and \(\lt\) for tags that are associated with
+specific addresses in memory. We also range over different classes of identifiers
+with the metavariables: \(\FN\), function identifiers; \(\AN\), function arguments;
+\(\GN\), global variable names; \(\LN\), labels; and \(\TN\), types.
+We briefly summarize the rules below, and give motivating examples of their use in
 \cref{sec:policies}.
-
-\apt{There are a number of points that need to be addressed somewhere:
-\begin{itemize}
-  \item What is $\pt$ for, and how   does it differ from $\lt$? (I'm guessing they are really the same thing, and the
-  distinction is just in the kinds of values they are attached to -- if so, say something
-  like this explicitly).
-  \item Need to clarify somewhere that $\localtname$ and $\dealloctname$
-    apply (only) to variables that are stored in memory.
-  \item  Need to explain that the
-    $\lt$ result from $\malloctname$,$\globaltname$,$\localtname$ is used to initialize the
-    allocated memory.
-  \item Need to note explicitly that the pointer-related cast rules are parameterized by the
-    location tags on the pointed-to locations, and explain why.
-  \item Need to explain sooner where the $\pt$ argument to $\extcalltname$, $\malloctname$ and $\freetname$
-    comes from and what it is for.
-  \item Figure 8 implies that $\loadtname$ and $\storetname$ take a \emph{vector} of (per-byte?)
-    $\lt$s. Table and earlier uses of $\storetname$ don't show this. (Suggest simplifying Fig. 8 story.)
- \end{itemize}
-}
-  
-
-Nearly all the rules are parameterized by the current PC tag \(\PCT\), and the rules
-for control points associated with changes in program state (variable or memory update,
-change in control flow) can produce a changed \(\PCT'\) as a result.
-\(\calltname\)
-and \(\rettname\) update the PC tag on entry and exit from a function.
-\(\calltname\) is parameterized by the function pointer being called.
-\(\rettname\) is parameterized by both the caller's PC tag (\(\PCT[_{\color{blue} CLR}]\))
-and the callee's (\(\PCT[_{\color{blue} CLE}]\)); it can also update the return value's tag.
-\(\argtname\) updates tags on any arguments, based on the function and argument names.
-\(\loadtname\) and \(\storetname\) deal with memory accesses, while \(\accesstname\) and
-\(\assigntname\) are invoked on variable access and assignment regardless of whether the variable
-is in memory.
-\(\unoptname\) and \(\binoptname\) handle operations, \(\consttname\) is the default tag
-on all constants, and \(\inittname\) is the initial tag in a fresh variable.
-\(\splittname\), \(\labeltname\), \(\exprsplittname\), and \(\exprjointname\) 
-update the PC tag based on changes in control flow in statements and expressions.
-\(\fieldtname\) updates the tag on a pointer value when it is offset to access the field
-of a struct or union. \(\globaltname\), \(\localtname\),
-and \(\malloctname\) are each associated with the allocation of memory, and are
-parameterized by the type of the allocated value. The latter
-two have corresponding deallocation rules \(\dealloctname\) and \(\freetname\),
-respectively. The cast rules are specialized based on whether the original type or
-the new type is a pointer, or both.
 
 \paragraph{Memory} Unlike CompCert C, Tagged C has no memory-related UB.
 CompCert C models memory as a collection of disjoint blocks,
@@ -609,77 +573,62 @@ memory safety, which is intentionally left for explicit tag policies to specify
 In an implementation that compiles to PIPE, the private data can be protected by a small number of
 ``built-in'' tags.
 
-\paragraph{Rationale for Control Point Design}
+\paragraph{Control Points}
 
-\apt{Flow here is awkward. This first sentence should go earlier. Also, the whole rationale subsection
-  breaks up the ``two key respects'' intro above.}
-Tagged C relies on a fixed number of predefined control points, which we keep small
-in order to simplify and organize the task of the policy designer.
-\apt{This is worth saying, but maybe a little later in the discussion?}
+In our scheme, pure expressions take as arguments the PC tag \(\PCT\) and any operand tags,
+and produce a tag for the result of the expression (\(\consttname\) for constants,
+\(\unoptname\) and \(\binoptname\) for operations, \(\fieldtname\) for struct and union fields,
+and \(\accesstname\) and \(\loadtname\) as described below).
+Impure expressions additionally produce a new PC tag (\(\assigntname\), \(\storetname\),
+and \(\exprsplittname\)).
+
+The distinction between \(\accesstname\) and \(\loadtname\), and between
+\(\assigntname\) and \(\storetname\), corresponds to private (non-address-taken)
+and public (allocated in public memory) variables. All reads of variables invoke
+\(\accesstname\), and all assignments invoke \(\assigntname\), so that the behavior of the
+variable itself is independent of where it is stored. Public variables
+additionally use the \(\loadtname\) and \(\storetname\) rules to add restrictions to how
+variables in memory are accessed.
+
+The \(\exprsplittname\) tag rule updates the PC tag when an expression branches control
+flow based on a value; it is paired with \(\exprjointname\), which updates the PC tag again
+when the branches have rejoined. Similarly, \(\splittname\) updates the PC during
+branching statements. The \(\labeltname\) rule changes the PCT tag at any point in execution,
+and can handle join points following branch statements if they are statically known.
+
+\(\calltname\) and \(\rettname\) update the PC tag on entry and exit from a function.
+\(\calltname\) is parameterized by the function pointer being called and the PC tag.
+\(\rettname\) is parameterized by both the caller's PC tag (\(\PCT[_{\color{blue} CLR}]\))
+and the callee's (\(\PCT[_{\color{blue} CLE}]\)); it can also update the return value's tag.
+\(\argtname\) updates tags on any arguments, based on the function and argument names.
+
+Newly initialized variables are tagged according to the \(\inittname\) rule, as
+well as \(\localtname\) if they are public locals. Global variables are initialized
+before runtime based on the \(\globaltname\) rule. \(\dealloctname\) re-tags deallocated
+locals.
+
+The heap equivalents of \(\localtname\) and \(\dealloctname\), \(\malloctname\) and
+\(\freetname\), are special, because {\tt malloc} and {\tt free} are library functions.
+Because they are so central to memory safety policies, we separate them out as individual
+control points, but in general library functions have the tags of their results tagged
+by the \(\extcallt\) tag rule.
+
+The cast rules are specialized based on whether the original type or the new type
+is a pointer, or both, because casts to and from pointers can make use of the
+location tags at their targets. This enables our PNVI memory safety policy, and
+generally policies that keep track of the correspondence between pointers and their
+targets.
+
+There is always the chance that new policies might arise for which our current set of
+control points proves to be inadequate. There is no conceptual reason why
+control points cannot be added or given modified signatures as needed,
+but extending the interpreter and (eventually) the compiler would be non-trivial.
 Care needs to be taken in designing control points that are amenable
 to compilation for PIPE: tag rule evaluation has a complicated interaction with
 compiler optimization~\cite{Chhak21:Tagine}, and some potentially useful tag
 rule signatures (such as updating tags on operation inputs to enforce non-aliasing of pointers)
 would require the compiler to generate extra instructions to work
 around limitations of the PIPE hardware.
-
-\apt{I don't think this para and the next add very much. First of all, we're
-  about to go into a deep dive into different policies that will motivate
-  the placement of control points. It isn't really so simple! Also, the particular
-  attention here to silent expressions seems like a very low-level detail, and relies
-  on understanding $\mathit{Eaddr}$, which we know nothing about (and don't want to).}
-We choose where to place control points based on a simple set of criteria.
-First, we divide expressions into classes: {\em silent expressions},
-{\em pure expressions}, and {\em impure expressions}. An expression is
-silent if it has no effect on the memory or any variable environment,
-and its result has an identical integer representation as its input.
-For example, applying \(\mathit{Eaddr}\) to a left-hand value (representing an address)
-produces a right-hand value that is a pointer to that address, necessarily having
-the same representation, so this is a silent expression. An expression
-is impure if it updates memory or a variable environment, and all other expressions are pure.
-
-\apt{Maybe just keep this para, skipping the silent expressions bit?}
-In our scheme, silent expressions do not contain control points. Pure expressions
-do: they take as arguments the PC tag and any operand tags, and produce a tag for the
-result of the expression. Impure expressions additionally produce a new PC tag.
-
-A wrinkle comes in when we consider that variables can be private (non-address-taken)
-or public (allocated in public memory). 
-Here we follow the principle that the tag behavior of the variable's
-contents ought to be the same regardless of where it is stored, although additional
-constraints can be placed on public memory accesses. For this reason, memory loads and stores
-process the \(\accesstname\) and \(\assigntname\) tag rules separately from their
-\(\loadtname\) and \(\storetname\) rules.
-
-Finally, at the level of statements, we distinguish between those statements that
-condition control flow on some value, and those that do not. The ones that do must
-have control points to update the PC tag.
-And, in order to support arbitrary changes in tags, for instance at statically identified
-join points for a SIF policy, we add the \(\labeltname\) rule.
-Function calls update the PC tag and can update the tags on any arguments,
-while returns are given access to both the PC tag at the time of return and
-the one that was active before the call.
-
-There is always the chance that new policies might arise for which our current set of
-control points proves to be inadequate. There is no conceptual reason why
-control points cannot be added or given modified signatures as needed,
-but extending the interpreter and (eventually) the compiler would be non-trivial.
-
-%In terms of exploits, it prevents control-only attacks,
-%but allows data-only and data-bending attacks/
-
-%Without memory safety, programs
-%that exhibit memory-undefined behavior will act as their compiled equivalents would, potentially
-%corrupting memory; we expect that a memory safety policy will be a standard default, but that the
-%strictness of the policy may need to be tuned for programs that use low-level idioms.
-
-%% APT: This seems out of place and superceded by discussion above.
-%% \paragraph*{Parts of a policy}
-
-%% A policy consists of instantiations of the tag type
-%% and each of the tag rules associated with control points in the semantics. Table \cref{figcontrolpoints}
-%% identifies the full collection of control points, their tag rules, and the inputs and outputs of the tag rules.
-%% The tag type \(\tau\) must be inhabited by a default tag.
 
 \paragraph{Combining Policies}
 
@@ -895,14 +844,14 @@ Line (5) is always legal, (6) is illegal in CompCert C, (7) is also illegal in P
     \label{fig:memspecial}
   \end{figure}
 
-Memory safety considerations also inform the design of control points related to allocating, deallocating, and
-accessing memory. \(\malloctname\) and \(\freetname\) are special cases of the
-\(\extcalltname\) control point. \apt{Why do we need special cases for these? (my question, not rhetorical)}
+Memory safety considerations also inform the design of control points related to allocating,
+deallocating, and accessing memory.
 Drawing from CompCert C, Tagged C abstracts over
 ``external'' functions like {\tt malloc} and {\tt free}, rather than treat their implementation as
 ordinary code. In a concrete system, these would be replaced by their library equivalents. 
-\(\extcalltname\) models the desired tag behavior of these libraries in the Tagged C semantics.
-\apt{Here's where to describe memory initialization with $\lt$ in detail.}
+\(\extcalltname\) models the desired tag behavior of general external functions in the Tagged C
+semantics, but \(\malloct\) and \(\freet\) are special cases because they also need to retag memory;
+the location tag \(\lt\) returned by each of them is copied across the entire allocated region.
 
 \paragraph*{Temporal Memory Safety}
 
@@ -952,7 +901,6 @@ based on the one before the call (\(\PCT[_{CLR}]\)) and the one at the time of r
 In our compartmentalization policy (\cref{fig:compartments}), we define a tag to be a compartment
 identifier or the default \(\N\) tag. The PC tag always carries the compartment of the
 active function, kept up to date by the \(\calltname\) and \(\rettname\) rules.
-\apt{In $\calltname$, what is $f'$ ??? In $\loadtname$ and $\storetname$, missing vector notation? (but see previous suggestion to get rid of this)}
 
 \begin{figure}[t]
   \color{blue}
@@ -960,7 +908,7 @@ active function, kept up to date by the \(\calltname\) and \(\rettname\) rules.
     \vspace{-2em}
     \(\color{blue} \tau ::= C | \N\)
 
-    \calltruleblock{\(\PCT['] := {\color{blue} \mathit{comp}(f')}\)}
+    \calltruleblock{\(\PCT['] := {\color{blue} \mathit{comp}(\pt)}\)}
   
     \rettruleblock{\(\PCT['] := \PCT_{\color{blue} CLR};\vt[']:=\vt\)}
   \end{minipage}
@@ -970,9 +918,9 @@ active function, kept up to date by the \(\calltname\) and \(\rettname\) rules.
     \localtruleblock{\(\PCT['] := \PCT; \pt['] := \N;\) \\ \(\vt['] := \N; \lt['] := \PCT\)}
   \end{minipage}
   \begin{minipage}[t]{0.25\textwidth}
-    \loadtruleblock{\(\mathbf{assert} ~ \forall \lt \in \lt . \PCT = \lt\) \\ \(\vt['] := \vt\)}
+    \loadtruleblock{\(\mathbf{assert} ~ \PCT = \lt\) \\ \(\vt['] := \vt\)}
     
-    \storetruleblock{\(\mathbf{assert} ~ \forall \lt \in \lt . \lt = \PCT\) \\
+    \storetruleblock{\(\mathbf{assert} ~ \PCT = \lt\) \\
       \(\PCT['] := \PCT; \vt['] := \N; \lt['] := \lt\)}
   \end{minipage}
     
@@ -1029,7 +977,7 @@ determines which parent property applies.\apt{Labelling of parent rule names nee
       }
   \end{minipage}
   
-  \caption{Compartmentalization with Shared Capabilities (Selected Rules)\apt{Code for $\malloctname$ looks quite wrong to me in the way it unpacks/packs the combined PC tag.}}
+  \caption{Selected rules for Compartmentalization with Shared Capabilities, combining Compartmentalization rules (\cref{fig:compartments}, subscript \(C\)) with Memory Safety rules (\cref{fig:memsafe}, subscript \(\mathit{MS}\)) (Selected Rules)\apt{Code for $\malloctname$ looks quite wrong to me in the way it unpacks/packs the combined PC tag.}}
   \label{fig:sharing}
 \end{figure}
 
