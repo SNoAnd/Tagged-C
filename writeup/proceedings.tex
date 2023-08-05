@@ -33,15 +33,17 @@ Portland, OR, USA}
 \maketitle
 
 \begin{abstract}
-Today's computing infrastructure is built atop layers of legacy C code, 
-which is often insecure, poorly understood, and difficult to maintain.
-Security can be improved by using runtime reference monitors, including those
-implemented using hardware support, such as the PIPE (Processor
-Interlocks for Policy Enforcement) processor extensions. Unfortunately,
-existing PIPE-based systems require security policies to be expressed at the ISA level,
-which makes them opaque to C developers and hard to apply to higher-level language features.
-To address this problem, we introduce Tagged C, a novel C variant with
-built-in tag-based reference monitoring that can be enforced by PIPE.
+%% Today's computing infrastructure is built atop layers of legacy C code, 
+%% which is often insecure, poorly understood, and difficult to maintain.
+%% Security can be improved by using runtime reference monitors, including those
+%% implemented using hardware support, such as the PIPE (Processor
+%% Interlocks for Policy Enforcement) processor extensions. Unfortunately,
+%% existing PIPE-based systems require security policies to be expressed at the ISA level,
+%% which makes them opaque to C developers and hard to apply to higher-level language features.
+%%To address this problem,
+We introduce Tagged C, a novel C variant with
+built-in tag-based reference monitoring that can be enforced by hardware
+mechanisms such as the PIPE (Processor Interlocks for Policy Enforcement) processor extension.
 Tagged C expresses security policies at the level of C source code.
 It is designed to express a variety of dynamic security policies,  
 individually or in combination, and enforce them with compiler and hardware support.
@@ -78,17 +80,17 @@ rules that check and update the metadata tags at key points during execution; if
 encountered, the program \emph{failstops}. 
 Although monitoring based on metadata tags is less flexible and powerful than monitoring based on the
 underlying data values, it can still enforce many useful security properties, including
-both low-level concerns, such as fine-grained memory safety~\cite{Witchel02:MondrianMem},
-and high-level properties like secure information flow~\cite{Denning76:SFIlattice} and
-mandatory access control~\cite{USDoD85:OrangeBook}.
+both low-level concerns such as memory safety %~\cite{Witchel02:MondrianMem},
+and high-level properties such as secure information flow~\cite{Denning76:SFIlattice} or
+mandatory access control~\cite{Lampson74:Protection}.
 
 Tag-based policies are especially well-suited for efficient hardware enforcement, using 
 processor extensions such as ARM MTE~\cite{arm-mte},
 STAR~\cite{Gollapudi+23}, and
 PIPE.  PIPE\footnote{ Variants of PIPE have
-been called PUMP~\cite{Dhawan+14}, %Dhawan+15},
-SDMP~\cite{Dover16}%,RoesslerD18},
-CoreGuard, or ISP.}
+been called PUMP~\cite{Dhawan+15} or %Dhawan+14},
+SDMP~\cite{RoesslerD18}% ,Dover16}},
+and marketed commercially under the names Dover CoreGuard and Draper Inherently Secure Processor.}
 (Processor Interlocks for Policy Enforcement)~\cite{Azevedo+16,Azevedo+15},%Dhawan+15,
 the specific motivator for our work, 
 is a programmable hardware mechanism that supports monitoring 
@@ -153,7 +155,7 @@ We build the Tagged C semantics on top of the CompCert C semantics, which is for
 as part of the CompCert verified compiler \cite{Leroy09:CompCert,Leroy09:CompCertBackend}.
 For prototyping and executing example policies,
 we provide a reference interpreter \footnote{Available at [github]\apt{FIX ME!}},
-also based on that of CompCert~\cite[Ch. 4]{Leroy22:CompCertManual},
+also based on that of CompCert~\cite[Ch. 4]{Leroy23:CompCertManual},
 written in the Gallina functional language of the Coq Proof Assistant~\cite{coq}.
 Tag types and rules are also written directly in Gallina. 
 
@@ -510,7 +512,7 @@ in a high context.
 
 Tagged C contains almost all features of full ISO C 99.\footnote{
 It inherits the limitations of CompCert C, primarily that {\tt setjump} and {\tt longjump}
-may not work, and variable-length arrays are not supported.~\cite[Ch. 5]{Leroy22:CompCertManual}.}
+may not work, and variable-length arrays are not supported.~\cite[Ch. 5]{Leroy23:CompCertManual}.}
 Its semantics is based on that of CompCert C~\cite{Leroy09:CompCert},
 a formalization of the C standard into a small-step reduction semantics.
 Tagged C's semantics differs from CompCert C's in two key respects: tag support and memory model.
@@ -1280,87 +1282,100 @@ routine and a high level to the outputs of its corresponding decryption routine.
 \section{Implementation}
 \label{sec:implementation}
 
-In order to implement Tagged C on top of the CompCert semantics and interpreter,
-we replace the standard block-offset memory with a concrete one,
-leaving the block-based system to handle only function pointers. We also rework
-global environments to separate (symbolic) function pointers from other (concrete)
-pointers. Memory and global environments are shared between the formal
-semantics and the interpreter, so these changes only need to be made once.
+Our current Coq-based implementation of Tagged C consists of a formal semantics and
+a matching interpreter written in Coq's Gallina language (similar to functional
+languages such as OCaml or Haskell).
+These are based on the {\tt Csem} and {\tt Cexec} modules from the CompCert compiler
+(version 3.10)~\cite{CompCert3.10}.  The interpreter can be extracted to a stand-alone OCaml program
+that can then be further compiled to machine code.
 
+To adapt CompCert, we replace the standard block-offset memory with a concrete one,
+leaving the block-based system to handle only function pointers. We rework
+global environments to separate (symbolic) function pointers from other (concrete)
+pointers. %Memory and global environments are shared between the formal
+%semantics and the interpreter, so these changes only need to be made once.
 We also add a temporary environment to contain non-memory variables,
 and semantic rules to deal with them. Most importantly, we thread the PC tag into the state,
-and add control points to the relevant semantic rules. In the interpreter, we make
-the corresponding changes to the relevant code.
+and add control points to the relevant semantic rules. These changes appear in both
+the semantics and the corresponding interpreter code. 
+To extend the existing CompCert proof that the interpreter is correct with respect to the semantics
+requires updating the proof automation to handle concrete memory and tags.
 
-The correctness proof of the interpreter is based on that of the original \mbox{CompCert} C
-interpreter, but we have needed to incorporate all of the above changes and update
-the proof automation to handle concrete memory and tags.
+The semantics and interpreter are parameterized by a Coq module type {\tt Policy}, which specifies
+the type signatures of the tag rules. A policy is written directly in Gallina as a module that
+instantiates {\tt Policy} by defining the type of tags and the body of each tag rule.  
+To illustrate, \cref{fig:fullcode} shows fragments of the {\tt Policy} signature, its instantiation
+in the PVI memory safety policy, and how its rules are accessed in the Coq semantics. The full
+PVI policy fits into 70 lines of Gallina.  \apt{I think this figure is pretty good (I added a bit
+  of indentation) -- but why do you show the {\tt red\_const} rule instead of {\tt red\_binop} ?
+  [Also, the rules don't seem to match the code I see in the repo.
+    And the details of {\tt LoadT} involve the vector of byte tags that you have hopefully banished
+    elsewhere, but I guess it is safe not to worry about that.] }
 
-In the interest of modularity, we define a Coq module type for policies, containing
-an instantiation of the tag type and of each of the tag rules. The entire formal semantics
-and the interpreter are then parameterized by a policy, written directly in Gallina.
-For example, the code of the PVI-memory-safety policy is shown in full in \cref{fig:fullcode}.
-The entire package of the interpreter and its policies are extracted to Ocaml.
-
-\paragraph{Practicalities: Tag Sizes, Policy States}
-
-In modeling Tagged C, we assume unbounded tags. In practice, PIPE tags are large, but
+\paragraph{PIPE, tag sizes, and policy states.}
+Ultimately, we wish to compile Tagged C to run efficiently on PIPE-equipped hardware, which
+raises some issues that are not currently visible at the level of the Coq interpreter. For example,
+the Coq model of Tagged C allows unbounded tags. In reality, PIPE tags are large, but
 bounded. This means that, for instance, the na\"{i}ve implementation of PVI memory safety
 described here runs the risk of overflowing the number of possible colors. 
-Temporal safety will not be feasible in long-running programs that regularly allocate memory,
+Enforcement of temporal safety will not be feasible in long-running programs that regularly allocate memory,
 even if their total memory footprint is bounded, unless the policy can reclaim the tags
 on previously freed objects. 
 
-Tagged C also assumes that the only state carried by the policy is encoded in its tags.
-The PC tag takes on the role of carrying whatever state the policy needs. In practice,
-the underlying policy can maintain its own state separate from the primary application.
-In the future we may revisit this choice.
+Also, the Coq model assumes that all tag rules are pure functions of the tag inputs;
+any state carried by the policy must be encoded in the PC tag.
+In practice, PIPE allows tag rules to be implemented by arbitrary code, which can  persist
+private state (separate from the application being monitored) over multiple
+rule invocations; this approach may support more efficient policy designs.
 
 \begin{figure}[t]
 
   {\tt \scriptsize
-  \begin{tabular}{l l}
-    Module PVI:Policy. \\[0.5em]
+    \begin{tabular}{l l}
+      Module Type Policy. \\[0.5em]
 
-    Inductive tag := & Definition ConstT pct := PolSuccess N. \\
-    | Glob (id:ident) & Definition InitT pct := PolSuccess N. \\
-    | Dyn (c:nat) & Definition CallT pct pt := PolSuccess pct. \\
-    | N. & Definition ArgT pct vt f x := PolSuccess (pct,vt). \\
-    Definition def\_tag := N. & Definition RetT pct oldpct vt := PolSuccess (pct,vt). \\
-    Definition InitPCT := Dyn 0. & Definition FieldT pct vt ty id := PolSuccess vt. \\[0.5em]
+      \ \ \ Parameter tag : Type.     & Inductive PolResult (A: Type) := \\
+      \ \ \  Parameter def\_tag : tag. & | PolSuccess (res: A) \\
+      \ \ \ Parameter InitPCT : tag.  & | PolFail (r: string) \\[0.5em]
+  
+      \multicolumn{2}{l}{\ \ \ Parameter BinopT : binary\_operation ->
+        tag -> tag -> tag -> PolResult (tag * tag).} \\
+      \multicolumn{2}{l}{\ \ \ Parameter LoadT : tag -> tag -> tag ->
+        list tag -> PolResult tag.} \\
 
-    Definition BinopT op pct vt1 vt2 :=     & Definition UnopT op pct vt := \\
-    ~ match vt1, vt2 with                   & ~ PolSuccess (pct, vt). \\
-    ~ | Dyn n, X =>  PolSuccess (pct, vt1)  & Definition AccessT pct vt := \\
-    ~ | Glob id, X => PolSuccess (pct, vt1) & ~ PolSuccess vt. \\
-    ~ | \_, \_ => PolSuccess (pct, vt2)     & Definition AssignT pct vt1 vt2 := \\
-    ~ end.                                  & ~ PolSuccess (pct,vt2). \\[0.5em]
+      \ \ \ ... \\[1em]
 
-    Definition LoadT pct pt vt lts :=   & Definition StoreT pct pt vt lts := \\
-    ~ match pt with                     & ~ match pt with \\
-    ~ | N => PolFail "PVI::LoadT N"     & ~ | N => PolFail "PVI::StoreT N" \\
-    ~ | \_ => if forallb (=? pt) lts    & ~ | \_ => if forallb (=? pt) lts \\
-    ~ ~ then PolSuccess vt              & ~ ~ then PolSuccess (pct,vt,lts) \\
-    ~ ~ else PolFail "PVI::LoadT Ptr"   & ~ ~ else PolFail "PVI::StoreT Ptr" \\
-    ~ end. & ~ end. \\[0.5em]
+      Module PVI:Policy. \\[0.5em]
 
-    Definition LocalT pct ty :=                &  Definition MallocT pct pt vt :=\\
-    ~ match pct with                           & ~ match pct with \\
-    ~ | Dyn c => PolSuccess (Dyn (S c),        & ~ | Dyn c => \\
-    ~ ~ Dyn c, repeat (Dyn c) (sizeof ty))          & ~ ~ PolSuccess (Dyn (S c), Dyn c, N, Dyn c) \\
-    ~ | \_ => PolFail "PVI::LocalT"            & ~ | \_ => PolFail "PVI::MallocT" \\
-    ~ end.                                     & ~ end. \\[0.5em]
+      \ \ \ Inductive tag := & Definition def\_tag := N.  \\
+      \ \ \ | N. & Definition InitPCT := Dyn 0. \\
+      \ \ \ | Dyn (c:nat) & Definition ConstT pct := PolSuccess N. \\
+      & \\[0.5em]
 
-    Definition FreeT pct pt vt lts :=   & Definition DeallocT pct ty := \\
-    ~ match pt with                     & ~ PolSuccess (pct, N, repeat N (sizeof ty))) \\
-    ~ | Dyn c => if forallb (=? pt) lts & Definition PICastT pct pt lts ty := PolSuccess pt. \\
-    ~ ~ then PolSuccess (pct, N, N)     & Definition IPCastT pct vt lts ty := PolSuccess vt. \\
-    ~ ~ else PolFail "PVI::FreeT"     & Definition PPCastT pct vt lts ty := PolSuccess vt. \\
-    ~ | \_ => PolFail "PVI::FreeT"    & Definition IICastT pct vt ty := PolSuccess vt. \\
-    ~ end. \\[0.5em]
+      \ \ \ Definition BinopT op pct vt1 vt2 :=       & Definition LoadT pct pt vt lts := \\
+      \ \ \ ~ match vt1, vt2 with                     & ~ match pt with \\
+      \ \ \ ~ | Dyn c, N =>  PolSuccess (pct, Dyn c)  & ~ | N => PolFail "PVI::LoadT N" \\
+      \ \ \ ~ | N, Dyn c => PolSuccess (pct, Dyn c)   & ~ | \_ => if forallb (=? pt) lts \\
+      \ \ \ ~ | N, N => PolSuccess (pct, N)           & ~ ~ ~ ~ ~then PolSuccess vt \\
+      \ \ \ ~ | Dyn c1, Dyn c2 => PolSuccess (pct, N) &  ~ ~ ~ ~ ~else PolFail "PVI::LoadT Ptr" \\
+      \ \ \ ~ end.                                    & ~ end. \\
+      \ \ \ ... \\[1em]
+    \end{tabular}
+    
+    \begin{tabular}{l}
+      Module Csem (Import P: Policy). \\
+      \\
+      \ \ Inductive rred (PCT:tag) : expr -> mem -> trace -> tag -> expr -> mem -> Prop := \\
+      \ \ | red\_const: forall v ty m vt', PolSuccess vt' = ConstT PCT -> \\
+      \ \ ~ rred PCT (Econst v ty) m E0 PCT (Eval (v,vt') ty) m \\
+      \ \ | red\_rvalof: forall ofs pt lts bf ty m tr v vt vt', deref\_loc ty m ofs pt bf tr (v,vt) lts -> \\
+      \ \ ~ PolSuccess vt' = LoadT PCT pt vt lts -> PolSuccess vt'' = AccessT PCT vt' \\
+      \ \ ~ rred PCT (Evalof (Eloc ofs pt bf ty) ty) m tr PCT (Eval (v,vt'') ty) m \\
+      \ \ | ...\\
+      \ \ ...
       \end{tabular} }
     
-  \caption{The Complete PVI memory safety policy}
+  \caption{Fragments of Coq implementation.}
   \label{fig:fullcode}
 \end{figure}
 
@@ -1390,15 +1405,15 @@ are more directly comparable to Tagged C. In an RV system, specified junctures i
 execution are treated as events in a trace, and a user defines valid traces
 in terms of state machines~\cite{Schneider00:Automata}, regular expressions, or temporal logics.
 Trace checking can be interleaved into the program as
-an inline monitor \cite{Lundblad13:IRM}, or run offline on a log file \cite{Havelund22:LogScope}.
+an inline monitor \cite{Erlingsson04:IRM}, or run offline on a log file \cite{Havelund22:LogScope}.
 In general, all of these systems are more expressive than Tagged C, because the
 monitor can access system values, not just keep track of provenance. But that expressiveness
 requires software-based implementation, whereas we are focused on using PIPE hardware.
 
-Various systems have targeted information flow, memory safety, and compartmentalization in C.
+Various systems have targeted information flow, memory safety, and compartmentalization in C.\apt{A wild understatement, at least wrt memory safety!}
 Cassel et al.'s FlowNotations~\cite{Cassel19:FlowNotation} use type annotations to specify ``tainted'' and ``trusted'' data,
 and statically check a program's information flow using the C type system. Their annotation system
-could easily be an input to a SIF policy, replacing the static checks with dynamic enforcement.
+could easily be an input to a SIF policy, replacing the static checks with dynamic enforcement.\apt{But why would one possibly want to do that? Can we make a comparison about how the annotations work in practice? }
 The CHERI hardware capability system has been used by Tsampas et al. for compartmentalization
 \cite{Tsampas2017:TowardsAC}, and by Filardo et al. for temporal memory safety
 \cite{NWF20:Cornucopia}. Like PIPE, CHERI can support a range of security policies,
@@ -1437,6 +1452,8 @@ We thank the reviewers for their valuable feedback, and Roberto Blanco for his a
 the writing process. This work was supported by the National Science Foundation under
 Grant No. 2048499, Specifying and Verifying Secure Compilation of C Code to Tagged Hardware.
 
+\vfill
+\eject
 \bibliographystyle{splncs04}
 \bibliography{taggedc.bib}
   
