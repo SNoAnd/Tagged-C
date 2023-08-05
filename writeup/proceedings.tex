@@ -101,9 +101,9 @@ assigned to the result.
 PIPE is highly flexible: it supports
 arbitrary software-defined tag rules over large (word-sized) tags with arbitrary structure,
 which enables fine-grained policies and composition of multiple policies. This flexibility 
-is useful because security needs may differ radically among codebases,
+is useful because security needs may differ among codebases,
 and even within a codebase. A conservative, one-size-fits-all policy might be too strong,
-causing failstops during normal execution. Sensitive code might call for its own specialized
+causing failstops during normal execution. Sensitive code might call for specialized
 protection.
  
 %% \apt{There is still a thought I would like to express here about tag-based policies being
@@ -153,7 +153,7 @@ We build the Tagged C semantics on top of the CompCert C semantics, which is for
 as part of the CompCert verified compiler \cite{Leroy09:CompCert,Leroy09:CompCertBackend}.
 For prototyping and executing example policies,
 we provide a reference interpreter \footnote{Available at \url{https://github.com/SNoAnd/Tagged-C}},
-also based on that of CompCert~\cite[Ch. 4]{Leroy23:CompCertManual},
+also based on that of CompCert,
 written in the Gallina functional language of the Coq Proof Assistant~\cite{coq}.
 Tag types and rules are also written directly in Gallina. 
 
@@ -311,9 +311,9 @@ The initial tag \(\vt[_2]\) on local variable {\tt x} and the tag \(\vt[_3]\) on
 come from \(\consttname\), which tags all constants as \(\low\).
 The result of the addition on line 2 is tagged by \(\binoptname\) as the
 higher of the two inputs, so \(\vt[_4]\) is \(\high\). Finally, upon entry into {\tt printi}, \(\argtname\)
-is invoked again; this time it failstops, because the first arm of the case matches.
+is invoked again; this time it failstops.
 Note that in this policy, \(\argtname\) is code-specific (it checks for a particular function name {\tt printi})
-whereas the other rules are generic to SIF.\footnote{
+whereas the other rules are generic.\footnote{
 For simplicity, we omit showing tag rules that play no interesting role in this example: 
 \(\accesstname\) and \(\assigntname\), 
 which are triggered each time a variable is read and assigned, respectively,
@@ -398,8 +398,7 @@ at the point of call, \(\PCT[_0]\), is fed to \(\calltname\) to determine a new 
 inside of {\tt g}.
 And the {\tt if}-statement consults the \(\splittname\) rule to update the PC tag
 inside of its branch based on the value-tag of the expression {\tt psk < 0}. Once inside the
-conditional, when the program assigns to {\tt mm}, it must consult the \(\storetname\) rule because
-it is storing to memory.% (again omitting \(\assigntname\)).
+conditional, when the program assigns to {\tt mm}, it must consult the \(\storetname\) rule.
 
 \Cref{fig:example2rules} shows an instantiation of these rules that extend our previous SIF policy.
 The rule for globals initializes the location tag of {\tt mm} to \(\low\),
@@ -507,7 +506,7 @@ in a high context.
 
 Tagged C contains almost all features of full ISO C 99.\footnote{
 It inherits the limitations of CompCert C, primarily that {\tt setjump} and {\tt longjump}
-may not work, and variable-length arrays are not supported.~\cite[Ch. 5]{Leroy23:CompCertManual}.}
+may not work, and variable-length arrays are not supported.}
 Its semantics is based on that of CompCert C~\cite{Leroy09:CompCert},
 a formalization of the C standard into a small-step reduction semantics.
 Tagged C's semantics differs from CompCert C's in two key respects: tag support and memory model.
@@ -687,12 +686,12 @@ it is a realistic option for a compiler to choose and can support idioms that PV
 \paragraph*{Implementation}
 
 The basic idea for enforcing any of the above memory safety variants is a ``lock and key'' approach~\cite{Clause07:MemsafeTainting,Azevedo+15}.
-Whenever an object is allocated, it is assigned a unique ``color,'' and its memory locations as well
+When an object is allocated, it is assigned a unique ``color,'' and its memory locations as well
 as its pointer are tagged with that color, written \(\clr\).
 The default tag \(\N\) indicates a non-pointer or non-allocated location.
 The PC tag will also be \(\clr\),
 tracking the next available color for new allocations. These rules are given in \cref{fig:memgen,fig:memspecial}. Operations that are valid on pointers in a given memory model
-maintain the pointer's color, and loads and stores are legal if the pointer tag matches
+maintain the pointer's color, and loads and stores are legal if it matches
 the target memory location tag. (The {\tt assert} command failstops if its argument does not hold.)
 
 The specific memory models (\cref{fig:memspecial}) behave differently when pointers are cast to
@@ -700,7 +699,7 @@ integers and back.
 The CompCert C variant marks that the integer has been cast from a valid pointer, and
 restores that provenance when cast back. But \(\binoptname\) will failstop if the integer is
 actually modified between the casts. PVI simply keeps the provenance and allows all operations
-between casts. PNVI accesses the memory pointed to by the (soon-to-be) pointer and takes its
+between casts. PNVI accesses the memory pointed to by the cast pointer and takes its
 location tag.
 
 \begin{figure}[t]
@@ -852,7 +851,7 @@ Drawing from CompCert C, Tagged C abstracts over
 ordinary code. In a concrete system, these would be replaced by their library equivalents. 
 \(\extcalltname\) models the desired tag behavior of general external functions in the Tagged C
 semantics, but \(\malloct\) and \(\freet\) are special cases because they also need to retag memory;
-the location tag \(\lt\) returned by each of them is copied across the entire allocated region.
+the location tag \(\lt\) returned by each of them is copied across the allocated region.
 
 \paragraph*{Temporal Memory Safety}
 
@@ -1088,6 +1087,7 @@ about join points.)
 This way, the policy can react when execution reaches that label via the \(\labeltname\) rule.
 
 \begin{figure}[t]
+  \scriptsize
   \begin{minipage}{0.17\textwidth}
     \color{blue}
     \(\begin{array}{lll}
@@ -1109,7 +1109,6 @@ This way, the policy can react when execution reaches that label via the \(\labe
       \high & \textnormal{otherwise} \\
     \end{cases}\]
   \end{minipage}
-  \scriptsize
   \begin{minipage}{0.33\textwidth}
     \splittruleblock{
       \caseoftwo{\(\PCT, \vt\)}
@@ -1141,7 +1140,7 @@ arguments after reducing a PC tag into either \(\high\) or \(\low\).
 In order to use this version of SIF, the program must undergo a minor automatic transformation
 by the compiler or interpreter, introducing
 explicit labels at all join points that don't already have one. 
-So in the example {\tt J} becomes an explicit label in the code, if it wasn't already. 
+In the example, {\tt J} becomes an explicit label in the code. 
 The internal syntactic form of each conditional statement
 ({\tt if}, {\tt switch}, {\tt while}, {\tt do-while}, and {\tt for})
 carries this label (optionally, since there might not be a join point if all arms of the
@@ -1150,9 +1149,8 @@ If the conditional branches on a high value, \(\splittname\) adds the label to t
 in the PC tag. Later, when execution reaches a label, \(\labeltname\) deletes it from the
 set. If the set is non-empty, there is at least one high split point that has not
 yet reached its join point, so we treat the PC tag as high. When execution reaches the
-last join point and the set is empty, the PC tag is treated as low, because it is no longer possible to deduce which
-path was taken, except by looking at values that updated in the interim, which
-will themselves have been tagged \(\high\). 
+last join point and the set is empty, the PC tag is treated as low, because it is no longer
+possible to deduce which path was taken. 
 
 \paragraph*{SIF Variants}
 
@@ -1170,62 +1168,6 @@ routine and a high level to the outputs of its corresponding decryption routine.
 %      As SIF, with special rule for sanitization function \\  
 %      & Guarantee Encrypted Data at Rest by requiring all stores to first pass through an encryption routine &
 %      As SIF, with special rules for encryption and decryption functions \\ 
-
-%% \section{Evaluation}
-%% \label{sec:evaluation}
-
-%% Tagged C aims to combine the flexibility of machine-level tag-based monitoring architectures with the abstraction
-%% of a high-level language. In the last section, we demonstrated three classes of policies
-%% with broad practical applicability and described how they can be tuned to the needs of a
-%% particular program. They can be used alone or in conjunction. A brief summary of
-%% policies and their use cases may be found in \cref{table:policies}.
-
-%% The Tagged C semantics support the full complement of C language features, and advance
-%% over our previous work. The underlying memory behavior gives definition to a wide range
-%% of programs and is an interesting model in its own right.
-
-%% In the remainder of this section, we explore some of the benefits and limitations of
-%% our design choices.
-
-%% %generic/program specific
-%% %low-level/high-level
-
-%% % Trying to just thread the table into each section rather than all at once
-%% %\begin{table}
-%% %  \begin{center}
-%% %    %\begin{tabular}{ c| c |c }
-%% %    \title{Further Policies and their Uses}
-%% %    \begin{tabular}{  p{3cm} | p{5cm}| p{5cm}  } 
-%% %      \textbf{Name} & \textbf{Example Use Cases} & \textbf{Tag Implementation} \\ 
-%% %      \hline
-%% %      SIF: Intransitive Integrity &
-%% %      Protect agains SQL Injection by requiring outside data to pass through a sanitizer &
-%% %      As SIF, with special rule for sanitization function \\  
-%% %      & Guarantee Encrypted Data at Rest by requiring all stores to first pass through an encryption routine &
-%% %      As SIF, with special rules for encryption and decryption functions \\ 
-%% %      Temporal Memory Safety & Prevent double free & Assign unique color to tag at each free. Check for an existi%ng color before freeing. \\
-%% %      & Prevent Use-after-free & Check pointers for color tag when dereferencing pointers  \\
-%% %      Placeholder-name & Placeholder-use case & Placeholder policy \\
-%% %      \hline
-%% %    \end{tabular}
-%% %  \end{center}
-%% %\end{table}
-  
-%% \subsection{Tags vs. Values}
-
-%% By committing to a tag-based mechanism, we do restrict the space of policies that Tagged C
-%% can enforce. In general, a reference monitor can enforce any policy that constitutes a
-%% {\em safety property}---any policy whose violation can be demonstrated by a single finite
-%% trace. Some policies in this class cannot be enforced effectively by a tag-based monitor,
-%% because tags can carry information about the provenance of values but not about the values
-%% themselves: this rules out policies such as ``no integer overflow'' and
-%% ``pointers are always in-bounds.'' As we have seen, there are plenty of useful policies that
-%% engage only with the provenance of values. For such policies, tag-based enforcement is
-%% also conceptually close to the trace-based definition: defining e.g. memory safety in terms
-%% of normal states requires either manually keeping track of large amounts of history to
-%% identify where each pointer comes from, or possibly some sort of temporal logic.\apt{These
-%%   points could also (or instead) be made in the introduction, to justify why tag-based
-%%   policies are generally interesting and worthwhile even in the absence of hardware support.}
 
 \section{Implementation}
 \label{sec:implementation}
@@ -1251,14 +1193,10 @@ requires updating the proof automation to handle concrete memory and tags.
 
 The semantics and interpreter are parameterized by a Coq module type {\tt Policy}, which specifies
 the type signatures of the tag rules. A policy is written directly in Gallina as a module that
-instantiates {\tt Policy} by defining the type of tags and the body of each tag rule.  
+instantiates {\tt Policy} by defining the type of tags and the body of each tag rule.
+A full policy fits into 70 lines of Gallina. 
 To illustrate, \cref{fig:fullcode} shows fragments of the {\tt Policy} signature, its instantiation
-in the PVI memory safety policy, and how its rules are accessed in the Coq semantics. The full
-PVI policy fits into 70 lines of Gallina.  \apt{I think this figure is pretty good (I added a bit
-  of indentation) -- but why do you show the {\tt red\_const} rule instead of {\tt red\_binop} ?
-  [Also, the rules don't seem to match the code I see in the repo.
-    And the details of {\tt LoadT} involve the vector of byte tags that you have hopefully banished
-    elsewhere, but I guess it is safe not to worry about that.] }
+in the PVI memory safety policy, and its use in the Coq semantics.
 
 \paragraph{PIPE, tag sizes, and policy states.}
 Ultimately, we wish to compile Tagged C to run efficiently on PIPE-equipped hardware, which
@@ -1297,7 +1235,7 @@ rule invocations; this approach may support more efficient policy designs.
 
       \ \ \ Inductive tag := & Definition def\_tag := N.  \\
       \ \ \ | N. & Definition InitPCT := Dyn 0. \\
-      \ \ \ | Dyn (c:nat) & Definition ConstT pct := PolSuccess N. \\
+      \ \ \ | Dyn (c:nat). &  \\
       & \\[0.5em]
 
       \ \ \ Definition BinopT op pct vt1 vt2 :=       & Definition LoadT pct pt vt lts := \\
@@ -1314,8 +1252,11 @@ rule invocations; this approach may support more efficient policy designs.
       Module Csem (Import P: Policy). \\
       \\
       \ \ Inductive rred (PCT:tag) : expr -> mem -> trace -> tag -> expr -> mem -> Prop := \\
-      \ \ | red\_const: forall v ty m vt', PolSuccess vt' = ConstT PCT -> \\
-      \ \ ~ rred PCT (Econst v ty) m E0 PCT (Eval (v,vt') ty) m \\
+      \ \ | red\_binop: forall op v1 vt1 ty1 v2 vt2 ty2 ty m v vt' PCT', \\
+      \ \ ~ sem\_binary\_operation (snd ge) op v1 ty1 v2 ty2 m = Some v -> \\
+      \ \ ~ PolSuccess (PCT', vt') = BinopT op PCT vt1 vt2 -> \\
+      \ \ ~ rred PCT (Ebinop op (Eval (v1,vt1) ty1) (Eval (v2,vt2) ty2) ty) m E0 \\
+      \ \ ~ ~PCT' (Eval (v,vt') ty) m \\
       \ \ | red\_rvalof: forall ofs pt lts bf ty m tr v vt vt', \\
       \ \ ~ deref\_loc ty m ofs pt bf tr (v,vt) lts -> \\
       \ \ ~ PolSuccess vt' = LoadT PCT pt vt lts -> PolSuccess vt'' = AccessT PCT vt' \\
@@ -1348,21 +1289,27 @@ behavior; all they can do is cause a failstop.
 %new bad behavior, only potential failstops.  
 These limitations follow from our goal of implementing Tagged C using efficient PIPE hardware. 
 
-Many existing AOP-like systems for C runtime verification treat join points as events in a trace, and specify
-valid traces using a particular formalism such as state machines (e.g. {\sc Rmor}~\cite{Havelund08:RVC} and SLIC~\cite{Ball02:slic})
+Many AOP-like systems for C runtime verification treat join points as events in a trace, and specify
+valid traces using a formalism such as state machines (e.g. {\sc Rmor}~\cite{Havelund08:RVC} and SLIC~\cite{Ball02:slic})
 or temporal logics (e.g.~\cite{Chabot+15}).
-Trace checking of this kind can be readily implemented on top of Tagged C, as long as events do not rely on values.
+Trace checking of this kind can be implemented on top of Tagged C, as long as events do not rely on values.
 Events are typically coarse-grained (e.g. function entries and exits), although some systems (e.g.~\cite{engler2000checking})
 support very general forms of event definition based on matching syntactic patterns in code. 
 Tagged C is unusual in that it supports very low-level and fine-grained events (e.g. individual
-arithmetic operations and casts) and because a monitoring action (perhaps a no-op) is specified for every potential event point;
-again, these characteristics are natural for an implementation using PIPE hardware.
+arithmetic operations and casts) and because a monitoring action (perhaps a no-op) is specified for every potential event point..
 
-Numerous systems have targeted information flow, memory safety, and compartmentalization in C; we can consider just a few here.
-\apt{Do you want to mention Faceted IFC to avoid making an enemy of reviewer 2?}
-Cassel et al.'s FlowNotations~\cite{Cassel19:FlowNotation} use type annotations to specify ``tainted'' and ``trusted'' data,
-and statically check a program's information flow using the C type system. Their annotation system
-could easily be an input to a SIF policy, replacing the static checks with dynamic enforcement.\apt{But why would one possibly want to do that? Can we make a comparison about how the annotations work in practice? }
+Numerous systems have targeted information flow, memory safety, and compartmentalization in C; we can
+discuss just a few here. Cassel et al.'s FlowNotations~\cite{Cassel19:FlowNotation} use type annotations
+to specify ``tainted'' and ``trusted'' data, and statically check a program's information flow using the
+C type system. Their annotation system elegantly connects the C syntax to their enforcement mechanism,
+and would make a good annotation scheme for a Tagged-C SIF policy, with ``tainted'' and ``trusted''
+types being transformed into variable-specific tags. Unlike their static approach, our enforcement
+is dynamic, meaning that it sacrifices flow-sensitivity for permissiveness~\cite{Russo10:FlowSensitiveAnalysis}
+Dynamic systems also exist, such as Faceted Information Flow~\cite{Austin12:Facets},
+which takes advantage of concurrency to simulate multiple simultaneous runs and check directly for leaked data.
+Faceted IFC has not been applied at the C level, and for our use cases, would suffer from the
+overhead of running multiple executions simultaneously.
+
 The CHERI hardware capability system has been used by Tsampas et al. for compartmentalization
 \cite{Tsampas2017:TowardsAC}, and by Filardo et al. for temporal memory safety
 \cite{NWF20:Cornucopia}. Like PIPE, CHERI can support a range of security policies,
@@ -1384,8 +1331,7 @@ produce a compiler from Tagged C to machine code for a PIPE-equipped processor.
 The basic strategy for compilation was outlined in the Tagine project~\cite{Chhak21:Tagine}.
 We are currently working to extend the CompCert compiler to handle Tagged C, with the ultimate
 goal of also extending CompCert's semantics preservation guarantees to cover tagged semantics.
-
-Currently, policies are written in Gallina, the language embedded in Coq~\cite{coq}. This is fine for a
+Policies are also written in Gallina, the language embedded in Coq~\cite{coq}. This is fine for a
 proof-of-concept, but not satisfactory for real use by software engineers.
 We plan to develop a domain-specific policy language to make it easier to write Tagged C policies.
 

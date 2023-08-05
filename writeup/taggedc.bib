@@ -502,23 +502,6 @@ series = {ISCA '14}
   doi={10.1109/SP.2015.9}
   }
 
-@article{10.1145/605432.605429,
-author = {Witchel, Emmett and Cates, Josh and Asanovi\'{c}, Krste},
-title = {Mondrian Memory Protection},
-year = {2002},
-issue_date = {October 2002},
-publisher = {Association for Computing Machinery},
-address = {New York, NY, USA},
-volume = {37},
-number = {10},
-issn = {0362-1340},
-url = {https://doi.org/10.1145/605432.605429},
-abstract = {Mondrian memory protection (MMP) is a fine-grained protection scheme that allows multiple protection domains to flexibly share memory and export protected services. In contrast to earlier page-based systems, MMP allows arbitrary permissions control at the granularity of individual words. We use a compressed permissions table to reduce space overheads and employ two levels of permissions caching to reduce run-time overheads. The protection tables in our implementation add less than 9% overhead to the memory space used by the application. Accessing the protection tables adds than 8% additional memory references to the accesses made by the application. Although it can be layered on top of demand-paged virtual memory, MMP is also well-suited to embedded systems with a single physical address space. We extend MMP to support segment translation which allows a memory segment to appear at another location in the address space. We use this translation to implement zero-copy networking underneath the standard read system call interface, where packet payload fragments are connected together by the translation system to avoid data copying. This saves 52% of the memory references used by a traditional copying network stack.},
-journal = {SIGPLAN Not.},
-month = oct,
-pages = {304–316},
-numpages = {13}
-}
 
 % 200+ citations, cited by several cheri papers
 % per word level protection (8 bits) mostly interested in OS,VM
@@ -749,3 +732,38 @@ location = {Luxembourg, Luxembourg}
   pages={1--16},
   year={2000}
 }
+}
+
+@inproceedings{Austin12:Facets,
+author = {Austin, Thomas H. and Flanagan, Cormac},
+title = {Multiple Facets for Dynamic Information Flow},
+year = 2012,
+isbn = 9781450310833,
+publisher = {Association for Computing Machinery},
+url = {https://doi.org/10.1145/2103656.2103677},
+abstract = {JavaScript has become a central technology of the web, but it is also the source of many security problems, including cross-site scripting attacks and malicious advertising code. Central to these problems is the fact that code from untrusted sources runs with full privileges. We implement information flow controls in Firefox to help prevent violations of data confidentiality and integrity. Most previous information flow techniques have primarily relied on either static type systems, which are a poor fit for JavaScript, or on dynamic analyses that sometimes get stuck due to problematic implicit flows, even in situations where the target web application correctly satisfies the desired security policy. We introduce faceted values, a new mechanism for providing information flow security in a dynamic manner that overcomes these limitations. Taking inspiration from secure multi-execution, we use faceted values to simultaneously and efficiently simulate multiple executions for different security levels, thus providing non-interference with minimal overhead, and without the reliance on the stuck executions of prior dynamic approaches.},
+booktitle = {Proceedings of the 39th Annual ACM SIGPLAN-SIGACT Symposium on Principles of Programming Languages},
+pages = {165–178},
+numpages = 14,
+keywords = {information flow control, javascript, web security, dynamic analysis},
+location = {Philadelphia, PA, USA},
+series = {POPL '12}
+}
+
+@INPROCEEDINGS{Russo10:FlowSensitiveAnalysis,
+
+  author={Russo, Alejandro and Sabelfeld, Andrei},
+
+  booktitle={2010 23rd IEEE Computer Security Foundations Symposium}, 
+
+  title={Dynamic vs. Static Flow-Sensitive Security Analysis}, 
+
+  year={2010},
+
+  volume={},
+
+  number={},
+
+  pages={186-199},
+
+  doi={10.1109/CSF.2010.20}}
