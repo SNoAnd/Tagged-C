@@ -949,9 +949,7 @@ and a memory safety policy. The PC tag carries both the current compartment colo
 unshared allocations, and the next free color, for tagging shared allocations.
 \(\malloctname\) applies a color tag to shareable allocations, and \(\N\) to local ones.
 During loads and stores, the location tag of the target address
-determines which parent property applies.\apt{Labelling of parent rule names needs to be related
-  back to relevant defining figures.  And using PVI as a name seems odd, since the rule in question
-  is defined in the generic figure. }
+determines which parent property applies.
 
 \begin{figure}[t]
   \color{blue}
@@ -962,22 +960,22 @@ determines which parent property applies.\apt{Labelling of parent rule names nee
         {let  \({\color{blue}(C,\clr)} := \PCT\) in \\
           \caseoftwo{\(\lt\)}
                     {\color{blue} \(C'\)}{\color{blue} \(\mathbf{StoreT}_C(C,\N,\vt,C')\)}
-                    {\color{blue} \(\clr'\)}{\color{blue} \(\mathbf{StoreT}_{\mathit{PVI}}(\clr,\pt,\vt,\clr')\)}}
+                    {\underline{~ ~}}{\color{blue} \(\mathbf{StoreT}_{\mathit{MS}}(\clr,\pt,\vt,\lt)\)}}
   \end{minipage}
   \begin{minipage}{0.5\textwidth}
     \scriptsize
     \malloctruleblock
       {let \({\color{blue} (C,\clr)} := \PCT\) in \\
         \caseoftwo{\(\pt\)}
-                  {\(\FN[malloc]\)}{\color{blue} \(\mathbf{MallocT}_{C}(\PCT,\pt,\vt)\)}
+                  {\(\FN[malloc]\)}{\color{blue} \(\mathbf{MallocT}_{C}({\color{blue} C},\pt,\vt)\)}
                   {\(\FN[malloc\_share]\)}
-                  {\\\multicolumn{3}{l}{~~\({\color{blue} \clr'},\pt['],\lt['] \leftarrow {\color{blue} \mathbf{MallocT}_{\mathit{MS}}(\PCT,\pt,\vt)}\)} \\
-                    \multicolumn{3}{l}{~~\(\PCT[']:= {\color{blue} (C,\clr')};\pt['] := \pt\)} \\
-                    \multicolumn{3}{l}{~~\(\vt['] := {\color{blue} \N'};\lt['] := \clr\)} \\}
+                  {\\\multicolumn{3}{l}{~~\({\color{blue} \textnormal{\sc clr}(c')},\pt['],\vt['],\lt['] \leftarrow {\color{blue} \mathbf{MallocT}_{\mathit{MS}}(\PCT,\pt,\vt)}\)} \\
+                    \multicolumn{3}{l}{~~\(\PCT[']:= {\color{blue} (C,\textnormal{\sc clr}(c'))};\pt['] := \pt[']\)} \\
+                    \multicolumn{3}{l}{~~\(\vt['] := {\color{blue} \vt[']};\lt['] := \lt[']\)} \\}
       }
   \end{minipage}
   
-  \caption{Selected rules for Compartmentalization with Shared Capabilities, combining Compartmentalization rules (\cref{fig:compartments}, subscript \(C\)) with Memory Safety rules (\cref{fig:memsafe}, subscript \(\mathit{MS}\)) (Selected Rules)\apt{Code for $\malloctname$ looks quite wrong to me in the way it unpacks/packs the combined PC tag.}}
+  \caption{Selected rules for Compartmentalization with Shared Capabilities, combining Compartmentalization rules (\cref{fig:compartments}, subscript \(C\)) with Memory Safety rules (\cref{fig:memsafe}, subscript \(\mathit{MS}\)) (Selected Rules)}
   \label{fig:sharing}
 \end{figure}
 
