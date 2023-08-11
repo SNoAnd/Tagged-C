@@ -16,7 +16,9 @@
 \usetikzlibrary{automata,positioning,shapes.multipart,arrows.meta}
 
 \title{Flexible Runtime Security Enforcement with Tagged C}
-\author{Sean Anderson \and Allison Naaktgeboren \and Andrew Tolmach\\
+\author{Sean Anderson \orcidID{0009-0006-7681-3683}
+  \and Allison Naaktgeboren \orcidID{0009-0004-0405-9306}
+  \and Andrew Tolmach \orcidID{0000-0002-0748-2044} \\
 {\tt\{ander28,naak,tolmach\}@pdx.edu}}
 \institute{Portland State University\\
 Portland, OR, USA}
@@ -28,7 +30,6 @@ Portland, OR, USA}
 \input{macros.tex}
 \input{tagrules.tex}
 \input{semantics.tex}
-\input{memorygraphics.tex}
 
 \maketitle
 
@@ -1296,7 +1297,7 @@ Trace checking of this kind can be implemented on top of Tagged C, as long as ev
 Events are typically coarse-grained (e.g. function entries and exits), although some systems (e.g.~\cite{engler2000checking})
 support very general forms of event definition based on matching syntactic patterns in code. 
 Tagged C is unusual in that it supports very low-level and fine-grained events (e.g. individual
-arithmetic operations and casts) and because a monitoring action (perhaps a no-op) is specified for every potential event point..
+arithmetic operations and casts) and because a monitoring action (perhaps a no-op) is specified for every potential event point.
 
 Numerous systems have targeted information flow, memory safety, and compartmentalization in C; we can
 discuss just a few here. Cassel et al.'s FlowNotations~\cite{Cassel19:FlowNotation} use type annotations
