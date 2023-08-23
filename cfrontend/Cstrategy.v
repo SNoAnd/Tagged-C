@@ -69,7 +69,6 @@ Variable ge: gcenv.
 Fixpoint simple (a: expr) : bool :=
   match a with
   | Eloc _ _ _ _ => true
-  | Efloc _ _ _ => true
   | Evar _ _ => true
   | Econst _ _ => true
   | Ederef r _ => simple r
@@ -113,7 +112,7 @@ Inductive eval_simple_lvalue: expr -> ptrofs -> tag -> bitfield -> Prop :=
 | esl_loc: forall ofs pt ty bf,
     eval_simple_lvalue (Eloc ofs pt bf ty) ofs pt bf
 | esl_var_local: forall x ty lo hi pt,
-    e!x = Some(lo, hi, pt, ty) ->
+    e!x = Some(lo, hi, pt) ->
     eval_simple_lvalue (Evar x ty) (Ptrofs.repr lo) pt Full
 | esl_var_global: forall x ty base bound pt,
     e!x = None ->
@@ -479,9 +478,9 @@ Lemma safe_imm_safe:
   forall f PCT C a k e m K,
   safe (ExprState f PCT (C a) k e m) ->
   context K RV C ->
-  imm_safe ge e K a m.
+  imm_safe ge e K a PCT m.
 Proof.
-  intros. destruct (classic (imm_safe ge e K a m)); auto.
+  intros. destruct (classic (imm_safe ge e K a PCT m)); auto.
   destruct (H Stuckstate).
   apply star_one. left. econstructor; eauto.
   destruct H2 as [r F]. inv F.
@@ -500,7 +499,7 @@ Definition expr_kind (a: expr) : kind :=
   end.
 
 Lemma lred_kind:
-  forall e a m a' m', lred ge e a m a' m' -> expr_kind a = LV.
+  forall e a PCT m a' m', lred ge e a PCT m a' m' -> expr_kind a = LV.
 Proof.
   induction 1; auto.
 Qed.
@@ -524,7 +523,7 @@ Proof.
 Qed.
 
 Lemma imm_safe_kind:
-  forall e k a m, imm_safe ge e k a m -> expr_kind a = k.
+  forall e k a PCT m, imm_safe ge e k a PCT m -> expr_kind a = k.
 Proof.
   induction 1.
   auto.
@@ -560,8 +559,8 @@ Definition invert_expr_prop (a: expr) (PCT: tag) (m: mem) : Prop :=
   match a with
   | Eloc ofs pt bf ty => False
   | Evar x ty =>
-      exists b pt,
-      e!x = Some(b, pt, ty)
+      exists base bound pt,
+      e!x = Some(base, bound, pt)
       \/  (e!x = None /\ exists b, Genv.find_symbol (fst ge) x = Some b)
   | Ederef (Eval (v,vt) ty1) ty =>
       (exists ofs, v = Vint ofs) \/
@@ -623,7 +622,7 @@ Definition invert_expr_prop (a: expr) (PCT: tag) (m: mem) : Prop :=
   end.
 
 Lemma lred_invert:
-  forall l PCT m l' m', lred ge e l m l' m' -> invert_expr_prop l PCT m.
+  forall l PCT m l' m', lred ge e l PCT m l' m' -> invert_expr_prop l PCT m.
 Admitted.
 (*Proof.
   induction 1; red; auto.
@@ -706,7 +705,7 @@ Qed.*)
 
 Lemma imm_safe_inv:
   forall k a PCT m,
-  imm_safe ge e k a m ->
+  imm_safe ge e k a PCT m ->
   match a with
   | Eloc _ _ _ _ => True
   | Eval _ _ => True
