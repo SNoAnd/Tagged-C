@@ -216,7 +216,7 @@ a single trace. For two traces \(t_1\) and \(t_2\), we say that \(t_1\) prefixes
 if it is identical or if it is of finite length \(n\) and identical for the first \(n\)
 events. We write this \(t_1 \leq t_2\). If \(C[A]_\rho \rightsquigarrow t_1\) and
 \(C'[A']_{\rho'} \rightsquigarrow t_2\), and \(t_1 \leq t_2\), we write
-\(C[A]_\rho \sqsubseteq C'[A']_{\rho'}.
+\(C[A]_\rho \sqsubseteq C'[A']_{\rho'}\).
 
 We define the behavior of a component, \(|A|\), as the set of all traces
 that it can produce when linked against any other compartment.
@@ -250,10 +250,10 @@ agrees with Concrete C. The converse is not true; {\tt lib\_H2} failstops when {
 does not.
 
 For each component \(A\) and policy \(\rho\) there exists at least one {\em idealized instance}
-\(\lceil A \rceil_\rho\) such that \(A' \gg_\rho \lceil A \rceil_\rho\) only if
-\(A' = \lceil A \rceil_\rho\). We define the {\em idealized behavior} of \(A\) under
-\(\rho\), written \(\| A \|_\rho\), as the set of all possible traces of the idealized
-instance of \(A\):
+\(\lceil A \rceil_\rho\) such that, if any \(A' \gg_\rho A\), then
+\(\lceil A \rceil_\rho \gg_\rho A'\). We define the {\em idealized behavior} of \(A\) under
+\(\rho\), written \(\| A \|_\rho\), as the set of the trace induced by all contexts linked with
+an idealized instance of \(A\):
 
 \[\| A \|_\rho \triangleq \bigcup_{C} \{ t \mid C[A'] \rightsquigarrow t \textnormal{ where }
 A' = \lceil A \rceil_\rho\} \]
