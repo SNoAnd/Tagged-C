@@ -65,12 +65,12 @@ Module Events (P:Policy).
 *)
 
 Inductive eventval: Type :=
-| EVint: int -> tag -> eventval
-| EVlong: int64 -> tag -> eventval
-| EVfloat: float -> tag -> eventval
-| EVsingle: float32 -> tag -> eventval
-| EVptr_global: ident -> ptrofs -> tag -> eventval
-| EVptr_fun: ident -> tag -> eventval.
+| EVint: int -> eventval
+| EVlong: int64 -> eventval
+| EVfloat: float -> eventval
+| EVsingle: float32 -> eventval
+| EVptr_global: ident -> ptrofs -> eventval
+| EVptr_fun: ident -> eventval.
 
 Inductive event: Type :=
   | Event_syscall: string -> list eventval -> eventval -> event
@@ -279,28 +279,24 @@ Section EVENTVAL.
 (** Translation between values and event values. *)
 
   Inductive eventval_match: eventval -> typ -> atom -> Prop :=
-  | ev_match_global: forall id i base bound pt t,
+  | ev_match_global: forall id i base bound pt,
       public_symbol ge id = true ->
-      find_symbol ge id = Some (inr (base,bound,t)) ->
+      find_symbol ge id = Some (inr (base,bound,pt)) ->
       base <= i ->
       i < bound ->
-      eventval_match (EVptr_global id (Ptrofs.repr (i - base)) pt) Tptr (Vint (Int.repr i), pt)
-  | ev_match_int: forall i t,
-      (forall id pt base bound,
-          public_symbol ge id = true ->
-          find_symbol ge id = Some (inr (base,bound,pt)) ->
-          (Int.signed i < base \/ bound <= Int.signed i)) ->
-      eventval_match (EVint i t) Tint (Vint i, t)
-  | ev_match_long: forall i t,
-      eventval_match (EVlong i t) Tlong (Vlong i, t)
-  | ev_match_float: forall f t,
-      eventval_match (EVfloat f t) Tfloat (Vfloat f, t)
-  | ev_match_single: forall f t,
-      eventval_match (EVsingle f t) Tsingle (Vsingle f, t)
+      eventval_match (EVptr_global id (Ptrofs.repr (i - base))) Tptr (Vint (Int.repr i), pt)
+  | ev_match_int: forall i,
+      eventval_match (EVint i) Tint (Vint i, def_tag)
+  | ev_match_long: forall i,
+      eventval_match (EVlong i) Tlong (Vlong i, def_tag)
+  | ev_match_float: forall f,
+      eventval_match (EVfloat f) Tfloat (Vfloat f, def_tag)
+  | ev_match_single: forall f,
+      eventval_match (EVsingle f) Tsingle (Vsingle f, def_tag)
   | ev_match_ptr: forall id b pt,
       public_symbol ge id = true ->
       find_symbol ge id = Some (inl (b,pt)) ->
-      eventval_match (EVptr_fun id pt) Tptr (Vfptr b, pt).
+      eventval_match (EVptr_fun id) Tptr (Vfptr b, pt).
 
 Inductive eventval_list_match: list eventval -> list typ -> list atom -> Prop :=
   | evl_match_nil:
@@ -373,22 +369,22 @@ Qed.
 
 Definition eventval_valid (ev: eventval) : Prop :=
   match ev with
-  | EVint _ _ => True
-  | EVlong _ _ => True
-  | EVfloat _ _ => True
-  | EVsingle _ _ => True
-  | EVptr_global id ofs _ => public_symbol ge id = true
-  | EVptr_fun id _ => public_symbol ge id = true
+  | EVint _ => True
+  | EVlong _ => True
+  | EVfloat _ => True
+  | EVsingle _ => True
+  | EVptr_global id ofs => public_symbol ge id = true
+  | EVptr_fun id => public_symbol ge id = true
   end.
 
 Definition eventval_type (ev: eventval) : typ :=
   match ev with
-  | EVint _ _ => Tint
-  | EVlong _ _ => Tlong
-  | EVfloat _ _ => Tfloat
-  | EVsingle _ _ => Tsingle
-  | EVptr_global id ofs _ => Tptr
-  | EVptr_fun _ _ => Tptr
+  | EVint _ => Tint
+  | EVlong _ => Tlong
+  | EVfloat _ => Tfloat
+  | EVsingle _ => Tsingle
+  | EVptr_global id ofs => Tptr
+  | EVptr_fun _ => Tptr
   end.
 
 Lemma eventval_match_receptive:
@@ -612,7 +608,7 @@ Inductive volatile_load (ge: Genv.t F V):
       volatile_load ge chunk m ofs E0 v.
 
 Inductive volatile_store (ge: Genv.t F V):
-                  memory_chunk ->  mem -> ptrofs -> atom -> list tag -> trace -> mem -> Prop :=
+  memory_chunk ->  mem -> ptrofs -> atom -> list tag -> trace -> mem -> Prop :=
   | volatile_store_vol: forall chunk m ofs id ev v vt lts,
       Genv.addr_is_volatile ge ofs = true ->
       eventval_match ge ev (type_of_chunk chunk) (Val.load_result chunk v, vt) ->

@@ -63,7 +63,7 @@ Module Type Policy. (* anaaktge this is the interface for rules
 
   Parameter LabelT : tag -> ident -> PolicyResult tag.
 
-  Parameter ExprSplitT : tag -> tag -> PolicyResult (tag * tag).
+  Parameter ExprSplitT : tag -> tag -> PolicyResult tag.
 
   Parameter ExprJoinT : tag -> tag -> PolicyResult (tag * tag).
   
@@ -161,7 +161,7 @@ Module NullPolicy <: Policy.
 
   Definition LabelT (pct : tag) (l : ident) : PolicyResult tag := PolicySuccess tt.
 
-  Definition ExprSplitT (pct vt : tag) : PolicyResult (tag * tag) := PolicySuccess (tt,tt).
+  Definition ExprSplitT (pct vt : tag) : PolicyResult tag := PolicySuccess tt.
 
   Definition ExprJoinT (pct vt : tag) : PolicyResult (tag * tag) := PolicySuccess (tt,tt).
 
@@ -255,7 +255,7 @@ Module PVI <: Policy.
 
   Definition LabelT (pct : tag) (l : ident) : PolicyResult tag := PolicySuccess pct.
 
-  Definition ExprSplitT (pct vt : tag) : PolicyResult (tag * tag) := PolicySuccess (pct,vt).
+  Definition ExprSplitT (pct vt : tag) : PolicyResult tag := PolicySuccess pct.
 
   Definition ExprJoinT (pct vt : tag) : PolicyResult (tag * tag) := PolicySuccess (pct,vt).
 

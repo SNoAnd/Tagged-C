@@ -21,6 +21,7 @@ Require Import Integers Floats Values AST Memory Builtins Events Globalenvs Tags
 Require Import Ctypes Cop Csyntax.
 Require Import Smallstep.
 Require Import List. Import ListNotations.
+Require Import String.
 
 Module Csem (P: Policy).
   Module TLib := TagLib P.
@@ -135,405 +136,560 @@ Module Csem (P: Policy).
       store_bitfield ty sz sg pos width m (Ptrofs.unsigned ofs) pt v lts m' v' ->
       assign_loc ty m ofs pt (Bits sz sg pos width) v E0 m' v' lts.
 
-(** Allocation of function-local variables.
-  [alloc_variables e1 m1 vars e2 m2] allocates one memory block
-  for each variable declared in [vars], and associates the variable
-  name with this block.  [e1] and [m1] are the initial local environment
-  and memory state.  [e2] and [m2] are the final local environment
-  and memory state. *)
-Inductive alloc_variables: tag -> env -> mem ->
-                           list (ident * type) ->
-                           tag -> env -> mem -> Prop :=
+  (** Allocation of function-local variables.
+      [alloc_variables e1 m1 vars e2 m2] allocates one memory block
+      for each variable declared in [vars], and associates the variable
+      name with this block.  [e1] and [m1] are the initial local environment
+      and memory state.  [e2] and [m2] are the final local environment
+      and memory state. *)
+  Inductive alloc_variables: tag -> env -> mem ->
+                             list (ident * type) ->
+                             tag -> env -> mem -> Prop :=
   | alloc_variables_nil:
-      forall PCT e m,
+    forall PCT e m,
       alloc_variables PCT e m nil PCT e m
   | alloc_variables_cons:
-      forall PCT PCT' PCT'' e m id ty vars m1 lo1 hi1 pt lts m2 m3 e2,
-        Mem.alloc m 0 (sizeof (snd ge) ty) = Some (m1, lo1, hi1) ->
-        LocalT (snd ge) PCT ty = PolicySuccess (PCT', pt, lts) ->
-        Mem.store (chunk_of_type (typ_of_type ty)) m1 lo1 (Vundef, def_tag) lts = Some m2 ->
-        (* initialize location tags *)
-        alloc_variables PCT' (PTree.set id (PUB (lo1, hi1, pt)) e) m2 vars PCT'' e2 m3 ->
-        alloc_variables PCT e m ((id, ty) :: vars) PCT'' e2 m2.
+    forall PCT PCT' PCT'' e m id ty vars m1 lo1 hi1 pt lts m2 m3 e2,
+      Mem.alloc m 0 (sizeof (snd ge) ty) = Some (m1, lo1, hi1) ->
+      LocalT (snd ge) PCT ty = PolicySuccess (PCT', pt, lts) ->
+      Mem.store (chunk_of_type (typ_of_type ty)) m1 lo1 (Vundef, def_tag) lts = Some m2 ->
+      (* initialize location tags *)
+      alloc_variables PCT' (PTree.set id (PUB (lo1, hi1, pt)) e) m2 vars PCT'' e2 m3 ->
+      alloc_variables PCT e m ((id, ty) :: vars) PCT'' e2 m2.
 
-(** Initialization of local variables that are parameters to a function.
-  [bind_parameters e m1 params args m2] stores the values [args]
-  in the memory blocks corresponding to the variables [params].
-  [m1] is the initial memory state and [m2] the final memory state. *)
+  (** Initialization of local variables that are parameters to a function.
+      [bind_parameters e m1 params args m2] stores the values [args]
+      in the memory blocks corresponding to the variables [params].
+      [m1] is the initial memory state and [m2] the final memory state. *)
 
-Inductive bind_parameters (e: env):
-                           mem -> list (ident * type) -> list atom ->
-                           mem -> Prop :=
+  Inductive bind_parameters (e: env):
+    mem -> list (ident * type) -> list atom -> mem -> Prop :=
   | bind_parameters_nil:
-      forall m,
-      bind_parameters e m nil nil m
+    forall m, bind_parameters e m nil nil m
   | bind_parameters_cons:
-      forall m id ty params v1 vl v1' lo hi pt m1 m2 lts,
+    forall m id ty params v1 vl v1' lo hi pt m1 m2 lts,
       PTree.get id e = Some(PUB (lo, hi, pt)) ->
       assign_loc ty m (Ptrofs.repr lo) pt Full v1 E0 m1 v1' lts ->
       bind_parameters e m1 params vl m2 ->
       bind_parameters e m ((id, ty) :: params) (v1 :: vl) m2.
 
-(** Return the list of blocks in the codomain of [e] as a pair of low and high bounds. *)
+  (** Return the list of blocks in the codomain of [e] as a pair of low and high bounds. *)
 
-Definition blocks_of_env (e: env) : list (Z * Z) :=
-  List.fold_left (fun acc '(_,ent) =>
-              match ent with
-              | PUB (lo,hi,t) => (lo, hi)::acc
-              | PRIV => acc
-              end) (PTree.elements e) [].
+  Definition blocks_of_env (e: env) : list (Z * Z) :=
+    List.fold_left (fun acc '(_,ent) =>
+                      match ent with
+                      | PUB (lo,hi,t) => (lo, hi)::acc
+                      | PRIV => acc
+                      end) (PTree.elements e) [].
 
-(** Selection of the appropriate case of a [switch], given the value [n]
-  of the selector expression. *)
+  (** Selection of the appropriate case of a [switch], given the value [n]
+      of the selector expression. *)
 
-Fixpoint select_switch_default (sl: labeled_statements): labeled_statements :=
-  match sl with
-  | LSnil => sl
-  | LScons None s sl' => sl
-  | LScons (Some i) s sl' => select_switch_default sl'
-  end.
+  Fixpoint select_switch_default (sl: labeled_statements): labeled_statements :=
+    match sl with
+    | LSnil => sl
+    | LScons None s sl' => sl
+    | LScons (Some i) s sl' => select_switch_default sl'
+    end.
 
-Fixpoint select_switch_case (n: Z) (sl: labeled_statements): option labeled_statements :=
-  match sl with
-  | LSnil => None
-  | LScons None s sl' => select_switch_case n sl'
-  | LScons (Some c) s sl' => if zeq c n then Some sl else select_switch_case n sl'
-  end.
+  Fixpoint select_switch_case (n: Z) (sl: labeled_statements): option labeled_statements :=
+    match sl with
+    | LSnil => None
+    | LScons None s sl' => select_switch_case n sl'
+    | LScons (Some c) s sl' => if zeq c n then Some sl else select_switch_case n sl'
+    end.
 
-Definition select_switch (n: Z) (sl: labeled_statements): labeled_statements :=
-  match select_switch_case n sl with
-  | Some sl' => sl'
-  | None => select_switch_default sl
-  end.
+  Definition select_switch (n: Z) (sl: labeled_statements): labeled_statements :=
+    match select_switch_case n sl with
+    | Some sl' => sl'
+    | None => select_switch_default sl
+    end.
 
-(** Turn a labeled statement into a sequence *)
+  (** Turn a labeled statement into a sequence *)
 
-Fixpoint seq_of_labeled_statement (sl: labeled_statements) : statement :=
-  match sl with
-  | LSnil => Sskip
-  | LScons _ s sl' => Ssequence s (seq_of_labeled_statement sl')
-  end.
+  Fixpoint seq_of_labeled_statement (sl: labeled_statements) : statement :=
+    match sl with
+    | LSnil => Sskip
+    | LScons _ s sl' => Ssequence s (seq_of_labeled_statement sl')
+    end.
 
-(** Extract the values from a list of function arguments *)
+  (** Extract the values from a list of function arguments *)
 
-Inductive cast_arguments (m: mem): exprlist -> typelist -> list atom -> Prop :=
+  Inductive cast_arguments (m: mem): exprlist -> typelist -> list atom -> Prop :=
   | cast_args_nil:
-      cast_arguments m Enil Tnil nil
+    cast_arguments m Enil Tnil nil
   | cast_args_cons: forall v vt ty el targ1 targs v1 vl,
       sem_cast v ty targ1 m = Some v1 -> cast_arguments m el targs vl ->
       cast_arguments m (Econs (Eval (v,vt) ty) el) (Tcons targ1 targs) ((v1, vt) :: vl).
 
-(** ** Reduction semantics for expressions *)
+  (** ** Reduction semantics for expressions *)
 
-Section EXPR.
+  Section EXPR.
 
-Variable e: env.
+    Variable e: env.
 
-(** The semantics of expressions follows the popular Wright-Felleisen style.
-  It is a small-step semantics that reduces one redex at a time.
-  We first define head reductions (at the top of an expression, then
-  use reduction contexts to define reduction within an expression. *)
+    (** The semantics of expressions follows the popular Wright-Felleisen style.
+        It is a small-step semantics that reduces one redex at a time.
+        We first define head reductions (at the top of an expression, then
+        use reduction contexts to define reduction within an expression. *)
 
-(** Head reduction for l-values. *)
-(* anaaktge - part of prop, we can asswert its valid if it succeeds *)
-(* snanders - current parser SEEMS to strip & and * from function pointers,
-   so Ederef and Eaddrof don't need to be defined on them. DOUBLECHECK THIS. *)
-Inductive lred: expr -> tag -> mem -> expr -> mem -> Prop :=
-| red_var_tmp: forall x ty pct m,
-    e!x = Some PRIV ->
-    lred (Evar x ty) pct m
-         (Eloc (Ltmp x) ty) m
-| red_var_local: forall x pt ty pct m lo hi,
-    e!x = Some (PUB (lo, hi, pt)) ->
-    lred (Evar x ty) pct m
-         (Eloc (Lmem (Ptrofs.repr lo) pt Full) ty) m
-| red_var_global: forall x ty pct m lo hi pt,
-    e!x = None ->
-    Genv.find_symbol (fst ge) x = Some (inr (lo, hi, pt)) ->
-    lred (Evar x ty) pct m
-         (Eloc (Lmem (Ptrofs.repr lo) pt Full) ty) m
-| red_func: forall x pct b pt ty m,
-    e!x = None ->
-    Genv.find_symbol (fst ge) x = Some (inl (b, pt)) ->
-    lred (Evar x ty) pct m
-         (Eloc (Lfun b pt) ty) m
-| red_deref_short: forall ofs vt ty1 ty pct m,
-    lred (Ederef (Eval (Vint ofs,vt) ty1) ty) pct m
-         (Eloc (Lmem (Ptrofs.of_int ofs) vt Full) ty) m
-| red_deref_long: forall ofs vt ty1 ty pct m,
-    lred (Ederef (Eval (Vlong ofs,vt) ty1) ty) pct m
-         (Eloc (Lmem (Ptrofs.of_int64 ofs) vt Full) ty) m
-| red_field_struct: forall ofs pt pt' id co a f ty pct m delta bf,
-    (snd ge)!id = Some co ->
-    field_offset (snd ge) f (co_members co) = OK (delta, bf) ->
-    FieldT (snd ge) pct pt ty id = PolicySuccess pt' ->
-    lred (Efield (Eval (Vlong ofs, pt) (Tstruct id a)) f ty) pct m
-         (Eloc (Lmem (Ptrofs.add (Ptrofs.of_int64 ofs) (Ptrofs.repr delta)) pt' bf) ty) m
-| red_field_union: forall ofs pt pt' id co a f ty pct m delta bf,
-    (snd ge)!id = Some co ->
-    union_field_offset (snd ge) f (co_members co) = OK (delta, bf) ->
-    FieldT (snd ge) pct pt ty id = PolicySuccess pt' ->
-    lred (Efield (Eval (Vlong ofs, pt) (Tunion id a)) f ty) pct m
-         (Eloc (Lmem (Ptrofs.add (Ptrofs.of_int64 ofs) (Ptrofs.repr delta)) pt' bf) ty) m.
+    (** Head reduction for l-values. *)
+    (* anaaktge - part of prop, we can asswert its valid if it succeeds *)
+    Inductive lred: expr -> tag -> tenv -> mem -> expr -> tenv -> mem -> Prop :=
+    | red_var_tmp: forall x ty pct te m,
+        e!x = Some PRIV ->
+        lred (Evar x ty) pct te m
+             (Eloc (Ltmp x) ty) te m
+    | red_var_local: forall x pt ty pct lo hi te m,
+        e!x = Some (PUB (lo, hi, pt)) ->
+        lred (Evar x ty) pct te m
+             (Eloc (Lmem (Ptrofs.repr lo) pt Full) ty) te m
+    | red_var_global: forall x ty pct lo hi pt te m,
+        e!x = None ->
+        Genv.find_symbol (fst ge) x = Some (inr (lo, hi, pt)) ->
+        lred (Evar x ty) pct te m
+             (Eloc (Lmem (Ptrofs.repr lo) pt Full) ty) te m
+    | red_func: forall x pct b pt ty te m,
+        e!x = None ->
+        Genv.find_symbol (fst ge) x = Some (inl (b, pt)) ->
+        lred (Evar x ty) pct te m
+             (Eloc (Lfun b pt) ty) te m
+    | red_deref_short: forall ofs vt ty1 ty pct te m,
+        lred (Ederef (Eval (Vint ofs,vt) ty1) ty) pct te m
+             (Eloc (Lmem (Ptrofs.of_int ofs) vt Full) ty) te m
+    | red_deref_long: forall ofs vt ty1 ty pct te m,
+        lred (Ederef (Eval (Vlong ofs,vt) ty1) ty) pct te m
+             (Eloc (Lmem (Ptrofs.of_int64 ofs) vt Full) ty) te m
+    | red_field_struct: forall ofs pt pt' id co a f ty pct delta bf te m,
+        (snd ge)!id = Some co ->
+        field_offset (snd ge) f (co_members co) = OK (delta, bf) ->
+        FieldT (snd ge) pct pt ty id = PolicySuccess pt' ->
+        lred (Efield (Eval (Vlong ofs, pt) (Tstruct id a)) f ty) pct te m
+             (Eloc (Lmem (Ptrofs.add (Ptrofs.of_int64 ofs) (Ptrofs.repr delta)) pt' bf) ty) te m
+    | red_field_union: forall ofs pt pt' id co a f ty pct delta bf te m,
+        (snd ge)!id = Some co ->
+        union_field_offset (snd ge) f (co_members co) = OK (delta, bf) ->
+        FieldT (snd ge) pct pt ty id = PolicySuccess pt' ->
+        lred (Efield (Eval (Vlong ofs, pt) (Tunion id a)) f ty) pct te m
+             (Eloc (Lmem (Ptrofs.add (Ptrofs.of_int64 ofs) (Ptrofs.repr delta)) pt' bf) ty) te m.
 
-(** Head reductions for r-values *)
-Inductive rred (PCT:tag) : expr -> tenv -> mem -> trace -> tag -> expr -> tenv -> mem -> Prop :=
-| red_const: forall v ty te m vt',
-    PolicySuccess vt' = ConstT PCT ->
-    rred PCT (Econst v ty) te m E0
-         PCT (Eval (v,vt') ty) te m
-| red_rvalof_loc: forall ofs pt lts bf ty te m tr v vt vt' vt'',
-    deref_loc ty m ofs pt bf tr (v,vt) lts ->
-    LoadT PCT pt vt lts = PolicySuccess vt' ->
-    AccessT PCT vt' = PolicySuccess vt'' ->
-    rred PCT (Evalof (Eloc (Lmem ofs pt bf) ty) ty) te m tr
-         PCT (Eval (v,vt'') ty) te m
-| red_rvalof_fptr: forall b pt ty te m tr,
-    rred PCT (Evalof (Eloc (Lfun b pt) ty) ty) te m tr
-         PCT (Eval (Vfptr b, pt) ty) te m
-| red_rvalof_tmp: forall b ty te m tr v vt vt',
-    te!b = Some (v,vt) ->
-    AccessT PCT vt = PolicySuccess vt' ->
-    rred PCT (Evalof (Eloc (Ltmp b) ty) ty) te m tr
-         PCT (Eval (v,vt') ty) te m
-| red_addrof: forall ofs pt ty1 ty te m,
-    rred PCT (Eaddrof (Eloc (Lmem ofs pt Full) ty1) ty) te m E0
-         PCT (Eval (Vofptrsize (Ptrofs.unsigned ofs), pt) ty) te m
-| red_addrod_fptr: forall b pt ty te m tr,
-    rred PCT (Evalof (Eloc (Lfun b pt) ty) ty) te m tr
-         PCT (Eval (Vfptr b, pt) ty) te m
-| red_unop: forall op v1 vt1 ty1 ty te m v PCT' vt,
-    sem_unary_operation op v1 ty1 m = Some v ->
-    PolicySuccess (PCT', vt) = UnopT op PCT vt1 ->
-    rred PCT (Eunop op (Eval (v1,vt1) ty1) ty) te m E0
-         PCT' (Eval (v,vt) ty) te m
-| red_binop: forall op v1 vt1 ty1 v2 vt2 ty2 ty te m v vt' PCT',
-    sem_binary_operation (snd ge) op v1 ty1 v2 ty2 m = Some v ->
-    PolicySuccess (PCT', vt') = BinopT op PCT vt1 vt2 ->
-    rred PCT (Ebinop op (Eval (v1,vt1) ty1) (Eval (v2,vt2) ty2) ty) te m E0
-         PCT' (Eval (v,vt') ty) te m
-| red_cast: forall ty v1 vt1 ty1 te m v vt,
-    sem_cast v1 ty1 ty m = Some v ->
-    rred PCT (Ecast (Eval (v1,vt1) ty1) ty) te m E0
-         PCT (Eval (v,vt) ty) te m
-| red_seqand_true: forall v1 vt1 ty1 r2 ty te m,
-    bool_val v1 ty1 m = Some true ->
-    rred PCT (Eseqand (Eval (v1,vt1) ty1) r2 ty) te m E0
-         PCT (Eparen r2 type_bool ty) te m
-| red_seqand_false: forall v1 vt1 ty1 r2 ty te m vt,
-    bool_val v1 ty1 m = Some false ->
-    rred PCT (Eseqand (Eval (v1,vt1) ty1) r2 ty) te m E0
-         PCT (Eval (Vint Int.zero, vt) ty) te m
-| red_seqor_true: forall v1 vt1 ty1 r2 ty te m vt,
-    bool_val v1 ty1 m = Some true ->
-    rred PCT (Eseqor (Eval (v1,vt1) ty1) r2 ty) te m E0
-         PCT (Eval (Vint Int.one, vt) ty) te m
-| red_seqor_false: forall v1 vt1 ty1 r2 ty te m,
-    bool_val v1 ty1 m = Some false ->
-    rred PCT (Eseqor (Eval (v1,vt1) ty1) r2 ty) te m E0
-         PCT (Eparen r2 type_bool ty) te m
-| red_condition: forall v1 vt1 ty1 r1 r2 ty b te m,
-    bool_val v1 ty1 m = Some b ->
-    rred PCT (Econdition (Eval (v1,vt1) ty1) r1 r2 ty) te m E0
-         PCT (Eparen (if b then r1 else r2) ty ty) te m
-| red_sizeof: forall ty1 ty te m vt,
-    rred PCT (Esizeof ty1 ty) te m E0
-         PCT (Eval (Vofptrsize (sizeof (snd ge) ty1), vt) ty) te m
-| red_alignof: forall ty1 ty te m vt,
-    rred PCT (Ealignof ty1 ty) te m E0
-         PCT (Eval (Vofptrsize (alignof (snd ge) ty1), vt) ty) te m
-| red_assign_mem: forall ofs ty1 pt bf v1 vt1 v2 vt2 ty2 te m t1 t2 m' v' PCT' vt' PCT'' vt'' v'' vt''' lts lts',
-    sem_cast v2 ty2 ty1 m = Some v' ->
-    deref_loc ty1 m ofs pt bf t1 (v1,vt1) lts ->
-    AssignT PCT vt1 vt2 = PolicySuccess (PCT',vt') ->
-    StoreT PCT' pt vt' lts = PolicySuccess (PCT'', vt'', lts') ->
-    assign_loc ty1 m ofs pt bf (v',vt'') t2 m' (v'',vt''') lts' ->
-    rred PCT (Eassign (Eloc (Lmem ofs pt bf) ty1) (Eval (v2, vt2) ty2) ty1) te m (t1 ++ t2)
-         PCT'' (Eval (v'',vt''') ty1) te m'
-| red_assign_tmp: forall b ty1 v1 vt1 v2 vt2 ty2 te m t1 t2 te' m' v' PCT' vt' vt'' v'',
-    sem_cast v2 ty2 ty1 m = Some v' ->
-    te!b = Some (v1,vt1) ->
-    AssignT PCT vt1 vt2 = PolicySuccess (PCT',vt') ->
-    te' = PTree.set b (v',vt') te ->
-    rred PCT (Eassign (Eloc (Ltmp b) ty1) (Eval (v2, vt2) ty2) ty1) te m (t1 ++ t2)
-         PCT' (Eval (v'',vt'') ty1) te' m'
-| red_assignop_mem: forall op ofs pt ty1 bf v2 ty2 tyres te m t v1 vt1 vt1' vt1'' lts,
-    deref_loc ty1 m ofs pt bf t (v1,vt1) lts ->
-    LoadT PCT pt vt1 lts = PolicySuccess vt1' ->
-    AccessT PCT vt1' = PolicySuccess vt1'' ->
-    (* Do we want to do this in this order? *)
-    rred PCT (Eassignop op (Eloc (Lmem ofs pt bf) ty1) (Eval v2 ty2) tyres ty1) te m t
-         PCT (Eassign (Eloc (Lmem ofs pt bf) ty1)
-                            (Ebinop op (Eval (v1,vt1'') ty1) (Eval v2 ty2) tyres) ty1) te m
-| red_assignop_tmp: forall op b ty1 v2 ty2 tyres te m t v1 vt1 vt1',
-    te!b = Some (v1,vt1) ->
-    AccessT PCT vt1 = PolicySuccess vt1' ->
-    (* Do we want to do this in this order? *)
-    rred PCT (Eassignop op (Eloc (Ltmp b) ty1) (Eval v2 ty2) tyres ty1) te m t
-         PCT (Eassign (Eloc (Ltmp b) ty1)
-                      (Ebinop op (Eval (v1,vt1') ty1) (Eval v2 ty2) tyres) ty1) te m
-| red_postincr_mem: forall id ofs pt ty bf te m t v vt vt' vt'' lts op,
-    deref_loc ty m ofs pt bf t (v,vt) lts ->
-    LoadT PCT pt vt lts = PolicySuccess vt' ->
-    AccessT PCT vt' = PolicySuccess vt'' ->
-    op = match id with Incr => Oadd | Decr => Osub end ->
-    rred PCT (Epostincr id (Eloc (Lmem ofs pt bf) ty) ty) te m t
-         PCT (Ecomma (Eassign (Eloc (Lmem ofs pt bf) ty)
-                                    (Ebinop op (Eval (v,vt'') ty)
-                                            (Econst (Vint Int.one) type_int32s)
-                                            (incrdecr_type ty))
-                                    ty)
-                           (Eval (v,vt'') ty) ty) te m
-| red_postincr_tmp: forall id b ty te m t v vt vt' vt'' op,
-    te!b = Some (v,vt) ->
-    AccessT PCT vt = PolicySuccess vt' ->
-    op = match id with Incr => Oadd | Decr => Osub end ->
-    rred PCT (Epostincr id (Eloc (Ltmp b) ty) ty) te m t
-         PCT (Ecomma (Eassign (Eloc (Ltmp b) ty)
-                                    (Ebinop op (Eval (v,vt') ty)
-                                            (Econst (Vint Int.one) type_int32s)
-                                            (incrdecr_type ty))
-                                    ty)
-                           (Eval (v,vt'') ty) ty) te m
-| red_comma: forall v ty1 r2 ty te m,
-    typeof r2 = ty ->
-    rred PCT (Ecomma (Eval v ty1) r2 ty) te m E0
-         PCT r2 te m
-| red_paren: forall v1 vt1 ty1 ty2 ty te m v vt PCT' vt',
-    sem_cast v1 ty1 ty2 m = Some v ->
-    ExprJoinT PCT vt = PolicySuccess (PCT', vt') ->
-    rred PCT (Eparen (Eval (v1,vt1) ty1) ty2 ty) te m E0
-         PCT' (Eval (v,vt') ty) te m
-| red_builtin: forall ef tyargs el ty te m vargs t vres PCT' m',
-    cast_arguments m el tyargs vargs ->
-    external_call ef (fst ge) vargs PCT m t vres PCT' m' ->
-    rred PCT (Ebuiltin ef tyargs el ty) te m t
-         PCT' (Eval vres ty) te m'.
+    Inductive lfailred: expr -> tag -> string -> list tag -> Prop :=
+    | failred_field_struct: forall ofs pt id co a f ty pct delta bf msg params,
+        (snd ge)!id = Some co ->
+        field_offset (snd ge) f (co_members co) = OK (delta, bf) ->
+        FieldT (snd ge) pct pt ty id = PolicyFail msg params ->
+        lfailred (Efield (Eval (Vlong ofs, pt) (Tstruct id a)) f ty) pct
+                 msg params
+    | failred_field_union: forall ofs pt id co a f ty pct delta bf msg params,
+        (snd ge)!id = Some co ->
+        union_field_offset (snd ge) f (co_members co) = OK (delta, bf) ->
+        FieldT (snd ge) pct pt ty id = PolicyFail msg params ->
+        lfailred (Efield (Eval (Vlong ofs, pt) (Tunion id a)) f ty) pct
+                 msg params
+    .
+    
+    (** Head reductions for r-values *)
+    Inductive rred (PCT:tag) : expr -> tenv -> mem -> trace -> tag -> expr -> tenv -> mem -> Prop :=
+    | red_const: forall v ty te m vt',
+        ConstT PCT = PolicySuccess vt' ->
+        rred PCT (Econst v ty) te m E0
+             PCT (Eval (v,vt') ty) te m
+    | red_rvalof_mem: forall ofs pt lts bf ty te m tr v vt vt' vt'',
+        deref_loc ty m ofs pt bf tr (v,vt) lts ->
+        LoadT PCT pt vt lts = PolicySuccess vt' ->
+        AccessT PCT vt' = PolicySuccess vt'' ->
+        rred PCT (Evalof (Eloc (Lmem ofs pt bf) ty) ty) te m tr
+             PCT (Eval (v,vt'') ty) te m
+    | red_rvalof_fun: forall b pt ty te m,
+        rred PCT (Evalof (Eloc (Lfun b pt) ty) ty) te m E0
+             PCT (Eval (Vfptr b, pt) ty) te m
+    | red_rvalof_tmp: forall b ty te m v vt vt',
+        te!b = Some (v,vt) ->
+        AccessT PCT vt = PolicySuccess vt' ->
+        rred PCT (Evalof (Eloc (Ltmp b) ty) ty) te m E0
+             PCT (Eval (v,vt') ty) te m
+    | red_addrof_loc: forall ofs pt ty1 ty te m,
+        rred PCT (Eaddrof (Eloc (Lmem ofs pt Full) ty1) ty) te m E0
+             PCT (Eval (Vofptrsize (Ptrofs.unsigned ofs), pt) ty) te m
+    | red_addrof_fptr: forall b pt ty te m,
+        rred PCT (Eaddrof (Eloc (Lfun b pt) ty) ty) te m E0
+             PCT (Eval (Vfptr b, pt) ty) te m
+    | red_unop: forall op v1 vt1 ty1 ty te m v PCT' vt,
+        sem_unary_operation op v1 ty1 m = Some v ->
+        PolicySuccess (PCT', vt) = UnopT op PCT vt1 ->
+        rred PCT (Eunop op (Eval (v1,vt1) ty1) ty) te m E0
+             PCT' (Eval (v,vt) ty) te m
+    | red_binop: forall op v1 vt1 ty1 v2 vt2 ty2 ty te m v vt' PCT',
+        sem_binary_operation (snd ge) op v1 ty1 v2 ty2 m = Some v ->
+        PolicySuccess (PCT', vt') = BinopT op PCT vt1 vt2 ->
+        rred PCT (Ebinop op (Eval (v1,vt1) ty1) (Eval (v2,vt2) ty2) ty) te m E0
+             PCT' (Eval (v,vt') ty) te m
+    | red_cast: forall ty v1 vt1 ty1 te m v vt,
+        sem_cast v1 ty1 ty m = Some v ->
+        rred PCT (Ecast (Eval (v1,vt1) ty1) ty) te m E0
+             PCT (Eval (v,vt) ty) te m
+    | red_seqand_true: forall v1 vt1 ty1 r2 ty te m PCT',
+        bool_val v1 ty1 m = Some true ->
+        PolicySuccess PCT' = ExprSplitT PCT vt1 ->
+        rred PCT (Eseqand (Eval (v1,vt1) ty1) r2 ty) te m E0
+             PCT' (Eparen r2 type_bool ty) te m
+    | red_seqand_false: forall v1 vt1 ty1 r2 ty te m PCT',
+        bool_val v1 ty1 m = Some false ->
+        PolicySuccess PCT' = ExprSplitT PCT vt1 ->
+        rred PCT (Eseqand (Eval (v1,vt1) ty1) r2 ty) te m E0
+             PCT' (Eval (Vint Int.zero, vt1) ty) te m
+    | red_seqor_true: forall v1 vt1 ty1 r2 ty te m PCT',
+        bool_val v1 ty1 m = Some true ->
+        PolicySuccess PCT' = ExprSplitT PCT vt1 ->
+        rred PCT (Eseqor (Eval (v1,vt1) ty1) r2 ty) te m E0
+             PCT' (Eval (Vint Int.one, vt1) ty) te m
+    | red_seqor_false: forall v1 vt1 ty1 r2 ty te m PCT',
+        bool_val v1 ty1 m = Some false ->
+        PolicySuccess PCT' = ExprSplitT PCT vt1 ->
+        rred PCT (Eseqor (Eval (v1,vt1) ty1) r2 ty) te m E0
+             PCT' (Eparen r2 type_bool ty) te m
+    | red_condition: forall v1 vt1 ty1 r1 r2 ty b te m PCT',
+        bool_val v1 ty1 m = Some b ->
+        PolicySuccess PCT' = ExprSplitT PCT vt1 ->
+        rred PCT (Econdition (Eval (v1,vt1) ty1) r1 r2 ty) te m E0
+             PCT' (Eparen (if b then r1 else r2) ty ty) te m
+    | red_sizeof: forall ty1 ty te m vt',
+        ConstT PCT = PolicySuccess vt' ->
+        rred PCT (Esizeof ty1 ty) te m E0
+             PCT (Eval (Vofptrsize (sizeof (snd ge) ty1), vt') ty) te m
+    | red_alignof: forall ty1 ty te m vt',
+        ConstT PCT = PolicySuccess vt' ->
+        rred PCT (Ealignof ty1 ty) te m E0
+             PCT (Eval (Vofptrsize (alignof (snd ge) ty1), vt') ty) te m
+    | red_assign_mem: forall ofs ty1 pt bf v1 vt1 v2 vt2 ty2 te m t1 t2 m' v' PCT' vt' PCT'' vt'' v'' vt''' lts lts',
+        sem_cast v2 ty2 ty1 m = Some v' ->
+        deref_loc ty1 m ofs pt bf t1 (v1,vt1) lts ->
+        AssignT PCT vt1 vt2 = PolicySuccess (PCT',vt') ->
+        StoreT PCT' pt vt' lts = PolicySuccess (PCT'', vt'', lts') ->
+        assign_loc ty1 m ofs pt bf (v',vt'') t2 m' (v'',vt''') lts' ->
+        rred PCT (Eassign (Eloc (Lmem ofs pt bf) ty1) (Eval (v2, vt2) ty2) ty1) te m (t1++t2)
+             PCT'' (Eval (v'',vt''') ty1) te m'
+    | red_assign_tmp: forall b ty1 v1 vt1 v2 vt2 ty2 te m te' m' v PCT' vt',
+        te!b = Some (v1,vt1) ->
+        sem_cast v2 ty2 ty1 m = Some v ->
+        AssignT PCT vt1 vt2 = PolicySuccess (PCT',vt') ->
+        te' = PTree.set b (v,vt') te ->
+        rred PCT (Eassign (Eloc (Ltmp b) ty1) (Eval (v2, vt2) ty2) ty1) te m E0
+             PCT' (Eval (v,vt') ty1) te' m'
+    | red_assignop_mem: forall op ofs pt ty1 bf v2 vt2 ty2 tyres te m t v1 vt1 vt1' vt1'' lts,
+        deref_loc ty1 m ofs pt bf t (v1,vt1) lts ->
+        LoadT PCT pt vt1 lts = PolicySuccess vt1' ->
+        AccessT PCT vt1' = PolicySuccess vt1'' ->
+        (* Do we want to do this in this order? *)
+        rred PCT (Eassignop op (Eloc (Lmem ofs pt bf) ty1) (Eval (v2,vt2) ty2) tyres ty1) te m t
+             PCT (Eassign (Eloc (Lmem ofs pt bf) ty1)
+                          (Ebinop op (Eval (v1,vt1'') ty1) (Eval (v2,vt2) ty2) tyres) ty1) te m
+    | red_assignop_tmp: forall op b ty1 v2 vt2 ty2 tyres te m t v1 vt1 vt1',
+        te!b = Some (v1,vt1) ->
+        AccessT PCT vt1 = PolicySuccess vt1' ->
+        (* Do we want to do this in this order? *)
+        rred PCT (Eassignop op (Eloc (Ltmp b) ty1) (Eval (v2,vt2) ty2) tyres ty1) te m t
+             PCT (Eassign (Eloc (Ltmp b) ty1)
+                          (Ebinop op (Eval (v1,vt1') ty1) (Eval (v2,vt2) ty2) tyres) ty1) te m
+    | red_assignop_fun: forall op b pt ty1 v2 vt2 ty2 tyres te m,
+        rred PCT (Eassignop op (Eloc (Lfun b pt) ty1) (Eval (v2,vt2) ty2) tyres ty1) te m E0
+             PCT (Eassign (Eloc (Lfun b pt) ty1)
+                          (Ebinop op (Eval (Vfptr b,pt) ty1) (Eval (v2,vt2) ty2) tyres) ty1) te m
+    | red_postincr_mem: forall id ofs pt ty bf te m t v vt vt' vt'' lts op,
+        deref_loc ty m ofs pt bf t (v,vt) lts ->
+        LoadT PCT pt vt lts = PolicySuccess vt' ->
+        AccessT PCT vt' = PolicySuccess vt'' ->
+        op = match id with Incr => Oadd | Decr => Osub end ->
+        rred PCT (Epostincr id (Eloc (Lmem ofs pt bf) ty) ty) te m t
+             PCT (Ecomma (Eassign (Eloc (Lmem ofs pt bf) ty)
+                                  (Ebinop op (Eval (v,vt'') ty)
+                                          (Econst (Vint Int.one) type_int32s)
+                                          (incrdecr_type ty))
+                                  ty)
+                         (Eval (v,vt'') ty) ty) te m
+    | red_postincr_tmp: forall id b ty te m v vt vt' op,
+        te!b = Some (v,vt) ->
+        AccessT PCT vt = PolicySuccess vt' ->
+        op = match id with Incr => Oadd | Decr => Osub end ->
+        rred PCT (Epostincr id (Eloc (Ltmp b) ty) ty) te m E0
+             PCT (Ecomma (Eassign (Eloc (Ltmp b) ty)
+                                  (Ebinop op (Eval (v,vt') ty)
+                                          (Econst (Vint Int.one) type_int32s)
+                                          (incrdecr_type ty))
+                                  ty)
+                         (Eval (v,vt') ty) ty) te m
+    | red_postincr_fun: forall id b pt ty te m op,
+        op = match id with Incr => Oadd | Decr => Osub end ->
+        rred PCT (Epostincr id (Eloc (Lfun b pt) ty) ty) te m E0
+             PCT (Ecomma (Eassign (Eloc (Lfun b pt) ty)
+                                  (Ebinop op (Eval (Vfptr b, pt) ty)
+                                          (Econst (Vint Int.one) type_int32s)
+                                          (incrdecr_type ty))
+                                  ty)
+                         (Eval (Vfptr b,pt) ty) ty) te m
+    | red_comma: forall v ty1 r2 ty te m,
+        typeof r2 = ty ->
+        rred PCT (Ecomma (Eval v ty1) r2 ty) te m E0
+             PCT r2 te m
+    | red_paren: forall v1 vt1 ty1 ty2 ty te m v PCT' vt',
+        sem_cast v1 ty1 ty2 m = Some v ->
+        ExprJoinT PCT vt1 = PolicySuccess (PCT', vt') ->
+        rred PCT (Eparen (Eval (v1,vt1) ty1) ty2 ty) te m E0
+             PCT' (Eval (v,vt') ty) te m
+    | red_builtin: forall ef tyargs el ty te m vargs t vres PCT' m',
+        cast_arguments m el tyargs vargs ->
+        external_call ef (fst ge) vargs PCT m t vres PCT' m' ->
+        rred PCT (Ebuiltin ef tyargs el ty) te m t
+             PCT' (Eval vres ty) te m'.
 
-(** Head reduction for function calls.
-    (More exactly, identification of function calls that can reduce.) *)
+    (** Failstops for r-values *)
+    Inductive rfailred (PCT:tag) : expr -> tenv -> mem -> trace -> string -> list tag -> Prop :=
+    | failred_const: forall v ty te m msg params,
+        ConstT PCT = PolicyFail msg params ->
+        rfailred PCT (Econst v ty) te m E0
+                 msg params
+    | failred_rvalof_mem1: forall ofs pt lts bf ty te m tr v vt msg params,
+        deref_loc ty m ofs pt bf tr (v,vt) lts ->
+        LoadT PCT pt vt lts = PolicyFail msg params ->
+        rfailred PCT (Evalof (Eloc (Lmem ofs pt bf) ty) ty) te m tr
+                 msg params
+    | failred_rvalof_mem2: forall ofs pt lts bf ty te m tr v vt vt' msg params,
+        deref_loc ty m ofs pt bf tr (v,vt) lts ->
+        LoadT PCT pt vt lts = PolicySuccess vt' ->
+        AccessT PCT vt' = PolicyFail msg params ->
+        rfailred PCT (Evalof (Eloc (Lmem ofs pt bf) ty) ty) te m tr
+                 msg params
+    | failred_rvalof_tmp: forall b ty te m v vt msg params,
+        te!b = Some (v,vt) ->
+        AccessT PCT vt = PolicyFail msg params ->
+        rfailred PCT (Evalof (Eloc (Ltmp b) ty) ty) te m E0
+                 msg params
+    | failred_unop: forall op v1 vt1 ty1 ty te m v msg params,
+        sem_unary_operation op v1 ty1 m = Some v ->
+        UnopT op PCT vt1 = PolicyFail msg params ->
+        rfailred PCT (Eunop op (Eval (v1,vt1) ty1) ty) te m E0
+                 msg params
+    | failred_binop: forall op v1 vt1 ty1 v2 vt2 ty2 ty te m v msg params,
+        sem_binary_operation (snd ge) op v1 ty1 v2 ty2 m = Some v ->
+        BinopT op PCT vt1 vt2 = PolicyFail msg params ->
+        rfailred PCT (Ebinop op (Eval (v1,vt1) ty1) (Eval (v2,vt2) ty2) ty) te m E0
+                 msg params
+    (* TODO: all cast msgs *)
+    | failred_seqand: forall v1 vt1 ty1 r2 ty b te m msg params,
+        bool_val v1 ty1 m = Some b ->
+        ExprSplitT PCT vt1 = PolicyFail msg params ->
+        rfailred PCT (Eseqand (Eval (v1,vt1) ty1) r2 ty) te m E0
+                 msg params
+    | failred_seqor_true: forall v1 vt1 ty1 r2 ty b te m msg params,
+        bool_val v1 ty1 m = Some b ->
+        ExprSplitT PCT vt1 = PolicyFail msg params ->
+        rfailred PCT (Eseqor (Eval (v1,vt1) ty1) r2 ty) te m E0
+                 msg params
+    | failred_condition: forall v1 vt1 ty1 r1 r2 ty b te m msg params,
+        bool_val v1 ty1 m = Some b ->
+        ExprSplitT PCT vt1 = PolicyFail msg params ->
+        rfailred PCT (Econdition (Eval (v1,vt1) ty1) r1 r2 ty) te m E0
+                 msg params
+    | failred_sizeof: forall ty1 ty te m msg params,
+        ConstT PCT = PolicyFail msg params ->
+        rfailred PCT (Esizeof ty1 ty) te m E0
+                 msg params
+    | failred_alignof: forall ty1 ty te m msg params,
+        ConstT PCT = PolicyFail msg params ->
+        rfailred PCT (Ealignof ty1 ty) te m E0
+                 msg params
+    | failred_assign_mem1: forall ofs ty1 pt bf v1 vt1 v2 vt2 ty2 te m t1 v' lts msg params,
+        sem_cast v2 ty2 ty1 m = Some v' ->
+        deref_loc ty1 m ofs pt bf t1 (v1,vt1) lts ->
+        AssignT PCT vt1 vt2 = PolicyFail msg params ->
+        rfailred PCT (Eassign (Eloc (Lmem ofs pt bf) ty1) (Eval (v2, vt2) ty2) ty1) te m t1
+             msg params
+    | failred_assign_mem2: forall ofs ty1 pt bf v1 vt1 v2 vt2 ty2 te m t1 v' PCT' vt' lts msg params,
+        sem_cast v2 ty2 ty1 m = Some v' ->
+        deref_loc ty1 m ofs pt bf t1 (v1,vt1) lts ->
+        AssignT PCT vt1 vt2 = PolicySuccess (PCT',vt') ->
+        StoreT PCT' pt vt' lts = PolicyFail msg params ->
+        rfailred PCT (Eassign (Eloc (Lmem ofs pt bf) ty1) (Eval (v2, vt2) ty2) ty1) te m t1
+             msg params
+    | failred_assign_tmp: forall b ty1 v1 vt1 v2 vt2 ty2 te m v msg params,
+        te!b = Some (v1,vt1) ->
+        sem_cast v2 ty2 ty1 m = Some v ->
+        AssignT PCT vt1 vt2 = PolicyFail msg params ->
+        rfailred PCT (Eassign (Eloc (Ltmp b) ty1) (Eval (v2, vt2) ty2) ty1) te m E0
+                 msg params
+    | failred_assignop_mem1: forall op ofs pt ty1 bf v2 vt2 ty2 tyres te m t1 v1 vt1 lts msg params,
+        deref_loc ty1 m ofs pt bf t1 (v1,vt1) lts ->
+        LoadT PCT pt vt1 lts = PolicyFail msg params ->
+        rfailred PCT (Eassignop op (Eloc (Lmem ofs pt bf) ty1) (Eval (v2,vt2) ty2) tyres ty1) te m t1
+                 msg params
+    | failred_assignop_mem2: forall op ofs pt ty1 bf v2 vt2 ty2 tyres te m t1 v1 vt1 vt1' lts msg params,
+        deref_loc ty1 m ofs pt bf t1 (v1,vt1) lts ->
+        LoadT PCT pt vt1 lts = PolicySuccess vt1' ->
+        AccessT PCT vt1' = PolicyFail msg params ->
+        rfailred PCT (Eassignop op (Eloc (Lmem ofs pt bf) ty1) (Eval (v2,vt2) ty2) tyres ty1) te m t1
+                 msg params
+    | failred_assignop_tmp: forall op b ty1 v2 vt2 ty2 tyres te m v1 vt1 msg params,
+        te!b = Some (v1,vt1) ->
+        AccessT PCT vt1 = PolicyFail msg params ->
+        rfailred PCT (Eassignop op (Eloc (Ltmp b) ty1) (Eval (v2,vt2) ty2) tyres ty1) te m E0
+                 msg params
+    | failred_postincr_mem1: forall id ofs pt ty bf te m tr v vt lts msg params,
+        deref_loc ty m ofs pt bf tr (v,vt) lts ->
+        LoadT PCT pt vt lts = PolicyFail msg params ->
+        rfailred PCT (Epostincr id (Eloc (Lmem ofs pt bf) ty) ty) te m tr
+                 msg params                 
+    | failred_postincr_mem2: forall id ofs pt ty bf te m tr v vt vt' lts msg params,
+        deref_loc ty m ofs pt bf tr (v,vt) lts ->
+        LoadT PCT pt vt lts = PolicySuccess vt' ->
+        AccessT PCT vt' = PolicyFail msg params ->
+        rfailred PCT (Epostincr id (Eloc (Lmem ofs pt bf) ty) ty) te m tr
+                 msg params
+    | failred_postincr_tmp: forall id b ty te m v vt msg params,
+        te!b = Some (v,vt) ->
+        AccessT PCT vt = PolicyFail msg params ->
+        rfailred PCT (Epostincr id (Eloc (Ltmp b) ty) ty) te m E0
+                 msg params
+    | failred_paren: forall v1 vt1 ty1 ty2 ty te m v msg params,
+        sem_cast v1 ty1 ty2 m = Some v ->
+        ExprJoinT PCT vt1 = PolicyFail msg params ->
+        rfailred PCT (Eparen (Eval (v1,vt1) ty1) ty2 ty) te m E0
+                 msg params
+    | failred_call: forall vf vft tyf te m tyargs tyres cconv el ty fd vargs msg params,
+        Genv.find_funct (fst ge) vf = Some fd ->
+        cast_arguments m el tyargs vargs ->
+        type_of_fundef fd = Tfunction tyargs tyres cconv ->
+        classify_fun tyf = fun_case_f tyargs tyres cconv ->
+        CallT PCT vft = PolicyFail msg params ->
+        rfailred PCT (Ecall (Eval (vf, vft) tyf) el ty) te m E0
+                 msg params
+        
+    (* TODO: figure out builtins *)
+    .
+    
+    (** Head reduction for function calls.
+        (More exactly, identification of function calls that can reduce.) *)
 
-Inductive callred: tag -> expr -> mem -> tag -> fundef -> list atom -> type -> Prop :=
-  | red_call: forall PCT PCT' vf vft tyf m tyargs tyres cconv el ty fd vargs,
-      Genv.find_funct (fst ge) vf = Some fd ->
-      cast_arguments m el tyargs vargs ->
-      PolicySuccess PCT' = CallT PCT vft ->
-      type_of_fundef fd = Tfunction tyargs tyres cconv ->
-      classify_fun tyf = fun_case_f tyargs tyres cconv ->
-      callred PCT (Ecall (Eval (vf,vft) tyf) el ty) m
-              PCT' fd vargs ty.
+    Inductive callred: tag -> expr -> mem -> tag -> fundef -> list atom -> type -> Prop :=
+    | red_call: forall PCT PCT' vf vft tyf m tyargs tyres cconv el ty fd vargs,
+        Genv.find_funct (fst ge) vf = Some fd ->
+        cast_arguments m el tyargs vargs ->
+        type_of_fundef fd = Tfunction tyargs tyres cconv ->
+        classify_fun tyf = fun_case_f tyargs tyres cconv ->
+        PolicySuccess PCT' = CallT PCT vft ->
+        callred PCT (Ecall (Eval (vf,vft) tyf) el ty) m
+                PCT' fd vargs ty.
 
-(** Reduction contexts.  In accordance with C's nondeterministic semantics,
-  we allow reduction both to the left and to the right of a binary operator.
-  To enforce C's notion of sequence point, reductions within a conditional
-  [a ? b : c] can only take place in [a], not in [b] nor [c];
-  reductions within a sequential "or" / "and" [a && b] or [a || b] can
-  only take place in [a], not in [b];
-  and reductions within a sequence [a, b] can only take place in [a],
-  not in [b].
+    (** Reduction contexts.  In accordance with C's nondeterministic semantics,
+        we allow reduction both to the left and to the right of a binary operator.
+        To enforce C's notion of sequence point, reductions within a conditional
+        [a ? b : c] can only take place in [a], not in [b] nor [c];
+        reductions within a sequential "or" / "and" [a && b] or [a || b] can
+        only take place in [a], not in [b];
+        and reductions within a sequence [a, b] can only take place in [a],
+        not in [b].
 
-  Reduction contexts are represented by functions [C] from expressions
-  to expressions, suitably constrained by the [context from to C]
-  predicate below.  Contexts are "kinded" with respect to l-values and
-  r-values: [from] is the kind of the hole in the context and [to] is
-  the kind of the term resulting from filling the hole.
-*)
+        Reduction contexts are represented by functions [C] from expressions
+        to expressions, suitably constrained by the [context from to C]
+        predicate below.  Contexts are "kinded" with respect to l-values and
+        r-values: [from] is the kind of the hole in the context and [to] is
+        the kind of the term resulting from filling the hole.
+     *)
 
-Inductive kind : Type := LV | RV.
+    Inductive kind : Type := LV | RV.
 
-Inductive context: kind -> kind -> (expr -> expr) -> Prop :=
-  | ctx_top: forall k,
-      context k k (fun x => x)
-  | ctx_deref: forall k C ty,
-      context k RV C -> context k LV (fun x => Ederef (C x) ty)
-  | ctx_field: forall k C f ty,
-      context k RV C -> context k LV (fun x => Efield (C x) f ty)
-  | ctx_rvalof: forall k C ty,
-      context k LV C -> context k RV (fun x => Evalof (C x) ty)
-  | ctx_addrof: forall k C ty,
-      context k LV C -> context k RV (fun x => Eaddrof (C x) ty)
-  | ctx_unop: forall k C op ty,
-      context k RV C -> context k RV (fun x => Eunop op (C x) ty)
-  | ctx_binop_left: forall k C op e2 ty,
-      context k RV C -> context k RV (fun x => Ebinop op (C x) e2 ty)
-  | ctx_binop_right: forall k C op e1 ty,
-      context k RV C -> context k RV (fun x => Ebinop op e1 (C x) ty)
-  | ctx_cast: forall k C ty,
-      context k RV C -> context k RV (fun x => Ecast (C x) ty)
-  | ctx_seqand: forall k C r2 ty,
-      context k RV C -> context k RV (fun x => Eseqand (C x) r2 ty)
-  | ctx_seqor: forall k C r2 ty,
-      context k RV C -> context k RV (fun x => Eseqor (C x) r2 ty)
-  | ctx_condition: forall k C r2 r3 ty,
-      context k RV C -> context k RV (fun x => Econdition (C x) r2 r3 ty)
-  | ctx_assign_left: forall k C e2 ty,
-      context k LV C -> context k RV (fun x => Eassign (C x) e2 ty)
-  | ctx_assign_right: forall k C e1 ty,
-      context k RV C -> context k RV (fun x => Eassign e1 (C x) ty)
-  | ctx_assignop_left: forall k C op e2 tyres ty,
-      context k LV C -> context k RV (fun x => Eassignop op (C x) e2 tyres ty)
-  | ctx_assignop_right: forall k C op e1 tyres ty,
-      context k RV C -> context k RV (fun x => Eassignop op e1 (C x) tyres ty)
-  | ctx_postincr: forall k C id ty,
-      context k LV C -> context k RV (fun x => Epostincr id (C x) ty)
-  | ctx_call_left: forall k C el ty,
-      context k RV C -> context k RV (fun x => Ecall (C x) el ty)
-  | ctx_call_right: forall k C e1 ty,
-      contextlist k C -> context k RV (fun x => Ecall e1 (C x) ty)
-  | ctx_builtin: forall k C ef tyargs ty,
-      contextlist k C -> context k RV (fun x => Ebuiltin ef tyargs (C x) ty)
-  | ctx_comma: forall k C e2 ty,
-      context k RV C -> context k RV (fun x => Ecomma (C x) e2 ty)
-  | ctx_paren: forall k C tycast ty,
-      context k RV C -> context k RV (fun x => Eparen (C x) tycast ty)
+    Inductive context: kind -> kind -> (expr -> expr) -> Prop :=
+    | ctx_top: forall k,
+        context k k (fun x => x)
+    | ctx_deref: forall k C ty,
+        context k RV C -> context k LV (fun x => Ederef (C x) ty)
+    | ctx_field: forall k C f ty,
+        context k RV C -> context k LV (fun x => Efield (C x) f ty)
+    | ctx_rvalof: forall k C ty,
+        context k LV C -> context k RV (fun x => Evalof (C x) ty)
+    | ctx_addrof: forall k C ty,
+        context k LV C -> context k RV (fun x => Eaddrof (C x) ty)
+    | ctx_unop: forall k C op ty,
+        context k RV C -> context k RV (fun x => Eunop op (C x) ty)
+    | ctx_binop_left: forall k C op e2 ty,
+        context k RV C -> context k RV (fun x => Ebinop op (C x) e2 ty)
+    | ctx_binop_right: forall k C op e1 ty,
+        context k RV C -> context k RV (fun x => Ebinop op e1 (C x) ty)
+    | ctx_cast: forall k C ty,
+        context k RV C -> context k RV (fun x => Ecast (C x) ty)
+    | ctx_seqand: forall k C r2 ty,
+        context k RV C -> context k RV (fun x => Eseqand (C x) r2 ty)
+    | ctx_seqor: forall k C r2 ty,
+        context k RV C -> context k RV (fun x => Eseqor (C x) r2 ty)
+    | ctx_condition: forall k C r2 r3 ty,
+        context k RV C -> context k RV (fun x => Econdition (C x) r2 r3 ty)
+    | ctx_assign_left: forall k C e2 ty,
+        context k LV C -> context k RV (fun x => Eassign (C x) e2 ty)
+    | ctx_assign_right: forall k C e1 ty,
+        context k RV C -> context k RV (fun x => Eassign e1 (C x) ty)
+    | ctx_assignop_left: forall k C op e2 tyres ty,
+        context k LV C -> context k RV (fun x => Eassignop op (C x) e2 tyres ty)
+    | ctx_assignop_right: forall k C op e1 tyres ty,
+        context k RV C -> context k RV (fun x => Eassignop op e1 (C x) tyres ty)
+    | ctx_postincr: forall k C id ty,
+        context k LV C -> context k RV (fun x => Epostincr id (C x) ty)
+    | ctx_call_left: forall k C el ty,
+        context k RV C -> context k RV (fun x => Ecall (C x) el ty)
+    | ctx_call_right: forall k C e1 ty,
+        contextlist k C -> context k RV (fun x => Ecall e1 (C x) ty)
+    | ctx_builtin: forall k C ef tyargs ty,
+        contextlist k C -> context k RV (fun x => Ebuiltin ef tyargs (C x) ty)
+    | ctx_comma: forall k C e2 ty,
+        context k RV C -> context k RV (fun x => Ecomma (C x) e2 ty)
+    | ctx_paren: forall k C tycast ty,
+        context k RV C -> context k RV (fun x => Eparen (C x) tycast ty)
 
-with contextlist: kind -> (expr -> exprlist) -> Prop :=
-  | ctx_list_head: forall k C el,
-      context k RV C -> contextlist k (fun x => Econs (C x) el)
-  | ctx_list_tail: forall k C e1,
-      contextlist k C -> contextlist k (fun x => Econs e1 (C x)).
+    with contextlist: kind -> (expr -> exprlist) -> Prop :=
+    | ctx_list_head: forall k C el,
+        context k RV C -> contextlist k (fun x => Econs (C x) el)
+    | ctx_list_tail: forall k C e1,
+        contextlist k C -> contextlist k (fun x => Econs e1 (C x)).
 
-(** In a nondeterministic semantics, expressions can go wrong according
-  to one reduction order while being defined according to another.
-  Consider for instance [(x = 1) + (10 / x)] where [x] is initially [0].
-  This expression goes wrong if evaluated right-to-left, but is defined
-  if evaluated left-to-right.  Since our compiler is going to pick one
-  particular evaluation order, we must make sure that all orders are safe,
-  i.e. never evaluate a subexpression that goes wrong.
+    (** In a nondeterministic semantics, expressions can go wrong according
+        to one reduction order while being defined according to another.
+        Consider for instance [(x = 1) + (10 / x)] where [x] is initially [0].
+        This expression goes wrong if evaluated right-to-left, but is defined
+        if evaluated left-to-right.  Since our compiler is going to pick one
+        particular evaluation order, we must make sure that all orders are safe,
+        i.e. never evaluate a subexpression that goes wrong.
 
-  Being safe is a stronger requirement than just not getting stuck during
-  reductions.  Consider [f() + (10 / x)], where [f()] does not terminate.
-  This expression is never stuck because the evaluation of [f()] can make
-  infinitely many transitions.  Yet it contains a subexpression [10 / x]
-  that can go wrong if [x = 0], and the compiler may choose to evaluate
-  [10 / x] first, before calling [f()].
+        Being safe is a stronger requirement than just not getting stuck during
+        reductions.  Consider [f() + (10 / x)], where [f()] does not terminate.
+        This expression is never stuck because the evaluation of [f()] can make
+        infinitely many transitions.  Yet it contains a subexpression [10 / x]
+        that can go wrong if [x = 0], and the compiler may choose to evaluate
+        [10 / x] first, before calling [f()].
 
-  Therefore, we must make sure that not only an expression cannot get stuck,
-  but none of its subexpressions can either.  We say that a subexpression
-  is not immediately stuck if it is a value (of the appropriate kind)
-  or it can reduce (at head or within). *)
+        Therefore, we must make sure that not only an expression cannot get stuck,
+        but none of its subexpressions can either.  We say that a subexpression
+        is not immediately stuck if it is a value (of the appropriate kind)
+        or it can reduce (at head or within). *)
 
-Inductive imm_safe: kind -> expr -> tag -> tenv -> mem -> Prop :=
-  | imm_safe_val: forall v ty PCT te m,
-      imm_safe RV (Eval v ty) PCT te m
-  | imm_safe_loc: forall lk ty PCT te m,
-      imm_safe LV (Eloc lk ty) PCT te m
-  | imm_safe_lred: forall PCT to C e te m e' m',
-      lred e PCT m e' m' ->
-      context LV to C ->
-      imm_safe to (C e) PCT te m
-  | imm_safe_rred: forall PCT PCT' to C e te m t e' te' m',
-      rred PCT e te m t PCT' e' te' m' ->
-      context RV to C ->
-      imm_safe to (C e) PCT te m
-  | imm_safe_callred: forall PCT PCT' to C e te m fd args ty,
-      callred PCT e m fd PCT' args ty ->
-      context RV to C ->
-      imm_safe to (C e) PCT te m.
+    Inductive imm_safe: kind -> expr -> tag -> tenv -> mem -> Prop :=
+    | imm_safe_val: forall v ty PCT te m,
+        imm_safe RV (Eval v ty) PCT te m
+    | imm_safe_loc: forall lk ty PCT te m,
+        imm_safe LV (Eloc lk ty) PCT te m
+    | imm_safe_lred: forall PCT to C e te m e' te' m',
+        lred e PCT te m e' te' m' ->
+        context LV to C ->
+        imm_safe to (C e) PCT te m
+    | imm_safe_rred: forall PCT PCT' to C e te m t e' te' m',
+        rred PCT e te m t PCT' e' te' m' ->
+        context RV to C ->
+        imm_safe to (C e) PCT te m
+    | imm_safe_callred: forall PCT PCT' to C e te m fd args ty,
+        callred PCT e m PCT' fd args ty ->
+        context RV to C ->
+        imm_safe to (C e) PCT te m.
 
-Definition not_stuck (e: expr) (te: tenv) (m: mem) : Prop :=
-  forall k C e' PCT,
-    context k RV C -> e = C e' -> imm_safe k e' PCT te m.
+    Definition not_stuck (e: expr) (te: tenv) (m: mem) : Prop :=
+      forall k C e' PCT,
+        context k RV C -> e = C e' -> imm_safe k e' PCT te m.
 
 (** ** Derived forms. *)
 
@@ -742,16 +898,16 @@ This makes it easy to express different reduction strategies for expressions:
 the second group of rules can be reused as is. *)
 
 Inductive estep: state -> trace -> state -> Prop :=
-| step_lred: forall C f PCT a k e te m a' m',
-    lred e a PCT m a' m' ->
+| step_lred: forall C f PCT a k e te a' m te' m',
+    lred e a PCT te m a' te' m' ->
     context LV RV C ->
     estep (ExprState f PCT (C a) k e te m)
-          E0 (ExprState f PCT (C a') k e te m')
-| step_rred: forall C f PCT PCT' a k e te m t a' te' m',
-    rred PCT a te m t PCT' a' te' m' ->
+          E0 (ExprState f PCT (C a') k e te' m')
+| step_rred: forall C f PCT PCT' a k e te m tr a' te' m',
+    rred PCT a te m tr PCT' a' te' m' ->
     context RV RV C ->
     estep (ExprState f PCT (C a) k e te m)
-          t (ExprState f PCT' (C a') k e te m')
+          tr (ExprState f PCT' (C a') k e te' m')
 | step_call: forall C f PCT PCT' a k e te m fd vargs ty,
     callred PCT a m PCT' fd vargs ty ->
     context RV RV C ->
@@ -761,11 +917,16 @@ Inductive estep: state -> trace -> state -> Prop :=
     context K RV C -> ~(imm_safe e K a PCT te m) ->
     estep (ExprState f PCT (C a) k e te m)
           E0 Stuckstate
-| step_failstop: forall C f PCT PCT' a k e te m t te' m' ty,
-    rred PCT a te m t PCT' (Efailstop ty) te' m' ->
+| step_lfail: forall C f PCT a k e te m msg params,
+    lfailred a PCT msg params ->
+    context LV RV C ->
+    estep (ExprState f PCT (C a) k e te m)
+          E0 (Failstop msg params)
+| step_rfail: forall C f PCT a k e te m tr msg params,
+    rfailred PCT a te m tr msg params ->
     context RV RV C ->
     estep (ExprState f PCT (C a) k e te m)
-          E0 (Failstop "dummy msg" []). (* dummies to hold spot/typecheck*)
+          tr (Failstop msg params).
 
 Inductive sstep: state -> trace -> state -> Prop :=
 | step_do_1: forall f PCT x k e te m,

@@ -78,7 +78,6 @@ Module Csyntax (P:Policy).
                                                                   (**r builtin function call *)
   | Eloc (l:loc_kind) (ty: type)               (**r location, result of evaluating a l-value *)
   | Eparen (r: expr) (tycast: type) (ty: type)                     (**r marked subexpression *)
-  | Efailstop (ty: type)
          
   with exprlist : Type :=
   | Enil
@@ -160,7 +159,6 @@ Definition typeof (a: expr) : type :=
   | Ecall _ _ ty => ty
   | Ebuiltin _ _ _ ty => ty
   | Eparen _ _ ty => ty
-  | Efailstop ty => ty
   end.
 
 (** ** Statements *)
