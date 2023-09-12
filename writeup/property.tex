@@ -1,0 +1,354 @@
+\documentclass{article}
+
+\usepackage{geometry}
+\usepackage{amsmath,amssymb,stmaryrd}
+\usepackage{subcaption}
+\usepackage{xcolor}
+\usepackage{cleveref}
+
+\title{Preserving Safety and Correctness while Relaxing Security Policies}
+
+\begin{document}
+\maketitle
+
+Security policies can sometimes be unnecessarily strict. But they are frequently
+our primary specification of security. How can we relax them without undermining
+the security of the system as a whole? This document offers a characterization in
+terms of preserving properties of discrete components making up the program.
+
+Consider a C program consisting of a library with a protected variable, {\tt H},
+that is meant to be accessed through a getter function, {\tt get\_H}. Otherwise
+it can be accessed and modified by the function {\tt inner}. \Cref{fig:components}
+gives two example components containing these, {\tt lib\_H1} and {\tt lib\_H2}.
+The line {\tt \$liv\_H1\$ >> get\_H} indicates that {\tt get\_H} is being
+exported. It is imported by each of two other example components, {\tt lib\_main1}
+and {\tt lib\_main2}.
+
+Note that these component divisions do not impact the language semantics; they are
+purely a syntactic construct that defines a security specification.
+
+\vspace{\abovedisplayskip}
+
+\begin{figure}
+  \begin{subfigure}{0.33\textwidth}
+    \colorbox{gray!10}{
+      \begin{tabular}{l}
+        \tt \$lib\_H1\$ >> get\_H \\ \\
+
+        \tt \$lib\_H1\$ int H = 0; \\ \\
+
+        \tt \$lib\_H1\$ int get\_H() \{ \\
+        \tt ~ inner(); \\
+        \tt ~ return H; \\
+        \tt \} \\ \\
+
+        \tt \$lib\_H1\$ void inner() \{ \\
+        \tt ~ if (H <= MAX\_INT) \{ \\
+        \tt ~ H++; \\
+        \tt \} \\
+      \end{tabular}
+    }
+  \end{subfigure}
+  \begin{subfigure}{0.33\textwidth}
+    \colorbox{gray!20}{
+      \begin{tabular}{l}
+        \tt \$lib\_H2\$ >> get\_H \\ \\
+        \tt \$lib\_H2\$ int[1] L; \\
+        \tt \$lib\_H2\$ int H = 0; \\ \\
+        
+        \tt \$lib\_H2\$ int get\_H() \{ \\
+        \tt ~ inner(); \\
+        \tt ~ return H; \\
+        \tt \} \\ \\
+        
+        \tt \$lib\_H2\$ void inner() \{ \\
+        \tt ~ if (H <= MAX\_INT) \{ \\
+        \tt ~ ~ H = L[1]+1; \\
+        \tt ~ \} \\
+        \tt \} \\
+      \end{tabular}
+    }
+  \end{subfigure}
+  \begin{subfigure}{0.33\textwidth}
+    \colorbox{gray!30}{
+      \begin{tabular}{l}
+        \tt \$lib\_main1\$ << get\_H \\ \\
+
+        \tt \$lib\_main1\$ int main() \{ \\
+        \tt ~ int[1] x; \\
+        \tt ~ x[1] = get\_H(); \\
+        \tt ~ return x[1]; \\
+        \tt \} \\
+      \end{tabular}
+    }
+    \colorbox{gray!40}{
+      \begin{tabular}{l}
+        \tt \$lib\_main2\$ << get\_H \\ \\
+
+        \tt \$lib\_main2\$ int main() \{ \\
+        \tt ~ int[1] x; \\
+        \tt ~ x[OFF] = -5; \\
+        \tt ~ return get\_H(); \\
+        \tt \} \\
+      \end{tabular}
+    }
+  \end{subfigure}
+  \caption{Example Components}
+  \label{fig:components}
+\end{figure}
+
+\vspace{\belowdisplayskip}
+
+Say we link {\tt lib\_H1} and {\tt lib\_main1}. What should happen?
+For now we will describe the behavior in plain language. {\tt lib\_H1} exports the function
+{\tt get\_H}, which returns as an integer the number of times that
+it's been called, or {\tt MAX\_INT} if that would overflow. {\tt lib\_main1}
+contains {\tt main}, so execution starts there, and it imports {\tt get\_H}. But...
+in standard C, {\tt main} is undefined, because it writes outside the bounds of {\tt x}.
+Does that mean that the program as a whole cannot be specified?
+
+In standard C, this would be the case: in the presence of undefined behavior, anything
+at all might happen. But it will behave predictably under most compilers: {\tt main} will behave
+the same as  {\tt int main() \{ return get\_H(); \}} would (subject to the assumption that
+{\tt x[1]} does not alias to {\tt H}, which would require a rather unusual memory layout). 
+Concrete C explicitly models this in its semantics: a write to {\tt x[1]} produces
+the same value when read. That is, unless it would trample some private memory in use by
+the compiler, in which case it may failstop instead. In Tagged C, there may be even more
+failstops, depending on the active policy: a standard memory safety policy will cause
+{\tt main} to failstop.
+
+There is good reason for this: suppose that we link {\tt lib\_H1} with {\tt lib\_main2}.
+Now {\tt main} writes to {\tt x[OFF]}, where {\tt OFF} happens to be the offset between
+{\tt x} and {\tt H}. In Concrete C, {\tt get\_H} will return a value of \(-4\).
+But, the behavior we've decribed should never produce a negative value.
+In Tagged C, run under a memory safety policy that failstops any time a load or store would
+be performed through an invalid pointer, the program failstops before the call even occurs.
+[TODO: write out the policy]
+
+So, we want to distinguish between the cases of {\tt lib\_H1} linked with {\tt lib\_main1}
+and with {\tt lib\_main2}, allowing the first to run but not the second. Likewise,
+we would like to allow {\tt lib\_H2} to link with {\tt lib\_main1} safely.
+
+One option is a {\em coarse-grained compartmentalization} policy in which we keep
+track of which compartment is active, identify every allocated object as belonging
+to one compartment or the other, and failstop if the active compartment would access
+an object that doesn't belong to it. This policy would permit {\tt lib\_main1}
+to run, as the memory that it overwrites is not previously in use by another compartment,
+but would failstop in {\tt lib\_main2}.
+
+But, we cannot consistently expect this to work. Consider a different set of
+components, {\tt lib\_H3} and {\tt lib\_main3}, from \cref{fig:unsafe}.
+
+\begin{figure}
+  \begin{subfigure}{0.49\textwidth}
+    \begin{tabular}{l}
+      \tt \$lib\_H3\$ >> get\_H \\
+      \tt \$lib\_H3\$ >> set\_L \\ \\
+
+      \tt \$lib\_H3\$ int[10] L; \\
+      \tt \$lib\_H3\$ int H = 0; \\ \\
+
+      \tt \$lib\_H3\$ int get\_H() \{ \\
+      \tt ~ inner(); \\
+      \tt ~ return H; \\
+      \tt \} \\ \\
+
+      \tt \$lib\_H3\$ void set\_L(int i, int v) \{ \\
+      \tt ~ L[i] = v; \\
+      \tt \} \\ \\
+    
+      \tt \$lib\_H3\$ void inner() \{ \\
+      \tt ~ if (H <= MAX\_INT) \{ \\
+      \tt ~ ~ H++; \\
+      \tt ~ \} \\
+      \tt \} \\
+    \end{tabular}
+  \end{subfigure}
+  \begin{subfigure}{0.49\textwidth}
+    \begin{tabular}{l}
+      \tt \$lib\_main3\$ << get\_H \\
+      \tt \$lib\_main3\$ << set\_L \\ \\
+
+      \tt \$lib\_main3\$ int main() \{ \\
+      \tt ~ set\_L(10, -5); \\ \\
+      
+      \tt ~ return get\_H(); \\
+      \tt \} \\
+    \end{tabular}
+  \end{subfigure}
+  \caption{Not safe under coarse-grained compartmentalization}
+  \label{fig:unsafe}
+\end{figure}
+
+One way to characterize this issue to consider {\em robust property preservation}.
+Let \(\mathit{HPos}\) be the property of {\tt lib\_H3} that {\tt get\_H} only returns
+positive values (expressed as a predicate on the execution trace). Under memory safety,
+this should hold for {\tt lib\_H3} no matter which component it is linked against.
+We say that {\tt lib\_H3} {\em robustly satisfies} \(\mathit{HPos}\) under the memory safety
+policy. But under a coarse-grained compartmentalization policy, when linked with {\tt lib\_main3},
+in the likely event that {\tt L} and {\tt H} are adjacent, {\tt set\_L} overwrites
+{\tt H}. So under coarse-grained compartmentalization, the robust satisfaction is
+not preserved.
+
+In general, we would like all of our policy transformations to preserve any relevant properties,
+which is all of them, since we probably won't know in general which properties are of interest.
+But there is one more wrinkle, which we will see in {\tt lib\_H2}: here {\tt inner} uses
+an unsafe memory operation, although if {\tt L} and {\tt H} are adjacent is has the same
+effect as writing directly to {\tt H}.
+
+Under a memory safety policy, {\tt get\_H} always failstops without returning anything.
+So what properties are robust? If we limit outselves to safety properties, almost all of them!
+Safety properties are those that are only violated by a finite trace prefix, and
+{\tt inner} failstops before most such prefixes can be formed.
+
+\paragraph{Formalizing What We've Seen So Far}
+
+So far we have a two-compartment system, which we've been thinking of as a
+component under focus and a context.
+We will identify our component under focus as \(A\) and the context as \(C\),
+and write the linked program \(C[A]\).
+
+Let \(E\) be the set of events. [TODO: write these out.] An event trace is a (possibly-infinite) sequence
+of events. We write \(C[A]_{\rho} \rightsquigarrow t\) to represent that a linked program
+can produce the trace \(t\) when run with policy \(\rho\). For now we assume that the
+language is deterministic, and so an execution of a linked component and context produces
+a single trace. For two traces \(t_1\) and \(t_2\), we say that \(t_1\) prefixes \(t_2\)
+if it is identical or if it is of finite length \(n\) and identical for the first \(n\)
+events. We write this \(t_1 \leq t_2\). If \(C[A]_\rho \rightsquigarrow t_1\) and
+\(C'[A']_{\rho'} \rightsquigarrow t_2\), and \(t_1 \leq t_2\), we write
+\(C[A]_\rho \sqsubseteq C'[A']_{\rho'}\).
+
+We define the behavior of a component, \(|A|\), as the set of all traces
+that it can produce when linked against any other compartment.
+
+\[|A|_{\rho} \triangleq \bigcup_{C} \{ t \mid C[A]_{\rho} \rightsquigarrow t \}\]
+
+The null policy, \(\bot\), represents a policy that never failstops,
+i.e., in which Tagged C's behavior is equivalent to Concrete C.
+The underlying Concrete C semantics might still failstop.
+
+%This gives us an important lemma, \(\bot\)-{\em extension}:
+%
+%\[\forall A ~ C ~ \rho . C[A]_\rho \sqsubseteq C[A]_\bot\]
+
+\paragraph{Improvement}
+
+We consider a component \(A'\) to {\em improve} \(A\) under \(\rho\) if, for all \(C\),
+\(C[A]_\rho \sqsubseteq C[A']_\rho \sqsubseteq C[A]_\bot\).
+We write this \(A' \gg_\rho A\).
+It's worth focusing in on the relation \(C[A']_\rho \sqsubseteq C[A]_\bot\). This means that,
+up to the point that \(C[A']\) failstops under \(\rho\), it behaves identically to
+how \(C[A]\) would with no protection at all. Since this is the case for any \(C\), we can say
+that \(A'\) implements the same behavior as \(A\) (up to \(\rho\)). And, because it is run
+under \(\rho\), it by definition obeys whatever form of security \(\rho\) enforces.
+We can think of \(A'\) as a different implementation of the same program.
+Then \(C[A]_\rho \sqsubseteq C[A']_\rho\) tells us that this implementation at worst
+triggers a failstop at the same time that \(A\) does, but may instead avoid the failstop
+and execute longer. For example, it should be clear that {\tt lib\_H1} improves
+{\tt lib\_H2} under memory safety, because it continues past the illegal operation and
+agrees with Concrete C. The converse is not true; {\tt lib\_H2} failstops when {\tt lib\_H1}
+does not.
+
+For each component \(A\) and policy \(\rho\) there exists at least one {\em idealized instance}
+\(\lceil A \rceil_\rho\) such that, if any \(A' \gg_\rho A\), then
+\(\lceil A \rceil_\rho \gg_\rho A'\). We define the {\em idealized behavior} of \(A\) under
+\(\rho\), written \(\| A \|_\rho\), as the set of the trace induced by all contexts linked with
+an idealized instance of \(A\):
+
+\[\| A \|_\rho \triangleq \bigcup_{C} \{ t \mid C[A'] \rightsquigarrow t \textnormal{ where }
+A' = \lceil A \rceil_\rho\} \]
+
+\paragraph{Robust Improved Preservation}
+
+With our notion of improvement, we are cabable of formalizing a notion of what
+we want to preserve. We have discussed properties informally;
+a property \(\pi\) is a set of traces. A component \(A\) {\em robustly satisfies}
+\(\pi\) under \(\rho\) if, for all \(C\) and \(t\) where \(C[A]_\rho \rightsquigarrow t\),
+\(t \in \pi\).
+
+We are concerned with {\em robust improved property preservation} (RIPP) between two
+policies, \(\rho_\uparrow\) and \(\rho_\downarrow\). These policies enjoy RIPP if,
+for any component \(A\), all policies that are robustly satisfied by \(A\) under
+\(\rho_\uparrow\)'s idealized instance are also robustly satisfied by \(\rho_\downarrow\).
+%
+\[RIPP ~ \rho_\uparrow ~ \rho_\downarrow \triangleq \forall A ~ \pi.\|A\|_{\rho_\uparrow} \subseteq \pi \Rightarrow |A|_{\rho_\downarrow} \subseteq \pi\]
+
+We focus specifically on {\em safety properties}---a class of properties in which every
+trace \(t\) that violates the property has a finite prefix \(m\) that causes the violation.
+Formally:
+\[\begin{split}
+\pi \in \mathit{SAFETY} \Leftrightarrow & \forall t . t \not \in \pi \Rightarrow \\
+& (\exists m . m \leq t \land \forall t' . m \leq t' \Rightarrow t' \not \in \pi)
+\end{split}\]
+
+We specialize \(RIPP\) by assuming that \(\pi\) is a safety property, to get
+\(RISP\):
+
+\[RISP ~ \rho_\uparrow ~ \rho_\downarrow \triangleq \forall A ~ \pi.\pi \in \mathit{SAFETY} \Rightarrow \|A\|_{\rho_\uparrow} \subseteq \pi \Rightarrow |A|_{\rho_\downarrow} \subseteq \pi \]
+
+We're hiding a lot of complexity inside that formula, so let's unfold it.
+%
+\[\begin{split}
+RISP ~ \rho_\uparrow ~ \rho_\downarrow \equiv \forall A ~ A' ~ \pi . & \pi \in \mathit{SAFETY} \Rightarrow \\
+& (A' \gg_{\rho_\uparrow} A \land
+\forall A'' . A'' \gg_{\rho_\uparrow} A' \Rightarrow A' \gg_{\rho_\uparrow} A'') \Rightarrow \\
+& (\forall C ~ t . C[A']_{\rho_\uparrow} \rightsquigarrow t \Rightarrow t \in \pi) \Rightarrow \\
+& (\forall C ~ t . C[A]_{\rho_\downarrow} \rightsquigarrow t \Rightarrow t \in \pi)
+\end{split}\]
+
+If we take the contrapositive this is equivalent to:
+\[\begin{split}
+RISP ~ \rho_\uparrow ~ \rho_\downarrow \equiv \forall A ~ A' ~ \pi . & \pi \in \mathit{SAFETY} \Rightarrow \\
+& (A' \gg_{\rho_\uparrow} A \land
+\forall A'' . A'' \gg_{\rho_\uparrow} A' \Rightarrow A' \gg_{\rho_\uparrow} A'') \Rightarrow \\
+& (\exists C ~ t . C[A]_{\rho_\downarrow} \rightsquigarrow t \land t \not \in \pi) \Rightarrow \\
+& (\exists C ~ t . C[A']_{\rho_\uparrow} \rightsquigarrow t \land t \not \in \pi)
+\end{split}\]
+
+And, simplifying by the definition of \(\mathit{SAFETY}\), we can focus on the finite prefix
+of each property-violating trace:
+%
+\[\begin{split}
+RISP ~ \rho_\uparrow ~ \rho_\downarrow \equiv \forall A ~ A' ~ \pi .
+& (A' \gg_{\rho_\uparrow} A \land
+\forall A'' . A'' \gg_{\rho_\uparrow} A' \Rightarrow A' \gg_{\rho_\uparrow} A'') \Rightarrow \\
+& (\exists C ~ m . C[A]_{\rho_\downarrow} \rightsquigarrow m\ldots \land m \not \in \pi) \Rightarrow \\
+& (\exists C ~ m . C[A']_{\rho_\uparrow} \rightsquigarrow m\ldots \land m \not \in \pi)
+\end{split}\]
+
+Quantifying over \(\pi\) is challenging, so we define an equivalent criterion (\(RISC\)) that
+merely requires us to be able to construct a source context that will generate the same trace
+prefix as the target when linked against \(A'\).
+%
+\[\begin{split}
+RISC ~ \rho_\uparrow ~ \rho_\downarrow \triangleq & \forall A ~ A' ~ C ~ m . \\
+& (A' \gg_{\rho_\uparrow} A \land
+\forall A'' . A'' \gg_{\rho_\uparrow} A' \Rightarrow A' \gg_{\rho_\uparrow} A'') \Rightarrow \\
+& C[A]_{\rho_\downarrow} \rightsquigarrow m\ldots \Rightarrow \\
+& \exists C' . C'[A']_{\rho_\uparrow} \rightsquigarrow m\ldots
+\end{split}\]
+
+This is going to be tricky to use in practice, because we don't have a general way
+to reason about \(A'\) and its relationship with \(A\). Fortunately, it suffices to
+find {\em any} component that both improves upon \(A\) and generates the prefix \(m\),
+because it follows that \(A'\) will generate an extension of \(m\). We call this criterion
+\(RISC'\).
+%
+\[\begin{split}
+RISC' ~ \rho_\uparrow ~ \rho_\downarrow \triangleq & \forall A ~ C ~ m .
+C[A]_{\rho_\downarrow} \rightsquigarrow m\ldots \Rightarrow \\
+& \exists A' ~ C' . C'[A']_{\rho_\uparrow} \rightsquigarrow m\ldots \land A' \gg_{\rho_\uparrow} A \\
+\end{split}\]
+
+We should have that \(RISC' \Rightarrow RISC \Leftrightarrow RISP\).
+
+So far, so good. But... \(RISC'\) may be hard to prove. It is straightforward to produce
+an \(A'\) and \(C'\) that produce the prefix \(m\) using data-flow back-translation.
+It is less straightforward to produce an \(A'\) such that \(A' \gg_{\rho_\uparrow} A\),
+but it can be done in a similar way to proving {\em Robust Hypersafety Preservation}.
+It is not obvious how to do both at once. I hypothesize that the trick is to take turns,
+constructing a \(C_0\) that produces the first ``input'' event of \(m\), then an \(A_0\) that
+takes any trace with one input event and produces the correct ``output'', then a \(C_1\) and
+\(A_1\) and so on.
+
+\end{document}
