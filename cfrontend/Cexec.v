@@ -2300,7 +2300,7 @@ Definition do_step (w: world) (s: Csem.state) : list transition :=
         | Kreturn k =>
             do v' <- sem_cast v ty f.(fn_return) m;
             do m' <- Mem.free_list m (blocks_of_env e);
-            ret "step_return_2" (Returnstate pct (v',vt) (call_cont k) m')
+            ret "step_return_2" (Returnstate (Internal f) pct (v',vt) (call_cont k) m')
         | Kswitch1 sl k =>
             do n <- sem_switch_arg v ty;
             ret "step_expr_switch" (State f pct (seq_of_labeled_statement (select_switch n sl)) (Kswitch2 k) e m)
@@ -2352,12 +2352,12 @@ Definition do_step (w: world) (s: Csem.state) : list transition :=
 
   | State f pct (Sreturn None) k e m =>
       do m' <- Mem.free_list m (blocks_of_env e);
-      ret "step_return_0" (Returnstate pct (Vundef,def_tag) (call_cont k) m')    
+      ret "step_return_0" (Returnstate (Internal f) pct (Vundef,def_tag) (call_cont k) m')    
   | State f pct (Sreturn (Some x)) k e m =>
       ret "step_return_1" (ExprState f pct x (Kreturn k) e m)
   | State f pct Sskip ((Kstop | Kcall _ _ _ _ _ _) as k) e m =>
       do m' <- Mem.free_list m (blocks_of_env e);
-      ret "step_skip_call" (Returnstate pct (Vundef, def_tag) (call_cont k) m')
+      ret "step_skip_call" (Returnstate (Internal f) pct (Vundef, def_tag) (call_cont k) m')
              
   | State f pct (Sswitch x sl) k e m =>
       ret "step_switch" (ExprState f pct x (Kswitch1 sl k) e m)
@@ -2379,13 +2379,13 @@ Definition do_step (w: world) (s: Csem.state) : list transition :=
       let '(pct',e,m1) := do_alloc_variables pct empty_env m (f.(fn_params) ++ f.(fn_vars)) in
       do m2 <- sem_bind_parameters w e m1 f.(fn_params) vargs;
       ret "step_internal_function" (State f pct' f.(fn_body) k e m2)
-  | Callstate (External ef _ _ _) pct vargs k m =>
+  | Callstate (External ef targs tres cc) pct vargs k m =>
       match do_external ef w vargs pct m with
       | None => nil
-      | Some(w',t,v,pct',m') => TR "step_external_function" t (Returnstate pct v k m') :: nil
+      | Some(w',t,v,pct',m') => TR "step_external_function" t (Returnstate (External ef targs tres cc) pct v k m') :: nil
       end
 
-  | Returnstate pct (v,vt) (Kcall f e oldpct C ty k) m =>
+  | Returnstate fd pct (v,vt) (Kcall f e oldpct C ty k) m =>
       at "step_returnstate_tfail" trule pct', vt' <- RetT pct oldpct vt;
         ret "step_returnstate" (ExprState f pct' (C (Eval (v,vt') ty)) k e m)
 
@@ -2574,7 +2574,7 @@ Definition do_initial_state (p: program): option (Genv.t (Ctypes.fundef function
 
 Definition at_final_state (S: Csem.state): option (PolicyResult int) :=
   match S with
-  | Returnstate _ (Vint r,_) Kstop m => Some (PolicySuccess r)
+  | Returnstate _ _ (Vint r,_) Kstop m => Some (PolicySuccess r)
   | Failstop r params => Some (PolicyFail r params )
   | _ => None
   end.

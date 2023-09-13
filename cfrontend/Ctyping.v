@@ -2160,10 +2160,10 @@ Inductive wt_state: Csem.state -> Prop :=
                         (WTFD: wt_fundef ce gtenv fd)
                         (FIND: Genv.find_funct ge b = Some fd),
     wt_state (Callstate fd PCT vargs k m)
-| wt_return_state: forall PCT v vt k m ty
+| wt_return_state: forall fd PCT v vt k m ty
                           (WTK: wt_call_cont k ty)
                           (VAL: wt_val v ty),
-    wt_state (Returnstate PCT (v,vt) k m)
+    wt_state (Returnstate fd PCT (v,vt) k m)
 | wt_stuck_state:
   wt_state Stuckstate
 | wt_failstop_state: forall r params,

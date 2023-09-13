@@ -37,12 +37,12 @@ Module Csem (P: Policy).
 
   Import P.
 
-(** * Operational semantics *)
+  (** * Operational semantics *)
 
-(** The semantics uses two environments.  The global environment
-  maps names of functions and global variables to memory block references,
-  and function pointers to their definitions.  (See module [Globalenvs].)
-  It also contains a composite environment, used by type-dependent operations. *)
+  (** The semantics uses two environments.  The global environment
+      maps names of functions and global variables to memory block references,
+      and function pointers to their definitions.  (See module [Globalenvs].)
+      It also contains a composite environment, used by type-dependent operations. *)
 
   Definition gcenv : Type := (Genv.t fundef type * composite_env).
 
@@ -604,19 +604,20 @@ Inductive state: Type :=
     (e: env)
     (m: mem) : state
 | Callstate                           (**r calling a function *)
-    (fd: fundef)
+    (fd: fundef)                      (* callee that has just been entered *)
     (PCT: tag)
     (args: list atom)
     (k: cont)
     (m: mem) : state
 | Returnstate                         (**r returning from a function *)
+    (fd: fundef)                      (* callee that is now returning *)
     (PCT: tag)
     (res: atom)
     (k: cont)
     (m: mem) : state
 | Stuckstate                          (**r undefined behavior occurred *)
 | Failstop                            (**r tag failure occurred, propagate details *)
-    (r: string)
+    (msg: string)
     (params: list tag) : state
 .
 (** Find the statement and manufacture the continuation
@@ -801,7 +802,7 @@ Inductive sstep: state -> trace -> state -> Prop :=
 | step_return_0: forall f PCT k e m m',
     Mem.free_list m (blocks_of_env e) = Some m' ->
     sstep (State f PCT (Sreturn None) k e m)
-          E0 (Returnstate PCT (Vundef, def_tag) (call_cont k) m')
+          E0 (Returnstate (Internal f) PCT (Vundef, def_tag) (call_cont k) m')
 | step_return_1: forall f PCT x k e m,
     sstep (State f PCT (Sreturn (Some x)) k e m)
           E0 (ExprState f PCT x (Kreturn k) e  m)
@@ -809,12 +810,12 @@ Inductive sstep: state -> trace -> state -> Prop :=
     sem_cast v ty f.(fn_return) m = Some v' ->
     Mem.free_list m (blocks_of_env e) = Some m' ->
     sstep (ExprState f PCT (Eval (v,vt) ty) (Kreturn k) e m)
-          E0 (Returnstate PCT (v',vt) (call_cont k) m')
+          E0 (Returnstate (Internal f) PCT (v',vt) (call_cont k) m')
 | step_skip_call: forall f PCT k e m m',
     is_call_cont k ->
     Mem.free_list m (blocks_of_env e) = Some m' ->
     sstep (State f PCT Sskip k e m)
-          E0 (Returnstate PCT (Vundef, def_tag) k m')
+          E0 (Returnstate (Internal f) PCT (Vundef, def_tag) k m')
           
 | step_switch: forall f PCT x sl k e m,
     sstep (State f PCT (Sswitch x sl) k e m)
@@ -850,12 +851,12 @@ Inductive sstep: state -> trace -> state -> Prop :=
 | step_external_function: forall ef PCT PCT' targs tres cc vargs k m vres t m',
     external_call ef (fst ge) vargs PCT m t vres PCT' m' ->
     sstep (Callstate (External ef targs tres cc) PCT vargs k m)
-          t (Returnstate PCT' vres k m')
+          t (Returnstate (External ef targs tres cc) PCT' vres k m')
 
-| step_returnstate: forall v vt vt' f PCT oldpct PCT' e C ty k m,
+| step_returnstate: forall v vt vt' f f' PCT oldpct PCT' e C ty k m,
     RetT PCT oldpct vt = PolicySuccess (PCT', vt') ->
-    sstep (Returnstate PCT (v,vt) (Kcall f e oldpct C ty k) m)
-          E0 (ExprState f PCT' (C (Eval (v,vt') ty)) k e m)
+    sstep (Returnstate (Internal f) PCT (v,vt) (Kcall f' e oldpct C ty k) m)
+          E0 (ExprState f' PCT' (C (Eval (v,vt') ty)) k e m)
 .
 
 Definition step (S: state) (t: trace) (S': state) : Prop :=
@@ -882,8 +883,8 @@ End SEM.
 (** A final state is a [Returnstate] with an empty continuation. *)
 
 Inductive final_state: state -> int -> Prop :=
-  | final_state_intro: forall PCT r m t,
-      final_state (Returnstate PCT (Vint r, t) Kstop m) r.
+  | final_state_intro: forall f PCT r m t,
+      final_state (Returnstate f PCT (Vint r, t) Kstop m) r.
 
 (** Wrapping up these definitions in a small-step semantics. *)
 
