@@ -24,8 +24,9 @@ Module Initializers (P:Policy).
   Import TLib.
   Module Cexec := Cexec P.
   Import Cexec.
+  Import InterpreterEvents.
   Import Cstrategy.
-  Import Ctyping.
+  Import Ctyping.  
   Import Csem.
   Import Csyntax.
   Import Cop.

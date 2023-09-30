@@ -53,154 +53,154 @@ Module Cstrategy (P: Policy).
   Import P.
 
 
-Section STRATEGY.
+  Section STRATEGY.
 
-Variable ge: gcenv.
+    Variable ge: gcenv.
 
-(** * Definition of the strategy *)
+    (** * Definition of the strategy *)
 
-(** We now formalize a particular strategy for reducing expressions which
-  is the one implemented by the CompCert compiler.  It evaluates effectful
-  subexpressions first, in leftmost-innermost order, then finishes
-  with the evaluation of the remaining simple expression. *)
+    (** We now formalize a particular strategy for reducing expressions which
+        is the one implemented by the CompCert compiler.  It evaluates effectful
+        subexpressions first, in leftmost-innermost order, then finishes
+        with the evaluation of the remaining simple expression. *)
 
-(** Simple expressions are defined as follows. *)
+    (** Simple expressions are defined as follows. *)
 
-Fixpoint simple (a: expr) : bool :=
-  match a with
-  | Eloc _ _ => true
-  | Evar _ _ => true
-  | Econst _ _ => true
-  | Ederef r _ => simple r
-  | Efield r _ _ => simple r
-  | Eval _ _ => true
-  | Evalof l _ => simple l && negb(type_is_volatile (typeof l))
-  | Eaddrof l _ => simple l
-  | Eunop _ r1 _ => simple r1
-  | Ebinop _ r1 r2 _ => simple r1 && simple r2
-  | Ecast r1 _ => simple r1
-  | Eseqand _ _ _ => false
-  | Eseqor _ _ _ => false
-  | Econdition _ _ _ _ => false
-  | Esizeof _ _ => true
-  | Ealignof _ _ => true
-  | Eassign _ _ _ => false
-  | Eassignop _ _ _ _ _ => false
-  | Epostincr _ _ _ => false
-  | Ecomma _ _ _ => false
-  | Ecall _ _ _ => false
-  | Ebuiltin _ _ _ _ => false
-  | Eparen _ _ _ => false
-  end.
+    Fixpoint simple (a: expr) : bool :=
+      match a with
+      | Eloc _ _ => true
+      | Evar _ _ => true
+      | Econst _ _ => true
+      | Ederef r _ => simple r
+      | Efield r _ _ => simple r
+      | Eval _ _ => true
+      | Evalof l _ => simple l && negb(type_is_volatile (typeof l))
+      | Eaddrof l _ => simple l
+      | Eunop _ r1 _ => simple r1
+      | Ebinop _ r1 r2 _ => simple r1 && simple r2
+      | Ecast r1 _ => simple r1
+      | Eseqand _ _ _ => false
+      | Eseqor _ _ _ => false
+      | Econdition _ _ _ _ => false
+      | Esizeof _ _ => true
+      | Ealignof _ _ => true
+      | Eassign _ _ _ => false
+      | Eassignop _ _ _ _ _ => false
+      | Epostincr _ _ _ => false
+      | Ecomma _ _ _ => false
+      | Ecall _ _ _ => false
+      | Ebuiltin _ _ _ _ => false
+      | Eparen _ _ _ => false
+      end.
 
-Fixpoint simplelist (rl: exprlist) : bool :=
-  match rl with Enil => true | Econs r rl' => simple r && simplelist rl' end.
+    Fixpoint simplelist (rl: exprlist) : bool :=
+      match rl with Enil => true | Econs r rl' => simple r && simplelist rl' end.
 
-(** Simple expressions have interesting properties: their evaluations always
-  terminate, are deterministic, and preserve the memory state.
-  We seize this opportunity to define a big-step semantics for simple
-  expressions. *)
+    (** Simple expressions have interesting properties: their evaluations always
+        terminate, are deterministic, and preserve the memory state.
+        We seize this opportunity to define a big-step semantics for simple
+        expressions. *)
 
-Section SIMPLE_EXPRS.
+    Section SIMPLE_EXPRS.
 
-Variable e: env.
-Variable te: tenv.
-Variable m: mem.
-Variable PCT: tag.
+      Variable e: env.
+      Variable te: tenv.
+      Variable m: mem.
+      Variable PCT: tag.
 
-Inductive eval_simple_lvalue: expr -> loc_kind -> Prop :=
-| esl_loc: forall loc ty,
-    eval_simple_lvalue (Eloc loc ty) loc
-| esl_var_local: forall x ty lo hi pt,
-    e!x = Some (PUB (lo, hi, pt)) ->
-    eval_simple_lvalue (Evar x ty) (Lmem (Ptrofs.repr lo) pt Full)
-| esl_var_global: forall x ty base bound pt,
-    e!x = None ->
-    Genv.find_symbol (fst ge) x = Some (inr (base, bound, pt)) ->
-    eval_simple_lvalue (Evar x ty) (Lmem (Ptrofs.repr base) pt Full)
-| esl_deref_short: forall r ty ofs pt,
-    eval_simple_rvalue PCT r (Vint ofs, pt) ->
-    eval_simple_lvalue (Ederef r ty) (Lmem (Ptrofs.of_int ofs) pt Full)
-| esl_deref_long: forall r ty ofs pt,
-    eval_simple_rvalue PCT r (Vlong ofs, pt) ->
-    eval_simple_lvalue (Ederef r ty) (Lmem (Ptrofs.of_int64 ofs) pt Full)
-| esl_field_struct_short: forall r f ty ofs pt id co a delta bf,
-    eval_simple_rvalue PCT r (Vint ofs, pt) ->
-    typeof r = Tstruct id a ->
-    (snd ge)!id = Some co ->
-    field_offset (snd ge) f (co_members co) = OK (delta, bf) ->
-    eval_simple_lvalue (Efield r f ty) (Lmem (Ptrofs.add (Ptrofs.of_int ofs) (Ptrofs.repr delta)) pt bf)
-| esl_field_struct_long: forall r f ty ofs pt id co a delta bf,
-    eval_simple_rvalue PCT r (Vlong ofs, pt) ->
-    typeof r = Tstruct id a ->
-    (snd ge)!id = Some co ->
-    field_offset (snd ge) f (co_members co) = OK (delta, bf) ->
-    eval_simple_lvalue (Efield r f ty) (Lmem (Ptrofs.add (Ptrofs.of_int64 ofs) (Ptrofs.repr delta)) pt bf)
-| esl_field_union_short: forall r f ty ofs pt id co a delta bf,
-    eval_simple_rvalue PCT r (Vint ofs, pt) ->
-    typeof r = Tunion id a ->
-    union_field_offset (snd ge) f (co_members co) = OK (delta, bf) ->
-    (snd ge)!id = Some co ->
-    eval_simple_lvalue (Efield r f ty) (Lmem (Ptrofs.add (Ptrofs.of_int ofs) (Ptrofs.repr delta)) def_tag bf)
-| esl_field_union_long: forall r f ty ofs pt id co a delta bf,
-    eval_simple_rvalue PCT r (Vlong ofs, pt) ->
-    typeof r = Tunion id a ->
-    union_field_offset (snd ge) f (co_members co) = OK (delta, bf) ->
-    (snd ge)!id = Some co ->
-    eval_simple_lvalue (Efield r f ty) (Lmem (Ptrofs.add (Ptrofs.of_int64 ofs) (Ptrofs.repr delta)) def_tag bf)
+      Inductive eval_simple_lvalue: expr -> loc_kind -> Prop :=
+      | esl_loc: forall loc ty,
+          eval_simple_lvalue (Eloc loc ty) loc
+      | esl_var_local: forall x ty lo hi pt,
+          e!x = Some (PUB (lo, hi, pt)) ->
+          eval_simple_lvalue (Evar x ty) (Lmem (Ptrofs.repr lo) pt Full)
+      | esl_var_global: forall x ty base bound pt,
+          e!x = None ->
+          Genv.find_symbol (fst ge) x = Some (inr (base, bound, pt)) ->
+          eval_simple_lvalue (Evar x ty) (Lmem (Ptrofs.repr base) pt Full)
+      | esl_deref_short: forall r ty ofs pt,
+          eval_simple_rvalue PCT r (Vint ofs, pt) ->
+          eval_simple_lvalue (Ederef r ty) (Lmem (Ptrofs.of_int ofs) pt Full)
+      | esl_deref_long: forall r ty ofs pt,
+          eval_simple_rvalue PCT r (Vlong ofs, pt) ->
+          eval_simple_lvalue (Ederef r ty) (Lmem (Ptrofs.of_int64 ofs) pt Full)
+      | esl_field_struct_short: forall r f ty ofs pt id co a delta bf,
+          eval_simple_rvalue PCT r (Vint ofs, pt) ->
+          typeof r = Tstruct id a ->
+          (snd ge)!id = Some co ->
+          field_offset (snd ge) f (co_members co) = OK (delta, bf) ->
+          eval_simple_lvalue (Efield r f ty) (Lmem (Ptrofs.add (Ptrofs.of_int ofs) (Ptrofs.repr delta)) pt bf)
+      | esl_field_struct_long: forall r f ty ofs pt id co a delta bf,
+          eval_simple_rvalue PCT r (Vlong ofs, pt) ->
+          typeof r = Tstruct id a ->
+          (snd ge)!id = Some co ->
+          field_offset (snd ge) f (co_members co) = OK (delta, bf) ->
+          eval_simple_lvalue (Efield r f ty) (Lmem (Ptrofs.add (Ptrofs.of_int64 ofs) (Ptrofs.repr delta)) pt bf)
+      | esl_field_union_short: forall r f ty ofs pt id co a delta bf,
+          eval_simple_rvalue PCT r (Vint ofs, pt) ->
+          typeof r = Tunion id a ->
+          union_field_offset (snd ge) f (co_members co) = OK (delta, bf) ->
+          (snd ge)!id = Some co ->
+          eval_simple_lvalue (Efield r f ty) (Lmem (Ptrofs.add (Ptrofs.of_int ofs) (Ptrofs.repr delta)) def_tag bf)
+      | esl_field_union_long: forall r f ty ofs pt id co a delta bf,
+          eval_simple_rvalue PCT r (Vlong ofs, pt) ->
+          typeof r = Tunion id a ->
+          union_field_offset (snd ge) f (co_members co) = OK (delta, bf) ->
+          (snd ge)!id = Some co ->
+          eval_simple_lvalue (Efield r f ty) (Lmem (Ptrofs.add (Ptrofs.of_int64 ofs) (Ptrofs.repr delta)) def_tag bf)
 
-with eval_simple_rvalue: tag -> expr -> atom -> Prop :=
-  | esr_val: forall v ty,
-      eval_simple_rvalue PCT (Eval v ty) v
-  | esr_rvalof_mem: forall ofs pt bf l ty v lts,
-      eval_simple_lvalue l (Lmem ofs pt bf) ->
-      ty = typeof l -> type_is_volatile ty = false ->
-      deref_loc ge ty m ofs pt bf E0 v lts ->
-      eval_simple_rvalue PCT (Evalof l ty) v
-  | esr_rvalof_tmp: forall b l ty v,
-      eval_simple_lvalue l (Ltmp b) ->
-      te!b = Some v ->
-      eval_simple_rvalue PCT (Evalof l ty) v
-  | esr_addrof_mem: forall ofs pt l ty,
-      eval_simple_lvalue l (Lmem ofs pt Full) ->
-      eval_simple_rvalue PCT (Eaddrof l ty) (Vofptrsize (Ptrofs.signed ofs), pt)
-  | esr_addrof_fun: forall b pt l ty,
-      eval_simple_lvalue l (Lfun b pt) ->
-      eval_simple_rvalue PCT (Eaddrof l ty) (Vfptr b, pt)
-  | esr_unop: forall op r1 ty v1 vt v,
-      eval_simple_rvalue PCT r1 (v1,vt) ->
-      sem_unary_operation op v1 (typeof r1) m = Some v ->
-      eval_simple_rvalue PCT (Eunop op r1 ty) (v,vt)
-  | esr_binop: forall PCT' op r1 r2 ty v1 vt1 v2 vt2 v vt,
-      eval_simple_rvalue PCT r1 (v1,vt1) -> eval_simple_rvalue PCT r2 (v2,vt2) ->
-      sem_binary_operation (snd ge) op v1 (typeof r1) v2 (typeof r2) m = Some v ->
-      BinopT op PCT vt1 vt2 = PolicySuccess (PCT', vt) ->
-      eval_simple_rvalue PCT' (Ebinop op r1 r2 ty) (v,vt)
-  | esr_cast: forall ty r1 v1 vt v,
-      eval_simple_rvalue PCT r1 (v1,vt) ->
-      sem_cast v1 (typeof r1) ty m = Some v ->
-      eval_simple_rvalue PCT (Ecast r1 ty) (v,vt)
-  | esr_sizeof: forall ty1 ty,
-      eval_simple_rvalue PCT (Esizeof ty1 ty) (Vofptrsize (sizeof (snd ge) ty1), def_tag)
-  | esr_alignof: forall ty1 ty,
-      eval_simple_rvalue PCT (Ealignof ty1 ty) (Vofptrsize (alignof (snd ge) ty1), def_tag).
+      with eval_simple_rvalue: tag -> expr -> atom -> Prop :=
+      | esr_val: forall v ty,
+          eval_simple_rvalue PCT (Eval v ty) v
+      | esr_rvalof_mem: forall ofs pt bf l ty v lts,
+          eval_simple_lvalue l (Lmem ofs pt bf) ->
+          ty = typeof l -> type_is_volatile ty = false ->
+          deref_loc ge ty m ofs pt bf E0 v lts ->
+          eval_simple_rvalue PCT (Evalof l ty) v
+      | esr_rvalof_tmp: forall b l ty v,
+          eval_simple_lvalue l (Ltmp b) ->
+          te!b = Some v ->
+          eval_simple_rvalue PCT (Evalof l ty) v
+      | esr_addrof_mem: forall ofs pt l ty,
+          eval_simple_lvalue l (Lmem ofs pt Full) ->
+          eval_simple_rvalue PCT (Eaddrof l ty) (Vofptrsize (Ptrofs.signed ofs), pt)
+      | esr_addrof_fun: forall b pt l ty,
+          eval_simple_lvalue l (Lfun b pt) ->
+          eval_simple_rvalue PCT (Eaddrof l ty) (Vfptr b, pt)
+      | esr_unop: forall op r1 ty v1 vt v,
+          eval_simple_rvalue PCT r1 (v1,vt) ->
+          sem_unary_operation op v1 (typeof r1) m = Some v ->
+          eval_simple_rvalue PCT (Eunop op r1 ty) (v,vt)
+      | esr_binop: forall PCT' op r1 r2 ty v1 vt1 v2 vt2 v vt,
+          eval_simple_rvalue PCT r1 (v1,vt1) -> eval_simple_rvalue PCT r2 (v2,vt2) ->
+          sem_binary_operation (snd ge) op v1 (typeof r1) v2 (typeof r2) m = Some v ->
+          BinopT op PCT vt1 vt2 = PolicySuccess (PCT', vt) ->
+          eval_simple_rvalue PCT' (Ebinop op r1 r2 ty) (v,vt)
+      | esr_cast: forall ty r1 v1 vt v,
+          eval_simple_rvalue PCT r1 (v1,vt) ->
+          sem_cast v1 (typeof r1) ty m = Some v ->
+          eval_simple_rvalue PCT (Ecast r1 ty) (v,vt)
+      | esr_sizeof: forall ty1 ty,
+          eval_simple_rvalue PCT (Esizeof ty1 ty) (Vofptrsize (sizeof (snd ge) ty1), def_tag)
+      | esr_alignof: forall ty1 ty,
+          eval_simple_rvalue PCT (Ealignof ty1 ty) (Vofptrsize (alignof (snd ge) ty1), def_tag).
 
-Inductive eval_simple_list: exprlist -> typelist -> list atom -> Prop :=
-  | esrl_nil:
-      eval_simple_list Enil Tnil nil
-  | esrl_cons: forall PCT r rl ty tyl v vl v' vt,
-      eval_simple_rvalue PCT r (v',vt) -> sem_cast v' (typeof r) ty m = Some v ->
-      eval_simple_list rl tyl vl ->
-      eval_simple_list (Econs r rl) (Tcons ty tyl) ((v,vt) :: vl).
+      Inductive eval_simple_list: exprlist -> typelist -> list atom -> Prop :=
+      | esrl_nil:
+        eval_simple_list Enil Tnil nil
+      | esrl_cons: forall PCT r rl ty tyl v vl v' vt,
+          eval_simple_rvalue PCT r (v',vt) -> sem_cast v' (typeof r) ty m = Some v ->
+          eval_simple_list rl tyl vl ->
+          eval_simple_list (Econs r rl) (Tcons ty tyl) ((v,vt) :: vl).
 
-Scheme eval_simple_rvalue_ind2 := Minimality for eval_simple_rvalue Sort Prop
-  with eval_simple_lvalue_ind2 := Minimality for eval_simple_lvalue Sort Prop.
-Combined Scheme eval_simple_rvalue_lvalue_ind from eval_simple_rvalue_ind2, eval_simple_lvalue_ind2.
+      Scheme eval_simple_rvalue_ind2 := Minimality for eval_simple_rvalue Sort Prop
+          with eval_simple_lvalue_ind2 := Minimality for eval_simple_lvalue Sort Prop.
+      Combined Scheme eval_simple_rvalue_lvalue_ind from eval_simple_rvalue_ind2, eval_simple_lvalue_ind2.
 
-End SIMPLE_EXPRS.
+    End SIMPLE_EXPRS.
 
-(** Left reduction contexts. These contexts allow reducing to the right
-  of a binary operator only if the left subexpression is simple. *)
+    (** Left reduction contexts. These contexts allow reducing to the right
+        of a binary operator only if the left subexpression is simple. *)
 
 Inductive leftcontext: kind -> kind -> (expr -> expr) -> Prop :=
   | lctx_top: forall k,
@@ -511,8 +511,20 @@ Proof.
   induction 1; auto.
 Qed.
 
+Lemma lfailred_kind:
+  forall a PCT msg params, lfailred ge a PCT msg params -> expr_kind a = LV.
+Proof.
+  induction 1; auto.
+Qed.
+
 Lemma rred_kind:
   forall PCT a m e t PCT' a' e' m', rred ge PCT a e m t PCT' a' e' m' -> expr_kind a = RV.
+Proof.
+  induction 1; auto.
+Qed.
+
+Lemma rfailred_kind:
+  forall PCT a m e tr msg params, rfailred ge PCT a e m tr msg params -> expr_kind a = RV.
 Proof.
   induction 1; auto.
 Qed.
@@ -536,7 +548,9 @@ Proof.
   auto.
   auto.
   eapply context_kind; eauto. eapply lred_kind; eauto.
+  eapply context_kind; eauto. eapply lfailred_kind; eauto.
   eapply context_kind; eauto. eapply rred_kind; eauto.
+  eapply context_kind; eauto. eapply rfailred_kind; eauto.
   eapply context_kind; eauto. eapply callred_kind; eauto.
 Qed.
 

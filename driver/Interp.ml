@@ -41,7 +41,7 @@ module InterpP =
 module Printing = PrintCsyntaxP (Pol)
 module Init = Printing.Init
 module Cexec = Init.Cexec
-module Csem = Cexec.Cstrategy.Ctyping.Csem
+module Csem = Cexec.InterpreterEvents.Cstrategy.Ctyping.Csem
 module Csyntax = Csem.Csyntax
 module Determinism = Csyntax.Cop.Deterministic
 module Events = Determinism.Behaviors.Smallstep.Events
@@ -57,12 +57,12 @@ let print_id_ofs p (id, ofs) =
   else fprintf p " %s%+ld" id ofs
 
 let print_eventval p = function
-  | Events.EVint (n,_) -> fprintf p "%ld" (camlint_of_coqint n)
-  | Events.EVfloat (f,_) -> fprintf p "%.15F" (camlfloat_of_coqfloat f)
-  | Events.EVsingle (f,_) -> fprintf p "%.15F" (camlfloat_of_coqfloat32 f)
-  | Events.EVlong (n,_) -> fprintf p "%LdLL" (camlint64_of_coqint n)
-  | Events.EVptr_global(id, ofs,_) -> fprintf p "&%a" print_id_ofs (id, ofs)
-  | Events.EVptr_fun(id,_) -> fprintf p "&%s" (extern_atom id)
+  | Events.EVint n -> fprintf p "%ld" (camlint_of_coqint n)
+  | Events.EVfloat f -> fprintf p "%.15F" (camlfloat_of_coqfloat f)
+  | Events.EVsingle f -> fprintf p "%.15F" (camlfloat_of_coqfloat32 f)
+  | Events.EVlong n -> fprintf p "%LdLL" (camlint64_of_coqint n)
+  | Events.EVptr_global(id, ofs) -> fprintf p "&%a" print_id_ofs (id, ofs)
+  | Events.EVptr_fun(id) -> fprintf p "&%s" (extern_atom id)
 
 let print_eventval_list p = function
   | [] -> ()
@@ -164,13 +164,13 @@ let print_mem p m =
 
 let print_state p (prog, ge, s) =
   match s with
-  | Csem.State(f, pct, s, k, e, m) ->
+  | Csem.State(f, pct, s, k, e, te, m) ->
       Printing.print_pointer_hook := print_pointer (fst ge) e;
       fprintf p "in function %s, statement@ @[<hv 0>%a@]\n"
               (name_of_function prog f)
               Printing.print_stmt s;
       print_mem p m
-  | Csem.ExprState(f, pct, r, k, e, m) ->
+  | Csem.ExprState(f, pct, r, k, e, te, m) ->
       Printing.print_pointer_hook := print_pointer (fst ge) e;
       fprintf p "in function %s, expression@ @[<hv 0>%a@]"
               (name_of_function prog f)
@@ -234,29 +234,30 @@ let rec compare_cont k1 k2 =
   | Csem.Kstop, Csem.Kstop -> 0
   | Csem.Kdo k1, Csem.Kdo k2 -> compare_cont k1 k2
   | Csem.Kseq(s1, k1), Csem.Kseq(s2, k2) ->
+  (* TODO: compare join points? *)
       let c = compare s1 s2 in if c <> 0 then c else compare_cont k1 k2
-  | Csem.Kifthenelse(s1, s1', k1), Csem.Kifthenelse(s2, s2', k2) ->
+  | Csem.Kifthenelse(s1, s1', _, k1), Csem.Kifthenelse(s2, s2', _, k2) ->
       let c = compare (s1,s1') (s2,s2') in
       if c <> 0 then c else compare_cont k1 k2
-  | Csem.Kwhile1(e1, s1, k1), Csem.Kwhile1(e2, s2, k2) ->
+  | Csem.Kwhile1(e1, s1, _, k1), Csem.Kwhile1(e2, s2, _, k2) ->
       let c = compare (e1,s1) (e2,s2) in
       if c <> 0 then c else compare_cont k1 k2
-  | Csem.Kwhile2(e1, s1, k1), Csem.Kwhile2(e2, s2, k2) ->
+  | Csem.Kwhile2(e1, s1, _, k1), Csem.Kwhile2(e2, s2, _, k2) ->
       let c = compare (e1,s1) (e2,s2) in
       if c <> 0 then c else compare_cont k1 k2
-  | Csem.Kdowhile1(e1, s1, k1), Csem.Kdowhile1(e2, s2, k2) ->
+  | Csem.Kdowhile1(e1, s1, _, k1), Csem.Kdowhile1(e2, s2, _, k2) ->
       let c = compare (e1,s1) (e2,s2) in
       if c <> 0 then c else compare_cont k1 k2
-  | Csem.Kdowhile2(e1, s1, k1), Csem.Kdowhile2(e2, s2, k2) ->
+  | Csem.Kdowhile2(e1, s1, _, k1), Csem.Kdowhile2(e2, s2, _, k2) ->
       let c = compare (e1,s1) (e2,s2) in
       if c <> 0 then c else compare_cont k1 k2
-  | Csem.Kfor2(e1, s1, s1', k1), Csem.Kfor2(e2, s2, s2', k2) ->
+  | Csem.Kfor2(e1, s1, s1', _, k1), Csem.Kfor2(e2, s2, s2', _, k2) ->
       let c = compare (e1,s1,s1') (e2,s2,s2') in
       if c <> 0 then c else compare_cont k1 k2
-  | Csem.Kfor3(e1, s1, s1', k1), Csem.Kfor3(e2, s2, s2', k2) ->
+  | Csem.Kfor3(e1, s1, s1', _, k1), Csem.Kfor3(e2, s2, s2', _, k2) ->
       let c = compare (e1,s1,s1') (e2,s2,s2') in
       if c <> 0 then c else compare_cont k1 k2
-  | Csem.Kfor4(e1, s1, s1', k1), Csem.Kfor4(e2, s2, s2', k2) ->
+  | Csem.Kfor4(e1, s1, s1', _, k1), Csem.Kfor4(e2, s2, s2', _, k2) ->
       let c = compare (e1,s1,s1') (e2,s2,s2') in
       if c <> 0 then c else compare_cont k1 k2
   | Csem.Kswitch1(sl1, k1), Csem.Kswitch1(sl2, k2) ->
@@ -264,8 +265,8 @@ let rec compare_cont k1 k2 =
       if c <> 0 then c else compare_cont k1 k2
   | Csem.Kreturn k1, Csem.Kreturn k2 ->
       compare_cont k1 k2
-  | Csem.Kcall(f1, e1, pct1, c1, ty1, k1), Csem.Kcall(f2, e2, pct2, c2, ty2, k2) ->
-      let c = compare (f1, e1, pct1, c1 some_expr, ty1) (f2, e2, pct2, c2 some_expr, ty2) in
+  | Csem.Kcall(f1, e1, te1, pct1, c1, ty1, k1), Csem.Kcall(f2, e2, te2, pct2, c2, ty2, k2) ->
+      let c = compare (f1, e1, te1, pct1, c1 some_expr, ty1) (f2, e2, te2, pct2, c2 some_expr, ty2) in
       if c <> 0 then c else compare_cont k1 k2
   | _, _ ->
       compare (rank_cont k1) (rank_cont k2)
@@ -281,22 +282,21 @@ let rank_state = function
   | Csem.Failstop _ -> 4
 
 let mem_state = function
-  | Csem.State(f, pct, s, k, e, m) -> m
-  | Csem.ExprState(f, pct, r, k, e, m) -> m
+  | Csem.State(f, pct, s, k, e, te, m) -> m
+  | Csem.ExprState(f, pct, r, k, e, te, m) -> m
   | Csem.Callstate(fd, pct, args, k, m) -> m
   | Csem.Returnstate(pct, res, k, m) -> m
   | Csem.Stuckstate -> assert false
   | Csem.Failstop(r, params) -> assert false 
-  (* SNA: shoud this change beyond the args? *)
 
 let compare_state s1 s2 =
   if s1 == s2 then 0 else
   match s1, s2 with
-  | Csem.State(f1,pct1,s1,k1,e1,m1), Csem.State(f2,pct2,s2,k2,e2,m2) ->
-      let c = compare (f1,s1,e1) (f2,s2,e2) in if c <> 0 then c else
+  | Csem.State(f1,pct1,s1,k1,e1,te1,m1), Csem.State(f2,pct2,s2,k2,e2,te2,m2) ->
+      let c = compare (f1,s1,e1,te1) (f2,s2,e2,te2) in if c <> 0 then c else
       let c = compare_cont k1 k2 in if c <> 0 then c else
       compare_mem m1 m2
-  | Csem.ExprState(f1,pct1,r1,k1,e1,m1), Csem.ExprState(f2,pct2,r2,k2,e2,m2) ->
+  | Csem.ExprState(f1,pct1,r1,k1,e1,te1,m1), Csem.ExprState(f2,pct2,r2,k2,e2,te2,m2) ->
       let c = compare (f1,r1,e1) (f2,r2,e2) in if c <> 0 then c else
       let c = compare_cont k1 k2 in if c <> 0 then c else
       compare_mem m1 m2
@@ -427,10 +427,10 @@ let (>>=) opt f = match opt with None -> None | Some arg -> f arg
 
 let convert_external_arg ge v t =
   match v with
-  | Vint i -> Some (Events.EVint (i,t))
-  | Vfloat f -> Some (Events.EVfloat (f,t))
-  | Vsingle f -> Some (Events.EVsingle (f,t))
-  | Vlong n -> Some (Events.EVlong (n,t))
+  | Vint i -> Some (Events.EVint i)
+  | Vfloat f -> Some (Events.EVfloat f)
+  | Vsingle f -> Some (Events.EVsingle f)
+  | Vlong n -> Some (Events.EVlong n)
   (*| Vptr(b, ofs) ->
       Genv.invert_symbol ge b ofs >>= fun id -> Some (Events.EVptr_global(id, ofs,t))*)
   (* TODO *)
@@ -453,7 +453,7 @@ let do_external_function id sg ge w args pct m =
       Format.print_string fmt';
       flush stdout;
       convert_external_args ge args sg.sig_args >>= fun eargs ->
-      Some((((w, [Events.Event_syscall(id, eargs, Events.EVint (len,Pol.def_tag))]), (Vint len,Pol.def_tag)), pct), m)
+      Some((((w, [Events.Event_syscall(id, eargs, Events.EVint len)]), (Vint len, Pol.def_tag)), pct), m)
   | _ ->
       None
 
@@ -473,7 +473,7 @@ and world_vload ge m chunk id ofs =
                 match res with
                 | Coq_inr((base,bound),t) ->
                         Mem.load chunk m ofs >>= fun v ->
-                        Cexec.eventval_of_val ge v (type_of_chunk chunk) >>= fun ev ->
+                        Cexec.InterpreterEvents.eventval_of_val ge v (type_of_chunk chunk) >>= fun ev ->
                         Some(ev, world ge m)
                 | _ -> None
 
@@ -482,7 +482,7 @@ and world_vstore ge m chunk id ofs ev =
           fun res ->
                 match res with
                 | Coq_inr((base,bound),t) ->
-                        Cexec.val_of_eventval ge ev (type_of_chunk chunk) >>= fun v ->
+                        Cexec.InterpreterEvents.val_of_eventval ge ev (type_of_chunk chunk) >>= fun v ->
                         Mem.store chunk m ofs v [] >>= fun m' ->
                         Some(world ge m')
                 | _ -> None
@@ -509,7 +509,7 @@ let rec do_events p ge time w t =
 
 let (|||) a b = a || b (* strict boolean or *)
 
-let diagnose_stuck_expr p ge w f a kont pct e m =
+let diagnose_stuck_expr p ge w f a kont pct e te m =
   let rec diagnose k a =
   (* diagnose subexpressions first *)
   let found =
@@ -531,7 +531,7 @@ let diagnose_stuck_expr p ge w f a kont pct e m =
     | Csem.RV, Csyntax.Ebuiltin(ef, tyargs, rargs, ty) -> diagnose_list rargs
     | _, _ -> false in
   if found then true else begin
-    let l = Cexec.step_expr ge do_external_function (*do_inline_assembly*) e w k pct a m in
+    let l = Cexec.step_expr ge do_external_function (*do_inline_assembly*) e w k pct a te m in
     if List.exists (fun (ctx,red) -> red = Cexec.Stuckred) l then begin
       Printing.print_pointer_hook := print_pointer (fst ge) e;
       fprintf p "@[<hov 2>Stuck subexpression:@ %a@]@."
@@ -548,7 +548,7 @@ let diagnose_stuck_expr p ge w f a kont pct e m =
   in diagnose Csem.RV a
 
 let diagnose_stuck_state p ge w = function
-  | Csem.ExprState(f,pct,a,k,e,m) -> ignore(diagnose_stuck_expr p ge w f a k pct e m)
+  | Csem.ExprState(f,pct,a,k,e,te,m) -> ignore(diagnose_stuck_expr p ge w f a k pct e te m)
   | _ -> ()
 
 (* Execution of a single step.  Return list of triples

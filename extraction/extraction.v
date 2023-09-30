@@ -31,6 +31,7 @@ Module Extracted (P : Policy).
   Module I := Initializers P.
   Import I.
   Import Cexec.
+  Import InterpreterEvents.
   Import Cstrategy.
   Import Ctyping.
   Import Csem.

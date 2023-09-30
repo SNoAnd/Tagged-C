@@ -518,13 +518,13 @@ Admitted.
   auto.
 Qed.*)
 
-(*Theorem find_invert_symbol:
-  forall ge id b base bound t ofs,
-    find_symbol ge id = Some (b,base,bound,t) ->
+Theorem find_invert_symbol_ofs:
+  forall ge id base bound t ofs,
+    find_symbol ge id = Some (inr (base,bound,t)) ->
     base <= (Ptrofs.signed ofs) ->
     (Ptrofs.signed ofs) < bound ->
-    invert_symbol ge b ofs = Some id.
-Admitted.*)
+    invert_symbol_ofs ge ofs = Some id.
+Admitted.
 (*Proof.
   intros until t0.
   assert (find_symbol ge id = Some (b,t0) -> exists id', invert_symbol ge b = Some id').

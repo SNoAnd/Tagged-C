@@ -30,7 +30,7 @@ module PrintCsyntaxP =
 
 module C2CPInst = C2CP (Pol)
 module Init = C2CPInst.Init
-module Ctyping = Init.Cexec.Cstrategy.Ctyping
+module Ctyping = Init.Cexec.InterpreterEvents.Cstrategy.Ctyping
 module Csyntax = Ctyping.Csem.Csyntax
 module Cop = Csyntax.Cop
 
@@ -216,8 +216,12 @@ let rec expr p (prec, e) =
   then fprintf p "@[<hov 2>("
   else fprintf p "@[<hov 2>";
   begin match e with
-  | Csyntax.Eloc(ofs, _, _, _) ->
+  | Csyntax.Eloc(Csyntax.Lmem (ofs, _, _), _) ->
       fprintf p "<loc%a>" !print_pointer_hook (P.one, ofs)
+  | Csyntax.Eloc(Csyntax.Ltmp b, _) ->
+      fprintf p "<loc%a>" !print_pointer_hook (b, BinNums.Z0)
+  | Csyntax.Eloc(Csyntax.Lfun (b, _), _) ->
+      fprintf p "<loc%a>" !print_pointer_hook (b, BinNums.Z0)
   | Csyntax.Evar(id, _) ->
       fprintf p "%s" (extern_atom id)
   | Csyntax.Ederef(a1, _) ->
@@ -338,24 +342,24 @@ let rec print_stmt p s =
       fprintf p "%a;" print_expr e
   | Csyntax.Ssequence(s1, s2) ->
       fprintf p "%a@ %a" print_stmt s1 print_stmt s2
-  | Csyntax.Sifthenelse(e, s1, Csyntax.Sskip) ->
+  | Csyntax.Sifthenelse(e, s1, Csyntax.Sskip, _) ->
       fprintf p "@[<v 2>if (%a) {@ %a@;<0 -2>}@]"
               print_expr e
               print_stmt s1
-  | Csyntax.Sifthenelse(e, s1, s2) ->
+  | Csyntax.Sifthenelse(e, s1, s2, _) ->
       fprintf p "@[<v 2>if (%a) {@ %a@;<0 -2>} else {@ %a@;<0 -2>}@]"
               print_expr e
               print_stmt s1
               print_stmt s2
-  | Csyntax.Swhile(e, s) ->
+  | Csyntax.Swhile(e, s, _) ->
       fprintf p "@[<v 2>while (%a) {@ %a@;<0 -2>}@]"
               print_expr e
               print_stmt s
-  | Csyntax.Sdowhile(e, s) ->
+  | Csyntax.Sdowhile(e, s, _) ->
       fprintf p "@[<v 2>do {@ %a@;<0 -2>} while(%a);@]"
               print_stmt s
               print_expr e
-  | Csyntax.Sfor(s_init, e, s_iter, s_body) ->
+  | Csyntax.Sfor(s_init, e, s_iter, s_body, _) ->
       fprintf p "@[<v 2>for (@[<hv 0>%a;@ %a;@ %a) {@]@ %a@;<0 -2>}@]"
               print_stmt_for s_init
               print_expr e

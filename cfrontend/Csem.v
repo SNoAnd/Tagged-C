@@ -287,7 +287,7 @@ Module Csem (P: Policy).
         lfailred (Efield (Eval (Vlong ofs, pt) (Tunion id a)) f ty) pct
                  msg params
     .
-    
+
     (** Head reductions for r-values *)
     Inductive rred (PCT:tag) : expr -> tenv -> mem -> trace -> tag -> expr -> tenv -> mem -> Prop :=
     | red_const: forall v ty te m vt',
@@ -316,41 +316,73 @@ Module Csem (P: Policy).
              PCT (Eval (Vfptr b, pt) ty) te m
     | red_unop: forall op v1 vt1 ty1 ty te m v PCT' vt,
         sem_unary_operation op v1 ty1 m = Some v ->
-        PolicySuccess (PCT', vt) = UnopT op PCT vt1 ->
+        UnopT op PCT vt1 = PolicySuccess (PCT', vt) ->
         rred PCT (Eunop op (Eval (v1,vt1) ty1) ty) te m E0
              PCT' (Eval (v,vt) ty) te m
     | red_binop: forall op v1 vt1 ty1 v2 vt2 ty2 ty te m v vt' PCT',
         sem_binary_operation (snd ge) op v1 ty1 v2 ty2 m = Some v ->
-        PolicySuccess (PCT', vt') = BinopT op PCT vt1 vt2 ->
+        BinopT op PCT vt1 vt2 = PolicySuccess (PCT', vt') ->
         rred PCT (Ebinop op (Eval (v1,vt1) ty1) (Eval (v2,vt2) ty2) ty) te m E0
              PCT' (Eval (v,vt') ty) te m
-    | red_cast: forall ty v1 vt1 ty1 te m v vt,
+    | red_cast_int_int: forall ty v1 vt1 ty1 te m v vt',
+        (forall ty' attr, ty1 <> Tpointer ty' attr) ->
+        (forall ty' attr, ty <> Tpointer ty' attr) ->
         sem_cast v1 ty1 ty m = Some v ->
+        IICastT PCT vt1 ty = PolicySuccess vt' -> 
         rred PCT (Ecast (Eval (v1,vt1) ty1) ty) te m E0
-             PCT (Eval (v,vt) ty) te m
+             PCT (Eval (v,vt') ty) te m
+    | red_cast_int_ptr: forall ty v1 vt1 ty1 te m v ofs tr v2 vt2 lts pt' ty' attr,
+        (forall ty' attr, ty1 <> Tpointer ty' attr) ->
+        ty = Tpointer ty' attr ->
+        sem_cast v1 ty1 ty m = Some v ->
+        v = Vlong ofs ->
+        deref_loc ty m (Ptrofs.of_int64 ofs) vt1 Full tr (v2,vt2) lts ->
+        IPCastT PCT vt1 lts ty = PolicySuccess pt' ->
+        rred PCT (Ecast (Eval (v1,vt1) ty1) ty) te m tr
+             PCT (Eval (v,pt') ty) te m
+    | red_cast_ptr_int: forall ty v1 vt1 ty1 te m v ofs tr v2 vt2 lts vt' ty' attr,
+        ty1 = Tpointer ty' attr ->
+        (forall ty' attr, ty <> Tpointer ty' attr) ->
+        sem_cast v1 ty1 ty m = Some v ->
+        v1 = Vlong ofs ->
+        deref_loc ty1 m (Ptrofs.of_int64 ofs) vt1 Full tr (v2,vt2) lts ->
+        PICastT PCT vt1 lts ty = PolicySuccess vt' ->
+        rred PCT (Ecast (Eval (v1,vt1) ty1) ty) te m tr
+             PCT (Eval (v,vt') ty) te m
+    | red_cast_ptr_ptr: forall ty v1 vt1 ty1 te m v ofs ofs1 tr tr1 v2 vt2 v3 vt3 lts lts1 ty1' attr1 ty' attr2 pt',
+        ty1 = Tpointer ty1' attr1 ->
+        ty = Tpointer ty' attr2 ->
+        sem_cast v1 ty1 ty m = Some v ->
+        v1 = Vlong ofs1 ->
+        deref_loc ty1 m (Ptrofs.of_int64 ofs1) vt1 Full tr1 (v2,vt2) lts1 ->
+        v = Vlong ofs ->
+        deref_loc ty m (Ptrofs.of_int64 ofs) vt1 Full tr (v3,vt3) lts ->
+        PPCastT PCT vt1 lts1 lts ty = PolicySuccess pt' ->
+        rred PCT (Ecast (Eval (v1,vt1) ty1) ty) te m (tr1 ++ tr)
+             PCT (Eval (v,pt') ty) te m
     | red_seqand_true: forall v1 vt1 ty1 r2 ty te m PCT',
         bool_val v1 ty1 m = Some true ->
-        PolicySuccess PCT' = ExprSplitT PCT vt1 ->
+        ExprSplitT PCT vt1 = PolicySuccess PCT' ->
         rred PCT (Eseqand (Eval (v1,vt1) ty1) r2 ty) te m E0
              PCT' (Eparen r2 type_bool ty) te m
     | red_seqand_false: forall v1 vt1 ty1 r2 ty te m PCT',
         bool_val v1 ty1 m = Some false ->
-        PolicySuccess PCT' = ExprSplitT PCT vt1 ->
+        ExprSplitT PCT vt1 = PolicySuccess PCT' ->
         rred PCT (Eseqand (Eval (v1,vt1) ty1) r2 ty) te m E0
              PCT' (Eval (Vint Int.zero, vt1) ty) te m
     | red_seqor_true: forall v1 vt1 ty1 r2 ty te m PCT',
         bool_val v1 ty1 m = Some true ->
-        PolicySuccess PCT' = ExprSplitT PCT vt1 ->
+        ExprSplitT PCT vt1 = PolicySuccess PCT' ->
         rred PCT (Eseqor (Eval (v1,vt1) ty1) r2 ty) te m E0
              PCT' (Eval (Vint Int.one, vt1) ty) te m
     | red_seqor_false: forall v1 vt1 ty1 r2 ty te m PCT',
         bool_val v1 ty1 m = Some false ->
-        PolicySuccess PCT' = ExprSplitT PCT vt1 ->
+        ExprSplitT PCT vt1 = PolicySuccess PCT' ->
         rred PCT (Eseqor (Eval (v1,vt1) ty1) r2 ty) te m E0
              PCT' (Eparen r2 type_bool ty) te m
     | red_condition: forall v1 vt1 ty1 r1 r2 ty b te m PCT',
         bool_val v1 ty1 m = Some b ->
-        PolicySuccess PCT' = ExprSplitT PCT vt1 ->
+        ExprSplitT PCT vt1 = PolicySuccess PCT' ->
         rred PCT (Econdition (Eval (v1,vt1) ty1) r1 r2 ty) te m E0
              PCT' (Eparen (if b then r1 else r2) ty ty) te m
     | red_sizeof: forall ty1 ty te m vt',
@@ -369,13 +401,13 @@ Module Csem (P: Policy).
         assign_loc ty1 m ofs pt bf (v',vt'') t2 m' (v'',vt''') lts' ->
         rred PCT (Eassign (Eloc (Lmem ofs pt bf) ty1) (Eval (v2, vt2) ty2) ty1) te m (t1++t2)
              PCT'' (Eval (v'',vt''') ty1) te m'
-    | red_assign_tmp: forall b ty1 v1 vt1 v2 vt2 ty2 te m te' m' v PCT' vt',
+    | red_assign_tmp: forall b ty1 v1 vt1 v2 vt2 ty2 te m te' v PCT' vt',
         te!b = Some (v1,vt1) ->
         sem_cast v2 ty2 ty1 m = Some v ->
         AssignT PCT vt1 vt2 = PolicySuccess (PCT',vt') ->
         te' = PTree.set b (v,vt') te ->
         rred PCT (Eassign (Eloc (Ltmp b) ty1) (Eval (v2, vt2) ty2) ty1) te m E0
-             PCT' (Eval (v,vt') ty1) te' m'
+             PCT' (Eval (v,vt') ty1) te' m
     | red_assignop_mem: forall op ofs pt ty1 bf v2 vt2 ty2 tyres te m t v1 vt1 vt1' vt1'' lts,
         deref_loc ty1 m ofs pt bf t (v1,vt1) lts ->
         LoadT PCT pt vt1 lts = PolicySuccess vt1' ->
@@ -384,11 +416,11 @@ Module Csem (P: Policy).
         rred PCT (Eassignop op (Eloc (Lmem ofs pt bf) ty1) (Eval (v2,vt2) ty2) tyres ty1) te m t
              PCT (Eassign (Eloc (Lmem ofs pt bf) ty1)
                           (Ebinop op (Eval (v1,vt1'') ty1) (Eval (v2,vt2) ty2) tyres) ty1) te m
-    | red_assignop_tmp: forall op b ty1 v2 vt2 ty2 tyres te m t v1 vt1 vt1',
+    | red_assignop_tmp: forall op b ty1 v2 vt2 ty2 tyres te m v1 vt1 vt1',
         te!b = Some (v1,vt1) ->
         AccessT PCT vt1 = PolicySuccess vt1' ->
         (* Do we want to do this in this order? *)
-        rred PCT (Eassignop op (Eloc (Ltmp b) ty1) (Eval (v2,vt2) ty2) tyres ty1) te m t
+        rred PCT (Eassignop op (Eloc (Ltmp b) ty1) (Eval (v2,vt2) ty2) tyres ty1) te m E0
              PCT (Eassign (Eloc (Ltmp b) ty1)
                           (Ebinop op (Eval (v1,vt1') ty1) (Eval (v2,vt2) ty2) tyres) ty1) te m
     | red_assignop_fun: forall op b pt ty1 v2 vt2 ty2 tyres te m,
@@ -474,13 +506,12 @@ Module Csem (P: Policy).
         BinopT op PCT vt1 vt2 = PolicyFail msg params ->
         rfailred PCT (Ebinop op (Eval (v1,vt1) ty1) (Eval (v2,vt2) ty2) ty) te m E0
                  msg params
-    (* TODO: all cast msgs *)
     | failred_seqand: forall v1 vt1 ty1 r2 ty b te m msg params,
         bool_val v1 ty1 m = Some b ->
         ExprSplitT PCT vt1 = PolicyFail msg params ->
         rfailred PCT (Eseqand (Eval (v1,vt1) ty1) r2 ty) te m E0
                  msg params
-    | failred_seqor_true: forall v1 vt1 ty1 r2 ty b te m msg params,
+    | failred_seqor: forall v1 vt1 ty1 r2 ty b te m msg params,
         bool_val v1 ty1 m = Some b ->
         ExprSplitT PCT vt1 = PolicyFail msg params ->
         rfailred PCT (Eseqor (Eval (v1,vt1) ty1) r2 ty) te m E0
@@ -562,7 +593,42 @@ Module Csem (P: Policy).
         CallT PCT vft = PolicyFail msg params ->
         rfailred PCT (Ecall (Eval (vf, vft) tyf) el ty) te m E0
                  msg params
-        
+    | failred_cast_int_int: forall ty v1 vt1 ty1 te m v msg params,
+        (forall ty' attr, ty1 <> Tpointer ty' attr) ->
+        (forall ty' attr, ty <> Tpointer ty' attr) ->
+        sem_cast v1 ty1 ty m = Some v ->
+        IICastT PCT vt1 ty = PolicyFail msg params -> 
+        rfailred PCT (Ecast (Eval (v1,vt1) ty1) ty) te m E0
+             msg params
+    | failred_cast_int_ptr: forall ty v1 vt1 ty1 te m v ofs tr v2 vt2 lts ty' attr msg params,
+        (forall ty' attr, ty1 <> Tpointer ty' attr) ->
+        ty = Tpointer ty' attr ->
+        sem_cast v1 ty1 ty m = Some v ->
+        v = Vlong ofs ->
+        deref_loc ty m (Ptrofs.of_int64 ofs) vt1 Full tr (v2,vt2) lts ->
+        IPCastT PCT vt1 lts ty = PolicyFail msg params->
+        rfailred PCT (Ecast (Eval (v1,vt1) ty1) ty) te m tr
+             msg params
+    | failred_cast_ptr_int: forall ty v1 vt1 ty1 te m v ofs tr v2 vt2 lts ty' attr msg params,
+        ty1 = Tpointer ty' attr ->
+        (forall ty' attr, ty <> Tpointer ty' attr) ->
+        sem_cast v1 ty1 ty m = Some v ->
+        v1 = Vlong ofs ->
+        deref_loc ty1 m (Ptrofs.of_int64 ofs) vt1 Full tr (v2,vt2) lts ->
+        PICastT PCT vt1 lts ty = PolicyFail msg params ->
+        rfailred PCT (Ecast (Eval (v1,vt1) ty1) ty) te m tr
+             msg params
+    | failred_cast_ptr_ptr: forall ty v1 vt1 ty1 te m v ofs ofs1 tr tr1 v2 vt2 v3 vt3 lts lts1 ty1' attr1 ty' attr2 msg params,
+        ty1 = Tpointer ty1' attr1 ->
+        ty = Tpointer ty' attr2 ->
+        sem_cast v1 ty1 ty m = Some v ->
+        v1 = Vlong ofs1 ->
+        deref_loc ty1 m (Ptrofs.of_int64 ofs1) vt1 Full tr1 (v2,vt2) lts1 ->
+        v = Vlong ofs ->
+        deref_loc ty m (Ptrofs.of_int64 ofs) vt1 Full tr (v3,vt3) lts ->
+        PPCastT PCT vt1 lts1 lts ty = PolicyFail msg params ->
+        rfailred PCT (Ecast (Eval (v1,vt1) ty1) ty) te m (tr1 ++ tr)
+             msg params
     (* TODO: figure out builtins *)
     .
     
@@ -678,8 +744,16 @@ Module Csem (P: Policy).
         lred e PCT te m e' te' m' ->
         context LV to C ->
         imm_safe to (C e) PCT te m
+    | imm_safe_lfailred: forall PCT to C e te m msg params,
+        lfailred e PCT msg params ->
+        context LV to C ->
+        imm_safe to (C e) PCT te m                 
     | imm_safe_rred: forall PCT PCT' to C e te m t e' te' m',
         rred PCT e te m t PCT' e' te' m' ->
+        context RV to C ->
+        imm_safe to (C e) PCT te m
+    | imm_safe_rfailred: forall PCT to C e te m tr msg param,
+        rfailred PCT e te m tr msg param ->
         context RV to C ->
         imm_safe to (C e) PCT te m
     | imm_safe_callred: forall PCT PCT' to C e te m fd args ty,
@@ -756,14 +830,14 @@ Inductive cont: Type :=
 | Kstop: cont
 | Kdo: cont -> cont       (**r [Kdo k] = after [x] in [x;] *)
 | Kseq: statement -> cont -> cont    (**r [Kseq s2 k] = after [s1] in [s1;s2] *)
-| Kifthenelse: statement -> statement -> cont -> cont     (**r [Kifthenelse s1 s2 k] = after [x] in [if (x) { s1 } else { s2 }] *)
-| Kwhile1: expr -> statement -> cont -> cont      (**r [Kwhile1 x s k] = after [x] in [while(x) s] *)
-| Kwhile2: expr -> statement -> cont -> cont      (**r [Kwhile x s k] = after [s] in [while (x) s] *)
-| Kdowhile1: expr -> statement -> cont -> cont    (**r [Kdowhile1 x s k] = after [s] in [do s while (x)] *)
-| Kdowhile2: expr -> statement -> cont -> cont    (**r [Kdowhile2 x s k] = after [x] in [do s while (x)] *)
-| Kfor2: expr -> statement -> statement -> cont -> cont   (**r [Kfor2 e2 e3 s k] = after [e2] in [for(e1;e2;e3) s] *)
-| Kfor3: expr -> statement -> statement -> cont -> cont   (**r [Kfor3 e2 e3 s k] = after [s] in [for(e1;e2;e3) s] *)
-| Kfor4: expr -> statement -> statement -> cont -> cont   (**r [Kfor4 e2 e3 s k] = after [e3] in [for(e1;e2;e3) s] *)
+| Kifthenelse: statement -> statement -> option label -> cont -> cont     (**r [Kifthenelse s1 s2 k] = after [x] in [if (x) { s1 } else { s2 }] *)
+| Kwhile1: expr -> statement -> option label -> cont -> cont      (**r [Kwhile1 x s k] = after [x] in [while(x) s] *)
+| Kwhile2: expr -> statement -> option label -> cont -> cont      (**r [Kwhile x s k] = after [s] in [while (x) s] *)
+| Kdowhile1: expr -> statement -> option label -> cont -> cont    (**r [Kdowhile1 x s k] = after [s] in [do s while (x)] *)
+| Kdowhile2: expr -> statement -> option label -> cont -> cont    (**r [Kdowhile2 x s k] = after [x] in [do s while (x)] *)
+| Kfor2: expr -> statement -> statement -> option label -> cont -> cont   (**r [Kfor2 e2 e3 s k] = after [e2] in [for(e1;e2;e3) s] *)
+| Kfor3: expr -> statement -> statement -> option label -> cont -> cont   (**r [Kfor3 e2 e3 s k] = after [s] in [for(e1;e2;e3) s] *)
+| Kfor4: expr -> statement -> statement -> option label -> cont -> cont   (**r [Kfor4 e2 e3 s k] = after [e3] in [for(e1;e2;e3) s] *)
 | Kswitch1: labeled_statements -> cont -> cont     (**r [Kswitch1 ls k] = after [e] in [switch(e) { ls }] *)
 | Kswitch2: cont -> cont       (**r catches [break] statements arising out of [switch] *)
 | Kreturn: cont -> cont        (**r [Kreturn k] = after [e] in [return e;] *)
@@ -782,14 +856,14 @@ Fixpoint call_cont (k: cont) : cont :=
   | Kstop => k
   | Kdo k => k
   | Kseq s k => call_cont k
-  | Kifthenelse s1 s2 k => call_cont k
-  | Kwhile1 e s k => call_cont k
-  | Kwhile2 e s k => call_cont k
-  | Kdowhile1 e s k => call_cont k
-  | Kdowhile2 e s k => call_cont k
-  | Kfor2 e2 e3 s k => call_cont k
-  | Kfor3 e2 e3 s k => call_cont k
-  | Kfor4 e2 e3 s k => call_cont k
+  | Kifthenelse s1 s2 _ k => call_cont k
+  | Kwhile1 e s _ k => call_cont k
+  | Kwhile2 e s _ k => call_cont k
+  | Kdowhile1 e s _ k => call_cont k
+  | Kdowhile2 e s _ k => call_cont k
+  | Kfor2 e2 e3 s _ k => call_cont k
+  | Kfor3 e2 e3 s _ k => call_cont k
+  | Kfor4 e2 e3 s _ k => call_cont k
   | Kswitch1 ls k => call_cont k
   | Kswitch2 k => call_cont k
   | Kreturn k => call_cont k
@@ -854,22 +928,22 @@ Fixpoint find_label (lbl: label) (s: statement) (k: cont)
       | Some sk => Some sk
       | None => find_label lbl s2 k
       end
-  | Sifthenelse a s1 s2 =>
+  | Sifthenelse a s1 s2 olbl =>
       match find_label lbl s1 k with
       | Some sk => Some sk
       | None => find_label lbl s2 k
       end
-  | Swhile a s1 =>
-      find_label lbl s1 (Kwhile2 a s1 k)
-  | Sdowhile a s1 =>
-      find_label lbl s1 (Kdowhile1 a s1 k)
-  | Sfor a1 a2 a3 s1 =>
-      match find_label lbl a1 (Kseq (Sfor Sskip a2 a3 s1) k) with
+  | Swhile a s1 olbl =>
+      find_label lbl s1 (Kwhile2 a s1 olbl k)
+  | Sdowhile a s1 olbl =>
+      find_label lbl s1 (Kdowhile1 a s1 olbl k)
+  | Sfor a1 a2 a3 s1 olbl =>
+      match find_label lbl a1 (Kseq (Sfor Sskip a2 a3 s1 olbl) k) with
       | Some sk => Some sk
       | None =>
-          match find_label lbl s1 (Kfor3 a2 a3 s1 k) with
+          match find_label lbl s1 (Kfor3 a2 a3 s1 olbl k) with
           | Some sk => Some sk
-          | None => find_label lbl a3 (Kfor4 a2 a3 s1 k)
+          | None => find_label lbl a3 (Kfor4 a2 a3 s1 olbl k)
           end
       end
   | Sswitch e sl =>
@@ -949,84 +1023,106 @@ Inductive sstep: state -> trace -> state -> Prop :=
     sstep (State f PCT Sbreak (Kseq s k) e te m)
           E0 (State f PCT Sbreak k e te m)
 
-| step_ifthenelse_1: forall f PCT a s1 s2 k e te m,
-    sstep (State f PCT (Sifthenelse a s1 s2) k e te m)
-          E0 (ExprState f PCT a (Kifthenelse s1 s2 k) e te m)
-| step_ifthenelse_2:  forall f PCT PCT' v vt ty s1 s2 k e te m b,
+| step_ifthenelse_1: forall f PCT a s1 s2 olbl k e te m,
+    sstep (State f PCT (Sifthenelse a s1 s2 olbl) k e te m)
+          E0 (ExprState f PCT a (Kifthenelse s1 s2 olbl k) e te m)
+| step_ifthenelse_2:  forall f PCT PCT' v vt ty s1 s2 olbl k e te m b,
     bool_val v ty m = Some b ->
-    SplitT PCT vt None = PolicySuccess PCT' ->
-    sstep (ExprState f PCT (Eval (v,vt) ty) (Kifthenelse s1 s2 k) e te m)
+    SplitT PCT vt olbl = PolicySuccess PCT' ->
+    sstep (ExprState f PCT (Eval (v,vt) ty) (Kifthenelse s1 s2 olbl k) e te m)
           E0 (State f PCT' (if b then s1 else s2) k e te m)
-| step_ifthenelse_2_fail:  forall f PCT msg ts v vt ty s1 s2 k e te m b,
-    bool_val v ty m = Some b ->
-    SplitT PCT vt None = PolicyFail msg ts ->
-    sstep (ExprState f PCT (Eval (v,vt) ty) (Kifthenelse s1 s2 k) e te m)
-          E0 (Failstop msg ts)
 
-| step_while: forall f PCT x s k e te m,
-    sstep (State f PCT (Swhile x s) k e te m)
-          E0 (ExprState f PCT x (Kwhile1 x s k) e te m)
-| step_while_false: forall f PCT v vt ty x s k e te m,
+| step_while: forall f PCT x s olbl k e te m,
+    sstep (State f PCT (Swhile x s olbl) k e te m)
+          E0 (ExprState f PCT x (Kwhile1 x s olbl k) e te m)
+| step_while_false: forall f PCT PCT' v vt ty x s olbl k e te m,
     bool_val v ty m = Some false ->
-    sstep (ExprState f PCT (Eval (v,vt) ty) (Kwhile1 x s k) e te m)
-          E0 (State f PCT Sskip k e te m)
-| step_while_true: forall f PCT v vt ty x s k e te m,
+    SplitT PCT vt olbl = PolicySuccess PCT' ->
+    sstep (ExprState f PCT (Eval (v,vt) ty) (Kwhile1 x s olbl k) e te m)
+          E0 (State f PCT' Sskip k e te m)
+| step_while_true: forall f PCT PCT' v vt ty x s olbl k e te m,
     bool_val v ty m = Some true ->
-    sstep (ExprState f PCT (Eval (v,vt) ty) (Kwhile1 x s k) e te m)
-          E0 (State f PCT s (Kwhile2 x s k) e te m)
-| step_skip_or_continue_while: forall f PCT s0 x s k e te m,
+    SplitT PCT vt olbl = PolicySuccess PCT' ->
+    sstep (ExprState f PCT (Eval (v,vt) ty) (Kwhile1 x s olbl k) e te m)
+          E0 (State f PCT' s (Kwhile2 x s olbl k) e te m)
+| step_skip_or_continue_while: forall f PCT s0 x s olbl k e te m,
     s0 = Sskip \/ s0 = Scontinue ->
-    sstep (State f PCT s0 (Kwhile2 x s k) e te m)
-          E0 (State f PCT (Swhile x s) k e te m)
-| step_break_while: forall f PCT x s k e te m,
-    sstep (State f PCT Sbreak (Kwhile2 x s k) e te m)
+    sstep (State f PCT s0 (Kwhile2 x s olbl k) e te m)
+          E0 (State f PCT (Swhile x s olbl) k e te m)
+| step_break_while: forall f PCT x s olbl k e te m,
+    sstep (State f PCT Sbreak (Kwhile2 x s olbl k) e te m)
           E0 (State f PCT Sskip k e te m)
 
-| step_dowhile: forall f PCT a s k e te m,
-    sstep (State f PCT (Sdowhile a s) k e te m)
-          E0 (State f PCT s (Kdowhile1 a s k) e te m)
-| step_skip_or_continue_dowhile: forall f PCT s0 x s k e te m,
+| step_dowhile: forall f PCT a s olbl k e te m,
+    sstep (State f PCT (Sdowhile a s olbl) k e te m)
+          E0 (State f PCT s (Kdowhile1 a s olbl k) e te m)
+| step_skip_or_continue_dowhile: forall f PCT s0 x s olbl k e te m,
     s0 = Sskip \/ s0 = Scontinue ->
-    sstep (State f PCT s0 (Kdowhile1 x s k) e te m)
-          E0 (ExprState f PCT x (Kdowhile2 x s k) e te m)
-| step_dowhile_false: forall f PCT v vt ty x s k e te m,
+    sstep (State f PCT s0 (Kdowhile1 x s olbl k) e te m)
+          E0 (ExprState f PCT x (Kdowhile2 x s olbl k) e te m)
+| step_dowhile_false: forall f PCT PCT' v vt ty x s olbl k e te m,
     bool_val v ty m = Some false ->
-    sstep (ExprState f PCT (Eval (v,vt) ty) (Kdowhile2 x s k) e te m)
-          E0 (State f PCT Sskip k e te m)
-| step_dowhile_true: forall f PCT v vt ty x s k e te m,
+    SplitT PCT vt olbl = PolicySuccess PCT' ->
+    sstep (ExprState f PCT (Eval (v,vt) ty) (Kdowhile2 x s olbl k) e te m)
+          E0 (State f PCT' Sskip k e te m)
+| step_dowhile_true: forall f PCT PCT' v vt ty x s olbl k e te m,
     bool_val v ty m = Some true ->
-    sstep (ExprState f PCT (Eval (v,vt) ty) (Kdowhile2 x s k) e te m)
-          E0 (State f PCT (Sdowhile x s) k e te m)
-| step_break_dowhile: forall f PCT a s k e te m,
-    sstep (State f PCT Sbreak (Kdowhile1 a s k) e te m)
+    SplitT PCT vt olbl = PolicySuccess PCT' ->
+    sstep (ExprState f PCT (Eval (v,vt) ty) (Kdowhile2 x s olbl k) e te m)
+          E0 (State f PCT' (Sdowhile x s olbl) k e te m)
+| step_break_dowhile: forall f PCT a s olbl k e te m,
+    sstep (State f PCT Sbreak (Kdowhile1 a s olbl k) e te m)
           E0 (State f PCT Sskip k e te m)
 
-| step_for_start: forall f PCT a1 a2 a3 s k e te m,
+| step_for_start: forall f PCT a1 a2 a3 s olbl k e te m,
     a1 <> Sskip ->
-    sstep (State f PCT (Sfor a1 a2 a3 s) k e te m)
-          E0 (State f PCT a1 (Kseq (Sfor Sskip a2 a3 s) k) e te m)
-| step_for: forall f PCT a2 a3 s k e te m,
-    sstep (State f PCT (Sfor Sskip a2 a3 s) k e te m)
-          E0 (ExprState f PCT a2 (Kfor2 a2 a3 s k) e te m)
-| step_for_false: forall f PCT v vt ty a2 a3 s k e te m,
+    sstep (State f PCT (Sfor a1 a2 a3 s olbl) k e te m)
+          E0 (State f PCT a1 (Kseq (Sfor Sskip a2 a3 s olbl) k) e te m)
+| step_for: forall f PCT a2 a3 s olbl k e te m,
+    sstep (State f PCT (Sfor Sskip a2 a3 s olbl) k e te m)
+          E0 (ExprState f PCT a2 (Kfor2 a2 a3 s olbl k) e te m)
+| step_for_false: forall f PCT PCT' v vt ty a2 a3 s olbl k e te m,
     bool_val v ty m = Some false ->
-    sstep (ExprState f PCT (Eval (v,vt) ty) (Kfor2 a2 a3 s k) e te m)
-          E0 (State f PCT Sskip k e te m)
-| step_for_true: forall f PCT v vt ty a2 a3 s k e te m,
+    SplitT PCT vt olbl = PolicySuccess PCT' ->
+    sstep (ExprState f PCT (Eval (v,vt) ty) (Kfor2 a2 a3 s olbl k) e te m)
+          E0 (State f PCT' Sskip k e te m)
+| step_for_true: forall f PCT PCT' v vt ty a2 a3 s olbl k e te m,
     bool_val v ty m = Some true ->
-    sstep (ExprState f PCT (Eval (v,vt) ty) (Kfor2 a2 a3 s k) e te m)
-          E0 (State f PCT s (Kfor3 a2 a3 s k) e te m)
-| step_skip_or_continue_for3: forall f PCT x a2 a3 s k e te m,
+    SplitT PCT vt olbl = PolicySuccess PCT' ->
+    sstep (ExprState f PCT (Eval (v,vt) ty) (Kfor2 a2 a3 s olbl k) e te m)
+          E0 (State f PCT' s (Kfor3 a2 a3 s olbl k) e te m)
+| step_skip_or_continue_for3: forall f PCT x a2 a3 s olbl k e te m,
     x = Sskip \/ x = Scontinue ->
-    sstep (State f PCT x (Kfor3 a2 a3 s k) e te m)
-          E0 (State f PCT a3 (Kfor4 a2 a3 s k) e te m)
-| step_break_for3: forall f PCT a2 a3 s k e te m,
-    sstep (State f PCT Sbreak (Kfor3 a2 a3 s k) e te m)
+    sstep (State f PCT x (Kfor3 a2 a3 s olbl k) e te m)
+          E0 (State f PCT a3 (Kfor4 a2 a3 s olbl k) e te m)
+| step_break_for3: forall f PCT a2 a3 s olbl k e te m,
+    sstep (State f PCT Sbreak (Kfor3 a2 a3 s olbl k) e te m)
           E0 (State f PCT Sskip k e te m)
-| step_skip_for4: forall f PCT a2 a3 s k e te m,
-    sstep (State f PCT Sskip (Kfor4 a2 a3 s k) e te m)
-          E0 (State f PCT (Sfor Sskip a2 a3 s) k e te m)
+| step_skip_for4: forall f PCT a2 a3 s olbl k e te m,
+    sstep (State f PCT Sskip (Kfor4 a2 a3 s olbl k) e te m)
+          E0 (State f PCT (Sfor Sskip a2 a3 s olbl) k e te m)
 
+| step_ifthenelse_fail:  forall f PCT msg params v vt ty s1 s2 olbl k e te m b,
+    bool_val v ty m = Some b ->
+    SplitT PCT vt olbl = PolicyFail msg params ->
+    sstep (ExprState f PCT (Eval (v,vt) ty) (Kifthenelse s1 s2 olbl k) e te m)
+          E0 (Failstop msg params)
+| step_while_fail: forall f PCT msg params v vt ty x s olbl k e te m b,
+    bool_val v ty m = Some b ->
+    SplitT PCT vt olbl = PolicyFail msg params ->
+    sstep (ExprState f PCT (Eval (v,vt) ty) (Kwhile1 x s olbl k) e te m)
+          E0 (Failstop msg params)
+| step_dowhile_fail: forall f PCT msg params v vt ty x s olbl k e te m b,
+    bool_val v ty m = Some b ->
+    SplitT PCT vt olbl = PolicyFail msg params ->
+    sstep (ExprState f PCT (Eval (v,vt) ty) (Kdowhile2 x s olbl k) e te m)
+          E0 (Failstop msg params)
+| step_for_fail: forall f PCT msg params v vt ty a2 a3 s olbl k e te m b,
+    bool_val v ty m = Some b ->
+    SplitT PCT vt olbl = PolicyFail msg params ->
+    sstep (ExprState f PCT (Eval (v,vt) ty) (Kfor2 a2 a3 s olbl k) e te m)
+          E0 (Failstop msg params)
+          
 | step_return_0: forall f PCT k e te m m',
     Mem.free_list m (blocks_of_env e) = Some m' ->
     sstep (State f PCT (Sreturn None) k e te m)
@@ -1085,6 +1181,10 @@ Inductive sstep: state -> trace -> state -> Prop :=
     RetT PCT oldpct vt = PolicySuccess (PCT', vt') ->
     sstep (Returnstate PCT (v,vt) (Kcall f e te oldpct C ty k) m)
           E0 (ExprState f PCT' (C (Eval (v,vt') ty)) k e te m)
+| step_returnstate_fail: forall v vt f PCT oldpct e C ty k te m msg params,
+    RetT PCT oldpct vt = PolicyFail msg params ->
+    sstep (Returnstate PCT (v,vt) (Kcall f e te oldpct C ty k) m)
+          E0 (Failstop msg params)
 .
 
 Definition step (S: state) (t: trace) (S': state) : Prop :=
@@ -1092,12 +1192,12 @@ Definition step (S: state) (t: trace) (S': state) : Prop :=
   
 End SEM.
 
-(** * Whole-program semantics *)
+  (** * Whole-program semantics *)
 
-(** Execution of whole programs are described as sequences of transitions
-  from an initial state to a final state.  An initial state is a [Callstate]
-  corresponding to the invocation of the ``main'' function of the program
-  without arguments and with an empty continuation. *)
+  (** Execution of whole programs are described as sequences of transitions
+      from an initial state to a final state.  An initial state is a [Callstate]
+      corresponding to the invocation of the ``main'' function of the program
+      without arguments and with an empty continuation. *)
 
   Inductive initial_state (p: program): state -> Prop :=
   | initial_state_intro: forall b pt f m0,
@@ -1108,22 +1208,22 @@ End SEM.
       type_of_fundef f = Tfunction Tnil type_int32s cc_default ->
       initial_state p (Callstate f InitPCT nil Kstop m0).
 
-(** A final state is a [Returnstate] with an empty continuation. *)
+  (** A final state is a [Returnstate] with an empty continuation. *)
 
-Inductive final_state: state -> int -> Prop :=
+  Inductive final_state: state -> int -> Prop :=
   | final_state_intro: forall PCT r m t,
       final_state (Returnstate PCT (Vint r, t) Kstop m) r.
 
-(** Wrapping up these definitions in a small-step semantics. *)
+  (** Wrapping up these definitions in a small-step semantics. *)
 
-Definition semantics (p: program) :=
-  Semantics_gen (fun ge => step (ge,snd (globalenv p))) (initial_state p) final_state (fst (globalenv p)).
+  Definition semantics (p: program) :=
+    Semantics_gen (fun ge => step (ge,snd (globalenv p))) (initial_state p) final_state (fst (globalenv p)).
 
-(** This semantics has the single-event property. *)
+  (** This semantics has the single-event property. *)
 
-Lemma semantics_single_events:
-  forall p, single_events (semantics p).
-Admitted.
+  Lemma semantics_single_events:
+    forall p, single_events (semantics p).
+  Admitted.
 (*Proof.
   unfold semantics; intros; red; simpl; intros.
   set (ge := globalenv p) in *.

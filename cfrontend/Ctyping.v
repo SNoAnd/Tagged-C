@@ -486,19 +486,19 @@ Inductive wt_stmt: statement -> Prop :=
       wt_rvalue r -> wt_stmt (Sdo r)
   | wt_Ssequence: forall s1 s2,
       wt_stmt s1 -> wt_stmt s2 -> wt_stmt (Ssequence s1 s2)
-  | wt_Sifthenelse: forall r s1 s2,
+  | wt_Sifthenelse: forall r s1 s2 olbl,
       wt_rvalue r -> wt_stmt s1 -> wt_stmt s2 -> wt_bool (typeof r) ->
-      wt_stmt (Sifthenelse r s1 s2)
-  | wt_Swhile: forall r s,
+      wt_stmt (Sifthenelse r s1 s2 olbl)
+  | wt_Swhile: forall r s olbl,
       wt_rvalue r -> wt_stmt s -> wt_bool (typeof r) ->
-      wt_stmt (Swhile r s)
-  | wt_Sdowhile: forall r s,
+      wt_stmt (Swhile r s olbl)
+  | wt_Sdowhile: forall r s olbl,
       wt_rvalue r -> wt_stmt s -> wt_bool (typeof r) ->
-      wt_stmt (Sdowhile r s)
-  | wt_Sfor: forall s1 r s2 s3,
+      wt_stmt (Sdowhile r s olbl)
+  | wt_Sfor: forall s1 r s2 s3 olbl,
       wt_rvalue r -> wt_stmt s1 -> wt_stmt s2 -> wt_stmt s3 ->
       wt_bool (typeof r) ->
-      wt_stmt (Sfor s1 r s2 s3)
+      wt_stmt (Sfor s1 r s2 s3 olbl)
   | wt_Sbreak:
       wt_stmt Sbreak
   | wt_Scontinue:
@@ -792,17 +792,17 @@ Definition eselection (r1 r2 r3: expr) : res expr :=
 Definition sdo (a: expr) : res statement :=
   do x <- check_rval a; OK (Sdo a).
 
-Definition sifthenelse (a: expr) (s1 s2: statement) : res statement :=
-  do x <- check_rval a; do y <- check_bool (typeof a); OK (Sifthenelse a s1 s2).
+Definition sifthenelse (a: expr) (s1 s2: statement) (olbl: option label) : res statement :=
+  do x <- check_rval a; do y <- check_bool (typeof a); OK (Sifthenelse a s1 s2 olbl).
 
-Definition swhile (a: expr) (s: statement) : res statement :=
-  do x <- check_rval a; do y <- check_bool (typeof a); OK (Swhile a s).
+Definition swhile (a: expr) (s: statement) (olbl: option label) : res statement :=
+  do x <- check_rval a; do y <- check_bool (typeof a); OK (Swhile a s olbl).
 
-Definition sdowhile (a: expr) (s: statement) : res statement :=
-  do x <- check_rval a; do y <- check_bool (typeof a); OK (Sdowhile a s).
+Definition sdowhile (a: expr) (s: statement) (olbl: option label) : res statement :=
+  do x <- check_rval a; do y <- check_bool (typeof a); OK (Sdowhile a s olbl).
 
-Definition sfor (s1: statement) (a: expr) (s2 s3: statement) : res statement :=
-  do x <- check_rval a; do y <- check_bool (typeof a); OK (Sfor s1 a s2 s3).
+Definition sfor (s1: statement) (a: expr) (s2 s3: statement) (olbl: option label) : res statement :=
+  do x <- check_rval a; do y <- check_bool (typeof a); OK (Sfor s1 a s2 s3 olbl).
 
 Definition sreturn (rt: type) (a: expr) : res statement :=
   do x <- check_rval a; do y <- check_cast (typeof a) rt;
@@ -900,22 +900,22 @@ Fixpoint retype_stmt (ce: composite_env) (e: typenv) (rt: type) (s: statement) :
       do a' <- retype_expr ce e a; sdo a'
   | Ssequence s1 s2 =>
       do s1' <- retype_stmt ce e rt s1; do s2' <- retype_stmt ce e rt s2; OK (Ssequence s1' s2')
-  | Sifthenelse a s1 s2 =>
+  | Sifthenelse a s1 s2 olbl =>
       do a' <- retype_expr ce e a;
       do s1' <- retype_stmt ce e rt s1; do s2' <- retype_stmt ce e rt s2;
-      sifthenelse a' s1' s2'
-  | Swhile a s =>
+      sifthenelse a' s1' s2' olbl
+  | Swhile a s olbl =>
       do a' <- retype_expr ce e a;
       do s' <- retype_stmt ce e rt s;
-      swhile a' s'
-  | Sdowhile a s =>
+      swhile a' s' olbl
+  | Sdowhile a s olbl =>
       do a' <- retype_expr ce e a;
       do s' <- retype_stmt ce e rt s;
-      sdowhile a' s'
-  | Sfor s1 a s2 s3 =>
+      sdowhile a' s' olbl
+  | Sfor s1 a s2 s3 olbl =>
       do a' <- retype_expr ce e a;
       do s1' <- retype_stmt ce e rt s1; do s2' <- retype_stmt ce e rt s2; do s3' <- retype_stmt ce e rt s3;
-      sfor s1' a' s2' s3'
+      sfor s1' a' s2' s3' olbl
   | Sbreak =>
       OK Sbreak
   | Scontinue =>
@@ -1304,28 +1304,28 @@ Proof.
 Qed.
 
 Lemma sifthenelse_sound:
-  forall a s1 s2 s, sifthenelse a s1 s2 = OK s ->
+  forall a s1 s2 olbl s, sifthenelse a s1 s2 olbl = OK s ->
   wt_expr ce e a -> wt_stmt ce e rt s1 -> wt_stmt ce e rt s2 -> wt_stmt ce e rt s.
 Proof.
   intros. monadInv H. eauto with ty.
 Qed.
 
 Lemma swhile_sound:
-  forall a s1 s, swhile a s1 = OK s ->
+  forall a s1 olbl s, swhile a s1 olbl = OK s ->
   wt_expr ce e a -> wt_stmt ce e rt s1 -> wt_stmt ce e rt s.
 Proof.
   intros. monadInv H. eauto with ty.
 Qed.
 
 Lemma sdowhile_sound:
-  forall a s1 s, sdowhile a s1 = OK s ->
+  forall a s1 olbl s, sdowhile a s1 olbl = OK s ->
   wt_expr ce e a -> wt_stmt ce e rt s1 -> wt_stmt ce e rt s.
 Proof.
   intros. monadInv H. eauto with ty.
 Qed.
 
 Lemma sfor_sound:
-  forall s1 a s2 s3 s, sfor s1 a s2 s3 = OK s ->
+  forall s1 a s2 s3 olbl s, sfor s1 a s2 s3 olbl = OK s ->
   wt_stmt ce e rt s1 -> wt_expr ce e a -> wt_stmt ce e rt s2 -> wt_stmt ce e rt s3 ->
   wt_stmt ce e rt s.
 Proof.
@@ -1856,7 +1856,10 @@ Proof.
   - (* unop *) simpl in H5. inv H2. constructor. eapply pres_sem_unop; inv H3; eauto.
   - (* binop *)
     simpl in H7. inv H4. inv H6. constructor. eapply pres_sem_binop; eauto.
-  - (* cast *) inv H2. constructor. eapply pres_sem_cast; eauto.
+  - (* cast_int_int *) inv H5. constructor. eapply pres_sem_cast; eauto.
+  - (* cast_int_ptr *) inv H7. constructor. eapply pres_sem_cast; eauto.
+  - (* cast_ptr_int *) inv H7. constructor. eapply pres_sem_cast; eauto.
+  - (* cast_ptr_ptr *) inv H9. constructor. eapply pres_sem_cast; eauto.
   - (* sequand true *) subst. constructor. auto. apply wt_bool_cast; auto.
     red; intros. inv H1; auto with ty.
   - (* sequand false *) constructor. auto with ty.
@@ -2048,23 +2051,23 @@ Inductive wt_expr_cont: typenv -> function -> cont -> Prop :=
   | wt_Kdo: forall te f k,
       wt_stmt_cont te f k ->
       wt_expr_cont te f (Kdo k)
-  | wt_Kifthenelse: forall te f s1 s2 k,
+  | wt_Kifthenelse: forall te f s1 s2 olbl k,
       wt_stmt_cont te f k ->
       wt_stmt ce te f.(fn_return) s1 -> wt_stmt ce te f.(fn_return) s2 ->
-      wt_expr_cont te f (Kifthenelse s1 s2 k)
-  | wt_Kwhile1: forall te f r s k,
+      wt_expr_cont te f (Kifthenelse s1 s2 olbl k)
+  | wt_Kwhile1: forall te f r s olbl k,
       wt_stmt_cont te f k ->
       wt_rvalue ce te r -> wt_stmt ce te f.(fn_return) s -> wt_bool (typeof r) ->
-      wt_expr_cont te f (Kwhile1 r s k)
-  | wt_Kdowhile2: forall te f r s k,
+      wt_expr_cont te f (Kwhile1 r s olbl k)
+  | wt_Kdowhile2: forall te f r s olbl k,
       wt_stmt_cont te f k ->
       wt_rvalue ce te r -> wt_stmt ce te f.(fn_return) s -> wt_bool (typeof r) ->
-      wt_expr_cont te f (Kdowhile2 r s k)
-  | wt_Kfor2: forall te f r s2 s3 k,
+      wt_expr_cont te f (Kdowhile2 r s olbl k)
+  | wt_Kfor2: forall te f r s2 s3 olbl k,
       wt_stmt_cont te f k ->
       wt_rvalue ce te r -> wt_stmt ce te f.(fn_return) s2 -> wt_stmt ce te f.(fn_return) s3 ->
       classify_bool (typeof r) <> bool_default ->
-      wt_expr_cont te f (Kfor2 r s2 s3 k)
+      wt_expr_cont te f (Kfor2 r s2 s3 olbl k)
   | wt_Kswitch1: forall te f ls k,
       wt_stmt_cont te f k ->
       wt_lblstmts ce te f.(fn_return) ls ->
@@ -2078,24 +2081,24 @@ with wt_stmt_cont: typenv -> function -> cont -> Prop :=
       wt_stmt_cont te f k ->
       wt_stmt ce te f.(fn_return) s ->
       wt_stmt_cont te f (Kseq s k)
-  | wt_Kwhile2: forall te f r s k,
+  | wt_Kwhile2: forall te f r s olbl k,
       wt_stmt_cont te f k ->
       wt_rvalue ce te r -> wt_stmt ce te f.(fn_return) s -> wt_bool (typeof r) ->
-      wt_stmt_cont te f (Kwhile2 r s k)
-  | wt_Kdowhile1: forall te f r s k,
+      wt_stmt_cont te f (Kwhile2 r s olbl k)
+  | wt_Kdowhile1: forall te f r s olbl k,
       wt_stmt_cont te f k ->
       wt_rvalue ce te r -> wt_stmt ce te f.(fn_return) s -> wt_bool (typeof r) ->
-      wt_stmt_cont te f (Kdowhile1 r s k)
-  | wt_Kfor3: forall te f r s2 s3 k,
+      wt_stmt_cont te f (Kdowhile1 r s olbl k)
+  | wt_Kfor3: forall te f r s2 s3 olbl k,
       wt_stmt_cont te f k ->
       wt_rvalue ce te r -> wt_stmt ce te f.(fn_return) s2 -> wt_stmt ce te f.(fn_return) s3 ->
       wt_bool (typeof r) ->
-      wt_stmt_cont te f (Kfor3 r s2 s3 k)
-  | wt_Kfor4: forall te f r s2 s3 k,
+      wt_stmt_cont te f (Kfor3 r s2 s3 olbl k)
+  | wt_Kfor4: forall te f r s2 s3 olbl k,
       wt_stmt_cont te f k ->
       wt_rvalue ce te r -> wt_stmt ce te f.(fn_return) s2 -> wt_stmt ce te f.(fn_return) s3 ->
       wt_bool (typeof r) ->
-      wt_stmt_cont te f (Kfor4 r s2 s3 k)
+      wt_stmt_cont te f (Kfor4 r s2 s3 olbl k)
   | wt_Kswitch2: forall te f k,
       wt_stmt_cont te f k ->
       wt_stmt_cont te f (Kswitch2 k)
@@ -2210,9 +2213,9 @@ Proof.
     eauto with ty.
   + eauto with ty.
   + eauto with ty.
-  + destruct (find_label lbl s1 (Kseq (Sfor Sskip r s2 s3) k)) as [[sx kx] | ] eqn:F.
+  + destruct (find_label lbl s1 (Kseq (Sfor Sskip r s2 s3 olbl) k)) as [[sx kx] | ] eqn:F.
     inv H7. eauto with ty.
-    destruct (find_label lbl s3 (Kfor3 r s2 s3 k)) as [[sx kx] | ] eqn:F2.
+    destruct (find_label lbl s3 (Kfor3 r s2 s3 olbl k)) as [[sx kx] | ] eqn:F2.
     inv H7. eauto with ty.
     eauto with ty.
   + eauto with ty.
@@ -2266,52 +2269,21 @@ Qed.
 Lemma preservation_sstep:
   forall S t S', sstep gce S t S' -> wt_state S -> wt_state S'.
 Proof.
-  induction 1; intros WT; inv WT.
-- inv WTS; eauto with ty.
-- inv WTK; eauto with ty.
-- inv WTS; eauto with ty.
-- inv WTK; eauto with ty.
-- inv WTK; eauto with ty.
-- inv WTK; eauto with ty.
-- inv WTS; eauto with ty.
-- inv WTK; destruct b; eauto with ty; admit.
-- admit.
-- inv WTS; eauto with ty.
-- inv WTK; eauto with ty.
-- inv WTK; eauto with ty.
-- inv WTK; eauto with ty.
-- inv WTK; eauto with ty.
-- inv WTS; eauto with ty.
-- inv WTK; eauto with ty.
-- inv WTK; eauto with ty.
-- inv WTK; eauto with ty.
-- inv WTK; eauto with ty.
-- inv WTS; eauto with ty.
-- inv WTS; eauto with ty.
-- inv WTK; eauto with ty.
-- inv WTK; eauto with ty.
-- inv WTK; eauto with ty.
-- inv WTK; eauto with ty.
-- inv WTK; eauto with ty.
+  induction 1; intros WT; inv WT; try (inv WTS; eauto with ty; fail); try (inv WTK; eauto with ty; fail).
+- inv WTK; destruct b; eauto with ty.
 - econstructor. eapply call_cont_wt; eauto. constructor.
-- inv WTS. eauto with ty.
 - inv WTK. econstructor. eapply call_cont_wt; eauto.
   inv WTE. eapply pres_sem_cast; eauto.
 - econstructor. eapply is_wt_call_cont; eauto. constructor.
-- inv WTS; eauto with ty.
 - inv WTK. econstructor; eauto with ty.
   apply wt_seq_of_ls. apply wt_select_switch; auto.
-- inv WTK; eauto with ty.
-- inv WTK; eauto with ty.
-- inv WTS; eauto with ty.
 - exploit wt_find_label. eexact WTB. eauto. eapply call_cont_wt'; eauto.
   intros [A B]. eauto with ty.
 - inv WTFD. inv H3. econstructor; eauto. apply wt_call_cont_stmt_cont; auto.
 - inv WTFD. destruct vres. econstructor; eauto.
   apply has_rettype_wt_val. simpl; rewrite <- H1.
   admit.
-  (*eapply external_call_well_typed_gen in H; eauto.*)
-- inv WTK. eauto with ty.
+(*eapply external_call_well_typed_gen in H; eauto.*)  
 Admitted.
 (*Qed.*)
 
