@@ -32,46 +32,54 @@ Module Csyntax (P:Policy).
   Import Genv.
   Import Mem.
 
-(** ** Expressions *)
+  (** ** Location Kinds *)
 
-(** Compcert C expressions are almost identical to those of C.
-  The only omission is string literals.  Some operators are treated
-  as derived forms: array indexing, pre-increment, pre-decrement, and
-  the [&&] and [||] operators.  All expressions are annotated with
-  their types. *)
+  (** A Tagged C location can be a memory location, a temporary variable
+      id, or a function pointer *)
 
-Inductive expr : Type :=
-| Eval (v: atom) (ty: type)                                           (**r evaluated fully *)
-| Evar (x: ident) (ty: type)                                                 (**r variable *)
-| Econst (v: val) (ty: type)                                                 (**r constant *)
-| Efield (l: expr) (f: ident) (ty: type)      (**r access to a member of a struct or union *)
-| Evalof (l: expr) (ty: type)                               (**r l-value used as a r-value *)
-| Ederef (r: expr) (ty: type)                         (**r pointer dereference (unary [*]) *)
-| Eaddrof (l: expr) (ty: type)                             (**r address-of operators ([&]) *)
-| Eunop (op: unary_operation) (r: expr) (ty: type)         (**r unary arithmetic operation *)
-| Ebinop (op: binary_operation) (r1 r2: expr) (ty: type)  (**r binary arithmetic operation *)
-| Ecast (r: expr) (ty: type)                                        (**r type cast [(ty)r] *)
-| Eseqand (r1 r2: expr) (ty: type)                        (**r sequential "and" [r1 && r2] *)
-| Eseqor (r1 r2: expr) (ty: type)                          (**r sequential "or" [r1 || r2] *)
-| Econdition (r1 r2 r3: expr) (ty: type)                   (**r conditional [r1 ? r2 : r3] *)
-| Esizeof (ty': type) (ty: type)                                       (**r size of a type *)
-| Ealignof (ty': type) (ty: type)                         (**r natural alignment of a type *)
-| Eassign (l: expr) (r: expr) (ty: type)                           (**r assignment [l = r] *)
-| Eassignop (op: binary_operation) (l: expr) (r: expr) (tyres ty: type)
-                                                 (**r assignment with arithmetic [l op= r] *)
-| Epostincr (id: incr_or_decr) (l: expr) (ty: type)
-                                        (**r post-increment [l++] and post-decrement [l--] *)
-| Ecomma (r1 r2: expr) (ty: type)                        (**r sequence expression [r1, r2] *)
-| Ecall (r1: expr) (rargs: exprlist) (ty: type)             (**r function call [r1(rargs)] *)
-| Ebuiltin (ef: external_function) (tyargs: typelist) (rargs: exprlist) (ty: type)
-                                                                (**r builtin function call *)
-| Eloc (ofs: ptrofs) (pt: tag) (bf: bitfield) (ty: type)
-                                      (**r memory location, result of evaluating a l-value *)
-| Efloc (b: block) (pt: tag) (ty: type)          (**r function "location," also an l-value *)
-| Eparen (r: expr) (tycast: type) (ty: type)                     (**r marked subexpression *)
-| Efailstop (ty: type)
+  Inductive loc_kind : Type :=
+  | Lmem (ofs: ptrofs) (pt: tag) (bf: bitfield)
+  | Ltmp (b: block)
+  | Lfun (b: block) (pt: tag)
+  .
+  
+  (** ** Expressions *)
+
+  (** Compcert C expressions are almost identical to those of C.
+      The only omission is string literals.  Some operators are treated
+      as derived forms: array indexing, pre-increment, pre-decrement, and
+      the [&&] and [||] operators.  All expressions are annotated with
+      their types. *)
+
+  Inductive expr : Type :=
+  | Eval (v: atom) (ty: type)                                           (**r evaluated fully *)
+  | Evar (x: ident) (ty: type)                                                 (**r variable *)
+  | Econst (v: val) (ty: type)                                                 (**r constant *)
+  | Efield (l: expr) (f: ident) (ty: type)      (**r access to a member of a struct or union *)
+  | Evalof (l: expr) (ty: type)                               (**r l-value used as a r-value *)
+  | Ederef (r: expr) (ty: type)                         (**r pointer dereference (unary [*]) *)
+  | Eaddrof (l: expr) (ty: type)                             (**r address-of operators ([&]) *)
+  | Eunop (op: unary_operation) (r: expr) (ty: type)         (**r unary arithmetic operation *)
+  | Ebinop (op: binary_operation) (r1 r2: expr) (ty: type)  (**r binary arithmetic operation *)
+  | Ecast (r: expr) (ty: type)                                        (**r type cast [(ty)r] *)
+  | Eseqand (r1 r2: expr) (ty: type)                        (**r sequential "and" [r1 && r2] *)
+  | Eseqor (r1 r2: expr) (ty: type)                          (**r sequential "or" [r1 || r2] *)
+  | Econdition (r1 r2 r3: expr) (ty: type)                   (**r conditional [r1 ? r2 : r3] *)
+  | Esizeof (ty': type) (ty: type)                                       (**r size of a type *)
+  | Ealignof (ty': type) (ty: type)                         (**r natural alignment of a type *)
+  | Eassign (l: expr) (r: expr) (ty: type)                           (**r assignment [l = r] *)
+  | Eassignop (op: binary_operation) (l: expr) (r: expr) (tyres ty: type)
+                                                   (**r assignment with arithmetic [l op= r] *)
+  | Epostincr (id: incr_or_decr) (l: expr) (ty: type)
+                                          (**r post-increment [l++] and post-decrement [l--] *)
+  | Ecomma (r1 r2: expr) (ty: type)                        (**r sequence expression [r1, r2] *)
+  | Ecall (r1: expr) (rargs: exprlist) (ty: type)             (**r function call [r1(rargs)] *)
+  | Ebuiltin (ef: external_function) (tyargs: typelist) (rargs: exprlist) (ty: type)
+                                                                  (**r builtin function call *)
+  | Eloc (l:loc_kind) (ty: type)               (**r location, result of evaluating a l-value *)
+  | Eparen (r: expr) (tycast: type) (ty: type)                     (**r marked subexpression *)
          
-with exprlist : Type :=
+  with exprlist : Type :=
   | Enil
   | Econs (r1: expr) (rl: exprlist).
 
@@ -128,8 +136,7 @@ Definition Eselection (r1 r2 r3: expr) (ty: type) :=
 
 Definition typeof (a: expr) : type :=
   match a with
-  | Eloc _ _ _ ty => ty
-  | Efloc _ _ ty => ty
+  | Eloc _ ty => ty
   | Evar _ ty => ty
   | Ederef _ ty => ty
   | Efield _ _ ty => ty
@@ -152,7 +159,6 @@ Definition typeof (a: expr) : type :=
   | Ecall _ _ ty => ty
   | Ebuiltin _ _ _ ty => ty
   | Eparen _ _ ty => ty
-  | Efailstop ty => ty
   end.
 
 (** ** Statements *)

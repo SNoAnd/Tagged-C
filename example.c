@@ -12,7 +12,8 @@ void publish(int x) {
 int main() {
 	int secret = 5;
 	int sensitive[4] = {0,0,0,0};
-	int res = f();
+	int (*foo)() = f;
+	int res = (*foo)();
 	if (sensitive[0] == 42)
 		publish(secret);
 	else

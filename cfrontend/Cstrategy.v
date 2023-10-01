@@ -68,8 +68,7 @@ Variable ge: gcenv.
 
 Fixpoint simple (a: expr) : bool :=
   match a with
-  | Eloc _ _ _ _ => true
-  | Efloc _ _ _ => true
+  | Eloc _ _ => true
   | Evar _ _ => true
   | Econst _ _ => true
   | Ederef r _ => simple r
@@ -92,7 +91,6 @@ Fixpoint simple (a: expr) : bool :=
   | Ecall _ _ _ => false
   | Ebuiltin _ _ _ _ => false
   | Eparen _ _ _ => false
-  | Efailstop _ => true
   end.
 
 Fixpoint simplelist (rl: exprlist) : bool :=
@@ -106,61 +104,69 @@ Fixpoint simplelist (rl: exprlist) : bool :=
 Section SIMPLE_EXPRS.
 
 Variable e: env.
+Variable te: tenv.
 Variable m: mem.
 Variable PCT: tag.
 
-Inductive eval_simple_lvalue: expr -> ptrofs -> tag -> bitfield -> Prop :=
-| esl_loc: forall ofs pt ty bf,
-    eval_simple_lvalue (Eloc ofs pt bf ty) ofs pt bf
+Inductive eval_simple_lvalue: expr -> loc_kind -> Prop :=
+| esl_loc: forall loc ty,
+    eval_simple_lvalue (Eloc loc ty) loc
 | esl_var_local: forall x ty lo hi pt,
-    e!x = Some(lo, hi, pt, ty) ->
-    eval_simple_lvalue (Evar x ty) (Ptrofs.repr lo) pt Full
+    e!x = Some (PUB (lo, hi, pt)) ->
+    eval_simple_lvalue (Evar x ty) (Lmem (Ptrofs.repr lo) pt Full)
 | esl_var_global: forall x ty base bound pt,
     e!x = None ->
     Genv.find_symbol (fst ge) x = Some (inr (base, bound, pt)) ->
-    eval_simple_lvalue (Evar x ty) (Ptrofs.repr base) pt Full
+    eval_simple_lvalue (Evar x ty) (Lmem (Ptrofs.repr base) pt Full)
 | esl_deref_short: forall r ty ofs pt,
     eval_simple_rvalue PCT r (Vint ofs, pt) ->
-    eval_simple_lvalue (Ederef r ty) (Ptrofs.of_int ofs) pt Full
+    eval_simple_lvalue (Ederef r ty) (Lmem (Ptrofs.of_int ofs) pt Full)
 | esl_deref_long: forall r ty ofs pt,
     eval_simple_rvalue PCT r (Vlong ofs, pt) ->
-    eval_simple_lvalue (Ederef r ty) (Ptrofs.of_int64 ofs) pt Full
+    eval_simple_lvalue (Ederef r ty) (Lmem (Ptrofs.of_int64 ofs) pt Full)
 | esl_field_struct_short: forall r f ty ofs pt id co a delta bf,
     eval_simple_rvalue PCT r (Vint ofs, pt) ->
     typeof r = Tstruct id a ->
     (snd ge)!id = Some co ->
     field_offset (snd ge) f (co_members co) = OK (delta, bf) ->
-    eval_simple_lvalue (Efield r f ty) (Ptrofs.add (Ptrofs.of_int ofs) (Ptrofs.repr delta)) pt bf
+    eval_simple_lvalue (Efield r f ty) (Lmem (Ptrofs.add (Ptrofs.of_int ofs) (Ptrofs.repr delta)) pt bf)
 | esl_field_struct_long: forall r f ty ofs pt id co a delta bf,
     eval_simple_rvalue PCT r (Vlong ofs, pt) ->
     typeof r = Tstruct id a ->
     (snd ge)!id = Some co ->
     field_offset (snd ge) f (co_members co) = OK (delta, bf) ->
-    eval_simple_lvalue (Efield r f ty) (Ptrofs.add (Ptrofs.of_int64 ofs) (Ptrofs.repr delta)) pt bf
+    eval_simple_lvalue (Efield r f ty) (Lmem (Ptrofs.add (Ptrofs.of_int64 ofs) (Ptrofs.repr delta)) pt bf)
 | esl_field_union_short: forall r f ty ofs pt id co a delta bf,
     eval_simple_rvalue PCT r (Vint ofs, pt) ->
     typeof r = Tunion id a ->
     union_field_offset (snd ge) f (co_members co) = OK (delta, bf) ->
     (snd ge)!id = Some co ->
-    eval_simple_lvalue (Efield r f ty) (Ptrofs.add (Ptrofs.of_int ofs) (Ptrofs.repr delta)) def_tag bf
+    eval_simple_lvalue (Efield r f ty) (Lmem (Ptrofs.add (Ptrofs.of_int ofs) (Ptrofs.repr delta)) def_tag bf)
 | esl_field_union_long: forall r f ty ofs pt id co a delta bf,
     eval_simple_rvalue PCT r (Vlong ofs, pt) ->
     typeof r = Tunion id a ->
     union_field_offset (snd ge) f (co_members co) = OK (delta, bf) ->
     (snd ge)!id = Some co ->
-    eval_simple_lvalue (Efield r f ty) (Ptrofs.add (Ptrofs.of_int64 ofs) (Ptrofs.repr delta)) def_tag bf
+    eval_simple_lvalue (Efield r f ty) (Lmem (Ptrofs.add (Ptrofs.of_int64 ofs) (Ptrofs.repr delta)) def_tag bf)
 
 with eval_simple_rvalue: tag -> expr -> atom -> Prop :=
   | esr_val: forall v ty,
       eval_simple_rvalue PCT (Eval v ty) v
-  | esr_rvalof: forall ofs pt bf l ty v lts,
-      eval_simple_lvalue l ofs pt bf ->
+  | esr_rvalof_mem: forall ofs pt bf l ty v lts,
+      eval_simple_lvalue l (Lmem ofs pt bf) ->
       ty = typeof l -> type_is_volatile ty = false ->
       deref_loc ge ty m ofs pt bf E0 v lts ->
       eval_simple_rvalue PCT (Evalof l ty) v
-  | esr_addrof: forall ofs pt l ty,
-      eval_simple_lvalue l ofs pt Full ->
+  | esr_rvalof_tmp: forall b l ty v,
+      eval_simple_lvalue l (Ltmp b) ->
+      te!b = Some v ->
+      eval_simple_rvalue PCT (Evalof l ty) v
+  | esr_addrof_mem: forall ofs pt l ty,
+      eval_simple_lvalue l (Lmem ofs pt Full) ->
       eval_simple_rvalue PCT (Eaddrof l ty) (Vofptrsize (Ptrofs.signed ofs), pt)
+  | esr_addrof_fun: forall b pt l ty,
+      eval_simple_lvalue l (Lfun b pt) ->
+      eval_simple_rvalue PCT (Eaddrof l ty) (Vfptr b, pt)
   | esr_unop: forall op r1 ty v1 vt v,
       eval_simple_rvalue PCT r1 (v1,vt) ->
       sem_unary_operation op v1 (typeof r1) m = Some v ->
@@ -273,82 +279,82 @@ Local Hint Resolve leftcontext_context : core.
 
 Inductive estep: Csem.state -> trace -> Csem.state -> Prop :=
 
-  | step_expr: forall f r k e m PCT PCT' v ty,
-      eval_simple_rvalue e m PCT PCT' r v ->
+  | step_expr: forall f r k e te m PCT PCT' v ty,
+      eval_simple_rvalue e te m PCT PCT' r v ->
       match r with Eval _ _ => False | _ => True end ->
       ty = typeof r ->
-      estep (ExprState f PCT r k e m)
-         E0 (ExprState f PCT' (Eval v ty) k e m)
+      estep (ExprState f PCT r k e te m)
+         E0 (ExprState f PCT' (Eval v ty) k e te m)
 
-  | step_rvalof_volatile: forall f C l ty k e m PCT ofs pt bf t v lts,
+  | step_rvalof_volatile: forall f C l ty k e te m PCT ofs pt bf t v lts,
       leftcontext RV RV C ->
-      eval_simple_lvalue e m PCT l ofs pt bf ->
+      eval_simple_lvalue e te m PCT l (Lmem ofs pt bf) ->
       deref_loc ge ty m ofs pt bf t v lts ->
       ty = typeof l -> type_is_volatile ty = true ->
-      estep (ExprState f PCT (C (Evalof l ty)) k e m)
-          t (ExprState f PCT (C (Eval v ty)) k e m)
+      estep (ExprState f PCT (C (Evalof l ty)) k e te m)
+          t (ExprState f PCT (C (Eval v ty)) k e te m)
 
-  | step_seqand_true: forall f C r1 r2 ty k e m PCT PCT' v vt,
+  | step_seqand_true: forall f C r1 r2 ty k e te m PCT PCT' v vt,
       leftcontext RV RV C ->
-      eval_simple_rvalue e m PCT PCT' r1 (v,vt) ->
+      eval_simple_rvalue e te m PCT PCT' r1 (v,vt) ->
       bool_val v (typeof r1) m = Some true ->
-      estep (ExprState f PCT (C (Eseqand r1 r2 ty)) k e m)
-         E0 (ExprState f PCT' (C (Eparen r2 type_bool ty)) k e m)
-  | step_seqand_false: forall f C r1 r2 ty k e m PCT PCT' v vt,
+      estep (ExprState f PCT (C (Eseqand r1 r2 ty)) k e te m)
+         E0 (ExprState f PCT' (C (Eparen r2 type_bool ty)) k e te m)
+  | step_seqand_false: forall f C r1 r2 ty k e te m PCT PCT' v vt,
       leftcontext RV RV C ->
-      eval_simple_rvalue e m PCT PCT' r1 (v,vt) ->
+      eval_simple_rvalue e te m PCT PCT' r1 (v,vt) ->
       bool_val v (typeof r1) m = Some false ->
-      estep (ExprState f PCT (C (Eseqand r1 r2 ty)) k e m)
-         E0 (ExprState f PCT (C (Eval (Vint Int.zero, vt) ty)) k e m)
+      estep (ExprState f PCT (C (Eseqand r1 r2 ty)) k e te m)
+         E0 (ExprState f PCT (C (Eval (Vint Int.zero, vt) ty)) k e te m)
 
-  | step_seqor_true: forall f C r1 r2 ty k e m PCT PCT' v vt,
+  | step_seqor_true: forall f C r1 r2 ty k e te m PCT PCT' v vt,
       leftcontext RV RV C ->
-      eval_simple_rvalue e m PCT PCT' r1 (v,vt) ->
+      eval_simple_rvalue e te m PCT PCT' r1 (v,vt) ->
       bool_val v (typeof r1) m = Some true ->
-      estep (ExprState f PCT (C (Eseqor r1 r2 ty)) k e m)
-         E0 (ExprState f PCT' (C (Eval (Vint Int.one, vt) ty)) k e m)
-  | step_seqor_false: forall f C r1 r2 ty k e m PCT PCT' v vt,
+      estep (ExprState f PCT (C (Eseqor r1 r2 ty)) k e te m)
+         E0 (ExprState f PCT' (C (Eval (Vint Int.one, vt) ty)) k e te m)
+  | step_seqor_false: forall f C r1 r2 ty k e te m PCT PCT' v vt,
       leftcontext RV RV C ->
-      eval_simple_rvalue e m PCT PCT' r1 (v,vt) ->
+      eval_simple_rvalue e te m PCT PCT' r1 (v,vt) ->
       bool_val v (typeof r1) m = Some false ->
-      estep (ExprState f PCT (C (Eseqor r1 r2 ty)) k e m)
-         E0 (ExprState f PCT' (C (Eparen r2 type_bool ty)) k e m)
+      estep (ExprState f PCT (C (Eseqor r1 r2 ty)) k e te m)
+         E0 (ExprState f PCT' (C (Eparen r2 type_bool ty)) k e te m)
 
-  | step_condition: forall f C r1 r2 r3 ty k e m PCT PCT' v vt b,
+  | step_condition: forall f C r1 r2 r3 ty k e te m PCT PCT' v vt b,
       leftcontext RV RV C ->
-      eval_simple_rvalue e m PCT PCT' r1 (v,vt) ->
+      eval_simple_rvalue e te m PCT PCT' r1 (v,vt) ->
       bool_val v (typeof r1) m = Some b ->
-      estep (ExprState f PCT (C (Econdition r1 r2 r3 ty)) k e m)
-         E0 (ExprState f PCT' (C (Eparen (if b then r2 else r3) ty ty)) k e m)
+      estep (ExprState f PCT (C (Econdition r1 r2 r3 ty)) k e te m)
+         E0 (ExprState f PCT' (C (Eparen (if b then r2 else r3) ty ty)) k e te m)
 
-  | step_assign: forall f C l r ty k e m PCT PCT' ofs pt bf v vt v1 t m' v' lts,
+  | step_assign: forall f C l r ty k e te m PCT PCT' ofs pt bf v vt v1 t m' v' lts,
       leftcontext RV RV C ->
-      eval_simple_lvalue e m PCT l ofs pt bf ->
-      eval_simple_rvalue e m PCT PCT' r (v,vt) ->
+      eval_simple_lvalue e te m PCT l (Lmem ofs pt bf) ->
+      eval_simple_rvalue e te m PCT PCT' r (v,vt) ->
       sem_cast v (typeof r) (typeof l) m = Some v1 ->
       assign_loc ge (typeof l) m ofs pt bf (v1,vt) t m' (v',vt) lts ->
       ty = typeof l ->
-      estep (ExprState f PCT (C (Eassign l r ty)) k e m)
-          t (ExprState f PCT' (C (Eval (v',vt) ty)) k e m')
+      estep (ExprState f PCT (C (Eassign l r ty)) k e te m)
+          t (ExprState f PCT' (C (Eval (v',vt) ty)) k e te m')
 
-  | step_assignop: forall f C op l r tyres ty k e m PCT PCT' ofs pt bf v1 v2 v3 v4 vt t1 t2 m' v' t lts,
+  | step_assignop: forall f C op l r tyres ty k e te m PCT PCT' ofs pt bf v1 v2 v3 v4 vt t1 t2 m' v' t lts,
       leftcontext RV RV C ->
-      eval_simple_lvalue e m PCT l ofs pt bf ->
+      eval_simple_lvalue e te m PCT l (Lmem ofs pt bf) ->
       deref_loc ge (typeof l) m ofs pt bf t1 (v1,vt) lts ->
-      eval_simple_rvalue e m PCT PCT' r (v2,vt) ->
+      eval_simple_rvalue e te m PCT PCT' r (v2,vt) ->
       sem_binary_operation (snd ge) op v1 (typeof l) v2 (typeof r) m = Some v3 ->
       sem_cast v3 tyres (typeof l) m = Some v4 ->
       assign_loc ge (typeof l) m ofs pt bf (v4,vt) t2 m' v' lts ->
       ty = typeof l ->
       t = t1 ** t2 ->
-      estep (ExprState f PCT (C (Eassignop op l r tyres ty)) k e m)
-          t (ExprState f PCT' (C (Eval v' ty)) k e m')
+      estep (ExprState f PCT (C (Eassignop op l r tyres ty)) k e te m)
+          t (ExprState f PCT' (C (Eval v' ty)) k e te m')
 
-  | step_assignop_stuck: forall f C op l r tyres ty k e m PCT PCT' ofs pt bf v1 v2 vt1 vt2 t lts,
+  | step_assignop_stuck: forall f C op l r tyres ty k e te m PCT PCT' ofs pt bf v1 v2 vt1 vt2 t lts,
       leftcontext RV RV C ->
-      eval_simple_lvalue e m PCT l ofs pt bf ->
+      eval_simple_lvalue e te m PCT l (Lmem ofs pt bf) ->
       deref_loc ge (typeof l) m ofs pt bf t (v1,vt1) lts ->
-      eval_simple_rvalue e m PCT PCT' r (v2,vt2) ->
+      eval_simple_rvalue e te m PCT PCT' r (v2,vt2) ->
       match sem_binary_operation (snd ge) op v1 (typeof l) v2 (typeof r) m with
       | None => True
       | Some v3 =>
@@ -358,24 +364,24 @@ Inductive estep: Csem.state -> trace -> Csem.state -> Prop :=
           end
       end ->
       ty = typeof l ->
-      estep (ExprState f PCT (C (Eassignop op l r tyres ty)) k e m)
+      estep (ExprState f PCT (C (Eassignop op l r tyres ty)) k e te m)
           t Stuckstate
 
-  | step_postincr: forall f C id l ty k e m PCT PCT' ofs pt bf v1 v2 v3 vt t1 t2 m' v' t lts,
+  | step_postincr: forall f C id l ty k e te m PCT PCT' ofs pt bf v1 v2 v3 vt t1 t2 m' v' t lts,
       leftcontext RV RV C ->
-      eval_simple_lvalue e m PCT l ofs pt bf ->
+      eval_simple_lvalue e te m PCT l (Lmem ofs pt bf) ->
       deref_loc ge ty m ofs pt bf t1 (v1,vt) lts ->
       sem_incrdecr (snd ge) id v1 ty m = Some v2 ->
       sem_cast v2 (incrdecr_type ty) ty m = Some v3 ->
       assign_loc ge ty m ofs pt bf (v3,vt) t2 m' v' lts ->
       ty = typeof l ->
       t = t1 ** t2 ->
-      estep (ExprState f PCT (C (Epostincr id l ty)) k e m)
-          t (ExprState f PCT' (C (Eval (v1,vt) ty)) k e m')
+      estep (ExprState f PCT (C (Epostincr id l ty)) k e te m)
+          t (ExprState f PCT' (C (Eval (v1,vt) ty)) k e te m')
 
-  | step_postincr_stuck: forall f C id l ty k e m PCT ofs pt bf v1 vt t lts,
+  | step_postincr_stuck: forall f C id l ty k e te m PCT ofs pt bf v1 vt t lts,
       leftcontext RV RV C ->
-      eval_simple_lvalue e m PCT l ofs pt bf ->
+      eval_simple_lvalue e te m PCT l (Lmem ofs pt bf) ->
       deref_loc ge ty m ofs pt bf t (v1,vt) lts ->
       match sem_incrdecr (snd ge) id v1 ty m with
       | None => True
@@ -386,39 +392,39 @@ Inductive estep: Csem.state -> trace -> Csem.state -> Prop :=
           end
       end ->
       ty = typeof l ->
-      estep (ExprState f PCT (C (Epostincr id l ty)) k e m)
+      estep (ExprState f PCT (C (Epostincr id l ty)) k e te m)
           t Stuckstate
 
-  | step_comma: forall f C r1 r2 ty k e m PCT PCT' v vt,
+  | step_comma: forall f C r1 r2 ty k e te m PCT PCT' v vt,
       leftcontext RV RV C ->
-      eval_simple_rvalue e m PCT PCT' r1 (v,vt) ->
+      eval_simple_rvalue e te m PCT PCT' r1 (v,vt) ->
       ty = typeof r2 ->
-      estep (ExprState f PCT (C (Ecomma r1 r2 ty)) k e m)
-         E0 (ExprState f PCT' (C r2) k e m)
+      estep (ExprState f PCT (C (Ecomma r1 r2 ty)) k e te m)
+         E0 (ExprState f PCT' (C r2) k e te m)
 
-  | step_paren: forall f C r tycast ty k e m PCT PCT' v1 v vt,
+  | step_paren: forall f C r tycast ty k e te m PCT PCT' v1 v vt,
       leftcontext RV RV C ->
-      eval_simple_rvalue e m PCT PCT' r (v1,vt) ->
+      eval_simple_rvalue e te m PCT PCT' r (v1,vt) ->
       sem_cast v1 (typeof r) tycast m = Some v ->
-      estep (ExprState f PCT (C (Eparen r tycast ty)) k e m)
-         E0 (ExprState f PCT' (C (Eval (v,vt) ty)) k e m)
+      estep (ExprState f PCT (C (Eparen r tycast ty)) k e te m)
+         E0 (ExprState f PCT' (C (Eval (v,vt) ty)) k e te m)
 
-  | step_call: forall f C rf rargs ty k e m PCT PCT' targs tres cconv vf ft vargs fd,
+  | step_call: forall f C rf rargs ty k e te m PCT PCT' targs tres cconv vf ft vargs fd,
       leftcontext RV RV C ->
       classify_fun (typeof rf) = fun_case_f targs tres cconv ->
-      eval_simple_rvalue e m PCT PCT' rf (vf,ft) ->
-      eval_simple_list e m PCT rargs targs vargs ->
+      eval_simple_rvalue e te m PCT PCT' rf (vf,ft) ->
+      eval_simple_list e te m PCT rargs targs vargs ->
       Genv.find_funct (fst ge) vf = Some fd ->
       type_of_fundef fd = Tfunction targs tres cconv ->
-      estep (ExprState f PCT (C (Ecall rf rargs ty)) k e m)
-         E0 (Callstate fd PCT' vargs (Kcall f e PCT C ty k) m)
+      estep (ExprState f PCT (C (Ecall rf rargs ty)) k e te m)
+         E0 (Callstate fd PCT' vargs (Kcall f e te PCT C ty k) m)
 
-  | step_builtin: forall f C ef tyargs rargs ty k e m PCT PCT' vargs t vres m',
+  | step_builtin: forall f C ef tyargs rargs ty k e te m PCT PCT' vargs t vres m',
       leftcontext RV RV C ->
-      eval_simple_list e m PCT rargs tyargs vargs ->
+      eval_simple_list e te m PCT rargs tyargs vargs ->
       external_call ef (fst ge) vargs PCT m t vres PCT' m' ->
-      estep (ExprState f PCT (C (Ebuiltin ef tyargs rargs ty)) k e m)
-          t (ExprState f PCT' (C (Eval vres ty)) k e m').
+      estep (ExprState f PCT (C (Ebuiltin ef tyargs rargs ty)) k e te m)
+          t (ExprState f PCT' (C (Eval vres ty)) k e te m').
 
 Definition step (S: Csem.state) (t: trace) (S': Csem.state) : Prop :=
   estep S t S' \/ sstep ge S t S'.
@@ -476,12 +482,12 @@ Proof.
 Qed.
 
 Lemma safe_imm_safe:
-  forall f PCT C a k e m K,
-  safe (ExprState f PCT (C a) k e m) ->
+  forall f PCT C a k e te m K,
+  safe (ExprState f PCT (C a) k e te m) ->
   context K RV C ->
-  imm_safe ge e K a m.
+  imm_safe ge e K a PCT te m.
 Proof.
-  intros. destruct (classic (imm_safe ge e K a m)); auto.
+  intros. destruct (classic (imm_safe ge e K a PCT te m)); auto.
   destruct (H Stuckstate).
   apply star_one. left. econstructor; eauto.
   destruct H2 as [r F]. inv F.
@@ -492,7 +498,7 @@ Qed.
 
 Definition expr_kind (a: expr) : kind :=
   match a with
-  | Eloc _ _ _ _ => LV
+  | Eloc _ _ => LV
   | Evar _ _ => LV
   | Ederef _ _ => LV
   | Efield _ _ _ => LV
@@ -500,13 +506,13 @@ Definition expr_kind (a: expr) : kind :=
   end.
 
 Lemma lred_kind:
-  forall e a m a' m', lred ge e a m a' m' -> expr_kind a = LV.
+  forall e a te m PCT a' te' m', lred ge e a te m PCT a' te' m' -> expr_kind a = LV.
 Proof.
   induction 1; auto.
 Qed.
 
 Lemma rred_kind:
-  forall PCT a m t PCT' a' m', rred ge PCT a m t PCT' a' m' -> expr_kind a = RV.
+  forall PCT a m e t PCT' a' e' m', rred ge PCT a e m t PCT' a' e' m' -> expr_kind a = RV.
 Proof.
   induction 1; auto.
 Qed.
@@ -524,7 +530,7 @@ Proof.
 Qed.
 
 Lemma imm_safe_kind:
-  forall e k a m, imm_safe ge e k a m -> expr_kind a = k.
+  forall e te k a PCT m, imm_safe ge e k a PCT te m -> expr_kind a = k.
 Proof.
   induction 1.
   auto.
@@ -535,9 +541,9 @@ Proof.
 Qed.
 
 Lemma safe_expr_kind:
-  forall from C f PCT a k e m,
+  forall from C f PCT a k e te m,
   context from RV C ->
-  safe (ExprState f PCT (C a) k e m) ->
+  safe (ExprState f PCT (C a) k e te m) ->
   expr_kind a = from.
 Proof.
   intros. eapply imm_safe_kind. eapply safe_imm_safe; eauto.
@@ -556,17 +562,17 @@ Fixpoint exprlist_all_values (rl: exprlist) : Prop :=
   | Econs _ _ => False
   end.
 
-Definition invert_expr_prop (a: expr) (PCT: tag) (m: mem) : Prop :=
+(*Definition invert_expr_prop (a: expr) (PCT: tag) (m: mem) : Prop :=
   match a with
-  | Eloc ofs pt bf ty => False
+  | Eloc _ ty => False
   | Evar x ty =>
-      exists b pt,
-      e!x = Some(b, pt, ty)
+      exists base bound pt,
+      e!x = Some(PUB (base, bound, pt))
       \/  (e!x = None /\ exists b, Genv.find_symbol (fst ge) x = Some b)
   | Ederef (Eval (v,vt) ty1) ty =>
       (exists ofs, v = Vint ofs) \/
         (exists ofs, v = Vlong ofs)
-  | Eaddrof (Eloc ofs pt bf ty) ty' =>
+  | Eaddrof (Eloc (Lmem ofs pt bf) ty) ty' =>
       bf = Full
   | Efield (Eval v ty1) f ty =>
       ((exists ofs, exists pt, v = (Vint ofs, pt)) \/
@@ -578,7 +584,7 @@ Definition invert_expr_prop (a: expr) (PCT: tag) (m: mem) : Prop :=
       | _ => False
       end
   | Eval v ty => False
-  | Evalof (Eloc ofs pt bf ty') ty =>
+  | Evalof (Eloc (Lmem ofs pt bf) ty') ty =>
       ty' = ty /\ exists t, exists v, exists lts, deref_loc ge ty m ofs pt bf t v lts
   | Eunop op (Eval (v1,vt1) ty1) ty =>
       exists v, sem_unary_operation op v1 ty1 m = Some v
@@ -590,40 +596,13 @@ Definition invert_expr_prop (a: expr) (PCT: tag) (m: mem) : Prop :=
       exists b, bool_val v1 ty1 m = Some b
   | Eseqor (Eval (v1,vt1) ty1) r2 ty =>
       exists b, bool_val v1 ty1 m = Some b
-  | Econdition (Eval (v1,vt1) ty1) r1 r2 ty =>
-      exists b, bool_val v1 ty1 m = Some b
-  | Eassign (Eloc ofs pt bf ty1) (Eval (v2,vt2) ty2) ty =>
-      exists v m' v' t lts,
-      ty = ty1 /\ sem_cast v2 ty2 ty1 m = Some v /\ assign_loc ge ty1 m ofs pt bf (v,vt2) t m' v' lts
-  | Eassignop op (Eloc ofs pt bf ty1) (Eval v2 ty2) tyres ty =>
-      exists t v1 lts,
-      ty = ty1
-      /\ deref_loc ge ty1 m ofs pt bf t v1 lts
-  | Epostincr id (Eloc ofs pt bf ty1) ty =>
-      exists t v1 lts,
-      ty = ty1
-      /\ deref_loc ge ty m ofs pt bf t v1 lts
-  | Ecomma (Eval v ty1) r2 ty =>
-      typeof r2 = ty
-  | Eparen (Eval (v1,vt1) ty1) ty2 ty =>
-      exists v, sem_cast v1 ty1 ty2 m = Some v
-  | Ecall (Eval (vf,ft) tyf) rargs ty =>
-      exprlist_all_values rargs ->
-      exists tyargs tyres cconv fd vl,
-         classify_fun tyf = fun_case_f tyargs tyres cconv
-      /\ Genv.find_funct (fst ge) vf = Some fd
-      /\ cast_arguments m rargs tyargs vl
-      /\ type_of_fundef fd = Tfunction tyargs tyres cconv
-  | Ebuiltin ef tyargs rargs ty =>
-      exprlist_all_values rargs ->
-      exists vargs, exists t, exists vres, exists PCT', exists m',
-         cast_arguments m rargs tyargs vargs
+
       /\ external_call ef (fst ge) vargs PCT m t vres PCT' m'
   | _ => True
   end.
 
 Lemma lred_invert:
-  forall l PCT m l' m', lred ge e l m l' m' -> invert_expr_prop l PCT m.
+  forall l PCT m l' m', lred ge e l PCT m l' m' -> invert_expr_prop l PCT m.
 Admitted.
 (*Proof.
   induction 1; red; auto.
@@ -706,7 +685,7 @@ Qed.*)
 
 Lemma imm_safe_inv:
   forall k a PCT m,
-  imm_safe ge e k a m ->
+  imm_safe ge e k a PCT m ->
   match a with
   | Eloc _ _ _ _ => True
   | Eval _ _ => True
@@ -3131,3 +3110,7 @@ Proof.
   eapply evalinf_funcall_steps; eauto.
 Qed.
 *)
+*)
+End INVERSION_LEMMAS.
+End STRATEGY.
+End Cstrategy.

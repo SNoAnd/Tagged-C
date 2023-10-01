@@ -149,7 +149,6 @@ type associativity = LtoR | RtoL | NA
 
 let rec precedence = function
   | Csyntax.Eloc _ -> (16, NA)
-  | Csyntax.Efloc _ -> (16, NA)
   | Csyntax.Evar _ -> (16, NA)
   | Csyntax.Ederef _ -> (15, RtoL)
   | Csyntax.Efield _ -> (16, LtoR)
@@ -178,7 +177,6 @@ let rec precedence = function
   | Csyntax.Eassignop _ -> (2, RtoL)
   | Csyntax.Ecomma _ -> (1, LtoR)
   | Csyntax.Eparen _ -> (14, RtoL)
-  | Csyntax.Efailstop _ -> (16, NA)
 
 (* Expressions *)
 
@@ -220,8 +218,6 @@ let rec expr p (prec, e) =
   begin match e with
   | Csyntax.Eloc(ofs, _, _, _) ->
       fprintf p "<loc%a>" !print_pointer_hook (P.one, ofs)
-  | Csyntax.Efloc(b, _, _) ->
-      fprintf p "<loc%a>" !print_pointer_hook (b, coqint_of_camlint 0l)
   | Csyntax.Evar(id, _) ->
       fprintf p "%s" (extern_atom id)
   | Csyntax.Ederef(a1, _) ->
@@ -292,8 +288,6 @@ let rec expr p (prec, e) =
       fprintf p "<unknown builtin>@[<hov 1>(%a)@]" exprlist (true, args)
   | Csyntax.Eparen(a1, tycast, ty) ->
       fprintf p "(%s) %a" (name_type tycast) expr (prec', a1)
-  | Csyntax.Efailstop ty ->
-      fprintf p "FAIL"
   end;
   if prec' < prec then fprintf p ")@]" else fprintf p "@]"
 
