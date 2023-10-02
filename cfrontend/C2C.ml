@@ -27,7 +27,7 @@ module C2CP =
                 struct
 
 module Init = Initializers.Initializers (Pol)
-module Ctyping = Init.Cexec.Cstrategy.Ctyping
+module Ctyping = Init.Cexec.InterpreterEvents.Cstrategy.Ctyping
 module Csyntax = Ctyping.Csem.Csyntax
 module Cop = Csyntax.Cop
 
@@ -391,7 +391,7 @@ let globals_for_strings globs =
 (** ** Handling of inlined memcpy functions *)
 
 let constant_size_t a =
-  match Init.constval_cast !comp_env a Init.Cexec.Cstrategy.Ctyping.size_t with
+  match Init.constval_cast !comp_env a Ctyping.size_t with
   | Errors.OK(Vint n) -> Some(Integers.Int.unsigned n)
   | Errors.OK(Vlong n) -> Some(Integers.Int64.unsigned n)
   | _ -> None
@@ -438,13 +438,13 @@ let make_builtin_va_arg_by_val helper ty ty_ret arg =
 
 let make_builtin_va_arg_by_ref helper ty arg =
   let ty_fun =
-    Tfunction(Tcons(Tpointer(Tvoid, noattr), Tcons(Init.Cexec.Cstrategy.Ctyping.size_t, Tnil)),
+    Tfunction(Tcons(Tpointer(Tvoid, noattr), Tcons(Ctyping.size_t, Tnil)),
               Tpointer(Tvoid, noattr),  AST.cc_default) in
   let ty_ptr =
     Tpointer(ty, noattr) in
   let call =
     Csyntax.Ecall(Csyntax.Evalof(Csyntax.Evar(intern_string helper, ty_fun), ty_fun),
-          Csyntax.Econs(va_list_ptr arg, Csyntax.Econs(Csyntax.Esizeof(ty, Init.Cexec.Cstrategy.Ctyping.size_t), Csyntax.Enil)),
+          Csyntax.Econs(va_list_ptr arg, Csyntax.Econs(Csyntax.Esizeof(ty, Ctyping.size_t), Csyntax.Enil)),
           Tpointer(Tvoid, noattr)) in
   Csyntax.Evalof(Csyntax.Ederef(Csyntax.Ecast(call, ty_ptr), ty), ty)
 
@@ -1117,18 +1117,18 @@ let rec convertStmt env s =
       Csyntax.Ssequence(s1', s2')
   | C.Sif(e, s1, s2) ->
       let te = convertExpr env e in
-      swrap (Ctyping.sifthenelse te (convertStmt env s1) (convertStmt env s2))
+      swrap (Ctyping.sifthenelse te (convertStmt env s1) (convertStmt env s2) None)
   | C.Swhile(e, s1) ->
       let te = convertExpr env e in
-      swrap (Ctyping.swhile te (convertStmt env s1))
+      swrap (Ctyping.swhile te (convertStmt env s1) None)
   | C.Sdowhile(s1, e) ->
       let te = convertExpr env e in
-      swrap (Ctyping.sdowhile te (convertStmt env s1))
+      swrap (Ctyping.sdowhile te (convertStmt env s1) None)
   | C.Sfor(s1, e, s2, s3) ->
       let te = convertExpr env e in
       swrap (Ctyping.sfor
                   (convertStmt env s1) te
-                  (convertStmt env s2) (convertStmt env s3))
+                  (convertStmt env s2) (convertStmt env s3) None)
   | C.Sbreak ->
       Csyntax.Sbreak
   | C.Scontinue ->

@@ -8,7 +8,6 @@ Require Import Ctypes.
 
 Require Import List. Import ListNotations. (* list notations is a module inside list *)
 
-
 Module Type Policy. (* anaaktge this is the interface for rules
                       start with where 
                       rule itself might not be structured
@@ -77,11 +76,13 @@ Module Type Policy. (* anaaktge this is the interface for rules
 
   Parameter FreeT : tag -> tag -> tag -> PolicyResult (tag * tag * tag).
 
+  Parameter BuiltinT : string -> tag -> list tag -> PolicyResult tag.
+  
   Parameter FieldT : composite_env -> tag -> tag -> type -> ident -> PolicyResult tag.
 
   Parameter PICastT : tag -> tag -> list tag -> type -> PolicyResult tag.
   Parameter IPCastT : tag -> tag -> list tag -> type -> PolicyResult tag.
-  Parameter PPCastT : tag -> tag -> list tag -> type -> PolicyResult tag.
+  Parameter PPCastT : tag -> tag -> list tag -> list tag -> type -> PolicyResult tag.
   Parameter IICastT : tag -> tag -> type -> PolicyResult tag.
   
 End Policy.
@@ -179,11 +180,14 @@ Module NullPolicy <: Policy.
   Definition FreeT (pct pt vt : tag) : PolicyResult (tag * tag * tag) :=
     PolicySuccess (tt, tt, tt).
 
+  Definition BuiltinT (fn : string) (pct : tag) (args : list tag) : PolicyResult tag :=
+    PolicySuccess tt.
+  
   Definition FieldT (ce : composite_env) (pct vt : tag) (ty : type) (id : ident) : PolicyResult tag := PolicySuccess tt.
 
   Definition PICastT (pct pt : tag)  (lts : list tag) (ty : type) : PolicyResult tag := PolicySuccess tt.
   Definition IPCastT (pct vt : tag)  (lts : list tag) (ty : type) : PolicyResult tag := PolicySuccess tt.
-  Definition PPCastT (pct vt : tag) (lts : list tag) (ty : type) : PolicyResult tag := PolicySuccess tt.
+  Definition PPCastT (pct vt : tag) (lts1 lts2 : list tag) (ty : type) : PolicyResult tag := PolicySuccess tt.
   Definition IICastT (pct vt : tag) (ty : type) : PolicyResult tag := PolicySuccess tt.
 
 End NullPolicy.
@@ -285,11 +289,14 @@ Module PVI <: Policy.
   Definition FreeT (pct pt vt : tag) : PolicyResult (tag * tag * tag) :=
     PolicySuccess (pct, N, N).
 
+  Definition BuiltinT (fn : string) (pct : tag) (args : list tag) : PolicyResult tag :=
+    PolicySuccess N.
+  
   Definition FieldT (ce : composite_env) (pct vt : tag) (ty : type) (id : ident) : PolicyResult tag := PolicySuccess vt.
 
   Definition PICastT (pct pt : tag)  (lts : list tag) (ty : type) : PolicyResult tag := PolicySuccess pt.
   Definition IPCastT (pct vt : tag)  (lts : list tag) (ty : type) : PolicyResult tag := PolicySuccess vt.
-  Definition PPCastT (pct vt : tag) (lts : list tag) (ty : type) : PolicyResult tag := PolicySuccess vt.
+  Definition PPCastT (pct vt : tag) (lts1 lts2 : list tag) (ty : type) : PolicyResult tag := PolicySuccess vt.
   Definition IICastT (pct vt : tag) (ty : type) : PolicyResult tag := PolicySuccess vt.
 
 End PVI.
