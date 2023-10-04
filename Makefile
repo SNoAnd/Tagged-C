@@ -28,7 +28,7 @@ else
 ARCHDIRS=$(ARCH)_$(BITSIZE) $(ARCH)
 endif
 
-DIRS := lib common $(ARCHDIRS) backend cfrontend driver export cparser
+DIRS := lib common $(ARCHDIRS) cfrontend driver export cparser
 
 COQINCLUDES := $(foreach d, $(DIRS), -R $(d) compcert.$(d))
 
@@ -135,13 +135,6 @@ DRIVER=Compopts.v
 
 FILES=$(VLIB) $(COMMON) $(CFRONTEND) $(DRIVER) $(FLOCQ) \
   $(MENHIRLIB) $(PARSER) $(EXPORTLIB)
-
-# Generated source files
-
-GENERATED=\
-  $(ARCH)/ConstpropOp.v $(ARCH)/SelectOp.v $(ARCH)/SelectLong.v \
-  backend/SelectDiv.v backend/SplitLong.v \
-  cparser/Parser.v
 
 all:
 	@test -f .depend || $(MAKE) depend
