@@ -2399,7 +2399,7 @@ Fixpoint do_alloc_variables (pct: tag) (e: env) (m: mem) (l: list (ident * type)
   | (id, ty) :: l' =>
       match Mem.alloc m 0 (sizeof (snd ge) ty), LocalT (snd ge) pct ty with
       | Some (m',base,bound), PolicySuccess (pct', pt', lts') =>
-              do_alloc_variables pct (PTree.set id (PUB (base, bound, pt')) e) m l'
+              do_alloc_variables pct (PTree.set id (PUB (base, bound, pt')) e) m' l'
       | _, _ =>
           (pct,e,m)
       end
