@@ -136,45 +136,28 @@ Module Csem (P: Policy).
       store_bitfield ty sz sg pos width m (Ptrofs.unsigned ofs) pt v lts m' v' ->
       assign_loc ty m ofs pt (Bits sz sg pos width) v E0 m' v' lts.
 
-  (** Allocation of function-local variables.
-      [alloc_variables e1 m1 vars e2 m2] allocates one memory block
-      for each variable declared in [vars], and associates the variable
-      name with this block.  [e1] and [m1] are the initial local environment
-      and memory state.  [e2] and [m2] are the final local environment
-      and memory state. *)
-  Inductive alloc_variables: tag -> env -> mem ->
-                             list (ident * type) ->
-                             tag -> env -> mem -> Prop :=
-  | alloc_variables_nil:
-    forall PCT e m,
-      alloc_variables PCT e m nil PCT e m
-  | alloc_variables_cons:
-    forall PCT PCT' PCT'' e m id ty vars m1 lo1 hi1 pt lts m2 m3 e2,
-      Mem.alloc m 0 (sizeof (snd ge) ty) = Some (m1, lo1, hi1) ->
-      LocalT (snd ge) PCT ty = PolicySuccess (PCT', pt, lts) ->
-      Mem.store (chunk_of_type (typ_of_type ty)) m1 lo1 (Vundef, def_tag) lts = Some m2 ->
-      (* initialize location tags *)
-      alloc_variables PCT' (PTree.set id (PUB (lo1, hi1, pt)) e) m2 vars PCT'' e2 m3 ->
-      alloc_variables PCT e m ((id, ty) :: vars) PCT'' e2 m2.
-
-  (** Initialization of local variables that are parameters to a function.
-      [bind_parameters e m1 params args m2] stores the values [args]
-      in the memory blocks corresponding to the variables [params].
-      [m1] is the initial memory state and [m2] the final memory state. *)
-
-  Inductive bind_parameters (e: env):
-    mem -> list (ident * type) -> list atom -> mem -> Prop :=
-  | bind_parameters_nil:
-    forall m, bind_parameters e m nil nil m
-  | bind_parameters_cons:
-    forall m id ty params v1 vl v1' lo hi pt m1 m2 lts,
-      PTree.get id e = Some(PUB (lo, hi, pt)) ->
-      assign_loc ty m (Ptrofs.repr lo) pt Full v1 E0 m1 v1' lts ->
-      bind_parameters e m1 params vl m2 ->
-      bind_parameters e m ((id, ty) :: params) (v1 :: vl) m2.
-
+  (* Allocates local variables and, if they are parameters, initializes them *)
+  Fixpoint do_alloc_variables (pct: tag) (e: env) (m: mem) (l: list (ident * type * option atom)) {struct l} : option (PolicyResult (tag * env * mem)) :=
+    match l with
+    | nil => Some (PolicySuccess (pct,e,m))
+    | (id, ty, init) :: l' =>
+        match Mem.alloc m 0 (sizeof (snd ge) ty), LocalT (snd ge) pct ty with
+        | Some (m',base,bound), PolicySuccess (pct', pt', lts') =>
+            let init' := match init with Some (v,vt) => (v,vt) | None => (Vundef, def_tag) end in
+            match Mem.store (chunk_of_type (typ_of_type ty)) m' base init' lts' with
+            | Some m'' =>
+                do_alloc_variables pct' (PTree.set id (PUB (base, bound, pt')) e) m'' l'
+            | _ =>
+                None
+            end
+        | Some _, PolicyFail msg params =>
+            Some (PolicyFail msg params)
+        | _, _ =>
+            None
+        end
+    end.
+  
   (** Return the list of blocks in the codomain of [e] as a pair of low and high bounds. *)
-
   Definition blocks_of_env (e: env) : list (Z * Z) :=
     List.fold_left (fun acc '(_,ent) =>
                       match ent with
@@ -1003,6 +986,13 @@ Inductive estep: state -> trace -> state -> Prop :=
     estep (ExprState f PCT (C a) k e te m)
           tr (Failstop msg params).
 
+Fixpoint option_zip {A:Type} {B:Type} (l1 : list A) (l2 : list B) : list (A*option B) :=
+  match l1, l2 with
+  | [], _ => []
+  | h1::tl1, [] => (h1,None)::(option_zip tl1 [])
+  | h1::tl1, h2::tl2 => (h1,Some h2)::(option_zip tl1 tl2)
+  end.
+
 Inductive sstep: state -> trace -> state -> Prop :=
 | step_do_1: forall f PCT x k e te m,
     sstep (State f PCT (Sdo x) k e te m)
@@ -1167,13 +1157,18 @@ Inductive sstep: state -> trace -> state -> Prop :=
     sstep (State f PCT (Sgoto lbl) k e te m)
           E0 (State f PCT s' k' e te m)
 
-| step_internal_function: forall f PCT PCT' vargs k m e m1 m2,
+| step_internal_function: forall f PCT PCT' vargs k m e m',
     list_norepet (var_names (fn_params f) ++ var_names (fn_vars f)) ->
-    alloc_variables PCT empty_env m (f.(fn_params) ++ f.(fn_vars)) PCT' e m1 ->
-    bind_parameters e m1 f.(fn_params) vargs m2 ->
+    do_alloc_variables PCT empty_env m (option_zip (f.(fn_params) ++ f.(fn_vars)) vargs) = Some (PolicySuccess (PCT', e, m')) ->
     sstep (Callstate (Internal f) PCT vargs k m)
-          E0 (State f PCT' f.(fn_body) k e empty_tenv m2)
+          E0 (State f PCT' f.(fn_body) k e empty_tenv m')
+| step_internal_function_fail: forall f PCT vargs k m msg params,
+    list_norepet (var_names (fn_params f) ++ var_names (fn_vars f)) ->
+    do_alloc_variables PCT empty_env m (option_zip (f.(fn_params) ++ f.(fn_vars)) vargs) = Some (PolicyFail msg params) ->
+    sstep (Callstate (Internal f) PCT vargs k m)
+          E0 (Failstop msg params)
 
+          
 | step_external_function: forall ef PCT PCT' targs tres cc vargs k m vres t m',
     external_call ef (fst ge) vargs PCT m t vres PCT' m' ->
     sstep (Callstate (External ef targs tres cc) PCT vargs k m)

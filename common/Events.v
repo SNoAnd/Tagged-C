@@ -997,11 +997,16 @@ Qed.*)
 (* TODO: def_tag -> function tag *)
 Inductive extcall_malloc_sem (ge: Genv.t F V):
               list atom -> tag -> mem -> trace -> atom -> tag -> mem -> Prop :=
-| extcall_malloc_sem_intro: forall sz st pct m m' lo hi vt lt pt pct' m'',
+| extcall_malloc_sem_intro_int: forall sz st pct m m' lo hi vt lt pt pct' m'',
     malloc m (- size_chunk Mptr) (Ptrofs.unsigned sz) = Some (m', lo, hi) ->
     MallocT pct def_tag st = PolicySuccess (pct', pt, vt, lt) ->
     store Mptr m' (- size_chunk Mptr) (Vlong (Ptrofs.to_int64 sz), vt) (lt::nil) = Some m'' ->
-    extcall_malloc_sem ge ((Vlong (Ptrofs.to_int64 sz),st) :: nil) pct m E0 (Vint (Int.repr lo), pt) pct' m''.
+    extcall_malloc_sem ge ((Vint (Ptrofs.to_int sz),st) :: nil) pct m E0 (Vlong (Int64.repr lo), pt) pct' m''
+| extcall_malloc_sem_intro_long: forall sz st pct m m' lo hi vt lt pt pct' m'',
+    malloc m (- size_chunk Mptr) (Ptrofs.unsigned sz) = Some (m', lo, hi) ->
+    MallocT pct def_tag st = PolicySuccess (pct', pt, vt, lt) ->
+    store Mptr m' (- size_chunk Mptr) (Vlong (Ptrofs.to_int64 sz), vt) (lt::nil) = Some m'' ->
+    extcall_malloc_sem ge ((Vlong (Ptrofs.to_int64 sz),st) :: nil) pct m E0 (Vlong (Int64.repr lo), pt) pct' m''.
 
 (*Lemma extcall_malloc_ok:
   extcall_properties extcall_malloc_sem
