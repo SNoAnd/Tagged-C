@@ -136,7 +136,7 @@ Module Csem (P: Policy).
       store_bitfield ty sz sg pos width m (Ptrofs.unsigned ofs) pt v lts m' v' ->
       assign_loc ty m ofs pt (Bits sz sg pos width) v E0 m' v' lts.
 
-  (* Allocates local variables and, if they are parameters, initializes them *)
+  (* Allocates local variables and, if they are parameters with corresponding values, initializes them *)
   Fixpoint do_alloc_variables (pct: tag) (e: env) (m: mem) (l: list (ident * type * option atom)) {struct l} : option (PolicyResult (tag * env * mem)) :=
     match l with
     | nil => Some (PolicySuccess (pct,e,m))
@@ -148,7 +148,7 @@ Module Csem (P: Policy).
             | Some m'' =>
                 do_alloc_variables pct' (PTree.set id (PUB (base, bound, pt')) e) m'' l'
             | _ =>
-                None
+                do_alloc_variables pct' (PTree.set id (PUB (base, bound, pt')) e) m' l'
             end
         | Some _, PolicyFail msg params =>
             Some (PolicyFail msg params)
