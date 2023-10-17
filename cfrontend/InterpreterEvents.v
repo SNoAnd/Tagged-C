@@ -366,27 +366,27 @@ Definition do_ef_malloc
   | _ => None
   end.
 
-(*Definition do_ef_free
-       (w: world) (vargs: list val) (m: mem) : option (world * trace * val * mem) :=
+Definition do_ef_free
+       (w: world) (vargs: list atom) (PCT: tag) (m: mem) : option (world * trace * atom * tag * mem) :=
   match vargs with
-  | Vptr b lo :: nil =>
-      do vsz <- Mem.load Mptr m b (Ptrofs.unsigned lo - size_chunk Mptr);
-      do sz <- do_alloc_size vsz;
-      check (zlt 0 (Ptrofs.unsigned sz));
-      do m' <- Mem.free m b (Ptrofs.unsigned lo - size_chunk Mptr) (Ptrofs.unsigned lo + Ptrofs.unsigned sz);
-      Some(w, E0, Vundef, m')
-  | Vint n :: nil =>
-      if Int.eq_dec n Int.zero && negb Archi.ptr64
-      then Some(w, E0, Vundef, m)
-      else None
-  | Vlong n :: nil =>
-      if Int64.eq_dec n Int64.zero && Archi.ptr64
-      then Some(w, E0, Vundef, m)
-      else None
+  | (Vlong lo,pt) :: nil =>
+      do vsz,vt <- Mem.load Mptr m (Int64.unsigned lo - size_chunk Mptr);
+      let lts := Mem.load_ltags Mptr m (Int64.unsigned lo - size_chunk Mptr) in
+      match lts with
+      | [] => None
+      | lt::_ =>
+          match FreeT PCT pt lt with
+          | PolicySuccess (PCT',vt,lts) =>
+              do sz <- do_alloc_size vsz;
+              do m' <- Mem.mfree m (Int64.unsigned lo - size_chunk Mptr) (Int64.unsigned lo + Ptrofs.unsigned sz);
+              Some(w,E0,(Vundef,def_tag),PCT',m')
+          | _ => None
+          end
+      end
   | _ => None
   end.
 
-Definition memcpy_args_ok
+(*Definition memcpy_args_ok
   (sz al: Z) (bdst: block) (odst: Z) (bsrc: block) (osrc: Z) : Prop :=
       (al = 1 \/ al = 2 \/ al = 4 \/ al = 8)
    /\ sz >= 0 /\ (al | sz)
@@ -443,8 +443,8 @@ Definition do_external (ef: external_function) :
   | EF_vload chunk => do_ef_volatile_load chunk
   | EF_vstore chunk => do_ef_volatile_store chunk*)
   | EF_malloc => do_ef_malloc
-  (*| EF_free => do_ef_free
-  | EF_memcpy sz al => do_ef_memcpy sz al
+  | EF_free => do_ef_free
+  (*| EF_memcpy sz al => do_ef_memcpy sz al
   | EF_annot kind text targs => do_ef_annot text targs
   | EF_annot_val kind text targ => do_ef_annot_val text targ
   | EF_debug kind text targs => do_ef_debug kind text targs*)
