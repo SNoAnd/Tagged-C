@@ -1051,8 +1051,7 @@ Inductive load_bitfield: type -> intsize -> signedness -> Z -> Z -> mem -> Z -> 
   | load_bitfield_intro: forall sz sg1 attr sg pos width m addr c vt lts,
       0 <= pos -> 0 < width <= bitsize_intsize sz -> pos + width <= bitsize_carrier sz ->
       sg1 = (if zlt width (bitsize_intsize sz) then Signed else sg) ->
-      Mem.load (chunk_for_carrier sz) m addr = Some (Vint c, vt) ->
-      Mem.load_ltags (chunk_for_carrier sz) m addr = lts ->
+      Mem.load_all (chunk_for_carrier sz) m addr = MemorySuccess (Vint c, vt, lts) ->
       load_bitfield (Tint sz sg1 attr) sz sg pos width m addr
                     (Vint (bitfield_extract sz sg pos width c), vt) lts.
 
@@ -1060,9 +1059,9 @@ Inductive store_bitfield: type -> intsize -> signedness -> Z -> Z -> mem -> Z ->
   | store_bitfield_intro: forall sz sg1 attr sg pos width m addr pt c n vt ovt lts m',
       0 <= pos -> 0 < width <= bitsize_intsize sz -> pos + width <= bitsize_carrier sz ->
       sg1 = (if zlt width (bitsize_intsize sz) then Signed else sg) ->
-      Mem.load (chunk_for_carrier sz) m addr = Some (Vint c, ovt) ->
+      Mem.load (chunk_for_carrier sz) m addr = MemorySuccess (Vint c, ovt) ->
       Mem.store (chunk_for_carrier sz) m addr
-                 (Vint (Int.bitfield_insert (first_bit sz pos width) width c n), vt) lts = Some m' ->
+                 (Vint (Int.bitfield_insert (first_bit sz pos width) width c n), vt) lts = MemorySuccess m' ->
       store_bitfield (Tint sz sg1 attr) sz sg pos width m addr pt (Vint n,vt) lts
                      m' (Vint (bitfield_normalize sz sg width n),vt).
 

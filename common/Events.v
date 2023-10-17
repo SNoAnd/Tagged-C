@@ -595,30 +595,30 @@ Fixpoint output_trace (t: trace) : Prop :=
 (** * Semantics of volatile memory accesses *)
 (* TODO: tags on vloads and vstores *)
 Inductive volatile_load (ge: Genv.t F V):
-                   memory_chunk -> mem -> ptrofs -> trace -> atom -> Prop :=
+                   memory_chunk -> mem -> ptrofs -> trace -> MemoryResult atom -> Prop :=
   | volatile_load_vol: forall chunk m ofs id ev v vt,
       addr_is_volatile ge ofs = true ->
       eventval_match ge ev (type_of_chunk chunk) (v,vt) ->
       volatile_load ge chunk m ofs
                     (Event_vload chunk id ofs ev :: nil)
-                    (Val.load_result chunk v,vt)
-  | volatile_load_nonvol: forall chunk m ofs v,
+                    (MemorySuccess (Val.load_result chunk v,vt))
+  | volatile_load_nonvol: forall chunk m ofs res,
       addr_is_volatile ge ofs = false ->
-      load chunk m (Ptrofs.unsigned ofs) = Some v ->
-      volatile_load ge chunk m ofs E0 v.
+      load chunk m (Ptrofs.unsigned ofs) = res ->
+      volatile_load ge chunk m ofs E0 res.
 
 Inductive volatile_store (ge: Genv.t F V):
-  memory_chunk ->  mem -> ptrofs -> atom -> list tag -> trace -> mem -> Prop :=
+  memory_chunk ->  mem -> ptrofs -> atom -> list tag -> trace -> MemoryResult mem -> Prop :=
   | volatile_store_vol: forall chunk m ofs id ev v vt lts,
       Genv.addr_is_volatile ge ofs = true ->
       eventval_match ge ev (type_of_chunk chunk) (Val.load_result chunk v, vt) ->
       volatile_store ge chunk m ofs (v,vt) lts
                      (Event_vstore chunk id ofs ev :: nil)
-                     m
-  | volatile_store_nonvol: forall chunk m ofs  v vt lts m',
+                     (MemorySuccess m)
+  | volatile_store_nonvol: forall chunk m ofs  v vt lts res,
       Genv.addr_is_volatile ge ofs = false ->
-      store chunk m (Ptrofs.unsigned ofs) (v,vt) lts = Some m' ->
-      volatile_store ge chunk m ofs (v,vt) lts E0 m'.
+      store chunk m (Ptrofs.unsigned ofs) (v,vt) lts = res ->
+      volatile_store ge chunk m ofs (v,vt) lts E0 res.
   
 (** * Semantics of external functions *)
 
@@ -730,10 +730,10 @@ Definition inject_separated (f f': meminj) (m1 m2: mem): Prop :=
 Inductive volatile_load_sem (chunk: memory_chunk) (ge: Genv.t F V):
               list atom -> tag -> mem -> trace -> atom  -> tag -> mem -> Prop :=
 | volatile_load_sem_intro: forall ofs pt m pct t v vt vt' vt'' lts,
-    load_ltags chunk m (Ptrofs.unsigned ofs) = lts ->
+    load_ltags chunk m (Ptrofs.unsigned ofs) = MemorySuccess lts ->
     LoadT pct pt vt lts = PolicySuccess vt' ->
     AccessT pct vt' = PolicySuccess vt'' ->
-    volatile_load ge chunk m ofs t (v,vt) ->
+    volatile_load ge chunk m ofs t (MemorySuccess (v,vt)) ->
     volatile_load_sem chunk ge ((Vint (Ptrofs.to_int ofs), pt) :: nil) pct m t (v,vt) pct m.
 
 (*Lemma volatile_load_preserved:
@@ -786,8 +786,8 @@ Qed.*)
 
 Lemma volatile_load_receptive:
   forall ge chunk m ofs t1 t2 v1 vt,
-    volatile_load ge chunk m ofs t1 (v1, vt) -> match_traces ge t1 t2 ->
-    exists v2, volatile_load ge chunk m ofs t2 (v2, vt).
+    volatile_load ge chunk m ofs t1 (MemorySuccess (v1, vt)) -> match_traces ge t1 t2 ->
+    exists v2, volatile_load ge chunk m ofs t2 (MemorySuccess (v2, vt)).
 Admitted.
 (*Proof.
   intros. inv H; inv H0.
@@ -841,11 +841,10 @@ Qed.*)
 Inductive volatile_store_sem (chunk: memory_chunk) (ge: Genv.t F V):
               list atom -> tag -> mem -> trace -> atom -> tag -> mem -> Prop :=
   | volatile_store_sem_intro: forall ofs pt m1 pct pct' pct'' v0 vt0 v vt vt' vt'' lts lts' t m2,
-      load chunk m1 (Ptrofs.unsigned ofs) = Some (v0,vt0) -> 
-      load_ltags chunk m1 (Ptrofs.unsigned ofs) = lts -> 
+      load_all chunk m1 (Ptrofs.unsigned ofs) = MemorySuccess (v0,vt0,lts) -> 
       AssignT pct vt0 vt = PolicySuccess (pct', vt') ->
       StoreT pct' pt vt' lts = PolicySuccess (pct'',vt'',lts') ->
-      volatile_store ge chunk m1 ofs (v,vt) lts t m2 ->
+      volatile_store ge chunk m1 ofs (v,vt) lts t (MemorySuccess m2) ->
       volatile_store_sem chunk ge ((Vint (Ptrofs.to_int ofs),pt) :: (v,vt) :: nil) pct' m1 t (Vundef,def_tag) pct'' m2.
 
 (*Lemma volatile_store_preserved:
@@ -998,14 +997,14 @@ Qed.*)
 Inductive extcall_malloc_sem (ge: Genv.t F V):
               list atom -> tag -> mem -> trace -> atom -> tag -> mem -> Prop :=
 | extcall_malloc_sem_intro_int: forall sz st pct m m' lo hi vt lt pt pct' m'',
-    malloc m (- size_chunk Mptr) (Ptrofs.unsigned sz) = Some (m', lo, hi) ->
+    malloc m (- size_chunk Mptr) (Ptrofs.unsigned sz) = MemorySuccess (m', lo, hi) ->
     MallocT pct def_tag st = PolicySuccess (pct', pt, vt, lt) ->
-    store Mptr m' (- size_chunk Mptr) (Vlong (Ptrofs.to_int64 sz), vt) (lt::nil) = Some m'' ->
+    store Mptr m' (- size_chunk Mptr) (Vlong (Ptrofs.to_int64 sz), vt) (lt::nil) = MemorySuccess m'' ->
     extcall_malloc_sem ge ((Vint (Ptrofs.to_int sz),st) :: nil) pct m E0 (Vlong (Int64.repr lo), pt) pct' m''
 | extcall_malloc_sem_intro_long: forall sz st pct m m' lo hi vt lt pt pct' m'',
-    malloc m (- size_chunk Mptr) (Ptrofs.unsigned sz) = Some (m', lo, hi) ->
+    malloc m (- size_chunk Mptr) (Ptrofs.unsigned sz) = MemorySuccess (m', lo, hi) ->
     MallocT pct def_tag st = PolicySuccess (pct', pt, vt, lt) ->
-    store Mptr m' (- size_chunk Mptr) (Vlong (Ptrofs.to_int64 sz), vt) (lt::nil) = Some m'' ->
+    store Mptr m' (- size_chunk Mptr) (Vlong (Ptrofs.to_int64 sz), vt) (lt::nil) = MemorySuccess m'' ->
     extcall_malloc_sem ge ((Vlong (Ptrofs.to_int64 sz),st) :: nil) pct m E0 (Vlong (Int64.repr lo), pt) pct' m''.
 
 (*Lemma extcall_malloc_ok:
@@ -1090,9 +1089,9 @@ Inductive extcall_free_sem (ge: Genv.t F V):
               list atom -> tag -> mem -> trace -> atom -> tag -> mem -> Prop :=
 | extcall_free_sem_ptr: forall lo pt sz vt vt' pct pct' m m' lt lt',
     (* TODO: update mem *)
-    load Mptr m (lo - size_chunk Mptr) = Some (Vlong (Ptrofs.to_int64 sz), vt) ->
+    load Mptr m (lo - size_chunk Mptr) = MemorySuccess (Vlong (Ptrofs.to_int64 sz), vt) ->
     Ptrofs.unsigned sz > 0 ->
-    mfree m (lo - size_chunk Mptr) (lo + Ptrofs.unsigned sz) = Some m' ->
+    mfree m (lo - size_chunk Mptr) (lo + Ptrofs.unsigned sz) = MemorySuccess m' ->
     FreeT pct pt lt = PolicySuccess (pct', vt', lt') ->
     extcall_free_sem ge ((Vint (Int.repr lo),pt) :: nil) pct m E0 (Vundef,def_tag) pct' m'
 | extcall_free_sem_null: forall pct pct' m pt,
@@ -1193,8 +1192,8 @@ Inductive extcall_memcpy_sem (sz al: Z) (ge: Genv.t F V):
       osrc = odst
       \/ osrc + sz <= odst
       \/ odst + sz <= osrc ->
-      Mem.loadbytes m (osrc) sz = Some bytes ->
-      Mem.storebytes m (odst) bytes lts = Some m' ->
+      Mem.loadbytes m (osrc) sz = MemorySuccess bytes ->
+      Mem.storebytes m (odst) bytes lts = MemorySuccess m' ->
       extcall_memcpy_sem sz al ge ((Vint (Int.repr odst),pt1) :: (Vint (Int.repr osrc),pt2) :: nil) pct m E0 (Vundef,def_tag) pct m'.
 
 (*Lemma extcall_memcpy_ok:
@@ -1650,13 +1649,13 @@ Inductive eval_builtin_arg: builtin_arg A -> val -> Prop :=
 | eval_BA_single: forall n,
     eval_builtin_arg (BA_single n) (Vsingle n)
 | eval_BA_loadstack: forall chunk ofs v vt,
-    Mem.load chunk m (sp + Ptrofs.signed ofs) = Some (v,vt) ->
+    Mem.load chunk m (sp + Ptrofs.signed ofs) = MemorySuccess (v,vt) ->
     eval_builtin_arg (BA_loadstack chunk ofs) v
 | eval_BA_addrstack: forall ofs,
     eval_builtin_arg (BA_addrstack ofs) (Vofptrsize (sp + Ptrofs.signed ofs))
 | eval_BA_loadglobal: forall chunk id base bound v vt pt,
     find_symbol ge id = Some (inr (base,bound,pt)) ->
-    Mem.load chunk m base = Some (v,vt) ->
+    Mem.load chunk m base = MemorySuccess (v,vt) ->
     eval_builtin_arg (BA_loadglobal chunk id (Ptrofs.repr base)) v
 | eval_BA_addrglobal: forall id base bound pt,
     find_symbol ge id = Some (inr (base,bound,pt)) ->

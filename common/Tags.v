@@ -301,12 +301,12 @@ Module PVI <: Policy.
 
 End PVI.
 
-(*Module PNVI <: Policy.
+Module PNVI <: Policy.
   
   Inductive myTag :=
   | Glob (id:ident)
   | Dyn (c:nat)
-  | X
+  | N
   .
 
   Definition tag := myTag.
@@ -315,7 +315,7 @@ End PVI.
   Proof.
     unfold tag. intros. repeat decide equality.
   Qed.
-  Definition def_tag := X.
+  Definition def_tag := N.
 
   Definition InitPCT := Dyn 0.
 
@@ -327,53 +327,98 @@ End PVI.
   Arguments PolicySuccess {_} _. 
   Arguments PolicyFail {_} _ _.
 
-  Definition GlobalT (id : ident) (align : nat) := (X, repeat (Glob id) align).
-  
-  Definition LocalT (align : nat) (pct : tag) : PolicyResult (tag * tag * list tag) :=
-    match pct with
-    | Dyn c =>
-        PolicySuccess (Dyn (S c), Dyn c, repeat (Dyn c) align)
-    | _ => PolicyFail "PNVI::LocalT  Failure" [pct]
+  Definition CallT (pct pt: tag) : PolicyResult tag := PolicySuccess pct.
+
+  Definition ArgT (pct vt : tag) (f x: ident) : PolicyResult (tag * tag) := PolicySuccess (pct,vt).
+
+  Definition RetT (pct_clr pct_cle vt : tag) : PolicyResult (tag * tag) := PolicySuccess (pct_cle,vt).
+
+  Definition LoadT (pct pt vt: tag) (lts : list tag) : PolicyResult tag :=
+    match pt with
+    | N => PolicyFail "PNVI::LoadT X Failure" ([pct;pt;vt]++lts)
+    | _ => if forallb (tag_eq_dec pt) lts then PolicySuccess vt 
+           else (PolicyFail "PNVI::LoadT tag_eq_dec Failure" ([pct;pt;vt]++lts))
     end.
 
-  Definition VarT (pct pt : tag) : PolicyResult tag := PolicySuccess pt.
-
-  Definition ConstT : tag := X.
+  Definition StoreT (pct pt vt : tag) (lts : list tag) : PolicyResult (tag * tag * list tag) :=
+    match pt with
+    | N => (PolicyFail "PNVI::StoreT X Failure" ([pct;pt;vt]++lts))
+    | _ => if forallb (tag_eq_dec pt) lts then PolicySuccess (pct,vt,lts) 
+           else (PolicyFail "PNVI::StoreT tag_eq_dec Failure" ([pct;pt;vt]++lts))
+    end.
   
-  Definition UnopT (pct vt : tag) : PolicyResult (tag * tag) := PolicySuccess (pct, vt).
+  Definition AccessT (pct vt : tag) : PolicyResult tag := PolicySuccess vt.
 
-  Definition BinopT (pct vt1 vt2 : tag) : PolicyResult (tag * tag) :=
+  Definition AssignT (pct vt1 vt2 : tag) : PolicyResult (tag * tag) := PolicySuccess (pct,vt2).
+
+  Definition UnopT (op : unary_operation) (pct vt : tag) : PolicyResult (tag * tag) := PolicySuccess (pct, vt).
+
+  Definition BinopT (op : binary_operation) (pct vt1 vt2 : tag) : PolicyResult (tag * tag) :=
     match vt1, vt2 with
     | Dyn n, X =>  PolicySuccess (pct, vt1)
     | Glob id, X => PolicySuccess (pct, vt1)
     | _, _ => PolicySuccess (pct, vt2)
     end.
 
-  Definition LoadT (pct pt vt: tag) (lts : list tag) : PolicyResult tag :=
-    match pt with
-    | X => (PolicyFail "PVNI::LoadT X Failure" ([pct;pt;vt]++lts))
-    | _ => if forallb (tag_eq_dec pt) lts then PolicySuccess vt 
-           else (PolicyFail "PNVI::LoadT tag_eq_dec Failure" ([pct;pt;vt]++lts))
+  Definition ConstT (pct : tag) : PolicyResult tag := PolicySuccess N.
+  Definition InitT (pct : tag) : PolicyResult tag := PolicySuccess N.
+
+  Definition SplitT (pct vt : tag) (id : option ident) : PolicyResult tag := PolicySuccess pct.
+
+  Definition LabelT (pct : tag) (l : ident) : PolicyResult tag := PolicySuccess pct.
+
+  Definition ExprSplitT (pct vt : tag) : PolicyResult tag := PolicySuccess pct.
+
+  Definition ExprJoinT (pct vt : tag) : PolicyResult (tag * tag) := PolicySuccess (pct,vt).
+
+  Definition GlobalT (ce : composite_env) (id : ident) (ty : type) : tag * tag * list tag :=
+    (Glob id, N, repeat (Glob id) (Z.to_nat (sizeof ce ty))).
+  (* anaaktge the % in exp preceding, treat ambigous ops as its type version*)
+
+  Definition LocalT (ce : composite_env) (pct : tag) (ty : type) : PolicyResult (tag * tag * (list tag))%type :=
+    match pct with
+    | Dyn c =>
+        PolicySuccess (Dyn (S c), Dyn c, repeat (Dyn c) (Z.to_nat (sizeof ce ty)))
+    | _ =>
+        PolicyFail "PNVI::LocalT Failure" [pct]
+    end.
+  
+  Definition DeallocT (ce : composite_env) (pct : tag) (ty : type) : PolicyResult (tag * tag * list tag) :=
+    PolicySuccess (pct, N, repeat N (Z.to_nat (sizeof ce ty))).
+
+  Definition MallocT (pct pt vt : tag) : PolicyResult (tag * tag * tag * tag) :=
+    match pct with
+    | Dyn c =>
+        PolicySuccess (Dyn (S c), Dyn c, N, Dyn c)
+    | _ =>
+        PolicyFail "PNVI::MallocT Failure" [pct;pt;vt]
     end.
 
-  Definition StoreT (pct pt ovt vt : tag) (lts : list tag) : PolicyResult (tag * tag * list tag) :=
-    match pt with
-    | X => (PolicyFail "PNVI::StoreT X Failure" ([pct;pt;ovt;vt]++lts))
-    | _ => if forallb (tag_eq_dec pt) lts then PolicySuccess (pct,vt,lts) 
-           else (PolicyFail "PNVI::StoreT tag_eq_dec Failure" ([pct;pt;ovt;vt]++lts))
+  Definition FreeT (pct pt vt : tag) : PolicyResult (tag * tag * tag) :=
+    PolicySuccess (pct, N, N).
+
+  Definition BuiltinT (fn : string) (pct : tag) (args : list tag) : PolicyResult tag :=
+    PolicySuccess N.
+  
+  Definition FieldT (ce : composite_env) (pct vt : tag) (ty : type) (id : ident) : PolicyResult tag := PolicySuccess vt.
+
+  Definition PICastT (pct pt : tag)  (lts : list tag) (ty : type) : PolicyResult tag :=
+    PolicySuccess N.
+
+  Definition IPCastT (pct vt : tag)  (lts : list tag) (ty : type) : PolicyResult tag :=
+    match lts with
+    | [] => PolicyFail "PNVI::IPCastT Failure" [pct;vt]
+    | N::lts' => PolicySuccess N
+    | pt::lts' =>
+        if forallb (tag_eq_dec pt) lts'
+        then PolicySuccess pt
+        else PolicyFail "PNVI::IPCastT Failure" [pct;vt]
     end.
 
-  Definition IfSplitT (pct vt : tag) : PolicyResult (tag * tag) := PolicySuccess (pct, pct).
+  Definition PPCastT (pct vt : tag) (lts1 lts2 : list tag) (ty : type) : PolicyResult tag := PolicySuccess vt.
 
-  Definition IfJoinT (pct opct : tag) : PolicyResult tag := PolicySuccess pct.
+  Definition IICastT (pct vt : tag) (ty : type) : PolicyResult tag := PolicySuccess vt.
 
-  Definition IfEscapeT (pct opct : tag) : PolicyResult tag := PolicySuccess pct.
-
-  Definition LoopEnterGuarded (pct vt : tag) : PolicyResult (tag * tag) := PolicySuccess (pct, pct).
-
-  Definition LoopExitGuarded (pct opct vt : tag) : PolicyResult tag := PolicySuccess pct.
-
-  Definition LoopExitUnguarded (pct opct : tag) : PolicyResult tag := PolicySuccess pct.
 End PNVI.
 
 Definition Source : Type := (ident * ident).
@@ -400,7 +445,7 @@ Module Type IFC_Spec.
   Parameter Rules : list IFC_Rule.
 End IFC_Spec.
 
-Module IFC (S:IFC_Spec) <: Policy.
+(*Module IFC (S:IFC_Spec) <: Policy.
   Import S.
 
   Inductive myTag : Type :=
@@ -475,5 +520,4 @@ Module IFC (S:IFC_Spec) <: Policy.
   Definition LoopExitGuarded (pct opct vt : tag) : PolicyResult tag := PolicySuccess pct.
 
   Definition LoopExitUnguarded (pct opct : tag) : PolicyResult tag := PolicySuccess pct.
-End IFC.
-*)
+End IFC. *)

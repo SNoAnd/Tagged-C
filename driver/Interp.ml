@@ -326,7 +326,7 @@ let extract_string m ofs =
   let b = Buffer.create 80 in
   let rec extract ofs =
     match Mem.load Mint8unsigned m ofs with
-    | Some(Vint n,_) ->
+    | Mem.MemorySuccess (Vint n,_) ->
         let c = Char.chr (Z.to_int n) in
         if c = '\000' then begin
           Some(Buffer.contents b)
@@ -473,9 +473,11 @@ and world_vload ge m chunk id ofs =
           fun res ->
                 match res with
                 | Coq_inr((base,bound),t) ->
-                        Mem.load chunk m ofs >>= fun v ->
-                        Cexec.InterpreterEvents.eventval_of_val ge v (type_of_chunk chunk) >>= fun ev ->
-                        Some(ev, world ge m)
+                        (match Mem.load chunk m ofs with
+                         | Mem.MemorySuccess v ->
+                           Cexec.InterpreterEvents.eventval_of_val ge v (type_of_chunk chunk) >>= fun ev ->
+                           Some(ev, world ge m)
+                         | _ -> None)
                 | _ -> None
 
 and world_vstore ge m chunk id ofs ev =
@@ -484,8 +486,9 @@ and world_vstore ge m chunk id ofs ev =
                 match res with
                 | Coq_inr((base,bound),t) ->
                         Cexec.InterpreterEvents.val_of_eventval ge ev (type_of_chunk chunk) >>= fun v ->
-                        Mem.store chunk m ofs v [] >>= fun m' ->
-                        Some(world ge m')
+                        (match Mem.store chunk m ofs v [] with
+                         | Mem.MemorySuccess m' -> Some(world ge m')
+                         | _ -> None)
                 | _ -> None
 
 let do_event p ge time w ev =
@@ -734,9 +737,9 @@ let execute prog =
       let wprog' = program_of_program wprog in
       let wge = Genv.globalenv wprog' in
       match Genv.init_mem wprog' with
-      | None ->
+      | Mem.MemoryFail(msg) ->
           fprintf p "ERROR: World memory state undefined@."; exit 126
-      | Some wm ->
+      | Mem.MemorySuccess(wm) ->
       match Cexec.do_initial_state prog1 with
       | None ->
           fprintf p "ERROR: Initial state undefined@."; exit 126

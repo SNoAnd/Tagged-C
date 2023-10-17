@@ -54,6 +54,14 @@ Module Mem (P:Policy).
   Module MD := Memdata P.
   Export MD.
 
+  Inductive MemoryResult (A:Type) : Type :=
+  | MemorySuccess (a:A)
+  | MemoryFail (msg:string)
+  .
+
+  Arguments MemorySuccess {_} _.
+  Arguments MemoryFail {_} _.
+  
   Inductive permission : Type := Live | Dead | MostlyDead.
 
   Lemma permission_dec : forall (p1 p2 : permission), {p1 = p2} + {p1 <> p2}.
@@ -402,10 +410,10 @@ Definition empty: mem :=
   undefined cells.  Note that allocation never fails: we model an
   infinite memory. *)
 
-Definition alloc (m: mem) (lo hi: Z) : option (mem*Z*Z) :=
+Definition alloc (m: mem) (lo hi: Z) : MemoryResult (mem*Z*Z) :=
   match al.(stkalloc) m.(al_state) (hi - lo) with
   | Some (al_state', lo', hi') =>
-      Some (mkmem (ZMap.set lo' (Undef, def_tag) m.(mem_contents))
+      MemorySuccess (mkmem (ZMap.set lo' (Undef, def_tag) m.(mem_contents))
                   (fun ofs => if zle lo' ofs && zlt ofs hi'
                               then Live
                               else m.(mem_access) ofs)
@@ -413,7 +421,7 @@ Definition alloc (m: mem) (lo hi: Z) : option (mem*Z*Z) :=
                   ((lo',hi')::m.(live))
                   m.(globals),
              lo', hi')
-  | None => None
+  | None => MemoryFail "OOM"
   end.
 
 (** Freeing a block between the given bounds.
@@ -438,36 +446,36 @@ Definition unchecked_free (m: mem) (lo hi: Z): mem :=
             m.(globals)
         .
 
-Definition free (m: mem) (lo hi: Z): option mem :=
+Definition free (m: mem) (lo hi: Z): MemoryResult mem :=
   if range_perm_dec m lo hi Live
-  then Some(unchecked_free m lo hi)
-  else None.
+  then MemorySuccess(unchecked_free m lo hi)
+  else MemoryFail "Invalid Free".
 
-Fixpoint free_list (m: mem) (l: list (Z * Z)) {struct l}: option mem :=
+Fixpoint free_list (m: mem) (l: list (Z * Z)) {struct l}: MemoryResult mem :=
   match l with
-  | nil => Some m
+  | nil => MemorySuccess m
   | (lo, hi) :: l' =>
       match free m lo hi with
-      | None => None
-      | Some m' => free_list m' l'
+      | MemorySuccess m' => free_list m' l'
+      | res => res
       end
   end.
 
 (** Malloc is now separate from alloc, because we need to keep stack and heap
     allocs separate. *)
 
-Definition malloc (m: mem) (lo hi: Z) : option (mem*Z*Z) :=
+Definition malloc (m: mem) (lo hi: Z) : MemoryResult (mem*Z*Z) :=
   match al.(heapalloc) m.(al_state) (hi - lo) with
   | Some (al_state', lo', hi') =>
-      Some (mkmem (ZMap.set lo' (Undef, def_tag) m.(mem_contents))
-                  (fun ofs => if zle lo' ofs && zlt ofs hi'
-                              then Live
-                              else m.(mem_access) ofs)
-                  al_state'
-                  ((lo',hi')::m.(live))
-                  m.(globals),
-             lo', hi')
-  | None => None
+      MemorySuccess (mkmem (ZMap.set lo' (Undef, def_tag) m.(mem_contents))
+                           (fun ofs => if zle lo' ofs && zlt ofs hi'
+                                       then Live
+                                       else m.(mem_access) ofs)
+                           al_state'
+                           ((lo',hi')::m.(live))
+                           m.(globals),
+                      lo', hi')
+  | None => MemoryFail "OOM"
   end.
 
 Definition unchecked_mfree (m: mem) (lo hi: Z): mem :=
@@ -480,10 +488,10 @@ Definition unchecked_mfree (m: mem) (lo hi: Z): mem :=
             m.(globals)
         .
 
-Definition mfree (m: mem) (lo hi: Z): option mem :=
+Definition mfree (m: mem) (lo hi: Z): MemoryResult mem :=
   if range_perm_dec m lo hi Live
-  then Some(unchecked_mfree m lo hi)
-  else None.
+  then MemorySuccess (unchecked_mfree m lo hi)
+  else MemoryFail "Invalid Free".
         
 (** Memory reads. *)
 
@@ -500,47 +508,38 @@ Fixpoint getN (n: nat) (p: Z) (c: ZMap.t (memval*tag)) {struct n}: list (memval 
   at that address.  [None] is returned if the accessed bytes
   are not readable. *)
 
-Definition load (chunk: memory_chunk) (m: mem) (ofs: Z): option atom :=
+Definition load (chunk: memory_chunk) (m: mem) (ofs: Z): MemoryResult atom :=
   if allowed_access_dec m chunk ofs
-  then Some(decode_val chunk (map (fun x => fst x) (getN (size_chunk_nat chunk) ofs (m.(mem_contents)))))
-  else None.
+  then MemorySuccess (decode_val chunk (map (fun x => fst x) (getN (size_chunk_nat chunk) ofs (m.(mem_contents)))))
+  else MemoryFail "Private Load".
 
-Definition load_ltags (chunk: memory_chunk) (m: mem) (ofs: Z): list tag :=
+Definition load_ltags (chunk: memory_chunk) (m: mem) (ofs: Z): MemoryResult (list tag) :=
   if allowed_access_dec m chunk ofs
-  then map (fun x => snd x) (getN (size_chunk_nat chunk) ofs (m.(mem_contents)))
-  else nil.
+  then MemorySuccess (map (fun x => snd x) (getN (size_chunk_nat chunk) ofs (m.(mem_contents))))
+  else MemoryFail "Private Load".
 
-Theorem load_val_has_ltags :
-  forall chunk m ofs,
-    (exists v, load chunk m ofs = Some v /\ v <> (Vundef, def_tag)) <->
-      (exists lts, load_ltags chunk m ofs = lts /\ length lts = size_chunk_nat chunk).
-Admitted.
-(*Proof.
-  intros. split; intros.
-  - destruct H. unfold load in H. unfold load_ltags. destruct (allowed_access_dec m chunk ofs).
-    + admit.
-    + inv H.
-  - destruct H. unfold load. unfold load_ltags in H. destruct (allowed_access_dec m chunk ofs).
-    + destruct H. eexists.
-      induction (getN (size_chunk_nat chunk) ofs (mem_contents m) # b).
-      * simpl. reflexivity.
-      * simpl.
-    + destruct H.
-Qed.*)
+Definition load_all (chunk: memory_chunk) (m: mem) (ofs: Z): MemoryResult (atom * list tag) :=
+  if allowed_access_dec m chunk ofs
+  then MemorySuccess (decode_val chunk
+                                 (map (fun x => fst x)
+                                      (getN (size_chunk_nat chunk)
+                                            ofs (m.(mem_contents)))),
+                       map (fun x => snd x) (getN (size_chunk_nat chunk) ofs (m.(mem_contents))))
+  else MemoryFail "Private Load".
 
 (** [loadbytes m ofs n] reads [n] consecutive bytes starting at
   location [(b, ofs)].  Returns [None] if the accessed locations are
   not readable. *)
 
-Definition loadbytes (m: mem) (ofs n: Z): option (list memval) :=
+Definition loadbytes (m: mem) (ofs n: Z): MemoryResult (list memval) :=
   if range_perm_neg_dec m ofs (ofs + n) Dead
-  then Some(map (fun x => fst x) (getN (Z.to_nat n) ofs (m.(mem_contents))))
-  else None.
+  then MemorySuccess (map (fun x => fst x) (getN (Z.to_nat n) ofs (m.(mem_contents))))
+  else MemoryFail "Private Load".
 
-Definition loadtags (m: mem) (ofs n: Z) : option (list tag) :=
+Definition loadtags (m: mem) (ofs n: Z) : MemoryResult (list tag) :=
   if range_perm_neg_dec m ofs (ofs + n) Dead
-  then Some(map (fun x => snd x) (getN (Z.to_nat n) ofs (m.(mem_contents))))
-  else None.
+  then MemorySuccess (map (fun x => snd x) (getN (Z.to_nat n) ofs (m.(mem_contents))))
+  else MemoryFail "Private Load".
 
 (** Memory stores. *)
 
@@ -629,30 +628,32 @@ Fixpoint merge_vals_tags (vs:list memval) (lts:list tag) :=
   | _ => []
   end.
 
-Program Definition store (chunk: memory_chunk) (m: mem) (ofs: Z) (a:atom) (lts:list tag): option mem :=
+Program Definition store (chunk: memory_chunk) (m: mem) (ofs: Z) (a:atom) (lts:list tag)
+  : MemoryResult mem :=
   if allowed_access_dec m chunk ofs then
-    Some (mkmem (setN (merge_vals_tags (encode_val chunk a) lts) ofs (m.(mem_contents)))
+    MemorySuccess (mkmem (setN (merge_vals_tags (encode_val chunk a) lts) ofs (m.(mem_contents)))
                 m.(mem_access)
                 m.(al_state)
                 m.(live)
                 m.(globals))
   else
-    None.
+    MemoryFail "Private Store".
 
 (** [storebytes m ofs bytes] stores the given list of bytes [bytes]
   starting at location [(b, ofs)].  Returns updated memory state
   or [None] if the accessed locations are not writable. *)
 
-Program Definition storebytes (m: mem) (ofs: Z) (bytes: list memval) (lts:list tag) : option mem :=
+Program Definition storebytes (m: mem) (ofs: Z) (bytes: list memval) (lts:list tag)
+  : MemoryResult mem :=
   if range_perm_neg_dec m ofs (ofs + Z.of_nat (length bytes)) Dead then
-    Some (mkmem
+    MemorySuccess (mkmem
              (setN (merge_vals_tags bytes lts) ofs (m.(mem_contents)))
              m.(mem_access)
              m.(al_state)
              m.(live)
              m.(globals))
   else
-    None.
+    MemoryFail "Private Store".
 
 (** [drop_perm m lo hi p] sets the max permissions of the byte range
     [(b, lo) ... (b, hi - 1)] to [p].  These bytes must have current permissions
@@ -698,7 +699,7 @@ Qed.
 Theorem allowed_access_load:
   forall m chunk ofs,
   allowed_access m chunk ofs ->
-  exists v, load chunk m ofs = Some v.
+  exists v, load chunk m ofs = MemorySuccess v.
 Proof.
   intros. econstructor. unfold load. rewrite pred_dec_true; eauto.
 Qed.
@@ -706,14 +707,14 @@ Qed.
 Theorem valid_access_load:
   forall m chunk ofs,
   valid_access m chunk ofs ->
-  exists v, load chunk m ofs = Some v.
+  exists v, load chunk m ofs = MemorySuccess v.
 Proof.
   intros. econstructor. unfold load. rewrite pred_dec_true; eauto. eapply valid_access_allowed. auto.
 Qed.
 
 Theorem load_allowed_access:
   forall m chunk ofs v,
-  load chunk m ofs = Some v ->
+  load chunk m ofs = MemorySuccess v ->
   allowed_access m chunk ofs.
 Proof.
   intros until v. unfold load.
@@ -724,7 +725,7 @@ Qed.
 
 Lemma load_result:
   forall chunk m ofs v,
-  load chunk m ofs = Some v ->
+  load chunk m ofs = MemorySuccess v ->
   v = decode_val chunk (map (fun x => fst x) (getN (size_chunk_nat chunk) ofs (m.(mem_contents)))).
 Proof.
   intros until v. unfold load.
@@ -737,7 +738,7 @@ Local Hint Resolve load_allowed_access valid_access_load: mem.
 
 Theorem load_type:
   forall m chunk ofs v vt,
-  load chunk m ofs = Some (v,vt) ->
+  load chunk m ofs = MemorySuccess (v,vt) ->
   Val.has_type v (type_of_chunk chunk).
 Admitted.
 (*Proof.
@@ -747,7 +748,7 @@ Qed.*)
 
 Theorem load_rettype:
   forall m chunk ofs v vt,
-  load chunk m ofs = Some (v,vt) ->
+  load chunk m ofs = MemorySuccess (v,vt) ->
   Val.has_rettype v (rettype_of_chunk chunk).
 Admitted.
 (*Proof.
@@ -757,7 +758,7 @@ Qed.*)
 
 Theorem load_cast:
   forall m chunk ofs v vt,
-  load chunk m ofs = Some (v,vt) ->
+  load chunk m ofs = MemorySuccess (v,vt) ->
   match chunk with
   | Mint8signed => v = Val.sign_ext 8 v
   | Mint8unsigned => v = Val.zero_ext 8 v
@@ -772,7 +773,7 @@ Admitted.
   intros. subst v. apply decode_val_cast.
 Qed.*)
 
-Theorem load_int8_signed_unsigned:
+(*Theorem load_int8_signed_unsigned:
   forall m ofs,
   load Mint8signed m ofs = opt_atom_map (Val.sign_ext 8) (load Mint8unsigned m ofs).
 Admitted.
@@ -801,13 +802,13 @@ Admitted.
   simpl. decEq. decEq. rewrite Int.sign_ext_zero_ext. auto. compute; auto.
   rewrite pred_dec_false; auto.
 Qed.*)
-
+*)
 (** ** Properties related to [loadbytes] *)
 
 Theorem range_perm_loadbytes:
   forall m ofs len,
   range_perm_neg m ofs (ofs + len) Dead ->
-  exists bytes, loadbytes m ofs len = Some bytes.
+  exists bytes, loadbytes m ofs len = MemorySuccess bytes.
 Proof.
   intros. econstructor. unfold loadbytes. rewrite pred_dec_true; eauto.
 Qed.
@@ -815,15 +816,15 @@ Qed.
 Axiom range_perm_loadbytes_live:
   forall m ofs len,
   range_perm m ofs (ofs + len) Live ->
-  exists bytes, loadbytes m ofs len = Some bytes.
+  exists bytes, loadbytes m ofs len = MemorySuccess bytes.
 Axiom range_perm_loadbytes_md:
   forall m ofs len,
   range_perm m ofs (ofs + len) MostlyDead ->
-  exists bytes, loadbytes m ofs len = Some bytes.
+  exists bytes, loadbytes m ofs len = MemorySuccess bytes.
 
 Theorem loadbytes_range_perm:
   forall m ofs len bytes,
-  loadbytes m ofs len = Some bytes ->
+  loadbytes m ofs len = MemorySuccess bytes ->
   range_perm_neg m ofs (ofs + len) Dead.
 Proof.
   intros until bytes. unfold loadbytes. intros.
@@ -833,9 +834,9 @@ Qed.
 
 Theorem loadbytes_load:
   forall chunk m ofs bytes,
-  loadbytes m ofs (size_chunk chunk) = Some bytes ->
+  loadbytes m ofs (size_chunk chunk) = MemorySuccess bytes ->
   (align_chunk chunk | ofs) ->
-  load chunk m ofs = Some(decode_val chunk bytes).
+  load chunk m ofs = MemorySuccess(decode_val chunk bytes).
 Proof.
   unfold loadbytes, load; intros.
   destruct (range_perm_neg_dec m ofs (ofs + size_chunk chunk) Dead);
@@ -846,8 +847,8 @@ Qed.
 
 Theorem load_loadbytes:
   forall chunk m ofs v,
-  load chunk m ofs = Some v ->
-  exists bytes, loadbytes m ofs (size_chunk chunk) = Some bytes
+  load chunk m ofs = MemorySuccess v ->
+  exists bytes, loadbytes m ofs (size_chunk chunk) = MemorySuccess bytes
              /\ v = decode_val chunk bytes.
 Admitted.
 (*Proof.
@@ -866,7 +867,7 @@ Qed.
 
 Theorem loadbytes_length:
   forall m ofs n bytes,
-  loadbytes m ofs n = Some bytes ->
+  loadbytes m ofs n = MemorySuccess bytes ->
   length bytes = Z.to_nat n.
 Admitted.
 (*Proof.
@@ -877,7 +878,7 @@ Qed.*)
 
 Theorem loadbytes_empty:
   forall m ofs n,
-  n <= 0 -> loadbytes m ofs n = Some nil.
+  n <= 0 -> loadbytes m ofs n = MemorySuccess nil.
 Proof.
   intros. unfold loadbytes. rewrite pred_dec_true. rewrite Z_to_nat_neg; auto.
   red; intros. extlia.
@@ -896,10 +897,10 @@ Qed.
 
 Theorem loadbytes_concat:
   forall m ofs n1 n2 bytes1 bytes2,
-  loadbytes m ofs n1 = Some bytes1 ->
-  loadbytes m (ofs + n1) n2 = Some bytes2 ->
+  loadbytes m ofs n1 = MemorySuccess bytes1 ->
+  loadbytes m (ofs + n1) n2 = MemorySuccess bytes2 ->
   n1 >= 0 -> n2 >= 0 ->
-  loadbytes m ofs (n1 + n2) = Some(bytes1 ++ bytes2).
+  loadbytes m ofs (n1 + n2) = MemorySuccess(bytes1 ++ bytes2).
 Admitted.
 (*Proof.
   unfold loadbytes; intros.
@@ -915,11 +916,11 @@ Qed.*)
 
 Theorem loadbytes_split:
   forall m ofs n1 n2 bytes,
-  loadbytes m ofs (n1 + n2) = Some bytes ->
+  loadbytes m ofs (n1 + n2) = MemorySuccess bytes ->
   n1 >= 0 -> n2 >= 0 ->
   exists bytes1, exists bytes2,
-     loadbytes m ofs n1 = Some bytes1
-  /\ loadbytes m (ofs + n1) n2 = Some bytes2
+     loadbytes m ofs n1 = MemorySuccess bytes1
+  /\ loadbytes m (ofs + n1) n2 = MemorySuccess bytes2
   /\ bytes = bytes1 ++ bytes2.
 Admitted.
 (*Proof.
@@ -938,8 +939,8 @@ Qed.*)
 Theorem load_rep:
  forall ch m1 m2 ofs v1 v2,
   (forall z, 0 <= z < size_chunk ch -> ZMap.get (ofs + z) m1.(mem_contents)= ZMap.get (ofs + z) m2.(mem_contents)) ->
-  load ch m1 ofs = Some v1 ->
-  load ch m2 ofs = Some v2 ->
+  load ch m1 ofs = MemorySuccess v1 ->
+  load ch m2 ofs = MemorySuccess v2 ->
   v1 = v2.
 Admitted.
 (*Proof.
@@ -1040,7 +1041,7 @@ Qed.*)
 Theorem valid_access_store:
   forall m1 chunk ofs a lts,
   valid_access m1 chunk ofs ->
-  { m2: mem | store chunk m1 ofs a lts = Some m2 }.
+  { m2: mem | store chunk m1 ofs a lts = MemorySuccess m2 }.
 Proof.
   intros.
   unfold store.
@@ -1055,7 +1056,7 @@ Local Hint Resolve valid_access_store: mem.
 Theorem allowed_access_store:
   forall m1 chunk ofs v vt lts,
   allowed_access m1 chunk ofs ->
-  { m2: mem | store chunk m1 ofs (v,vt) lts = Some m2 }.
+  { m2: mem | store chunk m1 ofs (v,vt) lts = MemorySuccess m2 }.
 Proof.
   intros.
   unfold store.
@@ -1069,7 +1070,7 @@ Local Hint Resolve allowed_access_store: mem.
 Axiom disallowed_access_store:
   forall m1 chunk ofs v vt lts,
   ~ allowed_access m1 chunk ofs ->
-  store chunk m1 ofs (v,vt) lts = None.
+  store chunk m1 ofs (v,vt) lts = MemoryFail "Private Store".
 
 Local Hint Resolve allowed_access_store: mem.
 
@@ -1081,7 +1082,7 @@ Variable v: val.
 Variable vt: tag.
 Variable lts: list tag.
 Variable m2: mem.
-Hypothesis STORE: store chunk m1 ofs (v,vt) lts = Some m2.
+Hypothesis STORE: store chunk m1 ofs (v,vt) lts = MemorySuccess m2.
 
 Lemma store_access: mem_access m2 = mem_access m1.
 Proof.
@@ -1178,7 +1179,7 @@ Theorem load_store_similar:
   forall chunk',
   size_chunk chunk' = size_chunk chunk ->
   align_chunk chunk' <= align_chunk chunk ->
-  exists v' t', load chunk' m2 ofs = Some (v',t') /\ decode_encode_val v chunk chunk' v'.
+  exists v' t', load chunk' m2 ofs = MemorySuccess (v',t') /\ decode_encode_val v chunk chunk' v'.
 Admitted.
 (*Proof.
   intros.
@@ -1200,7 +1201,7 @@ Theorem load_store_similar_2:
   size_chunk chunk' = size_chunk chunk ->
   align_chunk chunk' <= align_chunk chunk ->
   type_of_chunk chunk' = type_of_chunk chunk ->
-  load chunk' m2 ofs = Some (Val.load_result chunk' v, vt).
+  load chunk' m2 ofs = MemorySuccess (Val.load_result chunk' v, vt).
 Admitted.
 (*Proof.
   intros. destruct (load_store_similar chunk') as [v' [A B]]; auto.
@@ -1208,7 +1209,7 @@ Admitted.
 Qed.*)
 
 Theorem load_store_same:
-  load chunk m2 ofs = Some (Val.load_result chunk v, vt).
+  load chunk m2 ofs = MemorySuccess (Val.load_result chunk v, vt).
 Proof.
   apply load_store_similar_2; auto. lia.
 Qed.
@@ -1234,7 +1235,7 @@ Admitted.
 Qed.*)
 
 Theorem loadbytes_store_same:
-  loadbytes m2 ofs (size_chunk chunk) = Some(encode_val chunk (v, vt)).
+  loadbytes m2 ofs (size_chunk chunk) = MemorySuccess(encode_val chunk (v, vt)).
 Admitted.
 (*Proof.
   intros.
@@ -1376,8 +1377,8 @@ Qed.*)
 
 Theorem load_pointer_store:
   forall chunk m1 ofs v pt lts m2 chunk' ofs' v_v_o pt',
-  store chunk m1 ofs (v,pt) lts = Some m2 ->
-  load chunk' m2 ofs' = Some(Vint v_v_o, pt') ->
+  store chunk m1 ofs (v,pt) lts = MemorySuccess m2 ->
+  load chunk' m2 ofs' = MemorySuccess(Vint v_v_o, pt') ->
   (v = Vint v_v_o /\ compat_pointer_chunks chunk chunk' /\ ofs' = ofs)
   \/ (ofs' + size_chunk chunk' <= ofs \/ ofs + size_chunk chunk <= ofs').
 Admitted.
@@ -1410,8 +1411,8 @@ Qed.*)
 
 Theorem load_store_pointer_overlap:
   forall chunk m1 ofs v_v_o m2 chunk' ofs' v pt lts,
-  store chunk m1 ofs (Vint v_v_o, pt) lts = Some m2 ->
-  load chunk' m2 ofs' = Some v ->
+  store chunk m1 ofs (Vint v_v_o, pt) lts = MemorySuccess m2 ->
+  load chunk' m2 ofs' = MemorySuccess v ->
   ofs' <> ofs ->
   ofs' + size_chunk chunk' > ofs ->
   ofs + size_chunk chunk > ofs' ->
@@ -1435,8 +1436,8 @@ Qed.*)
 
 Theorem load_store_pointer_mismatch:
   forall chunk m1 ofs v_v_o m2 chunk' v pt lts,
-  store chunk m1 ofs (Vint v_v_o, pt) lts = Some m2 ->
-  load chunk' m2 ofs = Some v ->
+  store chunk m1 ofs (Vint v_v_o, pt) lts = MemorySuccess m2 ->
+  load chunk' m2 ofs = MemorySuccess v ->
   ~compat_pointer_chunks chunk chunk' ->
   v = (Vundef, def_tag).
 Admitted.
@@ -1532,7 +1533,7 @@ Qed.
 Theorem range_perm_storebytes:
   forall m1 ofs bytes lts,
   range_perm_neg m1 ofs (ofs + Z.of_nat (length bytes)) Dead ->
-  { m2 : mem | storebytes m1 ofs bytes lts = Some m2 }.
+  { m2 : mem | storebytes m1 ofs bytes lts = MemorySuccess m2 }.
 Proof.
   intros. unfold storebytes.
   destruct (range_perm_neg_dec m1 ofs (ofs + Z.of_nat (length bytes)) Dead).
@@ -1542,9 +1543,9 @@ Defined.
 
 Theorem storebytes_store:
   forall m1 ofs chunk v vt lts m2,
-  storebytes m1 ofs (encode_val chunk (v,vt)) lts = Some m2 ->
+  storebytes m1 ofs (encode_val chunk (v,vt)) lts = MemorySuccess m2 ->
   (align_chunk chunk | ofs) ->
-  store chunk m1 ofs (v,vt) lts = Some m2.
+  store chunk m1 ofs (v,vt) lts = MemorySuccess m2.
 Proof.
   unfold storebytes, store. intros.
   destruct (range_perm_neg_dec m1 ofs (ofs + Z.of_nat (length (encode_val chunk (v,vt)))) Dead); inv H.
@@ -1556,8 +1557,8 @@ Qed.
 
 Theorem store_storebytes:
   forall m1 ofs chunk v lts m2,
-  store chunk m1 ofs v lts = Some m2 ->
-  storebytes m1 ofs (encode_val chunk v) lts = Some m2.
+  store chunk m1 ofs v lts = MemorySuccess m2 ->
+  storebytes m1 ofs (encode_val chunk v) lts = MemorySuccess m2.
 Proof.
   unfold storebytes, store. intros.
   destruct (allowed_access_dec m1 chunk ofs); inv H.
@@ -1574,7 +1575,7 @@ Variable ofs: Z.
 Variable bytes: list memval.
 Variable lts: list tag.
 Variable m2: mem.
-Hypothesis STORE: storebytes m1 ofs bytes lts = Some m2.
+Hypothesis STORE: storebytes m1 ofs bytes lts = MemorySuccess m2.
 
 Lemma storebytes_access: mem_access m2 = mem_access m1.
 Proof.
@@ -1664,7 +1665,7 @@ Proof.
 Qed.
 
 Theorem loadbytes_storebytes_same:
-  loadbytes m2 ofs (Z.of_nat (length bytes)) = Some bytes.
+  loadbytes m2 ofs (Z.of_nat (length bytes)) = MemorySuccess bytes.
 Admitted.
 (*Proof.
   intros. assert (STORE2:=STORE). unfold storebytes in STORE2. unfold loadbytes.
@@ -1741,9 +1742,9 @@ Qed.
 
 Theorem storebytes_concat:
   forall m ofs bytes1 lts1 m1 bytes2 lts2 m2,
-  storebytes m ofs bytes1 lts1 = Some m1 ->
-  storebytes m1 (ofs + Z.of_nat(length bytes1)) bytes2 lts2 = Some m2 ->
-  storebytes m ofs (bytes1 ++ bytes2) (lts1 ++ lts2) = Some m2.
+  storebytes m ofs bytes1 lts1 = MemorySuccess m1 ->
+  storebytes m1 (ofs + Z.of_nat(length bytes1)) bytes2 lts2 = MemorySuccess m2 ->
+  storebytes m ofs (bytes1 ++ bytes2) (lts1 ++ lts2) = MemorySuccess m2.
 Admitted.
 (*Proof.
   intros. generalize H; intro ST1. generalize H0; intro ST2.
@@ -1762,10 +1763,10 @@ Qed.*)
 
 Theorem storebytes_split:
   forall m ofs bytes1 bytes2 lts1 lts2 m2,
-  storebytes m ofs (bytes1 ++ bytes2) (lts1 ++ lts2) = Some m2 ->
+  storebytes m ofs (bytes1 ++ bytes2) (lts1 ++ lts2) = MemorySuccess m2 ->
   exists m1,
-     storebytes m ofs bytes1 lts1 = Some m1
-  /\ storebytes m1 (ofs + Z.of_nat(length bytes1)) bytes2 lts2 = Some m2.
+     storebytes m ofs bytes1 lts1 = MemorySuccess m1
+  /\ storebytes m1 (ofs + Z.of_nat(length bytes1)) bytes2 lts2 = MemorySuccess m2.
 Proof.
 Admitted.
      (* intros.
@@ -1784,10 +1785,10 @@ Qed.*)
 
 Theorem store_int64_split:
   forall m ofs v lts m',
-  store Mint64 m ofs v lts = Some m' -> Archi.ptr64 = false ->
+  store Mint64 m ofs v lts = MemorySuccess m' -> Archi.ptr64 = false ->
   exists m1,
-     store Mint32 m ofs (if Archi.big_endian then atom_map Val.hiword v else atom_map Val.loword v) lts = Some m1
-  /\ store Mint32 m1 (ofs + 4) (if Archi.big_endian then atom_map Val.loword v else atom_map Val.hiword v) lts = Some m'.
+     store Mint32 m ofs (if Archi.big_endian then atom_map Val.hiword v else atom_map Val.loword v) lts = MemorySuccess m1
+  /\ store Mint32 m1 (ofs + 4) (if Archi.big_endian then atom_map Val.loword v else atom_map Val.hiword v) lts = MemorySuccess m'.
 Admitted.
 (*Proof.
   intros.
@@ -1810,7 +1811,7 @@ Section ALLOC.
 Variable m1: mem.
 Variables lo1 lo2 hi1 hi2: Z.
 Variable m2: mem.
-Hypothesis ALLOC: alloc m1 lo1 hi1 = Some (m2, lo2, hi2).
+Hypothesis ALLOC: alloc m1 lo1 hi1 = MemorySuccess (m2, lo2, hi2).
 
 Ltac alloc_inv :=
   let p := fresh "p" in
@@ -2017,7 +2018,7 @@ Local Hint Resolve valid_block_alloc : mem.
 Theorem range_perm_free:
   forall m1 lo hi,
   range_perm m1 lo hi Live ->
-  { m2: mem | free m1 lo hi = Some m2 }.
+  { m2: mem | free m1 lo hi = MemorySuccess m2 }.
 Proof.
   intros; unfold free. rewrite pred_dec_true; auto. econstructor; eauto.
 Defined.
@@ -2027,7 +2028,7 @@ Section FREE.
 Variable m1: mem.
 Variables lo hi: Z.
 Variable m2: mem.
-Hypothesis FREE: free m1 lo hi = Some m2.
+Hypothesis FREE: free m1 lo hi = MemorySuccess m2.
 
 Theorem free_range_perm:
   range_perm m1 lo hi Live.
