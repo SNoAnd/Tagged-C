@@ -185,26 +185,26 @@ let print_pointer_hook
    : (formatter -> Values.block * Integers.Int.int -> unit) ref
    = ref (fun p (b, ofs) -> ())
 
-let print_typed_value p v ty =
-  match v, ty with
-  | Vint n, Ctypes.Tint(I32, Unsigned, _) ->
+let print_typed_value p vty =
+  match vty with
+  | (Vint n, Ctypes.Tint(I32, Unsigned, _)) ->
       fprintf p "%luU" (camlint_of_coqint n)
-  | Vint n, _ ->
+  | (Vint n, _) ->
       fprintf p "%ld" (camlint_of_coqint n)
-  | Vfloat f, _ ->
+  | (Vfloat f, _) ->
       fprintf p "%.15F" (camlfloat_of_coqfloat f)
-  | Vsingle f, _ ->
+  | (Vsingle f, _) ->
       fprintf p "%.15Ff" (camlfloat_of_coqfloat32 f)
-  | Vlong n, Ctypes.Tlong(Unsigned, _) ->
+  | (Vlong n, Ctypes.Tlong(Unsigned, _)) ->
       fprintf p "%LuLLU" (camlint64_of_coqint n)
-  | Vlong n, _ ->
+  | (Vlong n, _) ->
       fprintf p "%LdLL" (camlint64_of_coqint n)
-  | Vfptr b, _ ->
+  | (Vfptr b, _) ->
       fprintf p "<ptr%a>" !print_pointer_hook (b,coqint_of_camlint 0l)
-  | Vundef, _ ->
+  | (Vundef, _) ->
       fprintf p "<undef>"
 
-let print_value p v = print_typed_value p v Tvoid
+let print_value p v = print_typed_value p (v,Tvoid)
 
 let rec expr p (prec, e) =
   let (prec', assoc) = precedence e in
@@ -230,10 +230,12 @@ let rec expr p (prec, e) =
       fprintf p "%a.%s" expr (prec', a1) (extern_atom f)
   | Csyntax.Evalof(l, _) ->
       expr p (prec, l)
-  | Csyntax.Eval((v, _), ty) ->
-      print_typed_value p v ty
+  | Csyntax.Eval((v, vt), ty) ->
+      fprintf p "%a %@ %s"
+        print_typed_value (v,ty)
+        (String.of_seq (List.to_seq (Pol.print_tag vt)))
   | Csyntax.Econst(v, ty) ->
-      print_typed_value p v ty
+      print_typed_value p (v,ty)
   | Csyntax.Esizeof(ty, _) ->
       fprintf p "sizeof(%s)" (name_type ty)
   | Csyntax.Ealignof(ty, _) ->
