@@ -513,6 +513,11 @@ let rec do_events p ge time w t =
 
 let (|||) a b = a || b (* strict boolean or *)
 
+let is_stuck r =
+  match r with
+  | Cexec.Stuckred msg -> true
+  | _ -> false
+
 let diagnose_stuck_expr p ge w f a kont pct e te m =
   let rec diagnose k a =
   (* diagnose subexpressions first *)
@@ -536,7 +541,7 @@ let diagnose_stuck_expr p ge w f a kont pct e te m =
     | _, _ -> false in
   if found then true else begin
     let l = Cexec.step_expr ge do_external_function (*do_inline_assembly*) e w k pct a te m in
-    if List.exists (fun (ctx,red) -> red = Cexec.Stuckred) l then begin
+    if List.exists (fun (ctx,red) -> is_stuck red) l then begin
       Printing.print_pointer_hook := print_pointer (fst ge) e;
       fprintf p "@[<hov 2>Stuck subexpression:@ %a@]@."
               Printing.print_expr a;

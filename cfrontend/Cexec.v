@@ -430,7 +430,7 @@ Inductive reduction: Type :=
 | Lred (rule: string) (l': expr) (te': tenv) (m': mem)
 | Rred (rule: string) (pct': tag) (r': expr) (te': tenv) (m': mem) (tr: trace)
 | Callred (rule: string) (fd: fundef) (args: list atom) (tyres: type) (pct': tag) (te': tenv) (m': mem)
-| Stuckred (*anaaktge enters impossible state or would have to take impossible step. 
+| Stuckred (msg: string) (*anaaktge enters impossible state or would have to take impossible step. 
               think like a /0 *)
 | Failstopred (rule: string) (msg: string) (params: list tag) (tr: trace)
            (* anaaktge - for tag fail stops add things here. dont add it to stuck *)
@@ -467,8 +467,11 @@ Section EXPRS.
     ((fun (x: expr) => x), Failstopred rule msg params tr) :: nil.
 
   Definition stuck : reducts expr :=
-    ((fun (x: expr) => x), Stuckred) :: nil.
+    [((fun (x: expr) => x), Stuckred "")].
 
+  Definition stuckm (msg:string) : reducts expr :=
+    [((fun (x: expr) => x), Stuckred "")].
+  
   Definition incontext {A B: Type} (ctx: A -> B) (ll: reducts A) : reducts B :=
     map (fun z => ((fun (x: expr) => ctx(fst z x)), snd z)) ll.
   
@@ -1259,8 +1262,8 @@ Definition reduction_ok (k: kind) (pct: tag) (a: expr) (te: tenv) (m: mem) (rd: 
   | LV, Lred _ l' te' m' => lred ge e a pct te m l' te' m'
   | RV, Rred _ pct' r' te' m' t => rred ge pct a te m t pct' r' te' m' /\ exists w', possible_trace w t w'
   | RV, Callred _ fd args tyres pct' te' m' => callred ge pct a m pct' fd args tyres /\ te' = te /\ m' = m
-  | LV, Stuckred => ~imm_safe_t k a pct te m
-  | RV, Stuckred => ~imm_safe_t k a pct te m
+  | LV, Stuckred _ => ~imm_safe_t k a pct te m
+  | RV, Stuckred _ => ~imm_safe_t k a pct te m
   | LV, Failstopred _ msg params tr => lfailred ge a pct msg params /\ tr = E0
   | RV, Failstopred _ msg params tr => rfailred ge pct a te m tr msg params /\ exists w', possible_trace w tr w'
   | _, _ => False
@@ -2221,18 +2224,19 @@ Qed.
 
 Lemma not_stuckred_imm_safe:
   forall te m a k pct,
-    (forall C, ~In (C, Stuckred) (step_expr k pct a te m)) -> imm_safe_t k a pct te m.
+    (forall C, ~(exists msg, In (C, Stuckred msg) (step_expr k pct a te m))) ->
+    imm_safe_t k a pct te m.
 Proof.
   intros. generalize (step_expr_sound pct a k te m). intros [A B].
   destruct (step_expr k pct a te m) as [|[C rd] res] eqn:?.
   specialize (B (eq_refl _)). destruct k.
   destruct a; simpl in B; try congruence. constructor.
   destruct a; simpl in B; try congruence. constructor.
-  assert (NOTSTUCK: rd <> Stuckred).
-  { red; intros. elim (H C); subst rd; auto with coqlib. }
+  assert (NOTSTUCK: (forall msg, rd <> Stuckred msg)).
+  { red; intros. elim (H C). exists msg. subst rd; auto with coqlib. }
   exploit A. eauto with coqlib. intros [a' [k' [P [Q R]]]].
-  destruct k'; destruct rd; simpl in R; intuition.
-  - subst a. eapply imm_safe_t_lred; eauto.
+  destruct k'; destruct rd; simpl in R; intuition; try (exfalso; eapply NOTSTUCK; auto; fail).
+  - subst a. eapply imm_safe_t_lred; eauto. 
   - subst a. eapply imm_safe_t_lfailred; eauto.
   - subst a. destruct H1 as [w' PT]. eapply imm_safe_t_rred; eauto.
   - subst. eapply imm_safe_t_callred; eauto.
@@ -2243,16 +2247,16 @@ Lemma not_imm_safe_stuck_red:
   forall te m pct a k C,
   context k RV C ->
   ~imm_safe_t k a pct te m ->
-  exists C', In (C', Stuckred) (step_expr RV pct (C a) te m).
+  exists C' msg, In (C', Stuckred msg) (step_expr RV pct (C a) te m).
 Proof.
   intros.
-  assert (exists C', In (C', Stuckred) (step_expr k pct a te m)).
-  destruct (classic (exists C', In (C', Stuckred) (step_expr k pct a te m))); auto.
-  elim H0. apply not_stuckred_imm_safe. apply not_ex_all_not. auto.
+  assert (exists C' msg, In (C', Stuckred msg) (step_expr k pct a te m)).
+  { destruct (classic (exists C' msg, In (C', Stuckred msg) (step_expr k pct a te m))); auto.
+    elim H0. apply not_stuckred_imm_safe. apply not_ex_all_not. auto. }
   destruct H1 as [C' IN].
   specialize (step_expr_context _ _ _ H pct a te m). unfold reducts_incl.
-  intro.
-  exists (fun x => (C (C' x))). apply H1; auto.
+  intro. destruct IN as [msg IN].
+  exists (fun x => (C (C' x))). exists msg. apply H1; auto.
 Qed.
 
 (** Connections between [imm_safe_t] and [imm_safe] *)
@@ -2320,7 +2324,7 @@ Definition expr_final_state (f: function) (k: cont) (pct: tag) (e: env) (C_rd: (
   | Lred rule a te m => TR rule E0 (ExprState f pct (fst C_rd a) k e te m)
   | Rred rule pct a te m t => TR rule t (ExprState f pct (fst C_rd a) k e te m)
   | Callred rule fd vargs ty pct' te m => TR rule E0 (Callstate fd pct' vargs (Kcall f e te pct (fst C_rd) ty k) m)
-  | Stuckred => TR "step_stuck" E0 Stuckstate
+  | Stuckred msg => TR ("step_stuck" ++ msg) E0 Stuckstate
   | Failstopred rule msg params tr => TR rule tr (Failstop msg params)
   end.
 
@@ -2490,12 +2494,12 @@ Definition do_step (w: world) (s: Csem.state) : list transition :=
       end
   | Callstate (External ef targs tres cc) pct vargs k m =>
       match do_external ge do_external_function ef w vargs pct m with
-      | MemorySuccess (PolicySuccess (w',t,v,pct',m')) => TR "step_external_function" t (Returnstate (External ef targs tres cc) pct' v k m') :: nil
-      | MemorySuccess (PolicyFail msg params) => nil
-      | MemoryFail msg => nil
+      | MemorySuccess (PolicySuccess (w',tr,v,pct',m')) => [TR "step_external_function" tr (Returnstate (External ef targs tres cc) pct' v k m')]
+      | MemorySuccess (PolicyFail msg params) => [TR "step_external_function_fail_1" E0 (Failstop msg params)]
+      | MemoryFail msg => [TR "step_external_function_fail_0" E0 (Failstop msg [])]
       end
 
-  | Returnstate (Internal f') pct (v,vt) (Kcall f e te oldpct C ty k) m =>
+  | Returnstate fd pct (v,vt) (Kcall f e te oldpct C ty k) m =>
       at "step_returnstate_fail" trule pct', vt' <- RetT pct oldpct vt;
         ret "step_returnstate" (ExprState f pct' (C (Eval (v,vt') ty)) k e te m)
 

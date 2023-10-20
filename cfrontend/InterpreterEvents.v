@@ -381,10 +381,11 @@ Definition do_ef_malloc
       match option_map Ptrofs.unsigned (do_alloc_size v) with
       | Some sz =>
           match malloc m (- size_chunk Mptr) sz with
-          | MemorySuccess (m', base, bound) =>
+          | MemorySuccess (m', bottom, bound) =>
+              let base := bottom + (size_chunk Mptr) in
               match MallocT PCT def_tag st with
               | PolicySuccess (PCT',pt',vt',lt') =>
-                  do_mem m'' <- store Mptr m' (base - size_chunk Mptr) (v,vt') (repeat def_tag (Z.to_nat (size_chunk Mptr)));
+                  do_mem m'' <- store Mptr m' bottom (v,vt') (repeat def_tag (Z.to_nat (size_chunk Mptr)));
                   do_mem m''' <- storebytes m'' base (repeat (Byte Byte.zero vt') (Z.to_nat sz)) (repeat lt' (Z.to_nat sz));
                   MemorySuccess(PolicySuccess(w, E0, (Vlong (Int64.repr base), def_tag), PCT', m''))
           | PolicyFail msg params => MemorySuccess (PolicyFail msg params)
