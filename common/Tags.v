@@ -20,7 +20,8 @@ Module Type Policy. (* anaaktge this is the interface for rules
   Parameter tag_eq_dec : forall (t1 t2:tag), {t1 = t2} + {t1 <> t2}.
   Parameter def_tag : tag.
   Parameter InitPCT : tag.
-  
+
+  Parameter print_tag : tag -> string.
     (* anaaktge parameterized by tag type but are shared regardless of policy
       and c/p them around would be really annoying. n copies is n-1 too many. 
 
@@ -129,6 +130,8 @@ Module NullPolicy <: Policy.
   
   Definition InitPCT : tag := tt.
 
+  Definition print_tag (t:tag) : string := "tt".
+  
   (* anaaktge does not inherit, more like impersonates *)
   Inductive PolicyResult (A: Type) :=
   | PolicySuccess (res: A) 
@@ -211,6 +214,13 @@ Module PVI <: Policy.
 
   Definition InitPCT := Dyn 0.
 
+  Definition print_tag (t : tag) : string :=
+    match t with
+    | Glob id => "Global"
+    | Dyn c => "Dynamic"
+    | N => "N"
+    end.
+  
   (* anaaktge does not inherit, more like impersonates *)
   Inductive PolicyResult (A: Type) :=
   | PolicySuccess (res: A) 
@@ -319,6 +329,13 @@ Module PNVI <: Policy.
 
   Definition InitPCT := Dyn 0.
 
+  Definition print_tag (t : tag) : string :=
+    match t with
+    | Glob id => "Global"
+    | Dyn c => "Dynamic"
+    | N => "N"
+    end.
+  
   (* anaaktge does not inherit, more like impersonates *)
   Inductive PolicyResult (A: Type) :=
   | PolicySuccess (res: A) 

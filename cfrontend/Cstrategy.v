@@ -155,7 +155,7 @@ Module Cstrategy (P: Policy).
       | esr_rvalof_mem: forall ofs pt bf l ty v lts,
           eval_simple_lvalue l (Lmem ofs pt bf) ->
           ty = typeof l -> type_is_volatile ty = false ->
-          deref_loc ge ty m ofs pt bf E0 v lts ->
+          deref_loc ge ty m ofs pt bf E0 (MemorySuccess (v, lts)) ->
           eval_simple_rvalue PCT (Evalof l ty) v
       | esr_rvalof_tmp: forall b l ty v,
           eval_simple_lvalue l (Ltmp b) ->
@@ -289,7 +289,7 @@ Inductive estep: Csem.state -> trace -> Csem.state -> Prop :=
   | step_rvalof_volatile: forall f C l ty k e te m PCT ofs pt bf t v lts,
       leftcontext RV RV C ->
       eval_simple_lvalue e te m PCT l (Lmem ofs pt bf) ->
-      deref_loc ge ty m ofs pt bf t v lts ->
+      deref_loc ge ty m ofs pt bf t (MemorySuccess (v, lts)) ->
       ty = typeof l -> type_is_volatile ty = true ->
       estep (ExprState f PCT (C (Evalof l ty)) k e te m)
           t (ExprState f PCT (C (Eval v ty)) k e te m)
@@ -332,7 +332,7 @@ Inductive estep: Csem.state -> trace -> Csem.state -> Prop :=
       eval_simple_lvalue e te m PCT l (Lmem ofs pt bf) ->
       eval_simple_rvalue e te m PCT PCT' r (v,vt) ->
       sem_cast v (typeof r) (typeof l) m = Some v1 ->
-      assign_loc ge (typeof l) m ofs pt bf (v1,vt) t m' (v',vt) lts ->
+      assign_loc ge (typeof l) m ofs pt bf (v1,vt) t (MemorySuccess (m', (v',vt))) lts ->
       ty = typeof l ->
       estep (ExprState f PCT (C (Eassign l r ty)) k e te m)
           t (ExprState f PCT' (C (Eval (v',vt) ty)) k e te m')
@@ -340,60 +340,27 @@ Inductive estep: Csem.state -> trace -> Csem.state -> Prop :=
   | step_assignop: forall f C op l r tyres ty k e te m PCT PCT' ofs pt bf v1 v2 v3 v4 vt t1 t2 m' v' t lts,
       leftcontext RV RV C ->
       eval_simple_lvalue e te m PCT l (Lmem ofs pt bf) ->
-      deref_loc ge (typeof l) m ofs pt bf t1 (v1,vt) lts ->
+      deref_loc ge (typeof l) m ofs pt bf t1 (MemorySuccess ((v1,vt), lts)) ->
       eval_simple_rvalue e te m PCT PCT' r (v2,vt) ->
       sem_binary_operation (snd ge) op v1 (typeof l) v2 (typeof r) m = Some v3 ->
       sem_cast v3 tyres (typeof l) m = Some v4 ->
-      assign_loc ge (typeof l) m ofs pt bf (v4,vt) t2 m' v' lts ->
+      assign_loc ge (typeof l) m ofs pt bf (v4,vt) t2 (MemorySuccess (m', v')) lts ->
       ty = typeof l ->
       t = t1 ** t2 ->
       estep (ExprState f PCT (C (Eassignop op l r tyres ty)) k e te m)
           t (ExprState f PCT' (C (Eval v' ty)) k e te m')
 
-  | step_assignop_stuck: forall f C op l r tyres ty k e te m PCT PCT' ofs pt bf v1 v2 vt1 vt2 t lts,
-      leftcontext RV RV C ->
-      eval_simple_lvalue e te m PCT l (Lmem ofs pt bf) ->
-      deref_loc ge (typeof l) m ofs pt bf t (v1,vt1) lts ->
-      eval_simple_rvalue e te m PCT PCT' r (v2,vt2) ->
-      match sem_binary_operation (snd ge) op v1 (typeof l) v2 (typeof r) m with
-      | None => True
-      | Some v3 =>
-          match sem_cast v3 tyres (typeof l) m with
-          | None => True
-          | Some v4 => forall t2 m' v', ~(assign_loc ge (typeof l) m ofs pt bf (v4,vt1) t2 m' v' lts)
-          end
-      end ->
-      ty = typeof l ->
-      estep (ExprState f PCT (C (Eassignop op l r tyres ty)) k e te m)
-          t Stuckstate
-
   | step_postincr: forall f C id l ty k e te m PCT PCT' ofs pt bf v1 v2 v3 vt t1 t2 m' v' t lts,
       leftcontext RV RV C ->
       eval_simple_lvalue e te m PCT l (Lmem ofs pt bf) ->
-      deref_loc ge ty m ofs pt bf t1 (v1,vt) lts ->
+      deref_loc ge ty m ofs pt bf t1 (MemorySuccess ((v1,vt), lts)) ->
       sem_incrdecr (snd ge) id v1 ty m = Some v2 ->
       sem_cast v2 (incrdecr_type ty) ty m = Some v3 ->
-      assign_loc ge ty m ofs pt bf (v3,vt) t2 m' v' lts ->
+      assign_loc ge ty m ofs pt bf (v3,vt) t2 (MemorySuccess (m', v')) lts ->
       ty = typeof l ->
       t = t1 ** t2 ->
       estep (ExprState f PCT (C (Epostincr id l ty)) k e te m)
           t (ExprState f PCT' (C (Eval (v1,vt) ty)) k e te m')
-
-  | step_postincr_stuck: forall f C id l ty k e te m PCT ofs pt bf v1 vt t lts,
-      leftcontext RV RV C ->
-      eval_simple_lvalue e te m PCT l (Lmem ofs pt bf) ->
-      deref_loc ge ty m ofs pt bf t (v1,vt) lts ->
-      match sem_incrdecr (snd ge) id v1 ty m with
-      | None => True
-      | Some v2 =>
-          match sem_cast v2 (incrdecr_type ty) ty m with
-          | None => True
-          | Some v3 => forall t2 m' v', ~(assign_loc ge (typeof l) m ofs pt bf (v3,vt) t2 m' v' lts)
-          end
-      end ->
-      ty = typeof l ->
-      estep (ExprState f PCT (C (Epostincr id l ty)) k e te m)
-          t Stuckstate
 
   | step_comma: forall f C r1 r2 ty k e te m PCT PCT' v vt,
       leftcontext RV RV C ->

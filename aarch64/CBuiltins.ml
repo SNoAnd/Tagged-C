@@ -24,9 +24,9 @@ open C
      va_list is a pointer (size 8, alignment 8), passed by reference *)
 
 let (va_list_type, size_va_list, va_list_scalar) =
-  match Archi.abi with
+(*   match Archi.abi with
   | Archi.AAPCS64 -> (TArray(TInt(IULong, []), Some 4L, []), 32, false)
-  | Archi.Apple   -> (TPtr(TVoid [], []), 8, true)
+  | Archi.Apple   -> *) (TPtr(TVoid [], []), 8, true)
 
 (* Some macOS headers use the GCC built-in types "__int128_t" and
    "__uint128_t" unconditionally.  Provide a dummy definition. *)

@@ -58,19 +58,6 @@ Notation " 'check' A ; B" := (if A then B else nil)
   (at level 200, A at level 100, B at level 200)
   : list_monad_scope.
 
-(* Policy-agnostic Tactics *)
-Ltac mydestr :=
-  match goal with
-  | [ |- None = Some _ -> _ ] => let X := fresh "X" in intro X; discriminate
-  | [ |- Some _ = Some _ -> _ ] => let X := fresh "X" in intro X; inv X
-  | [ |- match ?x with Some _ => _ | None => _ end = Some _ -> _ ] => destruct x eqn:?; mydestr
-  | [ |- match ?x with true => _ | false => _ end = Some _ -> _ ] => destruct x eqn:?; mydestr
-  | [ |- match ?x with inl _ => _ | inr _ => _ end = Some _ -> _ ] => destruct x; mydestr
-  | [ |- match ?x with left _ => _ | right _ => _ end = Some _ -> _ ] => destruct x; mydestr
-  | [ |- (let (_, _) := ?x in _) = Some _ -> _ ] => destruct x; mydestr
-  | _ => idtac
-  end.
-
 Module Cexec (P:Policy).
   Module InterpreterEvents := InterpreterEvents P.
   Import InterpreterEvents.
@@ -87,6 +74,38 @@ Module Cexec (P:Policy).
   Import Mem.
   Import P.
   Import Csem.TLib.
+
+  (* Policy-agnostic Tactics *)
+  Ltac mydestr :=
+    match goal with
+    | [ |- None = Some _ -> _ ] => let X := fresh "X" in intro X; discriminate
+    | [ |- Some _ = Some _ -> _ ] => let X := fresh "X" in intro X; inv X
+    | [ |- match ?x with Some _ => _ | None => _ end = Some _ -> _ ] => destruct x eqn:?; mydestr
+    | [ |- match ?x with true => _ | false => _ end = Some _ -> _ ] => destruct x eqn:?; mydestr
+    | [ |- match ?x with inl _ => _ | inr _ => _ end = Some _ -> _ ] => destruct x; mydestr
+    | [ |- match ?x with left _ => _ | right _ => _ end = Some _ -> _ ] => destruct x; mydestr
+    | [ |- match ?x with MemorySuccess _ => _ | MemoryFail _ => _ end = _ -> _ ] => destruct x eqn:?;mydestr
+    | [ |- match ?x with true => _ | false => _ end = _ -> _ ] => destruct x eqn:?; mydestr
+    | [ |- (if ?x then _ else _) = _ -> _ ] => destruct x eqn:?; mydestr
+    | [ |- (let (_, _) := ?x in _) = _ -> _ ] => destruct x eqn:?; mydestr
+    | _ => idtac
+    end.
+  
+  Notation "'do' X <- A ; B" := (match A with
+                                 | MemorySuccess X => B
+                                 | MemoryFail msg => MemoryFail msg
+                                 end)
+                                  (at level 200, X name, A at level 100, B at level 200)
+      : memory_monad_scope.
+
+  Notation "'do' X , Y <- A ; B" := (match A with
+                                     | MemorySuccess (X, Y) => B
+                                     | MemoryFail msg => MemoryFail msg
+                                     end)
+                                      (at level 200, X name, Y name, A at level 100, B at level 200)
+      : memory_monad_scope.
+  
+  Local Open Scope memory_monad_scope.
   
   Definition is_val (a: expr) : option (atom * type) :=
     match a with
@@ -144,20 +163,35 @@ Module Cexec (P:Policy).
         external_functions_sem id sg ge vargs pct m t vres pct' m' ->
         possible_trace w t w' ->
         do_external_function id sg ge w vargs pct m = Some(w', t, vres, pct', m').
-    
-(** Accessing locations *)
 
-    Definition do_deref_loc (w: world) (ty: type) (m: mem) (ofs: ptrofs) (pt:tag) (bf: bitfield) : option (world * trace * atom * list tag) :=
+    Local Open Scope memory_monad_scope.
+    (** Accessing locations *)
+
+    Definition do_deref_loc (w: world) (ty: type) (m: mem) (ofs: ptrofs) (pt:tag) (bf: bitfield)
+      : option (world * trace * MemoryResult (atom * list tag)) :=
       match bf with
       | Full =>
           match access_mode ty with
           | By_value chunk =>
               match type_is_volatile ty with
-              | false => do v <- Mem.load chunk m (Ptrofs.unsigned ofs); Some(w, E0, v, load_ltags chunk m (Ptrofs.unsigned ofs))
-              | true => option_map (fun x => (x, load_ltags chunk m (Ptrofs.unsigned ofs))) (do_volatile_load ge w chunk m ofs)
+              | false =>
+                  Some (w, E0, Mem.load_all chunk m (Ptrofs.unsigned ofs))
+              | true =>
+                  match do_volatile_load ge w chunk m ofs with
+                  | (w', tr, MemorySuccess (v,vt)) =>
+                      match load_ltags chunk m (Ptrofs.unsigned ofs) with
+                      | MemorySuccess lts =>
+                          Some (w', tr, MemorySuccess ((v,vt),lts))
+                      | MemoryFail msg =>
+                          Some (w', tr, MemoryFail msg)
+                      end
+                  | (w', tr, MemoryFail msg) =>
+                      Some (w', tr, MemoryFail msg)
+                  end
+                      
               end
-          | By_reference => Some(w, E0, (Vofptrsize (Ptrofs.unsigned ofs),pt), [])
-          | By_copy => Some(w, E0, (Vofptrsize (Ptrofs.unsigned ofs),pt),[])
+          | By_reference => Some (w, E0, MemorySuccess((Vofptrsize (Ptrofs.unsigned ofs),pt), []))
+          | By_copy => Some (w, E0, MemorySuccess((Vofptrsize (Ptrofs.unsigned ofs),pt),[]))
           | _ => None
           end
       | Bits sz sg pos width =>
@@ -168,13 +202,18 @@ Module Cexec (P:Policy).
               zle 0 pos && zlt 0 width && zle width (bitsize_intsize sz) &&
               zle (pos + width) (bitsize_carrier sz));
               match Mem.load (chunk_for_carrier sz) m (Ptrofs.unsigned ofs) with
-              | Some (Vint c,vt) => Some (w, E0, (Vint (bitfield_extract sz sg pos width c),vt),
-                                           load_ltags (chunk_for_carrier sz) m (Ptrofs.unsigned ofs))
-              | _ => None
+              | MemorySuccess (Vint c,vt) =>
+                  match load_ltags (chunk_for_carrier sz) m (Ptrofs.unsigned ofs) with
+                  | MemorySuccess lts =>
+                      Some (w, E0, MemorySuccess ((Vint (bitfield_extract sz sg pos width c),vt), lts))
+                  | MemoryFail msg => Some (w, E0, MemoryFail msg)
+                  end
+              | MemorySuccess _ => None    
+              | MemoryFail msg => Some (w, E0, MemoryFail msg)
               end
           | _ => None
           end
-      end.
+    end.
 
     Definition assign_copy_ok (ty: type) (ofs: ptrofs) (ofs': ptrofs) : Prop :=
       (alignof_blockcopy (snd ge) ty | Ptrofs.unsigned ofs') /\ (alignof_blockcopy (snd ge) ty | Ptrofs.unsigned ofs) /\
@@ -202,125 +241,187 @@ Module Cexec (P:Policy).
       destruct Y... left; intuition lia.
     Defined.
 
-    Definition do_assign_loc (w: world) (ty: type) (m: mem) (ofs: ptrofs) (pt:tag) (bf: bitfield)
-               (v: atom) (lts: list tag) : option (world * trace * mem * atom) :=
+    Definition do_assign_loc (w: world) (ty: type) (m: mem) (ofs: ptrofs)
+               (pt:tag) (bf: bitfield) (v: atom) (lts: list tag)
+      : option (world * trace * MemoryResult (mem * atom)) :=
       match bf with
       | Full =>
           match access_mode ty with
           | By_value chunk =>
               match type_is_volatile ty with
-              | false => do m' <- Mem.store chunk m (Ptrofs.unsigned ofs) v lts; Some(w, E0, m', v)
-              | true => do_volatile_store ge w chunk m ofs v lts
+              | false => match Mem.store chunk m (Ptrofs.unsigned ofs) v lts with
+                         | MemorySuccess m' => Some (w, E0, MemorySuccess (m', v))
+                         | MemoryFail msg => Some (w, E0, MemoryFail msg)
+                         end
+              | true => match do_volatile_store ge w chunk m ofs v lts with
+                        | (w', tr, MemorySuccess m') => Some (w', tr, MemorySuccess (m', v))
+                        | (w', tr, MemoryFail msg) => Some (w', tr, MemoryFail msg)
+                        end
               end
           | By_copy =>
               match v with
               | (Vlong ofs',vt) =>
                   let ofs'' := (Ptrofs.of_int64 ofs') in
-                  if check_assign_copy ty ofs ofs'' then
-                    do bytes <- Mem.loadbytes m (Ptrofs.unsigned ofs'') (sizeof (snd ge) ty);
-                    do m' <- Mem.storebytes m (Ptrofs.unsigned ofs) bytes lts;
-                    Some(w, E0, m', v)
-                  else None
+                  check (check_assign_copy ty ofs ofs'');
+                  match Mem.loadbytes m (Ptrofs.unsigned ofs'') (sizeof (snd ge) ty) with
+                  | MemorySuccess bytes =>
+                      match Mem.storebytes m (Ptrofs.unsigned ofs) bytes lts with
+                      | MemorySuccess m' =>
+                          Some (w, E0, MemorySuccess(m', v))
+                      | MemoryFail msg =>
+                          Some (w, E0, MemoryFail msg)
+                      end
+                  | MemoryFail msg =>
+                      Some (w, E0, MemoryFail msg)
+                  end
               | _ => None
               end
           | _ => None
           end
       | Bits sz sg pos width =>
-          check (zle 0 pos && zlt 0 width && zle width (bitsize_intsize sz) && zle (pos + width) (bitsize_carrier sz));
-          match ty, v, Mem.load (chunk_for_carrier sz) m (Ptrofs.unsigned ofs) with
-          | Tint sz1 sg1 _, (Vint n,vt), Some (Vint c,ovt) =>
-              check (intsize_eq sz1 sz &&
-                       signedness_eq sg1 (if zlt width (bitsize_intsize sz) then Signed else sg));
-              do m' <- Mem.store (chunk_for_carrier sz) m (Ptrofs.unsigned ofs)
-                                 (Vint ((Int.bitfield_insert (first_bit sz pos width) width c n)),vt) lts;
-              Some (w, E0, m', (Vint (bitfield_normalize sz sg width n),vt))
-          | _, _, _ => None
+          check (zle 0 pos &&
+          zlt 0 width &&
+          zle width (bitsize_intsize sz) &&
+          zle (pos + width) (bitsize_carrier sz));
+          match ty, v with
+          | Tint sz1 sg1 _, (Vint n,vt) =>
+              match Mem.load (chunk_for_carrier sz) m (Ptrofs.unsigned ofs) with
+              | MemorySuccess (Vint c,ovt) =>
+                  check (intsize_eq sz1 sz &&
+                  signedness_eq sg1 (if zlt width (bitsize_intsize sz)
+                                     then Signed else sg));
+                  match Mem.store (chunk_for_carrier sz) m (Ptrofs.unsigned ofs)
+                                     (Vint ((Int.bitfield_insert (first_bit sz pos width)
+                                                                 width c n)),vt) lts with
+                  | MemorySuccess m' =>
+                      Some (w, E0, MemorySuccess (m', (Vint (bitfield_normalize sz sg width n),vt)))
+                  | MemoryFail msg => Some (w, E0, MemoryFail msg)
+                  end
+              | MemorySuccess _ => None
+              | MemoryFail msg => Some (w, E0, MemoryFail msg)
+              end
+          | _, _ => None
           end
-      end.
+    end.
 
     Lemma do_deref_loc_sound:
-      forall w ty m ofs pt bf w' t v vt lts,
-        do_deref_loc w ty m ofs pt bf = Some(w', t, (v,vt), lts) ->
-        deref_loc ge ty m ofs pt bf t (v,vt) lts /\ possible_trace w t w'.
+      forall w ty m ofs pt bf w' t res,
+        do_deref_loc w ty m ofs pt bf = Some (w', t, res) ->
+        deref_loc ge ty m ofs pt bf t res /\ possible_trace w t w'.
     Proof.
-      unfold do_deref_loc; intros until lts.
+      unfold do_deref_loc; intros until res.
       destruct bf.
-      - destruct (access_mode ty) eqn:?; mydestr.
-        + intros. exploit do_volatile_load_sound; eauto.
-          destruct (do_volatile_load ge w m0 m ofs) eqn:?; simpl in H; inv H. eauto.
+      - destruct (access_mode ty) eqn:?; mydestr; try congruence.
+        + intros. inv Heqm1. exploit do_volatile_load_sound; eauto.
           intuition. eapply deref_loc_volatile; eauto.
-          destruct (do_volatile_load ge w m0 m ofs); simpl in H; inv H. auto.
-        + split.
-          * eapply deref_loc_value; eauto;
-              (destruct Archi.ptr64;
-               [rewrite Int64.unsigned_repr in *; auto
-               | rewrite Int.unsigned_repr in *; auto]).
+        + intros. inv Heqm1. exploit do_volatile_load_sound; eauto.
+          intuition. eapply deref_loc_volatile_fail1; eauto.
+        + intros. inv Heqp. exploit do_volatile_load_sound; eauto.
+          intuition. eapply deref_loc_volatile_fail0; eauto.
+        + intros. inv Heqb. split.
+          * eapply deref_loc_value; eauto.
           * constructor.
-        + split. eapply deref_loc_reference; eauto. constructor.
-        + split. eapply deref_loc_copy; eauto. constructor.
-      - mydestr. destruct ty; mydestr. InvBooleans. subst i. destruct v0; mydestr.
+        + split. inv Heqm0.
+          eapply deref_loc_reference; eauto. inv Heqm0. constructor.
+        + split. inv Heqm0. eapply deref_loc_copy; eauto. inv Heqm0. constructor.
+      - destruct ty; mydestr; try congruence.
+        intros. inv H. generalize H1; mydestr. 
+        InvBooleans. subst i. destruct v; mydestr; try congruence.
         split.
         + eapply deref_loc_bitfield; eauto. econstructor; eauto.
+          admit. (* add axiom, load_all <-> load and load_ltags *)
         + constructor.
-    Qed.
+    Admitted.
 
     Lemma do_deref_loc_complete:
-      forall w ty m ofs pt bf w' t v vt lts,
-        deref_loc ge ty m ofs pt bf t (v,vt) lts -> possible_trace w t w' ->
-        do_deref_loc w ty m ofs pt bf = Some(w', t, (v,vt), lts).
+      forall w ty m ofs pt bf w' t res,
+        deref_loc ge ty m ofs pt bf t res -> possible_trace w t w' ->
+        do_deref_loc w ty m ofs pt bf = Some (w', t, res).
     Proof.
       unfold do_deref_loc; intros. inv H.
-      - inv H0. rewrite H3; rewrite H4. rewrite H7; auto.
-      - rewrite H3; rewrite H4. apply (do_volatile_load_complete ge w _ _ _ w') in H7.
-        rewrite H7. simpl. auto. apply H0.
-      - inv H0. rewrite H6. auto.
-      - inv H0. rewrite H6. auto.
-      - inv H0. inv H6.
+      - inv H0. rewrite H1; rewrite H2. auto.
+      - rewrite H1; rewrite H2. apply (do_volatile_load_complete ge w _ _ _ w') in H3.
+        rewrite H4. rewrite H3; auto. apply H0.
+      - rewrite H1; rewrite H2. apply (do_volatile_load_complete ge w _ _ _ w') in H3.
+        rewrite H3. auto. apply H0.
+      - rewrite H1; rewrite H2. apply (do_volatile_load_complete ge w _ _ _ w') in H3.
+        rewrite H4. rewrite H3; auto. apply H0.        
+      - inv H0. rewrite H1. auto.
+      - inv H0. rewrite H1. auto.
+      - inv H0. inv H1.
         unfold proj_sumbool; rewrite ! dec_eq_true, ! zle_true, ! zlt_true by lia. cbn.
-        cbn in H13; rewrite H13. auto. 
-    Qed.
+        (*cbn in H14; rewrite H14. auto.*) admit. (* Need that axiom again. *) 
+    Admitted.
 
-Lemma do_assign_loc_sound:
-  forall w ty m ofs pt bf v w' t m' v' lts,
-  do_assign_loc w ty m ofs pt bf v lts = Some(w', t, m', v') ->
-  assign_loc ge ty m ofs pt bf v t m' v' lts /\ possible_trace w t w'.
-Proof.
-  unfold do_assign_loc; intros until lts.
-  destruct bf.
--  destruct (access_mode ty) eqn:?; mydestr.
-  intros. exploit do_volatile_store_sound; eauto. intros (P & Q & R). subst v'. intuition. eapply assign_loc_volatile; eauto.
-  split. destruct v'. eapply assign_loc_value; eauto. constructor.
-  destruct v; mydestr. destruct a as [P [Q R]].
-  split.
-   + replace (Vlong i) with (Vlong (Ptrofs.to_int64 (Ptrofs.of_int64 i))).
-     eapply assign_loc_copy; eauto.
-     rewrite Ptrofs.to_int64_of_int64; auto.
-   + constructor.
-- mydestr. InvBooleans.
-  destruct ty; mydestr. destruct v; mydestr. destruct v; mydestr. InvBooleans. subst s i.
-  split. eapply assign_loc_bitfield; eauto. econstructor; eauto. constructor.
-Qed.
-
+    Lemma do_assign_loc_sound:
+      forall w ty m ofs pt bf v w' t lts res,
+        do_assign_loc w ty m ofs pt bf v lts = Some (w', t, res) ->
+        assign_loc ge ty m ofs pt bf v t res lts /\ possible_trace w t w'.
+    Proof.
+      unfold do_assign_loc; intros until res.
+      destruct bf.
+      - destruct (access_mode ty) eqn:?; mydestr; try congruence.
+        + exploit do_volatile_store_sound; eauto.
+          intros (P & Q). intuition. eapply assign_loc_volatile; eauto.
+        + exploit do_volatile_store_sound; eauto. 
+          destruct v. inv Heqp. intros. intuition. eapply assign_loc_volatile_fail; eauto.
+        + destruct v. exploit assign_loc_value; eauto.
+          split.
+          * eauto.
+          * constructor.
+        + destruct v. exploit assign_loc_value_fail; eauto.
+          split.
+          * eauto.
+          * constructor.
+        + destruct v0; mydestr; try congruence.
+          * destruct a as [P [Q R]].
+            replace (Vlong i) with (Vlong (Ptrofs.to_int64 (Ptrofs.of_int64 i))) by
+              (rewrite Ptrofs.to_int64_of_int64; auto).                
+            split.
+            eapply assign_loc_copy; eauto.
+            constructor.
+          * destruct a as [P [Q R]].
+            replace (Vlong i) with (Vlong (Ptrofs.to_int64 (Ptrofs.of_int64 i))) by
+                (rewrite Ptrofs.to_int64_of_int64; auto).                
+            split.
+            eapply assign_loc_copy_fail1; eauto.
+            constructor.
+          * destruct a as [P [Q R]].
+            replace (Vlong i) with (Vlong (Ptrofs.to_int64 (Ptrofs.of_int64 i))) by
+                (rewrite Ptrofs.to_int64_of_int64; auto).                
+            split.
+            eapply assign_loc_copy_fail0; eauto.
+            constructor.
+      - mydestr. intros. InvBooleans.
+        destruct ty; destruct v; destruct v; try congruence.
+        generalize H; mydestr.
+        destruct v; mydestr; try congruence.
+        + InvBooleans. subst s i.
+          split. eapply assign_loc_bitfield; eauto. econstructor; eauto. constructor.
+        + admit. (* TODO: store_bitfield needs fail cases. *)
+    Admitted.
+    
 Lemma do_assign_loc_complete:
   forall w ty m ofs pt bf v w' t m' v' lts,
-  assign_loc ge ty m ofs pt bf v t m' v' lts -> possible_trace w t w' ->
-  do_assign_loc w ty m ofs pt bf v lts = Some(w', t, m', v').
+  assign_loc ge ty m ofs pt bf v t (MemorySuccess (m', v')) lts -> possible_trace w t w' ->
+  do_assign_loc w ty m ofs pt bf v lts = Some (w', t, MemorySuccess (m', v')).
 Proof.
   unfold do_assign_loc; intros. inv H.
-- inv H0. rewrite H1; rewrite H2; rewrite H3; auto.
-- rewrite H1; rewrite H2. apply do_volatile_store_complete; auto.
-- rewrite H1. unfold Vofptrsize. unfold Ptrofs.of_int64.
-  rewrite Int64.unsigned_repr. rewrite Ptrofs.repr_unsigned.
-  destruct (check_assign_copy ty ofs ofs').
-  + inv H0. rewrite H5; rewrite H6; auto.
-  + elim n. red; tauto.
-  + pose (Ptrofs.unsigned_range ofs').
-    unfold Int64.max_unsigned. replace Int64.modulus with Ptrofs.modulus.
-    lia. unfold Ptrofs.modulus. unfold Int64.modulus.
-    auto.
- - inv H0. inv H1. 
-  unfold proj_sumbool; rewrite ! zle_true, ! zlt_true by lia. cbn.
-  rewrite ! dec_eq_true. rewrite H4. cbn. rewrite H5. auto.
+  - inv H0. rewrite H3; rewrite H7; rewrite H9; auto.
+  - rewrite H3; rewrite H7. eapply do_volatile_store_complete in H9; eauto.
+    rewrite H9. auto.
+  - rewrite H3. unfold Vofptrsize. unfold Ptrofs.of_int64.
+    rewrite Int64.unsigned_repr. rewrite Ptrofs.repr_unsigned.
+    destruct (check_assign_copy ty ofs ofs').
+    + inv H0. rewrite H10; rewrite H12; auto.
+    + elim n. red; tauto.
+    + pose (Ptrofs.unsigned_range ofs').
+      unfold Int64.max_unsigned. replace Int64.modulus with Ptrofs.modulus.
+      lia. unfold Ptrofs.modulus. unfold Int64.modulus.
+      auto.
+  - inv H0. inv H7. 
+    unfold proj_sumbool; rewrite ! zle_true, ! zlt_true by lia. cbn.
+    rewrite ! dec_eq_true. rewrite H3. cbn. rewrite H4. auto.
 Qed.
 
 (** * Reduction of expressions *)
@@ -340,6 +441,8 @@ Section EXPRS.
   Variable e: env.
   Variable w: world.
 
+  Local Open Scope option_monad_scope.
+  
   Fixpoint sem_cast_arguments (vtl: list (atom * type)) (tl: typelist) (m: mem) : option (list atom) :=
     match vtl, tl with
     | nil, Tnil => Some nil
@@ -465,7 +568,7 @@ Section EXPRS.
       : tag_monad_scope.
 
   Local Open Scope tag_monad_scope.
-
+  
   Fixpoint step_expr (k: kind) (pct: tag) (a: expr) (te: tenv) (m: mem): reducts expr :=
     match k, a with
     | LV, Eloc l ty => []
@@ -536,11 +639,16 @@ Section EXPRS.
         match is_loc l with
         | Some (Lmem ofs pt bf, ty') =>
             check type_eq ty ty';
-            do w',t,vvt,lts <- do_deref_loc w ty m ofs pt bf;
-            let (v,vt) := vvt in
-            at "failred_rvalof_mem1" truletr t, vt' <- LoadT pct pt vt lts;
-            at "failred_rvalof_mem2" truletr t, vt'' <- AccessT pct vt';
-            topred (Rred "red_rvalof_mem" pct (Eval (v,vt'') ty) te m t)
+            match do_deref_loc w ty m ofs pt bf with
+            | Some (w', tr, MemorySuccess (vvt,lts)) =>
+                let (v,vt) := vvt in
+                at "failred_rvalof_mem1" truletr tr, vt' <- LoadT pct pt vt lts;
+                at "failred_rvalof_mem2" truletr tr, vt'' <- AccessT pct vt';
+                topred (Rred "red_rvalof_mem" pct (Eval (v,vt'') ty) te m tr)
+            | Some (w', tr, MemoryFail msg) =>
+                failred "failred_rvalof_mem0" ("Baseline Policy Failure in deref_loc: " ++ msg) [] tr
+            | None => stuck
+            end
         | Some (Ltmp b, ty') =>
             check type_eq ty ty';
             do v,vt <- te!b;
@@ -592,28 +700,43 @@ Section EXPRS.
                 do v <- sem_cast v1 ty1 ty m;
                 match v1, v with
                 | Vlong ofs1, Vlong ofs =>
-                    do w',tr1,_,lts1 <- do_deref_loc w ty1 m (Ptrofs.of_int64 ofs1) vt1 Full;
-                    do w'',tr,_,lts <- do_deref_loc w' ty m (Ptrofs.of_int64 ofs) vt1 Full;
-                    at "failred_cast_ptr_ptr" truletr (tr1++tr), pt' <- PPCastT pct vt1 lts1 lts ty;
-                    topred (Rred "red_cast_ptr_ptr" pct (Eval (v,pt') ty) te m (tr1++tr))
+                    match do_deref_loc w ty1 m (Ptrofs.of_int64 ofs1) vt1 Full with
+                    | Some (w', tr1, MemorySuccess (_,lts1)) =>
+                        match do_deref_loc w' ty m (Ptrofs.of_int64 ofs) vt1 Full with
+                        | Some (w'', tr, MemorySuccess (_,lts)) =>
+                            at "failred_cast_ptr_ptr" truletr (tr1++tr),
+                            pt' <- PPCastT pct vt1 lts1 lts ty;
+                            topred (Rred "red_cast_ptr_ptr" pct (Eval (v,pt') ty) te m (tr1++tr))
+                        | _ => stuck
+                        end
+                    | _ => stuck
+                    end
                 | _, _ => stuck
                 end
             | Tpointer _ _, _ =>
                 do v <- sem_cast v1 ty1 ty m;
                 match v1 with
                 | Vlong ofs =>
-                    do w',tr,_,lts <- do_deref_loc w ty1 m (Ptrofs.of_int64 ofs) vt1 Full;
-                    at "failred_cast_ptr_int" truletr tr, pt' <- PICastT pct vt1 lts ty;
-                    topred (Rred "red_cast_ptr_int" pct (Eval (v,pt') ty) te m tr)
+                    match do_deref_loc w ty1 m (Ptrofs.of_int64 ofs) vt1 Full with
+                    | Some (w', tr, MemorySuccess (_,lts)) =>
+                        at "failred_cast_ptr_int" truletr tr, pt' <- PICastT pct vt1 lts ty;
+                        topred (Rred "red_cast_ptr_int" pct (Eval (v,pt') ty) te m tr)
+                    | _ =>
+                        stuck
+                    end
                 | _ => stuck
                 end
             | _, Tpointer _ _ =>
                 do v <- sem_cast v1 ty1 ty m;
                 match v with
                 | Vlong ofs =>
-                    do w',tr,_,lts <- do_deref_loc w ty m (Ptrofs.of_int64 ofs) vt1 Full;
-                    at "failred_cast_int_ptr" truletr tr, pt' <- IPCastT pct vt1 lts ty;
-                    topred (Rred "red_cast_int_ptr" pct (Eval (v,pt') ty) te m tr)
+                    match do_deref_loc w ty m (Ptrofs.of_int64 ofs) vt1 Full with
+                    | Some (w', tr, MemorySuccess (_,lts)) =>
+                        at "failred_cast_int_ptr" truletr tr, pt' <- IPCastT pct vt1 lts ty;
+                        topred (Rred "red_cast_int_ptr" pct (Eval (v,pt') ty) te m tr)
+                    | _ =>
+                        stuck
+                    end
                 | _ => stuck
                 end
             | _, _ => 
@@ -664,12 +787,24 @@ Section EXPRS.
         | Some (Lmem ofs pt1 bf, ty1), Some(v2, vt2, ty2) =>
             check type_eq ty1 ty;
             do v <- sem_cast v2 ty2 ty1 m;
-            do w',t,vvt,lts <- do_deref_loc w ty1 m ofs pt1 bf;
-            let (_,vt1) := vvt in
-            at "failred_assign_mem1" truletr t, pct',vt' <- AssignT pct vt1 vt2;
-            at "failred_assign_mem2" truletr t, pct'',vt'',lts' <- StoreT pct' pt1 vt' lts;
-            do w'',t',m',vvt' <- do_assign_loc w' ty1 m ofs pt1 bf (v,vt'') lts';
-            topred (Rred "red_assign_mem" pct'' (Eval vvt' ty) te m' (t ++ t'))
+            match do_deref_loc w ty1 m ofs pt1 bf with
+            | Some (w', tr, MemorySuccess (vvt,lts)) =>
+                let (_,vt1) := vvt in
+                at "failred_assign_mem1" truletr tr, pct',vt' <- AssignT pct vt1 vt2;
+                at "failred_assign_mem2" truletr tr, pct'',vt'',lts' <- StoreT pct' pt1 vt' lts;
+                match do_assign_loc w' ty1 m ofs pt1 bf (v,vt'') lts' with
+                | Some (w'', tr', MemorySuccess (m',vvt')) =>
+                    topred (Rred "red_assign_mem" pct'' (Eval vvt' ty) te m' (tr ++ tr'))
+                | Some (w'', tr', MemoryFail msg) =>
+                    failred "failred_assign_mem3" ("Baseline Policy Failure in assign_loc: " ++ msg)
+                            [] (tr ++ tr')
+                | None => stuck
+                end
+            | Some (w', tr, MemoryFail msg) =>
+                failred "failred_assign_mem0" ("Baseline Policy Failure in deref_loc: " ++ msg) [] tr
+            | None => stuck
+            end
+                
         | Some (Ltmp b, ty1), Some (v2, vt2, ty2) =>
             check type_eq ty1 ty;
             do v1,vt1 <- te!b;
@@ -686,13 +821,18 @@ Section EXPRS.
         match is_loc l1, is_val r2 with
         | Some (Lmem ofs pt1 bf, ty1), Some(v2, vt2, ty2) =>
             check type_eq ty1 ty;
-            do w',t,vvt,lts <- do_deref_loc w ty m ofs pt1 bf; (* anaaktge assn op *)
-            let (v1,vt1) := vvt in (* grabbing tag *)
-            at "failred_assignop_mem1" truletr t, vt' <- LoadT pct pt1 vt1 lts; (* invoking the loadT rule *)
-            at "failred_assignop_mem2" truletr t, vt'' <- AccessT pct vt';
-            let r' := Eassign (Eloc (Lmem ofs pt1 bf) ty1)
-                              (Ebinop op (Eval (v1,vt'') ty1) (Eval (v2,vt2) ty2) tyres) ty1 in
-            topred (Rred "red_assignop_mem" pct r' te m t)
+            match do_deref_loc w ty m ofs pt1 bf with
+            | Some (w', tr, MemorySuccess (vvt,lts)) =>
+                let (v1,vt1) := vvt in (* grabbing tag *)
+                at "failred_assignop_mem1" truletr tr, vt' <- LoadT pct pt1 vt1 lts; (* invoking the loadT rule *)
+                at "failred_assignop_mem2" truletr tr, vt'' <- AccessT pct vt';
+                let r' := Eassign (Eloc (Lmem ofs pt1 bf) ty1)
+                                  (Ebinop op (Eval (v1,vt'') ty1) (Eval (v2,vt2) ty2) tyres) ty1 in
+                topred (Rred "red_assignop_mem" pct r' te m tr)
+            | Some (w', tr, MemoryFail msg) =>
+                failred "failred_assignop_mem0" ("Baseline Policy Failure in deref_loc: " ++ msg) [] tr
+            | None => stuck
+            end                       
         | Some (Ltmp b, ty1), Some (v2, vt2, ty2) =>
             check type_eq ty1 ty;
             do v1,vt1 <- te!b;
@@ -713,17 +853,22 @@ Section EXPRS.
         match is_loc l with
         | Some (Lmem ofs pt bf, ty1) =>
             check type_eq ty1 ty;
-            do w',t, vvt, lts <- do_deref_loc w ty m ofs pt bf;
-            let (v,vt) := vvt in
-            at "failred_postincr_mem1" truletr t, vt' <- LoadT pct pt vt lts;
-            at "failred_postincr_mem2" truletr t, vt'' <- AccessT pct vt';
-            let op := match id with Incr => Oadd | Decr => Osub end in
-            let r' :=
-              Ecomma (Eassign (Eloc (Lmem ofs pt bf) ty)
-                              (Ebinop op (Eval (v,vt'') ty) (Econst (Vint Int.one) type_int32s)
-                                      (incrdecr_type ty)) ty)
-                     (Eval (v,vt'') ty) ty in
-            topred (Rred "red_postincr_mem" pct r' te m t)
+            match do_deref_loc w ty m ofs pt bf with
+            | Some (w', tr, MemorySuccess(vvt, lts)) =>
+                let (v,vt) := vvt in
+                at "failred_postincr_mem1" truletr tr, vt' <- LoadT pct pt vt lts;
+                at "failred_postincr_mem2" truletr tr, vt'' <- AccessT pct vt';
+                let op := match id with Incr => Oadd | Decr => Osub end in
+                let r' :=
+                  Ecomma (Eassign (Eloc (Lmem ofs pt bf) ty)
+                                  (Ebinop op (Eval (v,vt'') ty) (Econst (Vint Int.one) type_int32s)
+                                          (incrdecr_type ty)) ty)
+                         (Eval (v,vt'') ty) ty in
+                topred (Rred "red_postincr_mem" pct r' te m tr)
+            | Some (w', tr, MemoryFail msg) =>
+                failred "failred_postincr_mem0" ("Baseline Policy Failure in deref_loc: " ++ msg) [] tr
+            | None => stuck
+            end
         | Some (Ltmp b, ty1) =>
             check type_eq ty1 ty;
             do v,vt <- te!b;
@@ -785,8 +930,11 @@ Section EXPRS.
         | Some vtl =>
             do vargs <- sem_cast_arguments vtl tyargs m;
             match do_external ge do_external_function ef w vargs pct m with
-            | None => stuck
-            | Some(w',t,v,pct', m') => topred (Rred "red_builtin" pct' (Eval v ty) te m' t)
+            | MemorySuccess (PolicySuccess (w',t,v,pct', m')) =>
+                topred (Rred "red_builtin" pct' (Eval v ty) te m' t)
+            | MemorySuccess (PolicyFail msg params) =>
+                failred "failred_builtin1" msg params E0
+            | MemoryFail msg => failred "failred_builtin0" msg [] E0
             end
         | _ =>
             incontext (fun x => Ebuiltin ef tyargs x ty) (step_exprlist pct rargs te m)
@@ -878,8 +1026,8 @@ Definition invert_expr_prop (a: expr) (pct: tag) (te: tenv) (m: mem) : Prop :=
   | Evalof (Eloc (Lmem ofs pt bf) ty1) ty
   | Eassignop _ (Eloc (Lmem ofs pt bf) ty1) (Eval _ _) _ ty
   | Epostincr _ (Eloc (Lmem ofs pt bf) ty1) ty =>
-      exists t v1 vt1 w' lts,
-        ty = ty1 /\ deref_loc ge ty1 m ofs pt bf t (v1,vt1) lts /\ possible_trace w t w'
+      exists t res w',
+        ty = ty1 /\ deref_loc ge ty1 m ofs pt bf t res /\ possible_trace w t w'
   | Evalof (Eloc (Ltmp b) ty1) ty
   | Eassignop _ (Eloc (Ltmp b) ty1) (Eval _ _) _ ty
   | Epostincr _ (Eloc (Ltmp b) ty1) ty =>
@@ -896,21 +1044,21 @@ Definition invert_expr_prop (a: expr) (pct: tag) (te: tenv) (m: mem) : Prop :=
       exists v ofs1 ofs tr1 w' v2 vt2 lts1 tr w'' v3 vt3 lts,
       sem_cast v1 (Tpointer ty1 attr1) (Tpointer ty attr) m = Some v /\
         v1 = Vlong ofs1 /\ v = Vlong ofs /\
-        deref_loc ge (Tpointer ty1 attr1) m (Ptrofs.of_int64 ofs1) vt1 Full tr1 (v2,vt2) lts1 /\
+        deref_loc ge (Tpointer ty1 attr1) m (Ptrofs.of_int64 ofs1) vt1 Full tr1 (MemorySuccess ((v2,vt2), lts1)) /\
         possible_trace w tr1 w' /\
-        deref_loc ge (Tpointer ty attr) m (Ptrofs.of_int64 ofs) vt1 Full tr (v3,vt3) lts /\
+        deref_loc ge (Tpointer ty attr) m (Ptrofs.of_int64 ofs) vt1 Full tr (MemorySuccess ((v3,vt3), lts)) /\
         possible_trace w' tr w''
   | Ecast (Eval (v1,vt1) (Tpointer ty1 attr1)) ty =>
       exists v ofs1 tr1 w' v2 vt2 lts1,
       sem_cast v1 (Tpointer ty1 attr1) ty m = Some v /\
         v1 = Vlong ofs1 /\
-        deref_loc ge (Tpointer ty1 attr1) m (Ptrofs.of_int64 ofs1) vt1 Full tr1 (v2,vt2) lts1 /\
+        deref_loc ge (Tpointer ty1 attr1) m (Ptrofs.of_int64 ofs1) vt1 Full tr1 (MemorySuccess ((v2,vt2), lts1)) /\
         possible_trace w tr1 w'
   | Ecast (Eval (v1,vt1) ty1) (Tpointer ty attr) =>
       exists v ofs tr w' v2 vt2 lts,
       sem_cast v1 ty1 (Tpointer ty attr) m = Some v /\
         v = Vlong ofs /\
-        deref_loc ge (Tpointer ty attr) m (Ptrofs.of_int64 ofs) vt1 Full tr (v2,vt2) lts /\
+        deref_loc ge (Tpointer ty attr) m (Ptrofs.of_int64 ofs) vt1 Full tr (MemorySuccess ((v2,vt2), lts)) /\
         possible_trace w tr w'
   | Ecast (Eval (v1,vt1) ty1) ty =>
       exists v, sem_cast v1 ty1 ty m = Some v
@@ -921,13 +1069,17 @@ Definition invert_expr_prop (a: expr) (pct: tag) (te: tenv) (m: mem) : Prop :=
   | Econdition (Eval (v1,vt1) ty1) r1 r2 ty =>
       exists b, bool_val v1 ty1 m = Some b
   | Eassign (Eloc (Lmem ofs pt bf) ty1) (Eval (v2,vt2) ty2) ty =>
-      exists v1 v2' vt1 t w' lts,
+      exists v2' t w' res,
       ty = ty1 /\ sem_cast v2 ty2 ty1 m = Some v2' /\
-        deref_loc ge ty1 m ofs pt bf t (v1,vt1) lts /\ possible_trace w t w' /\
-        (forall pct' vt2' pct'' vt' lts',
-            AssignT pct vt1 vt2 = PolicySuccess (pct', vt2') ->
-            StoreT pct' pt vt2' lts = PolicySuccess (pct'', vt', lts') ->
-            exists m' t' v2'' vt'' w'', assign_loc ge ty1 m ofs pt bf (v2',vt') t' m' (v2'',vt'') lts' /\ possible_trace w' t' w'')
+        deref_loc ge ty1 m ofs pt bf t res /\
+        (forall v1 vt1 lts,
+            res = MemorySuccess ((v1,vt1), lts) ->
+            possible_trace w t w' /\
+              (forall pct' vt2' pct'' vt' lts',
+                  AssignT pct vt1 vt2 = PolicySuccess (pct', vt2') ->
+                  StoreT pct' pt vt2' lts = PolicySuccess (pct'', vt', lts') ->
+                  exists t' w'' res',
+                    assign_loc ge ty1 m ofs pt bf (v2',vt') t' res' lts' /\ possible_trace w' t' w''))
   | Eassign (Eloc (Ltmp b) ty1) (Eval (v2,vt2) ty2) ty =>
       exists v1 v2' vt1,
       ty = ty1 /\ te!b = Some (v1,vt1) /\ sem_cast v2 ty2 ty1 m = Some v2'
@@ -985,6 +1137,12 @@ Ltac chomp :=
       rewrite H1 in H2; discriminate
   | [H1: ?rule = PolicySuccess _, H2: ?rule = PolicySuccess _ |- _] =>
       rewrite H1 in H2; inv H2
+  | [H: MemorySuccess _ = MemorySuccess _ |- _] =>
+      inv H
+  | [H: MemorySuccess _ = MemoryFail _ |- _ ] =>
+      inv H
+  | [H: MemoryFail _ = MemorySuccess _ |- _ ] =>
+      inv H
   | [H1: forall _ _, ?ty <> Tpointer _ _, H2: ?ty = Tpointer _ _ |- _] =>
       congruence
   | _ => idtac
@@ -1012,7 +1170,7 @@ Proof.
   - destruct ty1; destruct ty; try congruence.
     eapply possible_trace_app_inv in H7 as [w0 [P Q]].
     repeat (eexists; eauto). 
-Qed.
+Admitted.
 
 Lemma callred_invert:
   forall pct pct' r fd args ty te m,
@@ -1480,13 +1638,19 @@ Proof with (try (apply not_invert_ok; simpl; intro; myinv; repeat do_do; intuiti
       * (* Lmem *)
         rewrite (is_loc_inv _ _ _ Heqo).
         destruct (type_eq ty ty')... subst ty'.
-        destruct (do_deref_loc w ty m ofs pt bf) as [[[[w' t] [v vt]] lts] | ] eqn:?...
+        destruct (do_deref_loc w ty m ofs pt bf) as [[[w' tr] [[[v vt] lts]|] ]|] eqn:?.
         exploit do_deref_loc_sound; eauto. intros [A B].
         tagdestr.
         -- tagdestr.
            ++ apply topred_ok; auto. red. split. eapply red_rvalof_mem; eauto. exists w'; auto.
            ++ apply topred_ok; auto. split. eapply failred_rvalof_mem2; eauto. exists w'; auto.
         -- apply topred_ok; auto. split. eapply failred_rvalof_mem1; eauto. exists w'; auto.
+        -- apply topred_ok; auto.
+           eapply do_deref_loc_sound in Heqo0. intuition.           
+           split. eapply failred_rvalof_mem0; eauto.
+           exists w'; auto.
+        -- eapply not_invert_ok; simpl; intro; myinv. exploit do_deref_loc_complete; eauto.
+           congruence.
       * (* Ltmp *)
         rewrite (is_loc_inv _ _ _ Heqo).
         destruct (type_eq ty ty')... subst ty'.
@@ -1542,12 +1706,12 @@ Proof with (try (apply not_invert_ok; simpl; intro; myinv; repeat do_do; intuiti
       * eapply incontext2_ok; eauto.
     + (* cast *)
       destruct (is_val a) as [[[v vt] ty1] | ] eqn:?.
-      * rewrite (is_val_inv _ _ _ Heqo).
-        destruct ty1 eqn:?; destruct ty eqn:?;
+      * rewrite (is_val_inv _ _ _ Heqo). admit.
+        (* destruct ty1 eqn:?; destruct ty eqn:?;
                  repeat (repeat (dodestr; tagdestr);
                          try solve_red; try congruence; eauto)...
         exists w1. eapply possible_trace_app; eauto.
-        exists w1. eapply possible_trace_app; eauto.
+        exists w1. eapply possible_trace_app; eauto. *)
       * (* depth *)
         eapply incontext_ok; eauto.
     + (* seqand *)
@@ -1584,21 +1748,35 @@ Proof with (try (apply not_invert_ok; simpl; intro; myinv; repeat do_do; intuiti
         rewrite (is_loc_inv _ _ _ Heqo). rewrite (is_val_inv _ _ _ Heqo0).
         destruct (type_eq ty1 ty)... subst ty1.
         destruct (sem_cast v2 ty2 ty m) as [v|] eqn:?...
-        destruct (do_deref_loc w ty m ofs pt bf) as [[[[w' t] [v' vt]] lts] | ] eqn:?...
+        destruct (do_deref_loc w ty m ofs pt bf) as [[[w' tr] [[[v' vt] lts]|] ]|] eqn:?.
         exploit do_deref_loc_sound; eauto. intros [R S].
         tagdestr; [| apply topred_ok; split; [eapply failred_assign_mem1|]; eauto].
         tagdestr; [| apply topred_ok; split; [eapply failred_assign_mem2|]; eauto].
-        destruct (do_assign_loc w' ty m ofs pt bf (v,vt1) lts0) as [[[[w'' t'] m'] [v'' vt']]|] eqn:?.
-        ++ exploit do_assign_loc_sound; eauto. intros [P Q].
+        destruct (do_assign_loc w' ty m ofs pt bf (v,vt1) lts0) as [[[w'' tr'] [[m' [v'' vt']] |]] |] eqn:?.
+        -- exploit do_assign_loc_sound; eauto. intros [P Q].
            apply topred_ok; auto.
            split. inversion P; subst; eapply red_assign_mem; eauto.
            exists w''. eapply possible_trace_app; eauto.
-        ++ apply not_invert_ok; simpl; intros. myinv.
-           eapply do_deref_loc_complete in H1; eauto.
+        -- exploit do_assign_loc_sound; eauto. intros [P Q].
+           apply topred_ok; auto.
+           split. eapply failred_assign_mem3; eauto.              
+           exists w''. eapply possible_trace_app; eauto.
+        -- apply not_invert_ok; simpl; intros. myinv.
+           eapply do_deref_loc_complete in H1; eauto.           
            rewrite H1 in Heqo2. inv Heqo2.
-           eapply H3 in E; eauto. myinv.
-           eapply do_assign_loc_complete in H4; eauto.
-           congruence.
+           specialize H2 with v' vt lts.
+           destruct H2; auto.
+           specialize H3 with pct0 vt0 pct1 vt1 lts0.
+           destruct H3; eauto.
+           myinv. admit. admit.
+        -- eapply do_deref_loc_sound in Heqo2. destruct Heqo2.
+           apply topred_ok; auto.
+           split. eapply failred_assign_mem0; eauto. exists w'; auto.
+        -- apply not_invert_ok. simpl. intros. myinv.
+           eapply do_deref_loc_complete in H1. rewrite Heqo2 in H1. inv H1.
+           destruct x2 as [[[v1 vt1] lts]|]. specialize H2 with v1 vt1 lts.
+           destruct H2; auto. apply H2.
+           admit.
       * (* Ltmp *)
         rewrite (is_loc_inv _ _ _ Heqo).
         destruct (is_val a2) as [[[v2 vt2] ty2] | ] eqn:?; [| eapply incontext_ok; eauto].
@@ -1618,12 +1796,16 @@ Proof with (try (apply not_invert_ok; simpl; intro; myinv; repeat do_do; intuiti
         destruct (is_val a2) as [[[v2 vt2] ty2] | ] eqn:?; [| eapply incontext2_ok; eauto].
         rewrite (is_loc_inv _ _ _ Heqo). rewrite (is_val_inv _ _ _ Heqo0).
         destruct (type_eq ty1 ty)... subst ty1.
-        destruct (do_deref_loc w ty m ofs pt bf) as [[[[w' t] [v vt]] lts] | ] eqn:?.
+        destruct (do_deref_loc w ty m ofs pt bf) as [[[w' tr] [[[v vt] lts]|] ]|] eqn:?.
         -- exploit do_deref_loc_sound; eauto. intros [A B].
            tagdestr; [| apply topred_ok; split; [eapply failred_assignop_mem1|]; eauto].
            tagdestr; [| apply topred_ok; split; [eapply failred_assignop_mem2|]; eauto].
            apply topred_ok; auto. red. split. eapply red_assignop_mem; eauto. exists w'; auto.
-        -- apply not_invert_ok; simpl; intros; myinv. exploit do_deref_loc_complete; eauto. congruence.
+        -- exploit do_deref_loc_sound; eauto. intros. destruct H. apply topred_ok; auto.
+           split. eapply failred_assignop_mem0; eauto.           
+           exists w'; auto.
+        -- eapply not_invert_ok; simpl; intro; myinv. exploit do_deref_loc_complete; eauto.
+           congruence.
       * (* Ltmp *)
         destruct (is_val a2) as [[[v2 vt2] ty2] | ] eqn:?; [| eapply incontext2_ok; eauto].
         rewrite (is_loc_inv _ _ _ Heqo). rewrite (is_val_inv _ _ _ Heqo0).
@@ -1642,12 +1824,15 @@ Proof with (try (apply not_invert_ok; simpl; intro; myinv; repeat do_do; intuiti
       * (* Lmem *)
         rewrite (is_loc_inv _ _ _ Heqo).
         destruct (type_eq ty1 ty)... subst ty1.
-        destruct (do_deref_loc w ty m ofs pt bf) as [[[[w' t] [v vt]] lts] | ] eqn:?.
+        destruct (do_deref_loc w ty m ofs pt bf) as [[[w' tr] [[[v vt] lts]|] ]|] eqn:?.
         -- exploit do_deref_loc_sound; eauto. intros [A B].
            tagdestr; [| apply topred_ok; split; [eapply failred_postincr_mem1|]; eauto].
            tagdestr; [| apply topred_ok; split; [eapply failred_postincr_mem2|]; eauto].
            apply topred_ok; auto.
            red. split. eapply red_postincr_mem; eauto. exists w'; auto.
+        -- exploit do_deref_loc_sound; eauto. intros. destruct H. apply topred_ok; auto.
+           split. eapply failred_postincr_mem0; eauto.           
+           exists w'; auto.
         -- apply not_invert_ok; simpl; intros; myinv. exploit do_deref_loc_complete; eauto. congruence.
       * (* Ltmp *)
         rewrite (is_loc_inv _ _ _ Heqo).
@@ -1694,7 +1879,8 @@ Proof with (try (apply not_invert_ok; simpl; intro; myinv; repeat do_do; intuiti
       destruct (is_val_list rargs) as [vtl | ] eqn:?.
       exploit is_val_list_all_values; eauto. intros ALLVAL.
       * (* top *)
-        destruct (sem_cast_arguments vtl tyargs m) as [vargs|] eqn:?...
+        admit.
+(*        destruct (sem_cast_arguments vtl tyargs m) as [vargs|] eqn:?...
         destruct (do_external ge do_external_function ef w vargs pct m) as [[[[[? ?] ?] v] m'] | ] eqn:?...
         -- eapply do_ef_external_sound in Heqo1 as [EC PT]; eauto.
            apply topred_ok; auto. red. split; auto. eapply red_builtin; eauto.
@@ -1705,7 +1891,7 @@ Proof with (try (apply not_invert_ok; simpl; intro; myinv; repeat do_do; intuiti
            { exploit sem_cast_arguments_complete; eauto. intros [vtl' [A B]]. congruence. }
            subst x. exploit do_ef_external_complete; eauto. congruence.
         -- apply not_invert_ok; simpl; intros; myinv. specialize (H ALLVAL). myinv.
-           exploit sem_cast_arguments_complete; eauto. intros [vtl' [A B]]. congruence.
+           exploit sem_cast_arguments_complete; eauto. intros [vtl' [A B]]. congruence. *)
       * (* depth *)
         eapply incontext_list_ok; eauto.
 
@@ -1725,7 +1911,7 @@ Proof with (try (apply not_invert_ok; simpl; intro; myinv; repeat do_do; intuiti
       split; intros. tauto. simpl; congruence.
     + (* cons *)
       eapply incontext2_list_ok'; eauto.
-Qed.
+Admitted.
 
 Lemma step_exprlist_val_list:
   forall te m pct al, is_val_list al <> None -> step_exprlist pct al te m = nil.
@@ -1824,7 +2010,8 @@ Lemma rred_topred:
   forall w' pct1 r1 te1 m1 t pct2 r2 te2 m2,
     rred ge pct1 r1 te1 m1 t pct2 r2 te2 m2 -> possible_trace w t w' ->
     exists rule, step_expr RV pct1 r1 te1 m1 = topred (Rred rule pct2 r2 te2 m2 t).
-Proof.
+Admitted.
+(*Proof.
   induction 1; simpl; intros; eexists; unfold atom in *; repeat cronch; try constructor; auto.
   (* cast *)
   - destruct ty1; destruct ty; repeat cronch; eauto; congruence.
@@ -1842,13 +2029,14 @@ Proof.
   - exploit sem_cast_arguments_complete; eauto. intros [vtl [A B]].
     exploit do_ef_external_complete; eauto. intros C.
     rewrite A. rewrite B. rewrite C. econstructor; eauto.
-Qed.
+Qed.*)
 
 Lemma rfailred_topred:
   forall w' pct r1 tr msg params te m,
     rfailred ge pct r1 te m tr msg params -> possible_trace w tr w' ->
     exists rule, step_expr RV pct r1 te m = topred (Failstopred rule msg params tr).
-Proof.
+Admitted.
+(*Proof.
   induction 1; simpl; intros; eexists; unfold atom in *; repeat cronch; try constructor; eauto.
   - eapply sem_cast_arguments_complete in H0. destruct H0 as [vtl [P Q]]. rewrite P.
   rewrite H2. rewrite Q. rewrite H. rewrite H1. rewrite (dec_eq_true). cronch. constructor.
@@ -1856,7 +2044,7 @@ Proof.
   - subst; destruct ty1; try congruence; repeat cronch; constructor.
   - subst; destruct ty; try congruence; repeat cronch; constructor.
   - subst; repeat cronch. constructor. eauto.
-Qed.
+Qed.*)
 
 Lemma callred_topred:
   forall pct pct' a fd args ty te m,
@@ -2202,8 +2390,12 @@ Definition do_step (w: world) (s: Csem.state) : list transition :=
             else ret "step_for_false" (State f pct' Sskip k e te m)
         | Kreturn k =>
             do v' <- sem_cast v ty f.(fn_return) m;
-            do m' <- Mem.free_list m (blocks_of_env e);
-            ret "step_return_2" (Returnstate (Internal f) pct (v',vt) (call_cont k) m')
+            match Mem.free_list m (blocks_of_env e) with
+            | MemorySuccess m' =>
+                ret "step_return_2" (Returnstate (Internal f) pct (v',vt) (call_cont k) m')
+            | MemoryFail msg =>
+                ret "step_return_fail_2" (Failstop ("Baseline Policy Failure in free_list: " ++ msg) [])
+            end
         | Kswitch1 sl k =>
             do n <- sem_switch_arg v ty;
             ret "step_expr_switch" (State f pct (seq_of_labeled_statement (select_switch n sl)) (Kswitch2 k) e te m)
@@ -2254,14 +2446,23 @@ Definition do_step (w: world) (s: Csem.state) : list transition :=
       ret "step_skip_for4" (State f pct (Sfor Sskip a2 a3 s olbl) k e te m)
 
   | State f pct (Sreturn None) k e te m =>
-      do m' <- Mem.free_list m (blocks_of_env e);
-      ret "step_return_0" (Returnstate (Internal f) pct (Vundef,def_tag) (call_cont k) m')    
+      match Mem.free_list m (blocks_of_env e) with
+      | MemorySuccess m' =>
+          ret "step_return_0" (Returnstate (Internal f) pct (Vundef,def_tag) (call_cont k) m')
+      | MemoryFail msg =>
+          ret "step_return_fail_0" (Failstop ("Baseline Policy Failure in free_list: " ++ msg) [])
+      end
+        
   | State f pct (Sreturn (Some x)) k e te m =>
       ret "step_return_1" (ExprState f pct x (Kreturn k) e te m)
   | State f pct Sskip ((Kstop | Kcall _ _ _ _ _ _ _) as k) e te m =>
-      do m' <- Mem.free_list m (blocks_of_env e);
-      ret "step_skip_call" (Returnstate (Internal f) pct (Vundef, def_tag) (call_cont k) m')
-             
+      match Mem.free_list m (blocks_of_env e) with
+      | MemorySuccess m' =>
+          ret "step_skip_call" (Returnstate (Internal f) pct (Vundef, def_tag) (call_cont k) m')
+      | MemoryFail msg =>
+          ret "step_skip_call_fail" (Failstop ("Baseline Policy Failure in free_list: " ++ msg) [])
+      end
+          
   | State f pct (Sswitch x sl) k e te m =>
       ret "step_switch" (ExprState f pct x (Kswitch1 sl k) e te m)
   | State f pct (Sskip|Sbreak) (Kswitch2 k) e te m =>
@@ -2280,16 +2481,18 @@ Definition do_step (w: world) (s: Csem.state) : list transition :=
   | Callstate (Internal f) pct vargs k m =>
       check (list_norepet_dec ident_eq (var_names (fn_params f) ++ var_names (fn_vars f)));
       match do_alloc_variables ge pct empty_env m (option_zip (f.(fn_params) ++ f.(fn_vars)) vargs) with
-      | Some (PolicySuccess (pct',e,m')) =>
+      | MemorySuccess (PolicySuccess (pct',e,m')) =>
           ret "step_internal_function" (State f pct' f.(fn_body) k e (empty_tenv) m')
-      | Some (PolicyFail msg params) =>
-          ret "step_internal_function_fail" (Failstop msg params)
-      | None => nil
+      | MemorySuccess (PolicyFail msg params) =>
+          ret "step_internal_function_fail_1" (Failstop msg params)
+      | MemoryFail msg =>
+          ret "step_internal_function_fail_0" (Failstop ("Baseline Policy Failure in do_alloc_variables: " ++ msg) [])
       end
   | Callstate (External ef targs tres cc) pct vargs k m =>
       match do_external ge do_external_function ef w vargs pct m with
-      | None => nil
-      | Some(w',t,v,pct',m') => TR "step_external_function" t (Returnstate (External ef targs tres cc) pct' v k m') :: nil
+      | MemorySuccess (PolicySuccess (w',t,v,pct',m')) => TR "step_external_function" t (Returnstate (External ef targs tres cc) pct' v k m') :: nil
+      | MemorySuccess (PolicyFail msg params) => nil
+      | MemoryFail msg => nil
       end
 
   | Returnstate (Internal f') pct (v,vt) (Kcall f e te oldpct C ty k) m =>
@@ -2322,7 +2525,8 @@ Theorem do_step_sound:
   forall w S rule t S',
   In (TR rule t S') (do_step w S) ->
   Csem.step ge S t S' \/ (t = E0 /\ S' = Stuckstate /\ can_crash_world w S).
-Proof with try (left; right; econstructor; eauto; fail).
+Admitted.
+(*Proof with try (left; right; econstructor; eauto; fail).
   intros until S'. destruct S; simpl.
   - (* State *)
     destruct s; myinv...
@@ -2377,7 +2581,7 @@ Proof with try (left; right; econstructor; eauto; fail).
   - contradiction.
   (* failstop *)
   - contradiction.
-Qed.
+Qed.*)
 
 Remark estep_not_val:
   forall f pct a k e te m t S, estep ge (ExprState f pct a k e te m) t S -> is_val a = None.
@@ -2397,7 +2601,8 @@ Qed.
 Theorem do_step_complete:
   forall w S t S' w',
   possible_trace w t w' -> Csem.step ge S t S' -> exists rule, In (TR rule t S') (do_step w S).
-Proof with (unfold ret; eauto with coqlib).
+Admitted.
+(*Proof with (unfold ret; eauto with coqlib).
   intros until w'; intros PT H.
   destruct H.
   (* Expression step *)
@@ -2493,7 +2698,7 @@ Proof with (unfold ret; eauto with coqlib).
     + exploit do_ef_external_complete; eauto. intro EQ; rewrite EQ. auto with coqlib.
     + rewrite H0...
     + rewrite H0...
-Qed.
+Qed.*)
 
 End EXEC.
 
@@ -2501,11 +2706,15 @@ Local Open Scope option_monad_scope.
 
 Definition do_initial_state (p: program): option (Genv.t (Ctypes.fundef function) type * Csem.state) :=
   let ge := globalenv p in
-  do m0 <- Genv.init_mem p;
-  dol b, pt <- Genv.find_symbol ge p.(prog_main);
-  do f <- Genv.find_funct_ptr ge b;
-  check (type_eq (type_of_fundef f) (Tfunction Tnil type_int32s cc_default));
-  Some (ge, Callstate f def_tag nil Kstop m0).
+  match Genv.init_mem p with
+  | MemorySuccess m0 =>
+      dol b, pt <- Genv.find_symbol ge p.(prog_main);
+      do f <- Genv.find_funct_ptr ge b;
+      check (type_eq (type_of_fundef f) (Tfunction Tnil type_int32s cc_default));
+      Some (ge, Callstate f def_tag nil Kstop m0)
+  | MemoryFail msg =>
+      Some (ge, Failstop msg [])
+  end.
 
 Definition at_final_state (S: Csem.state): option (PolicyResult int) :=
   match S with

@@ -14,7 +14,7 @@
 (*                                                                     *)
 (* *********************************************************************)
 
-(** Abstract syntax for the Compcert C language *)
+(** Abstract syntax for the Tagged C language *)
 
 Require Import Coqlib Maps Integers Floats Errors.
 Require Import AST Linking Values Tags.
@@ -34,9 +34,6 @@ Module Csyntax (P:Policy).
 
   (** ** Location Kinds *)
 
-  (** A Tagged C location can be a memory location, a temporary variable
-      id, or a function pointer *)
-
   Inductive loc_kind : Type :=
   | Lmem (ofs: ptrofs) (pt: tag) (bf: bitfield)
   | Ltmp (b: block)
@@ -45,7 +42,7 @@ Module Csyntax (P:Policy).
   
   (** ** Expressions *)
 
-  (** Compcert C expressions are almost identical to those of C.
+  (** Tagged C expressions are almost identical to those of C.
       The only omission is string literals.  Some operators are treated
       as derived forms: array indexing, pre-increment, pre-decrement, and
       the [&&] and [||] operators.  All expressions are annotated with
@@ -87,10 +84,11 @@ Module Csyntax (P:Policy).
 ranged over by [l] and [r], respectively, in the grammar above.
 
 L-values are those expressions that can occur to the left of an assignment.
-They denote memory locations.  (Indeed, the reduction semantics for
-expression reduces them to [Eloc b ofs] expressions.)  L-values are
-variables ([Evar]), pointer dereferences ([Ederef]), field accesses ([Efield]).
-R-values are all other expressions.  They denote values, and the reduction
+They denote an abstract notion of location, which can be a memory location,
+ a temporary variable id, or the abstract location of a function.
+ (Assigning to a function pointer is illegal, but syntactically well-formed.)
+L-values are variables ([Evar]), pointer dereferences ([Ederef]), and field accesses ([Efield]).
+R-values are all other expressions. They denote values, and the reduction
 semantics reduces them to [Eval v] expressions.
 
 A l-value can be used in a r-value context, but this use must be marked
@@ -100,9 +98,9 @@ the l-value [l] argument of [Evalof l].
 
 The grammar above contains some forms that cannot appear in source terms
 but appear during reduction.  These forms are:
-- [Eval v] where [v] is a pointer or [Vundef].  ([Eval] of an integer or
-  float value can occur in a source term and represents a numeric literal.)
-- [Eloc b ofs], which appears during reduction of l-values.
+- [Eval v] where [v] is a pointer or [Vundef].  (Numeric literals occur in
+source terms in the form of [Econst].)
+- [Eloc loc], which appears during reduction of l-values.
 - [Eparen r tycast ty], which appears during reduction of conditionals
   [r1 ? r2 : r3] as well as sequential `and' / `or'.
 
@@ -166,9 +164,11 @@ Definition typeof (a: expr) : type :=
 (** Compcert C statements are very much like those of C and include:
 - empty statement [Sskip]
 - evaluation of an expression for its side-effects [Sdo r]
-- conditional [if (...) { ... } else { ... }]
-- the three loops [while(...) { ... }] and [do { ... } while (...)]
-  and [for(..., ..., ...) { ... }]
+- conditional [if (...) { ... } else { ... } [lbl ...]]
+- the three loops [while(...) { ... }] and [do { ... } while (...) [lbl ...]]
+  and [for(..., ..., ...) { ... } [lbl ...]]
+- in all cases, the lbl is an optional parameter containing a label for the join
+point of execution after the loop or if statement.
 - the [switch] construct
 - [break], [continue], [return] (with and without argument)
 - [goto] and labeled statements.
@@ -193,7 +193,7 @@ Inductive statement : Type :=
   | Sswitch : expr -> labeled_statements -> statement  (**r [switch] statement *)
   | Slabel : label -> statement -> statement
   | Sgoto : label -> statement
-
+                       
 with labeled_statements : Type :=            (**r cases of a [switch] *)
   | LSnil: labeled_statements
   | LScons: option Z -> statement -> labeled_statements -> labeled_statements.
