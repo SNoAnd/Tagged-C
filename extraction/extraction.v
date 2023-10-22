@@ -80,13 +80,21 @@ End Extracted.
   (* Cabs *)
   Extract Constant Cabs.loc =>
             "{ lineno : int;
-            filename: string;
-            byteno: int;
-            ident : int;
-            }".
+               filename: string;
+               byteno: int;
+               ident : int;
+             }".
+
+  Extract Constant Cabs.no_loc =>
+            "{ lineno = -1;
+               filename = """";
+               byteno = -1;
+               ident = -1;
+             }".
+
   Extract Inlined Constant Cabs.string => "String.t".
   Extract Constant Cabs.char_code => "int64".
-
+ 
   (* Processor-specific extraction directives *)
 
   (* Avoid name clashes *)
@@ -104,6 +112,7 @@ End Extracted.
            Extracted
            Ctypes.merge_attributes Ctypes.remove_attributes
            Ctypes.build_composite_env Ctypes.signature_of_type Ctypes.typlist_of_typelist
+           Cabs
            (*transl_init constval
            Csyntax.Eindex Csyntax.Epreincr Csyntax.Eselection
            Ctyping.typecheck_program

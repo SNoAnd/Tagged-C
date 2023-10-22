@@ -18,7 +18,7 @@ val print_idents_in_full : bool ref
 val print_line_numbers : bool ref
 val print_debug_idents : bool ref
 
-val location : Format.formatter -> C.location -> unit
+val location : Format.formatter -> (string * int)-> unit
 val attributes : Format.formatter -> C.attributes -> unit
 val typ : Format.formatter -> C.typ -> unit
 val typ_raw : Format.formatter -> C.typ -> unit

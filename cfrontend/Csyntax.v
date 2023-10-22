@@ -18,7 +18,7 @@
 
 Require Import Coqlib Maps Integers Floats Errors.
 Require Import AST Linking Values Tags.
-Require Import Ctypes Cop.
+Require Import Cabs Ctypes Cop.
 
 Module Csyntax (P:Policy).
   Module TLib := TagLib P.
@@ -181,18 +181,18 @@ Definition label := ident.
 
 Inductive statement : Type :=
   | Sskip : statement                   (**r do nothing *)
-  | Sdo : expr -> statement            (**r evaluate expression for side effects *)
+  | Sdo : expr -> Cabs.loc -> statement            (**r evaluate expression for side effects *)
   | Ssequence : statement -> statement -> statement  (**r sequence *)
-  | Sifthenelse : expr  -> statement -> statement -> option label -> statement (**r conditional *)
-  | Swhile : expr -> statement -> option label -> statement   (**r [while] loop *)
-  | Sdowhile : expr -> statement -> option label -> statement (**r [do] loop *)
-  | Sfor: statement -> expr -> statement -> statement -> option label -> statement (**r [for] loop *)
-  | Sbreak : statement                      (**r [break] statement *)
-  | Scontinue : statement                   (**r [continue] statement *)
-  | Sreturn : option expr -> statement     (**r [return] statement *)
-  | Sswitch : expr -> labeled_statements -> statement  (**r [switch] statement *)
+  | Sifthenelse : expr  -> statement -> statement -> option label -> Cabs.loc -> statement (**r conditional *)
+  | Swhile : expr -> statement -> option label -> Cabs.loc -> statement   (**r [while] loop *)
+  | Sdowhile : expr -> statement -> option label -> Cabs.loc -> statement (**r [do] loop *)
+  | Sfor: statement -> expr -> statement -> statement -> option label -> Cabs.loc -> statement (**r [for] loop *)
+  | Sbreak : Cabs.loc -> statement                      (**r [break] statement *)
+  | Scontinue : Cabs.loc -> statement                   (**r [continue] statement *)
+  | Sreturn : option expr -> Cabs.loc -> statement     (**r [return] statement *)
+  | Sswitch : expr -> labeled_statements -> Cabs.loc -> statement  (**r [switch] statement *)
   | Slabel : label -> statement -> statement
-  | Sgoto : label -> statement
+  | Sgoto : label -> Cabs.loc -> statement
 
 with labeled_statements : Type :=            (**r cases of a [switch] *)
   | LSnil: labeled_statements

@@ -20,6 +20,7 @@ open Frontend
 open Assembler
 open Linker
 open Diagnostics
+open Cabs
 
 (* Name used for version string etc. *)
 let tool_name = "C verified compiler"

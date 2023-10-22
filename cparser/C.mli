@@ -14,11 +14,13 @@
 (*                                                                     *)
 (* *********************************************************************)
 
+open Cabs
+
 (* C abstract syntax after elaboration *)
 
 (* Locations *)
 
-type location = string * int            (* filename, line number *)
+type location = loc            (* filename, line number *)
 
 (* Identifiers *)
 

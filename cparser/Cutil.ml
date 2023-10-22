@@ -18,13 +18,9 @@
 
 open Diagnostics
 open C
+open Cabs
 open Env
 open Machine
-
-
-(* Empty location *)
-
-let no_loc = ("", -1)
 
 (* Set and Map structures over identifiers *)
 
@@ -1232,13 +1228,13 @@ let sskip = { sdesc = Sskip; sloc = no_loc }
 
 (* Print a location *)
 
-let printloc oc (filename, lineno) =
-  if filename <> "" then Printf.fprintf oc "%s:%d: " filename lineno
+let printloc oc loc =
+  if loc.filename <> "" then Printf.fprintf oc "%s:%d: " loc.filename loc.lineno
 
 (* Format a location *)
 
-let formatloc pp (filename, lineno) =
-  if filename <> "" then Format.fprintf pp "%s:%d: " filename lineno
+let formatloc pp loc =
+  if loc.filename <> "" then Format.fprintf pp "%s:%d: " loc.filename loc.lineno
 
 (* Generate the default initializer for the given type *)
 exception No_default_init

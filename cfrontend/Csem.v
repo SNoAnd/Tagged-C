@@ -879,13 +879,13 @@ Inductive cont: Type :=
 | Kdo: cont -> cont       (**r [Kdo k] = after [x] in [x;] *)
 | Kseq: statement -> cont -> cont    (**r [Kseq s2 k] = after [s1] in [s1;s2] *)
 | Kifthenelse: statement -> statement -> option label -> cont -> cont     (**r [Kifthenelse s1 s2 k] = after [x] in [if (x) { s1 } else { s2 }] *)
-| Kwhile1: expr -> statement -> option label -> cont -> cont      (**r [Kwhile1 x s k] = after [x] in [while(x) s] *)
-| Kwhile2: expr -> statement -> option label -> cont -> cont      (**r [Kwhile x s k] = after [s] in [while (x) s] *)
-| Kdowhile1: expr -> statement -> option label -> cont -> cont    (**r [Kdowhile1 x s k] = after [s] in [do s while (x)] *)
-| Kdowhile2: expr -> statement -> option label -> cont -> cont    (**r [Kdowhile2 x s k] = after [x] in [do s while (x)] *)
-| Kfor2: expr -> statement -> statement -> option label -> cont -> cont   (**r [Kfor2 e2 e3 s k] = after [e2] in [for(e1;e2;e3) s] *)
-| Kfor3: expr -> statement -> statement -> option label -> cont -> cont   (**r [Kfor3 e2 e3 s k] = after [s] in [for(e1;e2;e3) s] *)
-| Kfor4: expr -> statement -> statement -> option label -> cont -> cont   (**r [Kfor4 e2 e3 s k] = after [e3] in [for(e1;e2;e3) s] *)
+| Kwhile1: expr -> statement -> option label -> Cabs.loc -> cont -> cont      (**r [Kwhile1 x s k] = after [x] in [while(x) s] *)
+| Kwhile2: expr -> statement -> option label -> Cabs.loc -> cont -> cont      (**r [Kwhile x s k] = after [s] in [while (x) s] *)
+| Kdowhile1: expr -> statement -> option label -> Cabs.loc -> cont -> cont    (**r [Kdowhile1 x s k] = after [s] in [do s while (x)] *)
+| Kdowhile2: expr -> statement -> option label -> Cabs.loc -> cont -> cont    (**r [Kdowhile2 x s k] = after [x] in [do s while (x)] *)
+| Kfor2: expr -> statement -> statement -> option label -> Cabs.loc -> cont -> cont   (**r [Kfor2 e2 e3 s k] = after [e2] in [for(e1;e2;e3) s] *)
+| Kfor3: expr -> statement -> statement -> option label -> Cabs.loc -> cont -> cont   (**r [Kfor3 e2 e3 s k] = after [s] in [for(e1;e2;e3) s] *)
+| Kfor4: expr -> statement -> statement -> option label -> Cabs.loc -> cont -> cont   (**r [Kfor4 e2 e3 s k] = after [e3] in [for(e1;e2;e3) s] *)
 | Kswitch1: labeled_statements -> cont -> cont     (**r [Kswitch1 ls k] = after [e] in [switch(e) { ls }] *)
 | Kswitch2: cont -> cont       (**r catches [break] statements arising out of [switch] *)
 | Kreturn: cont -> cont        (**r [Kreturn k] = after [e] in [return e;] *)
@@ -905,13 +905,13 @@ Fixpoint call_cont (k: cont) : cont :=
   | Kdo k => k
   | Kseq s k => call_cont k
   | Kifthenelse s1 s2 _ k => call_cont k
-  | Kwhile1 e s _ k => call_cont k
-  | Kwhile2 e s _ k => call_cont k
-  | Kdowhile1 e s _ k => call_cont k
-  | Kdowhile2 e s _ k => call_cont k
-  | Kfor2 e2 e3 s _ k => call_cont k
-  | Kfor3 e2 e3 s _ k => call_cont k
-  | Kfor4 e2 e3 s _ k => call_cont k
+  | Kwhile1 e s _ _ k => call_cont k
+  | Kwhile2 e s _ _ k => call_cont k
+  | Kdowhile1 e s _ _ k => call_cont k
+  | Kdowhile2 e s _ _ k => call_cont k
+  | Kfor2 e2 e3 s _ _ k => call_cont k
+  | Kfor3 e2 e3 s _ _ k => call_cont k
+  | Kfor4 e2 e3 s _ _ k => call_cont k
   | Kswitch1 ls k => call_cont k
   | Kswitch2 k => call_cont k
   | Kreturn k => call_cont k
@@ -977,25 +977,25 @@ Fixpoint find_label (lbl: label) (s: statement) (k: cont)
       | Some sk => Some sk
       | None => find_label lbl s2 k
       end
-  | Sifthenelse a s1 s2 olbl =>
+  | Sifthenelse a s1 s2 olbl loc =>
       match find_label lbl s1 k with
       | Some sk => Some sk
       | None => find_label lbl s2 k
       end
-  | Swhile a s1 olbl =>
-      find_label lbl s1 (Kwhile2 a s1 olbl k)
-  | Sdowhile a s1 olbl =>
-      find_label lbl s1 (Kdowhile1 a s1 olbl k)
-  | Sfor a1 a2 a3 s1 olbl =>
-      match find_label lbl a1 (Kseq (Sfor Sskip a2 a3 s1 olbl) k) with
+  | Swhile a s1 olbl loc =>
+      find_label lbl s1 (Kwhile2 a s1 olbl loc k)
+  | Sdowhile a s1 olbl loc =>
+      find_label lbl s1 (Kdowhile1 a s1 olbl loc k)
+  | Sfor a1 a2 a3 s1 olbl loc =>
+      match find_label lbl a1 (Kseq (Sfor Sskip a2 a3 s1 olbl loc) k) with
       | Some sk => Some sk
       | None =>
-          match find_label lbl s1 (Kfor3 a2 a3 s1 olbl k) with
+          match find_label lbl s1 (Kfor3 a2 a3 s1 olbl loc k) with
           | Some sk => Some sk
-          | None => find_label lbl a3 (Kfor4 a2 a3 s1 olbl k)
+          | None => find_label lbl a3 (Kfor4 a2 a3 s1 olbl loc k)
           end
       end
-  | Sswitch e sl =>
+  | Sswitch e sl loc =>
       find_label_ls lbl sl (Kswitch2 k)
   | Slabel lbl' s' =>
       if ident_eq lbl lbl' then Some(s', k) else find_label lbl s' k
@@ -1059,8 +1059,8 @@ Fixpoint option_zip {A:Type} {B:Type} (l1 : list A) (l2 : list B) : list (A*opti
   end.
 
 Inductive sstep: state -> trace -> state -> Prop :=
-| step_do_1: forall f PCT x k e te m,
-    sstep (State f PCT (Sdo x) k e te m)
+| step_do_1: forall f PCT x loc k e te m,
+    sstep (State f PCT (Sdo x loc) k e te m)
           E0 (ExprState f PCT x (Kdo k) e te m)
 | step_do_2: forall f PCT v ty k e te m,
     sstep (ExprState f PCT (Eval v ty) (Kdo k) e te m)
@@ -1072,15 +1072,15 @@ Inductive sstep: state -> trace -> state -> Prop :=
 | step_skip_seq: forall f PCT s k e te m,
     sstep (State f PCT Sskip (Kseq s k) e te m)
           E0 (State f PCT s k e te m)
-| step_continue_seq: forall f PCT s k e te m,
-    sstep (State f PCT Scontinue (Kseq s k) e te m)
-          E0 (State f PCT Scontinue k e te m)
-| step_break_seq: forall f PCT s k e te m,  
-    sstep (State f PCT Sbreak (Kseq s k) e te m)
-          E0 (State f PCT Sbreak k e te m)
+| step_continue_seq: forall f PCT loc s k e te m,
+    sstep (State f PCT (Scontinue loc) (Kseq s k) e te m)
+          E0 (State f PCT (Scontinue loc) k e te m)
+| step_break_seq: forall f PCT loc s k e te m,  
+    sstep (State f PCT (Sbreak loc) (Kseq s k) e te m)
+          E0 (State f PCT (Sbreak loc) k e te m)
 
-| step_ifthenelse_1: forall f PCT a s1 s2 olbl k e te m,
-    sstep (State f PCT (Sifthenelse a s1 s2 olbl) k e te m)
+| step_ifthenelse_1: forall f PCT a s1 s2 olbl loc k e te m,
+    sstep (State f PCT (Sifthenelse a s1 s2 olbl loc) k e te m)
           E0 (ExprState f PCT a (Kifthenelse s1 s2 olbl k) e te m)
 | step_ifthenelse_2:  forall f PCT PCT' v vt ty s1 s2 olbl k e te m b,
     bool_val v ty m = Some b ->
@@ -1088,107 +1088,107 @@ Inductive sstep: state -> trace -> state -> Prop :=
     sstep (ExprState f PCT (Eval (v,vt) ty) (Kifthenelse s1 s2 olbl k) e te m)
           E0 (State f PCT' (if b then s1 else s2) k e te m)
 
-| step_while: forall f PCT x s olbl k e te m,
-    sstep (State f PCT (Swhile x s olbl) k e te m)
-          E0 (ExprState f PCT x (Kwhile1 x s olbl k) e te m)
-| step_while_false: forall f PCT PCT' v vt ty x s olbl k e te m,
+| step_while: forall f PCT x s olbl loc k e te m,
+    sstep (State f PCT (Swhile x s olbl loc) k e te m)
+          E0 (ExprState f PCT x (Kwhile1 x s olbl loc k) e te m)
+| step_while_false: forall f PCT PCT' v vt ty x s loc olbl k e te m,
     bool_val v ty m = Some false ->
     SplitT PCT vt olbl = PolicySuccess PCT' ->
-    sstep (ExprState f PCT (Eval (v,vt) ty) (Kwhile1 x s olbl k) e te m)
+    sstep (ExprState f PCT (Eval (v,vt) ty) (Kwhile1 x s olbl loc k) e te m)
           E0 (State f PCT' Sskip k e te m)
-| step_while_true: forall f PCT PCT' v vt ty x s olbl k e te m,
+| step_while_true: forall f PCT PCT' v vt ty x s loc olbl k e te m,
     bool_val v ty m = Some true ->
     SplitT PCT vt olbl = PolicySuccess PCT' ->
-    sstep (ExprState f PCT (Eval (v,vt) ty) (Kwhile1 x s olbl k) e te m)
-          E0 (State f PCT' s (Kwhile2 x s olbl k) e te m)
-| step_skip_or_continue_while: forall f PCT s0 x s olbl k e te m,
-    s0 = Sskip \/ s0 = Scontinue ->
-    sstep (State f PCT s0 (Kwhile2 x s olbl k) e te m)
-          E0 (State f PCT (Swhile x s olbl) k e te m)
-| step_break_while: forall f PCT x s olbl k e te m,
-    sstep (State f PCT Sbreak (Kwhile2 x s olbl k) e te m)
+    sstep (ExprState f PCT (Eval (v,vt) ty) (Kwhile1 x s olbl loc k) e te m)
+          E0 (State f PCT' s (Kwhile2 x s olbl loc k) e te m)
+| step_skip_or_continue_while: forall f PCT s0 loc loc' x s olbl k e te m,
+    s0 = Sskip \/ s0 = (Scontinue loc) ->
+    sstep (State f PCT s0 (Kwhile2 x s olbl loc' k) e te m)
+          E0 (State f PCT (Swhile x s olbl loc') k e te m)
+| step_break_while: forall f PCT x s loc loc' olbl k e te m,
+    sstep (State f PCT (Sbreak loc) (Kwhile2 x s olbl loc' k) e te m)
           E0 (State f PCT Sskip k e te m)
 
-| step_dowhile: forall f PCT a s olbl k e te m,
-    sstep (State f PCT (Sdowhile a s olbl) k e te m)
-          E0 (State f PCT s (Kdowhile1 a s olbl k) e te m)
-| step_skip_or_continue_dowhile: forall f PCT s0 x s olbl k e te m,
-    s0 = Sskip \/ s0 = Scontinue ->
-    sstep (State f PCT s0 (Kdowhile1 x s olbl k) e te m)
-          E0 (ExprState f PCT x (Kdowhile2 x s olbl k) e te m)
-| step_dowhile_false: forall f PCT PCT' v vt ty x s olbl k e te m,
+| step_dowhile: forall f PCT a s loc olbl k e te m,
+    sstep (State f PCT (Sdowhile a s olbl loc) k e te m)
+          E0 (State f PCT s (Kdowhile1 a s olbl loc k) e te m)
+| step_skip_or_continue_dowhile: forall f PCT s0 loc loc' x s olbl k e te m,
+    s0 = Sskip \/ s0 = (Scontinue loc) ->
+    sstep (State f PCT s0 (Kdowhile1 x s olbl loc' k) e te m)
+          E0 (ExprState f PCT x (Kdowhile2 x s olbl loc' k) e te m)
+| step_dowhile_false: forall f PCT PCT' v vt ty x s loc olbl k e te m,
     bool_val v ty m = Some false ->
     SplitT PCT vt olbl = PolicySuccess PCT' ->
-    sstep (ExprState f PCT (Eval (v,vt) ty) (Kdowhile2 x s olbl k) e te m)
+    sstep (ExprState f PCT (Eval (v,vt) ty) (Kdowhile2 x s olbl loc k) e te m)
           E0 (State f PCT' Sskip k e te m)
-| step_dowhile_true: forall f PCT PCT' v vt ty x s olbl k e te m,
+| step_dowhile_true: forall f PCT PCT' v vt ty x s loc olbl k e te m,
     bool_val v ty m = Some true ->
     SplitT PCT vt olbl = PolicySuccess PCT' ->
-    sstep (ExprState f PCT (Eval (v,vt) ty) (Kdowhile2 x s olbl k) e te m)
-          E0 (State f PCT' (Sdowhile x s olbl) k e te m)
-| step_break_dowhile: forall f PCT a s olbl k e te m,
-    sstep (State f PCT Sbreak (Kdowhile1 a s olbl k) e te m)
+    sstep (ExprState f PCT (Eval (v,vt) ty) (Kdowhile2 x s olbl loc k) e te m)
+          E0 (State f PCT' (Sdowhile x s olbl loc) k e te m)
+| step_break_dowhile: forall f PCT a s loc olbl k e te m,
+    sstep (State f PCT (Sbreak loc) (Kdowhile1 a s olbl loc k) e te m)
           E0 (State f PCT Sskip k e te m)
 
-| step_for_start: forall f PCT a1 a2 a3 s olbl k e te m,
+| step_for_start: forall f PCT a1 a2 a3 s loc olbl k e te m,
     a1 <> Sskip ->
-    sstep (State f PCT (Sfor a1 a2 a3 s olbl) k e te m)
-          E0 (State f PCT a1 (Kseq (Sfor Sskip a2 a3 s olbl) k) e te m)
-| step_for: forall f PCT a2 a3 s olbl k e te m,
-    sstep (State f PCT (Sfor Sskip a2 a3 s olbl) k e te m)
-          E0 (ExprState f PCT a2 (Kfor2 a2 a3 s olbl k) e te m)
-| step_for_false: forall f PCT PCT' v vt ty a2 a3 s olbl k e te m,
+    sstep (State f PCT (Sfor a1 a2 a3 s olbl loc) k e te m)
+          E0 (State f PCT a1 (Kseq (Sfor Sskip a2 a3 s olbl loc) k) e te m)
+| step_for: forall f PCT a2 a3 s loc olbl k e te m,
+    sstep (State f PCT (Sfor Sskip a2 a3 s olbl loc) k e te m)
+          E0 (ExprState f PCT a2 (Kfor2 a2 a3 s olbl loc k) e te m)
+| step_for_false: forall f PCT PCT' v vt ty a2 a3 s loc olbl k e te m,
     bool_val v ty m = Some false ->
     SplitT PCT vt olbl = PolicySuccess PCT' ->
-    sstep (ExprState f PCT (Eval (v,vt) ty) (Kfor2 a2 a3 s olbl k) e te m)
+    sstep (ExprState f PCT (Eval (v,vt) ty) (Kfor2 a2 a3 s olbl loc k) e te m)
           E0 (State f PCT' Sskip k e te m)
-| step_for_true: forall f PCT PCT' v vt ty a2 a3 s olbl k e te m,
+| step_for_true: forall f PCT PCT' v vt ty a2 a3 s loc olbl k e te m,
     bool_val v ty m = Some true ->
     SplitT PCT vt olbl = PolicySuccess PCT' ->
-    sstep (ExprState f PCT (Eval (v,vt) ty) (Kfor2 a2 a3 s olbl k) e te m)
-          E0 (State f PCT' s (Kfor3 a2 a3 s olbl k) e te m)
-| step_skip_or_continue_for3: forall f PCT x a2 a3 s olbl k e te m,
-    x = Sskip \/ x = Scontinue ->
-    sstep (State f PCT x (Kfor3 a2 a3 s olbl k) e te m)
-          E0 (State f PCT a3 (Kfor4 a2 a3 s olbl k) e te m)
-| step_break_for3: forall f PCT a2 a3 s olbl k e te m,
-    sstep (State f PCT Sbreak (Kfor3 a2 a3 s olbl k) e te m)
+    sstep (ExprState f PCT (Eval (v,vt) ty) (Kfor2 a2 a3 s olbl loc k) e te m)
+          E0 (State f PCT' s (Kfor3 a2 a3 s olbl loc k) e te m)
+| step_skip_or_continue_for3: forall f PCT x a2 a3 s loc olbl k e te m,
+    x = Sskip \/ x = (Scontinue loc) ->
+    sstep (State f PCT x (Kfor3 a2 a3 s olbl loc k) e te m)
+          E0 (State f PCT a3 (Kfor4 a2 a3 s olbl loc k) e te m)
+| step_break_for3: forall f PCT a2 a3 s loc loc' olbl k e te m,
+    sstep (State f PCT (Sbreak loc) (Kfor3 a2 a3 s olbl loc' k) e te m)
           E0 (State f PCT Sskip k e te m)
-| step_skip_for4: forall f PCT a2 a3 s olbl k e te m,
-    sstep (State f PCT Sskip (Kfor4 a2 a3 s olbl k) e te m)
-          E0 (State f PCT (Sfor Sskip a2 a3 s olbl) k e te m)
+| step_skip_for4: forall f PCT a2 a3 s loc olbl k e te m,
+    sstep (State f PCT Sskip (Kfor4 a2 a3 s olbl loc k) e te m)
+          E0 (State f PCT (Sfor Sskip a2 a3 s olbl loc) k e te m)
 
 | step_ifthenelse_fail:  forall f PCT msg params v vt ty s1 s2 olbl k e te m b,
     bool_val v ty m = Some b ->
     SplitT PCT vt olbl = PolicyFail msg params ->
     sstep (ExprState f PCT (Eval (v,vt) ty) (Kifthenelse s1 s2 olbl k) e te m)
           E0 (Failstop msg params)
-| step_while_fail: forall f PCT msg params v vt ty x s olbl k e te m b,
+| step_while_fail: forall f PCT msg params v vt ty x s loc olbl k e te m b,
     bool_val v ty m = Some b ->
     SplitT PCT vt olbl = PolicyFail msg params ->
-    sstep (ExprState f PCT (Eval (v,vt) ty) (Kwhile1 x s olbl k) e te m)
+    sstep (ExprState f PCT (Eval (v,vt) ty) (Kwhile1 x s olbl loc k) e te m)
           E0 (Failstop msg params)
-| step_dowhile_fail: forall f PCT msg params v vt ty x s olbl k e te m b,
+| step_dowhile_fail: forall f PCT msg params v vt ty x s loc olbl k e te m b,
     bool_val v ty m = Some b ->
     SplitT PCT vt olbl = PolicyFail msg params ->
-    sstep (ExprState f PCT (Eval (v,vt) ty) (Kdowhile2 x s olbl k) e te m)
+    sstep (ExprState f PCT (Eval (v,vt) ty) (Kdowhile2 x s olbl loc k) e te m)
           E0 (Failstop msg params)
-| step_for_fail: forall f PCT msg params v vt ty a2 a3 s olbl k e te m b,
+| step_for_fail: forall f PCT msg params v vt ty a2 a3 s loc olbl k e te m b,
     bool_val v ty m = Some b ->
     SplitT PCT vt olbl = PolicyFail msg params ->
-    sstep (ExprState f PCT (Eval (v,vt) ty) (Kfor2 a2 a3 s olbl k) e te m)
+    sstep (ExprState f PCT (Eval (v,vt) ty) (Kfor2 a2 a3 s olbl loc k) e te m)
           E0 (Failstop msg params)
           
-| step_return_0: forall f PCT k e te m m',
+| step_return_0: forall f PCT loc k e te m m',
     Mem.free_list m (blocks_of_env e) = MemorySuccess m' ->
-    sstep (State f PCT (Sreturn None) k e te m)
+    sstep (State f PCT (Sreturn None loc) k e te m)
           E0 (Returnstate (Internal f) PCT (Vundef, def_tag) (call_cont k) m')
-| step_return_fail_0: forall f PCT k e te m msg,
+| step_return_fail_0: forall f PCT loc k e te m msg,
     Mem.free_list m (blocks_of_env e) = MemoryFail msg ->
-    sstep (State f PCT (Sreturn None) k e te m)
+    sstep (State f PCT (Sreturn None loc) k e te m)
           E0 (Failstop ("Baseline Policy Failure in free_list: " ++ msg) [])
-| step_return_1: forall f PCT x k e te m,
-    sstep (State f PCT (Sreturn (Some x)) k e te m)
+| step_return_1: forall f PCT loc x k e te m,
+    sstep (State f PCT (Sreturn (Some x) loc) k e te m)
           E0 (ExprState f PCT x (Kreturn k) e te m)
 | step_return_2:  forall f PCT v vt ty k e te m v' m',
     sem_cast v ty f.(fn_return) m = Some v' ->
@@ -1211,28 +1211,28 @@ Inductive sstep: state -> trace -> state -> Prop :=
     sstep (State f PCT Sskip k e te m)
           E0 (Failstop ("Baseline Policy Failure in free_list: " ++ msg) [])
           
-| step_switch: forall f PCT x sl k e te m,
-    sstep (State f PCT (Sswitch x sl) k e te m)
+| step_switch: forall f PCT x sl loc k e te m,
+    sstep (State f PCT (Sswitch x sl loc) k e te m)
           E0 (ExprState f PCT x (Kswitch1 sl k) e te m)
 | step_expr_switch: forall f PCT ty sl k e te m v vt n,
     sem_switch_arg v ty = Some n ->
     sstep (ExprState f PCT (Eval (v,vt) ty) (Kswitch1 sl k) e te m)
           E0 (State f PCT (seq_of_labeled_statement (select_switch n sl)) (Kswitch2 k) e te m)
-| step_skip_break_switch: forall f PCT x k e te m,
-    x = Sskip \/ x = Sbreak ->
+| step_skip_break_switch: forall f PCT loc x k e te m,
+    x = Sskip \/ x = (Sbreak loc) ->
     sstep (State f PCT x (Kswitch2 k) e te m)
           E0 (State f PCT Sskip k e te m)
-| step_continue_switch: forall f PCT k e te m,
-    sstep (State f PCT Scontinue (Kswitch2 k) e te m)
-          E0 (State f PCT Scontinue k e te m)
+| step_continue_switch: forall f PCT loc k e te m,
+    sstep (State f PCT (Scontinue loc) (Kswitch2 k) e te m)
+          E0 (State f PCT (Scontinue loc) k e te m)
 
 | step_label: forall f PCT lbl s k e te m,
     sstep (State f PCT (Slabel lbl s) k e te m)
           E0 (State f PCT s k e te m)
 
-| step_goto: forall f PCT lbl k e te m s' k',
+| step_goto: forall f PCT lbl loc k e te m s' k',
     find_label lbl f.(fn_body) (call_cont k) = Some (s', k') ->
-    sstep (State f PCT (Sgoto lbl) k e te m)
+    sstep (State f PCT (Sgoto lbl loc) k e te m)
           E0 (State f PCT s' k' e te m)
 
 | step_internal_function: forall f PCT PCT' vargs k m e m',

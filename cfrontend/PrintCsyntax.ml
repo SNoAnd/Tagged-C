@@ -340,48 +340,48 @@ let rec print_stmt p s =
   match s with
   | Csyntax.Sskip ->
       fprintf p "/*skip*/;"
-  | Csyntax.Sdo e ->
+  | Csyntax.Sdo (e, _) ->
       fprintf p "%a;" print_expr e
   | Csyntax.Ssequence(s1, s2) ->
       fprintf p "%a@ %a" print_stmt s1 print_stmt s2
-  | Csyntax.Sifthenelse(e, s1, Csyntax.Sskip, _) ->
+  | Csyntax.Sifthenelse(e, s1, Csyntax.Sskip, _, _) ->
       fprintf p "@[<v 2>if (%a) {@ %a@;<0 -2>}@]"
               print_expr e
               print_stmt s1
-  | Csyntax.Sifthenelse(e, s1, s2, _) ->
+  | Csyntax.Sifthenelse(e, s1, s2, _, _) ->
       fprintf p "@[<v 2>if (%a) {@ %a@;<0 -2>} else {@ %a@;<0 -2>}@]"
               print_expr e
               print_stmt s1
               print_stmt s2
-  | Csyntax.Swhile(e, s, _) ->
+  | Csyntax.Swhile(e, s, _, _) ->
       fprintf p "@[<v 2>while (%a) {@ %a@;<0 -2>}@]"
               print_expr e
               print_stmt s
-  | Csyntax.Sdowhile(e, s, _) ->
+  | Csyntax.Sdowhile(e, s, _, _) ->
       fprintf p "@[<v 2>do {@ %a@;<0 -2>} while(%a);@]"
               print_stmt s
               print_expr e
-  | Csyntax.Sfor(s_init, e, s_iter, s_body, _) ->
+  | Csyntax.Sfor(s_init, e, s_iter, s_body, _, _) ->
       fprintf p "@[<v 2>for (@[<hv 0>%a;@ %a;@ %a) {@]@ %a@;<0 -2>}@]"
               print_stmt_for s_init
               print_expr e
               print_stmt_for s_iter
               print_stmt s_body
-  | Csyntax.Sbreak ->
+  | Csyntax.Sbreak _ ->
       fprintf p "break;"
-  | Csyntax.Scontinue ->
+  | Csyntax.Scontinue _ ->
       fprintf p "continue;"
-  | Csyntax.Sswitch(e, cases) ->
+  | Csyntax.Sswitch(e, cases, _) ->
       fprintf p "@[<v 2>switch (%a) {@ %a@;<0 -2>}@]"
               print_expr e
               print_cases cases
-  | Csyntax.Sreturn None ->
+  | Csyntax.Sreturn (None, _)->
       fprintf p "return;"
-  | Csyntax.Sreturn (Some e) ->
+  | Csyntax.Sreturn (Some e, _) ->
       fprintf p "return %a;" print_expr e
   | Csyntax.Slabel(lbl, s1) ->
       fprintf p "%s:@ %a" (extern_atom lbl) print_stmt s1
-  | Csyntax.Sgoto lbl ->
+  | Csyntax.Sgoto (lbl, _) ->
       fprintf p "goto %s;" (extern_atom lbl)
 
 and print_cases p cases =
@@ -406,7 +406,7 @@ and print_stmt_for p s =
   match s with
   | Csyntax.Sskip ->
       fprintf p "/*nothing*/"
-  | Csyntax.Sdo e ->
+  | Csyntax.Sdo(e,_) ->
       print_expr p e
   | Csyntax.Ssequence(s1, s2) ->
       fprintf p "%a, %a" print_stmt_for s1 print_stmt_for s2

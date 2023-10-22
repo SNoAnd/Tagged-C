@@ -21,6 +21,7 @@
 
 open C
 open Cutil
+open Cabs
 
 (* Convert an initializer to a list of assignment expressions. *)
 
@@ -35,7 +36,7 @@ let rec local_initializer env path init k =
         (* We accept empty array initializer for flexible array members, which
            has size zero *)
         | TArray(ty_elt, None, _) when il = [] -> (ty_elt, 0L)
-        | _ -> Diagnostics.fatal_error Diagnostics.no_loc "wrong type for array initializer" in
+        | _ -> Diagnostics.fatal_error no_loc "wrong type for array initializer" in
       let rec array_init pos il =
         if pos >= sz then k else begin
           let (i1, il') =
@@ -223,7 +224,7 @@ let add_lineno ?(label=false) ctx prev_loc this_loc s =
   if !Clflags.option_g then
     sseq no_loc (debug_scope ctx)
       (if this_loc <> prev_loc && this_loc <> no_loc && not label
-       then sseq no_loc (debug_lineno this_loc) s
+       then sseq no_loc (debug_lineno (this_loc.filename, this_loc.lineno)) s
        else s)
   else s
 

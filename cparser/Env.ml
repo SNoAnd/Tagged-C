@@ -285,13 +285,11 @@ let env = ref empty
 let idents = ref []
 let decls = ref []
 
-let no_loc = ("", -1)
-
 let add_typedef (s, ty) =
   let (id, env') = enter_typedef !env s ty in
   env := env';
   idents := id :: !idents;
-  decls := {gdesc = Gtypedef(id, ty); gloc = no_loc} :: !decls
+  decls := {gdesc = Gtypedef(id, ty); gloc = Cabs.no_loc} :: !decls
 
 let add_function (s, (res, args, va)) =
   let ty =
@@ -302,7 +300,7 @@ let add_function (s, (res, args, va)) =
   env := env';
   idents := id :: !idents;
   decls :=
-    {gdesc = Gdecl(Storage_extern, id, ty, None); gloc = no_loc} :: !decls
+    {gdesc = Gdecl(Storage_extern, id, ty, None); gloc = Cabs.no_loc} :: !decls
 
 end
 

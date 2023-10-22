@@ -124,7 +124,7 @@ let atom_location a =
   try
     (Hashtbl.find decl_atom a).a_loc
   with Not_found ->
-    Cutil.no_loc
+    Cabs.no_loc
 
 (** The current environment of composite definitions *)
 
@@ -136,7 +136,7 @@ let process_pragma_hook = ref (fun (_: string) -> false)
 
 (** ** Error handling *)
 
-let currentLocation = ref Cutil.no_loc
+let currentLocation = ref Cabs.no_loc
 
 let updateLoc l = currentLocation := l
 
@@ -316,7 +316,7 @@ let name_for_string_literal s =
         a_sections = [Sections.for_stringlit()];
         a_access = Sections.Access_default;
         a_inline = No_specifier;
-        a_loc = Cutil.no_loc };
+        a_loc = Cabs.no_loc };
     Hashtbl.add stringTable s id;
     id
 
@@ -349,7 +349,7 @@ let name_for_wide_string_literal s =
         a_sections = [Sections.for_stringlit()];
         a_access = Sections.Access_default;
         a_inline = No_specifier;
-        a_loc = Cutil.no_loc };
+        a_loc = Cabs.no_loc };
     Hashtbl.add wstringTable s id;
     id
 
@@ -1110,29 +1110,29 @@ let rec convertStmt env s =
   | C.Sskip ->
       Csyntax.Sskip
   | C.Sdo e ->
-      swrap (Ctyping.sdo (convertExpr env e))
+      swrap (Ctyping.sdo (convertExpr env e) s.sloc)
   | C.Sseq(s1, s2) ->
       let s1' = convertStmt env s1 in
       let s2' = convertStmt env s2 in
       Csyntax.Ssequence(s1', s2')
   | C.Sif(e, s1, s2) ->
       let te = convertExpr env e in
-      swrap (Ctyping.sifthenelse te (convertStmt env s1) (convertStmt env s2) None)
+      swrap (Ctyping.sifthenelse te (convertStmt env s1) (convertStmt env s2) None s.sloc)
   | C.Swhile(e, s1) ->
       let te = convertExpr env e in
-      swrap (Ctyping.swhile te (convertStmt env s1) None)
+      swrap (Ctyping.swhile te (convertStmt env s1) None s.sloc)
   | C.Sdowhile(s1, e) ->
       let te = convertExpr env e in
-      swrap (Ctyping.sdowhile te (convertStmt env s1) None)
+      swrap (Ctyping.sdowhile te (convertStmt env s1) None s.sloc)
   | C.Sfor(s1, e, s2, s3) ->
       let te = convertExpr env e in
       swrap (Ctyping.sfor
                   (convertStmt env s1) te
-                  (convertStmt env s2) (convertStmt env s3) None)
+                  (convertStmt env s2) (convertStmt env s3) None s.sloc)
   | C.Sbreak ->
-      Csyntax.Sbreak
+      Csyntax.Sbreak s.sloc
   | C.Scontinue ->
-      Csyntax.Scontinue
+      Csyntax.Scontinue s.sloc
   | C.Sswitch(e, s1) ->
       let (init, cases) = groupSwitch (flattenSwitch s1) in
       let rec init_debug s =
@@ -1147,7 +1147,7 @@ let rec convertStmt env s =
         end;
       let te = convertExpr env e in
       swrap (Ctyping.sswitch te
-               (convertSwitch env (is_int64 env e.etyp) cases))
+               (convertSwitch env (is_int64 env e.etyp) cases) s.sloc)
   | C.Slabeled(C.Slabel lbl, s1) ->
       Csyntax.Slabel(intern_string lbl, convertStmt env s1)
   | C.Slabeled(C.Scase _, _) ->
@@ -1155,11 +1155,11 @@ let rec convertStmt env s =
   | C.Slabeled(C.Sdefault, _) ->
       unsupported "'default' statement not in 'switch' statement"; Csyntax.Sskip
   | C.Sgoto lbl ->
-      Csyntax.Sgoto(intern_string lbl)
+      Csyntax.Sgoto(intern_string lbl, s.sloc)
   | C.Sreturn None ->
-      Csyntax.Sreturn None
+      Csyntax.Sreturn(None, s.sloc)
   | C.Sreturn(Some e) ->
-      Csyntax.Sreturn(Some(convertExpr env e))
+      Csyntax.Sreturn(Some(convertExpr env e), s.sloc)
   | C.Sblock _ ->
       unsupported "nested blocks"; Csyntax.Sskip
   | C.Sdecl _ ->
@@ -1167,7 +1167,7 @@ let rec convertStmt env s =
   | C.Sasm(attrs, txt, outputs, inputs, clobber) ->
       if not !Clflags.option_finline_asm then
         unsupported "inline 'asm' statement (consider adding option [-finline-asm])";
-      Csyntax.Sdo (convertAsm s.sloc env txt outputs inputs clobber)
+      Csyntax.Sdo (convertAsm s.sloc env txt outputs inputs clobber, s.sloc)
 
 and convertSwitch env is_64 = function
   | [] ->

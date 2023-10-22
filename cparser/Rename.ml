@@ -18,6 +18,7 @@
 
 open C
 open Cutil
+open Cabs
 
 module StringSet = Set.Make(String)
 module StringMap = Map.Make(String)
@@ -84,7 +85,7 @@ let ident env id =
   try
     IdentMap.find id env.re_id
   with Not_found ->
-    Diagnostics.fatal_error Diagnostics.no_loc "internal error: rename: %s__%d unbound"
+    Diagnostics.fatal_error no_loc "internal error: rename: %s__%d unbound"
       id.name id.stamp
 
 let rec typ env = function

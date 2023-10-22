@@ -29,13 +29,13 @@ open! Cutil
 (* Error reporting  *)
 
 let fatal_error loc fmt =
-  fatal_error (loc.filename,loc.lineno) fmt
+  fatal_error loc fmt
 
 let error loc fmt =
-  error (loc.filename,loc.lineno) fmt
+  error loc fmt
 
 let warning loc =
-  warning (loc.filename,loc.lineno)
+  warning loc
 
 let print_typ env fmt ty =
   match ty with
@@ -67,7 +67,7 @@ let wrap2 fn loc env arg1 arg2 =
 
 (* Translation of locations *)
 
-let elab_loc l = (l.filename, l.lineno)
+let elab_loc l = l (* (l.filename, l.lineno)*)
 
 (* Buffering of the result (a list of topdecl *)
 

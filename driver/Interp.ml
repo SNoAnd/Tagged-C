@@ -234,30 +234,30 @@ let rec compare_cont k1 k2 =
   | Csem.Kstop, Csem.Kstop -> 0
   | Csem.Kdo k1, Csem.Kdo k2 -> compare_cont k1 k2
   | Csem.Kseq(s1, k1), Csem.Kseq(s2, k2) ->
-  (* TODO: compare join points? *)
+  (* TODO: compare join points? Locations? *)
       let c = compare s1 s2 in if c <> 0 then c else compare_cont k1 k2
   | Csem.Kifthenelse(s1, s1', _, k1), Csem.Kifthenelse(s2, s2', _, k2) ->
       let c = compare (s1,s1') (s2,s2') in
       if c <> 0 then c else compare_cont k1 k2
-  | Csem.Kwhile1(e1, s1, _, k1), Csem.Kwhile1(e2, s2, _, k2) ->
+  | Csem.Kwhile1(e1, s1, _, _, k1), Csem.Kwhile1(e2, s2, _, _, k2) ->
       let c = compare (e1,s1) (e2,s2) in
       if c <> 0 then c else compare_cont k1 k2
-  | Csem.Kwhile2(e1, s1, _, k1), Csem.Kwhile2(e2, s2, _, k2) ->
+  | Csem.Kwhile2(e1, s1, _, _, k1), Csem.Kwhile2(e2, s2, _, _, k2) ->
       let c = compare (e1,s1) (e2,s2) in
       if c <> 0 then c else compare_cont k1 k2
-  | Csem.Kdowhile1(e1, s1, _, k1), Csem.Kdowhile1(e2, s2, _, k2) ->
+  | Csem.Kdowhile1(e1, s1, _, _, k1), Csem.Kdowhile1(e2, s2, _, _, k2) ->
       let c = compare (e1,s1) (e2,s2) in
       if c <> 0 then c else compare_cont k1 k2
-  | Csem.Kdowhile2(e1, s1, _, k1), Csem.Kdowhile2(e2, s2, _, k2) ->
+  | Csem.Kdowhile2(e1, s1, _, _, k1), Csem.Kdowhile2(e2, s2, _, _, k2) ->
       let c = compare (e1,s1) (e2,s2) in
       if c <> 0 then c else compare_cont k1 k2
-  | Csem.Kfor2(e1, s1, s1', _, k1), Csem.Kfor2(e2, s2, s2', _, k2) ->
+  | Csem.Kfor2(e1, s1, s1', _, _, k1), Csem.Kfor2(e2, s2, s2', _, _, k2) ->
       let c = compare (e1,s1,s1') (e2,s2,s2') in
       if c <> 0 then c else compare_cont k1 k2
-  | Csem.Kfor3(e1, s1, s1', _, k1), Csem.Kfor3(e2, s2, s2', _, k2) ->
+  | Csem.Kfor3(e1, s1, s1', _, _, k1), Csem.Kfor3(e2, s2, s2', _, _, k2) ->
       let c = compare (e1,s1,s1') (e2,s2,s2') in
       if c <> 0 then c else compare_cont k1 k2
-  | Csem.Kfor4(e1, s1, s1', _, k1), Csem.Kfor4(e2, s2, s2', _, k2) ->
+  | Csem.Kfor4(e1, s1, s1', _, _, k1), Csem.Kfor4(e2, s2, s2', _, _, k2) ->
       let c = compare (e1,s1,s1') (e2,s2,s2') in
       if c <> 0 then c else compare_cont k1 k2
   | Csem.Kswitch1(sl1, k1), Csem.Kswitch1(sl2, k2) ->
@@ -684,7 +684,7 @@ let call_main3_function main_id main_ty =
   let arg1 = Csyntax.Eval((Vint(coqint_of_camlint 0l), Pol.def_tag), type_int32s) in
   let arg2 = arg1 in
   let body =
-    Csyntax.Sreturn(Some(Csyntax.Ecall(main_var, Csyntax.Econs(arg1, Csyntax.Econs(arg2, Csyntax.Enil)), type_int32s)))
+    Csyntax.Sreturn(Some(Csyntax.Ecall(main_var, Csyntax.Econs(arg1, Csyntax.Econs(arg2, Csyntax.Enil)), type_int32s)), Cabs.no_loc)
   in
   { Csyntax.fn_return = type_int32s; Csyntax.fn_callconv = cc_default;
     Csyntax.fn_params = []; Csyntax.fn_vars = []; Csyntax.fn_body = body }
@@ -692,8 +692,8 @@ let call_main3_function main_id main_ty =
 let call_other_main_function main_id main_ty main_ty_res =
   let main_var = Csyntax.Evalof(Csyntax.Evar(main_id, main_ty), main_ty) in
   let body =
-    Csyntax.Ssequence(Csyntax.Sdo(Csyntax.Ecall(main_var, Csyntax.Enil, main_ty_res)),
-              Csyntax.Sreturn(Some(Csyntax.Eval((Vint(coqint_of_camlint 0l),Pol.def_tag), type_int32s)))) in
+    Csyntax.Ssequence(Csyntax.Sdo(Csyntax.Ecall(main_var, Csyntax.Enil, main_ty_res), Cabs.no_loc),
+              Csyntax.Sreturn(Some(Csyntax.Eval((Vint(coqint_of_camlint 0l),Pol.def_tag), type_int32s)), Cabs.no_loc)) in
   { Csyntax.fn_return = type_int32s; Csyntax.fn_callconv = cc_default;
     Csyntax.fn_params = []; Csyntax.fn_vars = []; Csyntax.fn_body = body }
 
