@@ -113,41 +113,41 @@ Module Cstrategy (P: Policy).
           eval_simple_lvalue (Eloc loc ty) loc
       | esl_var_local: forall x ty lo hi pt,
           e!x = Some (PUB (lo, hi, pt)) ->
-          eval_simple_lvalue (Evar x ty) (Lmem (Ptrofs.repr lo) pt Full)
+          eval_simple_lvalue (Evar x ty) (Lmem (Int64.repr lo) pt Full)
       | esl_var_global: forall x ty base bound pt,
           e!x = None ->
           Genv.find_symbol (fst ge) x = Some (inr (base, bound, pt)) ->
-          eval_simple_lvalue (Evar x ty) (Lmem (Ptrofs.repr base) pt Full)
+          eval_simple_lvalue (Evar x ty) (Lmem (Int64.repr base) pt Full)
       | esl_deref_short: forall r ty ofs pt,
           eval_simple_rvalue PCT r (Vint ofs, pt) ->
-          eval_simple_lvalue (Ederef r ty) (Lmem (Ptrofs.of_int ofs) pt Full)
+          eval_simple_lvalue (Ederef r ty) (Lmem (cast_int_long Unsigned ofs) pt Full)
       | esl_deref_long: forall r ty ofs pt,
           eval_simple_rvalue PCT r (Vlong ofs, pt) ->
-          eval_simple_lvalue (Ederef r ty) (Lmem (Ptrofs.of_int64 ofs) pt Full)
+          eval_simple_lvalue (Ederef r ty) (Lmem ofs pt Full)
       | esl_field_struct_short: forall r f ty ofs pt id co a delta bf,
           eval_simple_rvalue PCT r (Vint ofs, pt) ->
           typeof r = Tstruct id a ->
           (snd ge)!id = Some co ->
           field_offset (snd ge) f (co_members co) = OK (delta, bf) ->
-          eval_simple_lvalue (Efield r f ty) (Lmem (Ptrofs.add (Ptrofs.of_int ofs) (Ptrofs.repr delta)) pt bf)
+          eval_simple_lvalue (Efield r f ty) (Lmem (Int64.add (cast_int_long Unsigned ofs) (Int64.repr delta)) pt bf)
       | esl_field_struct_long: forall r f ty ofs pt id co a delta bf,
           eval_simple_rvalue PCT r (Vlong ofs, pt) ->
           typeof r = Tstruct id a ->
           (snd ge)!id = Some co ->
           field_offset (snd ge) f (co_members co) = OK (delta, bf) ->
-          eval_simple_lvalue (Efield r f ty) (Lmem (Ptrofs.add (Ptrofs.of_int64 ofs) (Ptrofs.repr delta)) pt bf)
+          eval_simple_lvalue (Efield r f ty) (Lmem (Int64.add ofs (Int64.repr delta)) pt bf)
       | esl_field_union_short: forall r f ty ofs pt id co a delta bf,
           eval_simple_rvalue PCT r (Vint ofs, pt) ->
           typeof r = Tunion id a ->
           union_field_offset (snd ge) f (co_members co) = OK (delta, bf) ->
           (snd ge)!id = Some co ->
-          eval_simple_lvalue (Efield r f ty) (Lmem (Ptrofs.add (Ptrofs.of_int ofs) (Ptrofs.repr delta)) def_tag bf)
+          eval_simple_lvalue (Efield r f ty) (Lmem (Int64.add (cast_int_long Unsigned ofs) (Int64.repr delta)) def_tag bf)
       | esl_field_union_long: forall r f ty ofs pt id co a delta bf,
           eval_simple_rvalue PCT r (Vlong ofs, pt) ->
           typeof r = Tunion id a ->
           union_field_offset (snd ge) f (co_members co) = OK (delta, bf) ->
           (snd ge)!id = Some co ->
-          eval_simple_lvalue (Efield r f ty) (Lmem (Ptrofs.add (Ptrofs.of_int64 ofs) (Ptrofs.repr delta)) def_tag bf)
+          eval_simple_lvalue (Efield r f ty) (Lmem (Int64.add ofs (Int64.repr delta)) def_tag bf)
 
       with eval_simple_rvalue: tag -> expr -> atom -> Prop :=
       | esr_val: forall v ty,
@@ -163,7 +163,7 @@ Module Cstrategy (P: Policy).
           eval_simple_rvalue PCT (Evalof l ty) v
       | esr_addrof_mem: forall ofs pt l ty,
           eval_simple_lvalue l (Lmem ofs pt Full) ->
-          eval_simple_rvalue PCT (Eaddrof l ty) (Vofptrsize (Ptrofs.signed ofs), pt)
+          eval_simple_rvalue PCT (Eaddrof l ty) (Vofptrsize (Int64.signed ofs), pt)
       | esr_addrof_fun: forall b pt l ty,
           eval_simple_lvalue l (Lfun b pt) ->
           eval_simple_rvalue PCT (Eaddrof l ty) (Vfptr b, pt)
@@ -827,14 +827,14 @@ Ltac StepR REC C' a :=
   exists v; constructor.
 - (* var *)
   exploit safe_inv; eauto; simpl. intros [b A].
-  exists b, Ptrofs.zero, Full.
+  exists b, Int64.zero, Full.
   intuition. apply esl_var_local; auto. apply esl_var_global; auto.
 - (* field *)
   StepR IHa (fun x => C(Efield x f0 ty)) a.
   exploit safe_inv. eexact SAFE0. eauto. simpl.
   intros [b [ofs [EQ TY]]]. subst v. destruct (typeof a) eqn:?; try contradiction.
-  destruct TY as (co & delta & bf & CE & OFS). exists b, (Ptrofs.add ofs (Ptrofs.repr delta)), bf; eapply esl_field_struct; eauto.
-  destruct TY as (co & delta & bf & CE & OFS). exists b, (Ptrofs.add ofs (Ptrofs.repr delta)), bf; eapply esl_field_union; eauto.
+  destruct TY as (co & delta & bf & CE & OFS). exists b, (Int64.add ofs (Int64.repr delta)), bf; eapply esl_field_struct; eauto.
+  destruct TY as (co & delta & bf & CE & OFS). exists b, (Int64.add ofs (Int64.repr delta)), bf; eapply esl_field_union; eauto.
 - (* valof *)
   destruct (andb_prop _ _ S) as [S1 S2]. clear S. rewrite negb_true_iff in S2.
   StepL IHa (fun x => C(Evalof x ty)) a.

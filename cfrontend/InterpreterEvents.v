@@ -66,64 +66,105 @@ Module InterpreterEvents (P:Policy).
 
   Section EXEC.
     Variable ge: gcenv.
-  
-    Definition eventval_of_val (a: atom) (t: typ) : option eventval :=
+
+    (* Events are externally visible calls, loads, and stores. Tags should not
+       appear in event values, so when an atom would be passed or stored visibly,
+       we omit the tag. *)
+    Definition eventval_of_atom (a: atom) (t: typ) : option eventval :=
       let '(v,vt) := a in
       match v with
-      | Vint i => check (typ_eq t AST.Tint); Some (EVint i)
-      | Vfloat f => check (typ_eq t AST.Tfloat); Some (EVfloat f)
-      | Vsingle f => check (typ_eq t AST.Tsingle); Some (EVsingle f)
+      | Vint i => check (typ_eq t AST.Tint);
+                  check (tag_eq_dec vt def_tag);
+                  Some (EVint i)
+        (* ev_match_int : forall i : int, eventval_match ge (EVint i) AST.Tint (Vint i, def_tag)*)
+      | Vfloat f => check (typ_eq t AST.Tfloat);
+                    check (tag_eq_dec vt def_tag);
+                    Some (EVfloat f)
+        (* ev_match_float : forall f : float, eventval_match ge (EVfloat f) AST.Tfloat (Vfloat f, def_tag) *)
+      | Vsingle f => check (typ_eq t AST.Tsingle);
+                     check (tag_eq_dec vt def_tag);
+                     Some (EVsingle f)
+        (* ev_match_single : forall f : float32, eventval_match ge (EVsingle f) Tsingle (Vsingle f, def_tag) *)
       | Vlong n =>
-          if (typ_eq t AST.Tlong) then Some (EVlong n)
-          else check (typ_eq t AST.Tptr);
-          match invert_symbol_ofs (fst ge) (Ptrofs.of_int64 n) with
+          check (typ_eq t AST.Tlong);
+          check (tag_eq_dec vt def_tag); Some (EVlong n)
+          (* ev_match_long : forall i : int64, eventval_match ge (EVlong i) AST.Tlong (Vlong i, def_tag) *)
+(*          else check (typ_eq t AST.Tptr);
+          match invert_symbol_ofs (fst ge) n with
           | Some id =>
               match find_symbol (fst ge) id with
               | Some (inr (base, bound, pt)) =>
                   check (public_symbol (fst ge) id);
                   check (tag_eq_dec vt pt);
-                  Some (EVptr_global id (Ptrofs.repr ((Int64.unsigned n)-base)))
+                  Some (EVptr_global id (Int64.repr ((Int64.unsigned n)-base)))
+          (* ev_match_global : forall (id : ident) (i base bound : Z) (pt : tag),
+             public_symbol ge id = true ->
+             find_symbol ge id = Some (inr (base, bound, pt)) ->
+             base <= i ->
+             i < bound ->
+             eventval_match ge (EVptr_global id (Int64.repr (i - base))) Tptr
+             (Vint (Int64.repr i), pt) *)
               | _ => None
               end
           | None => None
-          end
+          end*)
       | Vfptr b =>
           check (typ_eq t AST.Tptr);
           do id <- invert_symbol_block (fst ge) b;
           match find_symbol (fst ge) id with
           | Some (inl (b,pt)) =>
-              check (public_symbol (fst ge) b);
+              check (public_symbol (fst ge) id);
               check (tag_eq_dec vt pt);
               Some (EVptr_fun id)
           | _ => None
           end
+      (* ev_match_ptr : forall (id : ident) (b : block) (pt : tag),
+         public_symbol ge id = true ->
+         find_symbol ge id = Some (inl (b, pt)) ->
+         eventval_match ge (EVptr_fun id) Tptr (Vfptr b, pt). *)
       | _ => None
       end.
-
-    Fixpoint list_eventval_of_val (vl: list atom) (tl: list typ) : option (list eventval) :=
+    
+    Fixpoint list_eventval_of_atom (vl: list atom) (tl: list typ) : option (list eventval) :=
       match vl, tl with
       | nil, nil => Some nil
       | v1::vl, t1::tl =>
-          do ev1 <- eventval_of_val v1 t1;
-          do evl <- list_eventval_of_val vl tl;
+          do ev1 <- eventval_of_atom v1 t1;
+          do evl <- list_eventval_of_atom vl tl;
           Some (ev1 :: evl)
       | _, _ => None
       end.
 
-    Definition val_of_eventval (ev: eventval) (t: typ) : option atom :=
+    (* Conversely, a value might enter the system via an event, representing
+       the result of an external call or a load from volatile memory. In this case,
+       we attach the default tag, def_tag, to that value. This ensures that in policies
+       where tags may carry privileges that should not be mimicked by external sources,
+       we always recieve a "harmless" tag. *)
+    Definition atom_of_eventval (ev: eventval) (t: typ) : option atom :=
       match ev with
       | EVint i => check (typ_eq t AST.Tint); Some (Vint i, def_tag)
+        (* ev_match_int : forall i : int, eventval_match ge (EVint i) AST.Tint (Vint i, def_tag)*)
       | EVfloat f => check (typ_eq t AST.Tfloat); Some (Vfloat f, def_tag)
+        (* ev_match_float : forall f : float, eventval_match ge (EVfloat f) AST.Tfloat (Vfloat f, def_tag) *)
       | EVsingle f => check (typ_eq t AST.Tsingle); Some (Vsingle f, def_tag)
-      | EVlong n => check (typ_eq t AST.Tlong); Some (Vlong n, def_tag)
-      | EVptr_global id ofs =>
-        check (Genv.public_symbol (fst ge) id);
+        (* ev_match_single : forall f : float32, eventval_match ge (EVsingle f) Tsingle (Vsingle f, def_tag) *)
+      | EVlong i => check (typ_eq t AST.Tlong); Some (Vlong i, def_tag)
+        (* ev_match_long : forall i : int64, eventval_match ge (EVlong i) AST.Tlong (Vlong i, def_tag) *)
+      | EVptr_global id ofs => None
+(*        check (Genv.public_symbol (fst ge) id);
         check (typ_eq t AST.Tptr);
         match Genv.find_symbol (fst ge) id with
         | Some (inr (base,bound,pt)) =>
-          Some (Vofptrsize (base + (Ptrofs.signed ofs)), pt)
+            Some (Vofptrsize (base + (Int64.signed ofs)), pt)
         | _ => None
         end
+          (* ev_match_global : forall (id : ident) (i base bound : Z) (pt : tag),
+             public_symbol ge id = true ->
+             find_symbol ge id = Some (inr (base, bound, pt)) ->
+             base <= i ->
+             i < bound ->
+             eventval_match ge (EVptr_global id (Ptrofs.repr (i - base))) Tptr
+             (Vint (Int.repr i), pt) *) *)
       | EVptr_fun id =>
         check (Genv.public_symbol (fst ge) id);
         check (typ_eq t AST.Tptr);
@@ -132,156 +173,146 @@ Module InterpreterEvents (P:Policy).
           Some (Vfptr b, pt)
         | _ => None
         end    
+      (* ev_match_ptr : forall (id : ident) (b : block) (pt : tag),
+         public_symbol ge id = true ->
+         find_symbol ge id = Some (inl (b, pt)) ->
+         eventval_match ge (EVptr_fun id) Tptr (Vfptr b, pt). *)
       end.
 
     Ltac mydestr :=
       match goal with
       | [ |- None = Some _ -> _ ] => let X := fresh "X" in intro X; discriminate
+      | [ |- Some _ = None -> _ ] => let X := fresh "X" in intro X; discriminate
       | [ |- Some _ = Some _ -> _ ] => let X := fresh "X" in intro X; inv X
-      | [ |- match ?x with Some _ => _ | None => _ end = Some _ -> _ ] => destruct x eqn:?; mydestr
-      | [ |- match ?x with true => _ | false => _ end = Some _ -> _ ] => destruct x eqn:?; mydestr
-      | [ |- match ?x with inl _ => _ | inr _ => _ end = Some _ -> _ ] => destruct x; mydestr
-      | [ |- match ?x with left _ => _ | right _ => _ end = Some _ -> _ ] => destruct x; mydestr
-      | [ |- (let (_, _) := ?x in _) = Some _ -> _ ] => destruct x; mydestr
+      | [ |- match ?x with Some _ => _ | None => _ end = _ -> _ ] => destruct x eqn:?; mydestr
+      | [ |- match ?x with true => _ | false => _ end = _ -> _ ] => destruct x eqn:?; mydestr
+      | [ |- match ?x with inl _ => _ | inr _ => _ end = _ -> _ ] => destruct x; mydestr
+      | [ |- match ?x with left _ => _ | right _ => _ end = _ -> _ ] => destruct x; mydestr
+      | [ |- match ?x with MemorySuccess _ => _ | MemoryFail _ => _ end = _ -> _ ] => destruct x eqn:?; mydestr
+      | [ |- (let (_, _) := ?x in _) = _ -> _ ] => destruct x; mydestr
       | _ => idtac
       end.
 
-    Lemma eventval_of_val_sound:
-      forall v t ev, eventval_of_val v t = Some ev -> eventval_match (fst ge) ev t v.
-(*    Proof.
+    Lemma eventval_of_atom_sound:
+      forall v vt ev, eventval_of_atom v vt = Some ev -> eventval_match (fst ge) ev vt v.
+    Proof.
       intros until ev. destruct v; destruct v; simpl; mydestr; try constructor.
-      - pose (i' := Int.unsigned i).
-        replace (Int.unsigned i) with i' by auto; replace i with (Int.repr i') by apply Int.repr_unsigned.
-        admit.
-      
-      eapply ev_match_global; eauto. replace i' with (Int.unsigned i) by auto.
-      apply invert_find_symbol_ofs in Heqo. destruct Heqo as [base [bound [pt [H1 H2]]]].
-      rewrite H1 in Heqo0. inv Heqo0. destruct H2.
-      replace (Ptrofs.unsigned (Ptrofs.of_int i)) with (Int.unsigned i) in H.
-      rewrite Ptrofs.agree32_of_int in H0.
-      auto. unfold Ptrofs.of_int. rewrite Ptrofs.unsigned_repr. auto.
-      Search (Int.max_unsigned). rewrite Ptrofs.agree32.
-      eapply Int.unsigned_range_2.
-      Qed.*)
-    Admitted.
+(*      - pose (i' := Int64.unsigned i).
+        replace (Int64.unsigned i) with i' by auto.
+        replace i with (Int64.repr i') in * by apply Int64.repr_unsigned.
+        pose proof (Int64.unsigned_range_2 i).
+        apply invert_find_symbol_ofs in Heqo. destruct Heqo as [base [bound [pt [H1 H2]]]].
+        rewrite H1 in Heqo0. inv Heqo0. destruct H2.
+        rewrite Int64.unsigned_repr in *; eauto.
+        eapply ev_match_global; eauto. *)
+      - apply invert_find_symbol_block in Heqo. destruct Heqo. auto.
+      - apply invert_find_symbol_block in Heqo. destruct Heqo. rewrite H in Heqo0. inv Heqo0. auto.
+      Qed.
 
-    Lemma eventval_of_val_complete:
-      forall ev t v, eventval_match (fst ge) ev t v -> eventval_of_val v t = Some ev.
-(*Proof.
-  induction 1; simpl.
-- auto.
-- auto.
-- auto.
-- auto.
-- rewrite (Genv.find_invert_symbol _ _ _ H0). simpl in H; rewrite H.
-  rewrite dec_eq_true. auto.
-  admit.*)
-    Admitted.
+    Lemma eventval_of_atom_complete:
+      forall ev t v, eventval_match (fst ge) ev t v -> eventval_of_atom v t = Some ev.
+    Proof.
+      induction 1; simpl; repeat (rewrite dec_eq_true); auto.
+      rewrite (Genv.find_invert_symbol_block _ _ H0). rewrite H0.
+      simpl in H; rewrite H.
+      rewrite dec_eq_true. auto.
+    Qed.
 
-    Lemma list_eventval_of_val_sound:
-      forall vl tl evl, list_eventval_of_val vl tl = Some evl -> eventval_list_match (fst ge) evl tl vl.
+    Lemma list_eventval_of_atom_sound:
+      forall vl tl evl, list_eventval_of_atom vl tl = Some evl -> eventval_list_match (fst ge) evl tl vl.
     Proof with try discriminate.
       induction vl; destruct tl; simpl; intros; inv H.
       constructor.
-      destruct (eventval_of_val a t0) as [ev1|] eqn:?...
-      destruct (list_eventval_of_val vl tl) as [evl'|] eqn:?...
-      inv H1. constructor. apply eventval_of_val_sound; auto. eauto.
+      destruct (eventval_of_atom a t0) as [ev1|] eqn:?...
+      destruct (list_eventval_of_atom vl tl) as [evl'|] eqn:?...
+      inv H1. constructor. apply eventval_of_atom_sound; auto. eauto.
     Qed.
 
-    Lemma list_eventval_of_val_complete:
-      forall evl tl vl, eventval_list_match (fst ge) evl tl vl -> list_eventval_of_val vl tl = Some evl.
+    Lemma list_eventval_of_atom_complete:
+      forall evl tl vl, eventval_list_match (fst ge) evl tl vl -> list_eventval_of_atom vl tl = Some evl.
     Proof.
       induction 1; simpl. auto.
-      rewrite (eventval_of_val_complete _ _ _ H). rewrite IHeventval_list_match. auto.
+      rewrite (eventval_of_atom_complete _ _ _ H). rewrite IHeventval_list_match. auto.
     Qed.
 
-    Lemma val_of_eventval_sound:
-      forall ev t v, val_of_eventval ev t = Some v -> eventval_match (fst ge) ev t v.
-    Admitted.
-    (*Proof.
-  intros until v. destruct ev; simpl; mydestr; constructor; auto.
-Qed.*)
+    Lemma atom_of_eventval_sound:
+      forall ev t v, atom_of_eventval ev t = Some v -> eventval_match (fst ge) ev t v.
+    Proof.
+      intros until v. destruct ev; simpl; mydestr; constructor; auto.
+    Qed.
 
     Lemma val_of_eventval_complete:
-      forall ev t v, eventval_match (fst ge) ev t v -> val_of_eventval ev t = Some v.
-    Admitted.
-    (*Proof.
-      induction 1; simpl.
-      - auto.
-      - auto.
-      - auto.
-      - auto.
-      - simpl in *. rewrite H, H0. rewrite dec_eq_true. auto.  
-      Qed.*)
+      forall ev t v, eventval_match (fst ge) ev t v -> atom_of_eventval ev t = Some v.
+    Proof.
+      induction 1; simpl; auto.
+      simpl in *. rewrite H, H0. rewrite dec_eq_true. auto.  
+    Qed.
 
     (** Volatile memory accesses. *)
     Definition do_volatile_load (w: world) (chunk: memory_chunk) (m: mem)
-               (ofs: ptrofs) : world * trace * MemoryResult atom :=
-      if Genv.addr_is_volatile (fst ge) ofs then
-        match (do id <- Genv.invert_symbol_ofs (fst ge) ofs;
-               do res,w' <- nextworld_vload w chunk id ofs;
-               do vres,vt <- val_of_eventval res (type_of_chunk chunk);
-               Some(w', Event_vload chunk id ofs res :: nil,
-                     (Val.load_result chunk vres, vt))) with
-        | Some (w', tr, res) => (w', tr, MemorySuccess res)
-        | None => (w, E0, MemoryFail "Problem with do_volatile_load")
-        end
+               (ofs: int64) : option (world * trace * MemoryResult atom) :=
+      if Genv.addr_is_volatile (fst ge) ofs
+      then
+        do id <- Genv.invert_symbol_ofs (fst ge) ofs;
+        do res,w' <- nextworld_vload w chunk id ofs;
+        do vres,vt <- atom_of_eventval res (type_of_chunk chunk);
+        Some (w', Event_vload chunk id ofs res :: nil, MemorySuccess (Val.load_result chunk vres, vt))
       else
-        match Mem.load_all chunk m (Ptrofs.unsigned ofs) with
+        match Mem.load_all chunk m (Int64.unsigned ofs) with
         | MemorySuccess (v,lts) =>
-            (w, E0, MemorySuccess v)
+            Some (w, E0, MemorySuccess v)
         | MemoryFail msg =>
-            (w, E0, MemoryFail msg)
+            Some (w, E0, MemoryFail msg)
         end.
 
     Definition do_volatile_store (w: world) (chunk: memory_chunk) (m: mem)
-               (ofs: ptrofs) (v: atom) (lts: list tag) : world * trace * MemoryResult mem :=
-      if Genv.addr_is_volatile (fst ge) ofs then
-        match (do id <- Genv.invert_symbol_ofs (fst ge) ofs;
-               do ev <- eventval_of_val (atom_map (Val.load_result chunk) v) (type_of_chunk chunk);
-               do w' <- nextworld_vstore w chunk id ofs ev;
-               Some(w', Event_vstore chunk id ofs ev :: nil, m)) with
-        | Some (w', tr, m') => (w', tr, MemorySuccess m')
-        | None => (w, E0, MemoryFail "Problem with do_volatile_store")
-        end
+               (ofs: int64) (v: atom) (lts: list tag) : option (world * trace * MemoryResult mem) :=
+      if Genv.addr_is_volatile (fst ge) ofs
+      then  (do id <- Genv.invert_symbol_ofs (fst ge) ofs;
+             do ev <- eventval_of_atom (atom_map (Val.load_result chunk) v) (type_of_chunk chunk);
+             do w' <- nextworld_vstore w chunk id ofs ev;
+             Some(w', Event_vstore chunk id ofs ev :: nil, MemorySuccess m))
       else
-        match Mem.store chunk m (Ptrofs.unsigned ofs) v lts with
+        match Mem.store chunk m (Int64.unsigned ofs) v lts with
         | MemorySuccess m' =>
-            (w, E0, MemorySuccess m')
+            Some (w, E0, MemorySuccess m')
         | MemoryFail msg =>
-            (w, E0, MemoryFail msg)
+            Some (w, E0, MemoryFail msg)
         end.
 
     Lemma do_volatile_load_sound:
       forall w chunk m ofs w' t res,
-        do_volatile_load w chunk m ofs = (w', t, res) ->
+        do_volatile_load w chunk m ofs = Some (w', t, res) ->
         volatile_load (fst ge) chunk m ofs t res /\ possible_trace w t w'.
-    Admitted.
-(*    Proof.
-      intros until v. unfold do_volatile_load. mydestr.
-      - split.
-        + constructor; auto. apply val_of_eventval_sound; auto.
+    Proof.
+      intros until res. unfold do_volatile_load. mydestr.
+      - generalize Heqo. mydestr. intros.
+        inv Heqo. split.
+        + constructor; auto. apply atom_of_eventval_sound; auto.
         + econstructor. econstructor. eauto. constructor.
       - split.
-        + constructor; auto.
+        + apply volatile_load_nonvol; auto. (* load_all lemma *) admit.
         + constructor.
-    Qed.*)
+      - split.
+        + apply volatile_load_nonvol; auto. (* load_all lemma *) admit.
+        + constructor.          
+    Admitted.
 
     Lemma do_volatile_load_complete:
       forall w chunk m ofs w' t res,
         volatile_load (fst ge) chunk m ofs t res -> possible_trace w t w' ->
-        do_volatile_load w chunk m ofs = (w', t, res).
+        do_volatile_load w chunk m ofs = Some (w', t, res).
     Admitted.
-(*    Proof.
+    (*Proof.
       unfold do_volatile_load; intros.
       inv H; simpl in *.
-      - admit.
+      - rewrite H1.
       - rewrite H1. rewrite H2. inv H0. auto.
     Admitted.*)
 
     Lemma do_volatile_store_sound:
       forall w chunk m ofs v w' t res lts,
-        do_volatile_store w chunk m ofs v lts = (w', t, res) ->
+        do_volatile_store w chunk m ofs v lts = Some (w', t, res) ->
         volatile_store (fst ge) chunk m ofs v lts t res /\ possible_trace w t w'.
 (*Proof.
   intros until v'. unfold do_volatile_store. mydestr.
@@ -295,7 +326,7 @@ Qed.*)
     Lemma do_volatile_store_complete:
       forall w chunk m ofs v w' t res lts,
         volatile_store (fst ge) chunk m ofs v lts t res -> possible_trace w t w' ->
-        do_volatile_store w chunk m ofs v lts = (w', t, res).
+        do_volatile_store w chunk m ofs v lts = Some (w', t, res).
     Admitted.
 (*Proof.
   unfold do_volatile_store; intros. inv H; simpl in *.
@@ -336,19 +367,21 @@ Hypothesis do_inline_assembly_complete:
   do_inline_assembly txt sg ge w vargs m = Some(w', t, vres, m').*)
 
 Definition do_ef_volatile_load (chunk: memory_chunk)
-       (w: world) (vargs: list val) (m: mem) : (world * trace * MemoryResult (atom * mem)) :=
+       (w: world) (vargs: list val) (m: mem) : option (world * trace * MemoryResult (atom * mem)) :=
   match vargs with
-  | Vint ofs :: nil =>
-      match do_volatile_load w chunk m (Ptrofs.of_int ofs) with
-      | (w', t, MemorySuccess v) => (w', t, MemorySuccess(v,m))
-      | (w', t, MemoryFail msg) => (w', t, MemoryFail msg)
+  | [Vint ofs] =>
+      match do_volatile_load w chunk m (cast_int_long Unsigned ofs) with
+      | Some (w', t, MemorySuccess v) => Some (w', t, MemorySuccess(v,m))
+      | Some (w', t, MemoryFail msg) => Some (w', t, MemoryFail msg)
+      | None => None
       end
-  | Vlong ofs :: nil =>
-      match do_volatile_load w chunk m (Ptrofs.of_int64 ofs) with
-      | (w', t, MemorySuccess v) => (w', t, MemorySuccess(v,m))
-      | (w', t, MemoryFail msg) => (w', t, MemoryFail msg)
+  | [Vlong ofs] =>
+      match do_volatile_load w chunk m ofs with
+      | Some (w', t, MemorySuccess v) => Some (w', t, MemorySuccess(v,m))
+      | Some (w', t, MemoryFail msg) => Some (w', t, MemoryFail msg)
+      | None => None
       end
-  | _ => (w, E0, MemoryFail "Bad argument in ef_volatile_load")
+  | _ => None
   end.
 
 (*Definition do_ef_volatile_store (chunk: memory_chunk)
@@ -375,50 +408,55 @@ Definition do_alloc_size (v: val) : option ptrofs :=
 
 Definition do_ef_malloc
            (w: world) (vargs: list atom) (PCT: tag) (m: mem)
-  : MemoryResult (PolicyResult (world * trace * atom * tag * mem)) :=
+  : option (world * trace * (MemoryResult (PolicyResult (atom * tag * mem)))) :=
   match vargs with
-  | (v,st) :: nil =>
+  | [(v,st)] =>
       match option_map Ptrofs.unsigned (do_alloc_size v) with
       | Some sz =>
-          match malloc m (- size_chunk Mptr) sz with
-          | MemorySuccess (m', bottom, bound) =>
-              let base := bottom + (size_chunk Mptr) in
+          match malloc m 0 sz with
+          | MemorySuccess (m', base, bound) =>
               match MallocT PCT def_tag st with
               | PolicySuccess (PCT',pt',vt',lt') =>
-                  do_mem m'' <- store Mptr m' bottom (v,vt') (repeat def_tag (Z.to_nat (size_chunk Mptr)));
-                  do_mem m''' <- storebytes m'' base (repeat (Byte Byte.zero vt') (Z.to_nat sz)) (repeat lt' (Z.to_nat sz));
-                  MemorySuccess(PolicySuccess(w, E0, (Vlong (Int64.repr base), def_tag), PCT', m''))
-          | PolicyFail msg params => MemorySuccess (PolicyFail msg params)
-          end
-        | MemoryFail msg => MemoryFail msg
+                  match storebytes m' base
+                                   (repeat (Byte Byte.zero vt') (Z.to_nat sz))
+                                   (repeat lt' (Z.to_nat sz)) with
+                  | MemorySuccess m'' =>
+                      Some (w, E0, (MemorySuccess (PolicySuccess((Vlong (Int64.repr base), def_tag), PCT', m''))))
+                  | MemoryFail msg => Some (w, E0, (MemoryFail msg))
+                  end
+              | PolicyFail msg params =>
+                  Some (w, E0, (MemorySuccess (PolicyFail msg params)))
+              end
+          | MemoryFail msg => Some (w, E0, (MemoryFail msg))
         end
-      | None => MemoryFail "Bad arguments to malloc"
+      | None => None
       end
-  | _ => MemoryFail "Bad arguments to malloc"
+  | _ => None
   end.
 
 Definition do_ef_free
            (w: world) (vargs: list atom) (PCT: tag) (m: mem)
-  : MemoryResult (PolicyResult (world * trace * atom * tag * mem)) :=
+  : option (world * trace * (MemoryResult (PolicyResult (atom * tag * mem)))) :=
   match vargs with
-  | (Vlong lo,pt) :: nil =>
-      do_mem asz,lts <- Mem.load_all Mptr m (Int64.unsigned lo - size_chunk Mptr);
-      let '(vsz,vt) := asz in
-      match lts with
-      | [] => MemoryFail "No location tag when freeing"
-      | lt::_ =>
+  | [(Vlong lo,pt)] =>
+      match Mem.load_all Mptr m (Int64.unsigned lo) with
+      | MemorySuccess ((vsz,vt),lt::_) =>
           match FreeT PCT pt lt with
           | PolicySuccess (PCT',vt,lts) =>
               match do_alloc_size vsz with
               | Some sz =>
-                  do_mem m' <- Mem.mfree m (Int64.unsigned lo - size_chunk Mptr) (Int64.unsigned lo + Ptrofs.unsigned sz);
-                  MemorySuccess (PolicySuccess (w,E0,(Vundef,def_tag),PCT',m'))
-              | None => MemoryFail "Bad size in free"
+                  match Mem.mfree m (Int64.unsigned lo) (Int64.unsigned lo + Ptrofs.unsigned sz) with
+                  | MemorySuccess m' => Some (w, E0, (MemorySuccess (PolicySuccess ((Vundef,def_tag),PCT',m'))))
+                  | MemoryFail msg => Some (w, E0, (MemoryFail msg))
+                  end
+              | None => None
               end
-          | PolicyFail msg params => MemorySuccess (PolicyFail msg params)
+          | PolicyFail msg params => Some (w, E0, (MemorySuccess (PolicyFail msg params)))
           end
+      | MemorySuccess ((vsz,vt), []) => Some (w, E0, (MemoryFail "No location tags when freeing"))
+      | MemoryFail msg => Some (w, E0, (MemoryFail msg))
       end
-  | _ => MemoryFail "Bad arguments to free"
+  | _ => None
   end.
 
 (*Definition memcpy_args_ok
@@ -470,13 +508,14 @@ Definition do_builtin_or_external (name: string) (sg: signature)
   end.*)
 
 Definition do_external (ef: external_function) :
-       world -> list atom -> tag -> mem -> MemoryResult (PolicyResult (world * trace * atom * tag * mem)) :=
+       world -> list atom -> tag -> mem -> option (world * trace * (MemoryResult (PolicyResult (atom * tag * mem)))) :=
   match ef with
   | EF_external name sg =>
       fun w vargs pct m =>
         match do_external_function name sg (fst ge) w vargs pct m with
-        | Some res => MemorySuccess (PolicySuccess res)
-        | None => MemoryFail "External function failure"
+        | Some (w', tr', (v',vt'), pct', m') =>
+            Some (w', tr', (MemorySuccess (PolicySuccess ((v',vt'), pct', m'))))
+        | None => None
         end
   (*| EF_builtin name sg => do_builtin_or_external name sg
   | EF_runtime name sg => do_builtin_or_external name sg
@@ -488,12 +527,12 @@ Definition do_external (ef: external_function) :
   | EF_annot kind text targs => do_ef_annot text targs
   | EF_annot_val kind text targ => do_ef_annot_val text targ
   | EF_debug kind text targs => do_ef_debug kind text targs*)
-  | _ => fun _ _ _ _ => MemoryFail "Bad external"
+  | _ => fun _ _ _ _ => None
   end.
 
 Lemma do_ef_external_sound:
   forall ef w vargs pct m w' t vres pct' m',
-    do_external ef w vargs pct m = MemorySuccess (PolicySuccess (w', t, vres, pct', m')) ->
+    do_external ef w vargs pct m = Some (w', t, MemorySuccess (PolicySuccess (vres, pct', m'))) ->
     external_call ef (fst ge) vargs pct m t vres pct' m' /\ possible_trace w t w'.
 Admitted.
 (*Proof with try congruence.
@@ -567,7 +606,7 @@ Qed.*)
 Lemma do_ef_external_complete:
   forall ef w vargs pct m w' t vres pct' m',
     external_call ef (fst ge) vargs pct m t vres pct' m' -> possible_trace w t w' ->
-    do_external ef w vargs pct m = MemorySuccess (PolicySuccess (w', t, vres, pct', m')).
+    do_external ef w vargs pct m = Some (w', t, MemorySuccess (PolicySuccess (vres, pct', m'))).
 Admitted.
 (*Proof.
   intros.

@@ -69,13 +69,13 @@ Inductive eventval: Type :=
 | EVlong: int64 -> eventval
 | EVfloat: float -> eventval
 | EVsingle: float32 -> eventval
-| EVptr_global: ident -> ptrofs -> eventval
+| EVptr_global: ident -> int64 -> eventval
 | EVptr_fun: ident -> eventval.
 
 Inductive event: Type :=
   | Event_syscall: string -> list eventval -> eventval -> event
-  | Event_vload: memory_chunk -> ident -> ptrofs -> eventval -> event
-  | Event_vstore: memory_chunk -> ident -> ptrofs -> eventval -> event
+  | Event_vload: memory_chunk -> ident -> int64 -> eventval -> event
+  | Event_vstore: memory_chunk -> ident -> int64 -> eventval -> event
   | Event_annot: string -> list eventval -> event.
 
 (** The dynamic semantics for programs collect traces of events.
@@ -272,19 +272,19 @@ Set Implicit Arguments.
 
 Section EVENTVAL.
 
-(** Symbol environment used to translate between global variable names and their block identifiers. *)
+(** Symbol environment used to translate between global variable names and their addresses. *)
   Variable F V: Type.
   Variable ge: Genv.t F V.
 
 (** Translation between values and event values. *)
 
   Inductive eventval_match: eventval -> typ -> atom -> Prop :=
-  | ev_match_global: forall id i base bound pt,
+(*  | ev_match_global: forall id i base bound pt,
       public_symbol ge id = true ->
       find_symbol ge id = Some (inr (base,bound,pt)) ->
       base <= i ->
       i < bound ->
-      eventval_match (EVptr_global id (Ptrofs.repr (i - base))) Tptr (Vint (Int.repr i), pt)
+      eventval_match (EVptr_global id (Int64.repr (i - base))) Tptr (Vlong (Int64.repr i), pt) *)
   | ev_match_int: forall i,
       eventval_match (EVint i) Tint (Vint i, def_tag)
   | ev_match_long: forall i,
@@ -595,7 +595,7 @@ Fixpoint output_trace (t: trace) : Prop :=
 (** * Semantics of volatile memory accesses *)
 (* TODO: tags on vloads and vstores *)
 Inductive volatile_load (ge: Genv.t F V):
-                   memory_chunk -> mem -> ptrofs -> trace -> MemoryResult atom -> Prop :=
+                   memory_chunk -> mem -> int64 -> trace -> MemoryResult atom -> Prop :=
   | volatile_load_vol: forall chunk m ofs id ev v vt,
       addr_is_volatile ge ofs = true ->
       eventval_match ge ev (type_of_chunk chunk) (v,vt) ->
@@ -604,11 +604,11 @@ Inductive volatile_load (ge: Genv.t F V):
                     (MemorySuccess (Val.load_result chunk v,vt))
   | volatile_load_nonvol: forall chunk m ofs res,
       addr_is_volatile ge ofs = false ->
-      load chunk m (Ptrofs.unsigned ofs) = res ->
+      load chunk m (Int64.unsigned ofs) = res ->
       volatile_load ge chunk m ofs E0 res.
 
 Inductive volatile_store (ge: Genv.t F V):
-  memory_chunk ->  mem -> ptrofs -> atom -> list tag -> trace -> MemoryResult mem -> Prop :=
+  memory_chunk ->  mem -> int64 -> atom -> list tag -> trace -> MemoryResult mem -> Prop :=
   | volatile_store_vol: forall chunk m ofs id ev v vt lts,
       Genv.addr_is_volatile ge ofs = true ->
       eventval_match ge ev (type_of_chunk chunk) (Val.load_result chunk v, vt) ->
@@ -617,7 +617,7 @@ Inductive volatile_store (ge: Genv.t F V):
                      (MemorySuccess m)
   | volatile_store_nonvol: forall chunk m ofs  v vt lts res,
       Genv.addr_is_volatile ge ofs = false ->
-      store chunk m (Ptrofs.unsigned ofs) (v,vt) lts = res ->
+      store chunk m (Int64.unsigned ofs) (v,vt) lts = res ->
       volatile_store ge chunk m ofs (v,vt) lts E0 res.
   
 (** * Semantics of external functions *)
@@ -730,11 +730,11 @@ Definition inject_separated (f f': meminj) (m1 m2: mem): Prop :=
 Inductive volatile_load_sem (chunk: memory_chunk) (ge: Genv.t F V):
               list atom -> tag -> mem -> trace -> atom  -> tag -> mem -> Prop :=
 | volatile_load_sem_intro: forall ofs pt m pct t v vt vt' vt'' lts,
-    load_ltags chunk m (Ptrofs.unsigned ofs) = MemorySuccess lts ->
+    load_ltags chunk m (Int64.unsigned ofs) = MemorySuccess lts ->
     LoadT pct pt vt lts = PolicySuccess vt' ->
     AccessT pct vt' = PolicySuccess vt'' ->
     volatile_load ge chunk m ofs t (MemorySuccess (v,vt)) ->
-    volatile_load_sem chunk ge ((Vint (Ptrofs.to_int ofs), pt) :: nil) pct m t (v,vt) pct m.
+    volatile_load_sem chunk ge ((Vlong ofs, pt) :: nil) pct m t (v,vt) pct m.
 
 (*Lemma volatile_load_preserved:
   forall ge1 ge2 chunk m b ofs t v vt lts,
@@ -841,11 +841,11 @@ Qed.*)
 Inductive volatile_store_sem (chunk: memory_chunk) (ge: Genv.t F V):
               list atom -> tag -> mem -> trace -> atom -> tag -> mem -> Prop :=
   | volatile_store_sem_intro: forall ofs pt m1 pct pct' pct'' v0 vt0 v vt vt' vt'' lts lts' t m2,
-      load_all chunk m1 (Ptrofs.unsigned ofs) = MemorySuccess (v0,vt0,lts) -> 
+      load_all chunk m1 (Int64.unsigned ofs) = MemorySuccess (v0,vt0,lts) -> 
       AssignT pct vt0 vt = PolicySuccess (pct', vt') ->
       StoreT pct' pt vt' lts = PolicySuccess (pct'',vt'',lts') ->
       volatile_store ge chunk m1 ofs (v,vt) lts t (MemorySuccess m2) ->
-      volatile_store_sem chunk ge ((Vint (Ptrofs.to_int ofs),pt) :: (v,vt) :: nil) pct' m1 t (Vundef,def_tag) pct'' m2.
+      volatile_store_sem chunk ge ((Vlong ofs,pt) :: (v,vt) :: nil) pct' m1 t (Vundef,def_tag) pct'' m2.
 
 (*Lemma volatile_store_preserved:
   forall ge1 ge2 chunk m1 b ofs v lts t m2,

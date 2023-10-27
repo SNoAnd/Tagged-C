@@ -167,7 +167,7 @@ Module Cexec (P:Policy).
     Local Open Scope memory_monad_scope.
     (** Accessing locations *)
 
-    Definition do_deref_loc (w: world) (ty: type) (m: mem) (ofs: ptrofs) (pt:tag) (bf: bitfield)
+    Definition do_deref_loc (w: world) (ty: type) (m: mem) (ofs: int64) (pt:tag) (bf: bitfield)
       : option (world * trace * MemoryResult (atom * list tag)) :=
       match bf with
       | Full =>
@@ -175,23 +175,24 @@ Module Cexec (P:Policy).
           | By_value chunk =>
               match type_is_volatile ty with
               | false =>
-                  Some (w, E0, Mem.load_all chunk m (Ptrofs.unsigned ofs))
+                  Some (w, E0, Mem.load_all chunk m (Int64.unsigned ofs))
               | true =>
                   match do_volatile_load ge w chunk m ofs with
-                  | (w', tr, MemorySuccess (v,vt)) =>
-                      match load_ltags chunk m (Ptrofs.unsigned ofs) with
+                  | Some (w', tr, MemorySuccess (v,vt)) =>
+                      match load_ltags chunk m (Int64.unsigned ofs) with
                       | MemorySuccess lts =>
                           Some (w', tr, MemorySuccess ((v,vt),lts))
                       | MemoryFail msg =>
                           Some (w', tr, MemoryFail msg)
                       end
-                  | (w', tr, MemoryFail msg) =>
+                  | Some (w', tr, MemoryFail msg) =>
                       Some (w', tr, MemoryFail msg)
+                  | None => None
                   end
                       
               end
-          | By_reference => Some (w, E0, MemorySuccess((Vofptrsize (Ptrofs.unsigned ofs),pt), []))
-          | By_copy => Some (w, E0, MemorySuccess((Vofptrsize (Ptrofs.unsigned ofs),pt),[]))
+          | By_reference => Some (w, E0, MemorySuccess((Vlong ofs,pt), []))
+          | By_copy => Some (w, E0, MemorySuccess((Vlong ofs,pt),[]))
           | _ => None
           end
       | Bits sz sg pos width =>
@@ -201,9 +202,9 @@ Module Cexec (P:Policy).
               signedness_eq sg1 (if zlt width (bitsize_intsize sz) then Signed else sg) &&
               zle 0 pos && zlt 0 width && zle width (bitsize_intsize sz) &&
               zle (pos + width) (bitsize_carrier sz));
-              match Mem.load (chunk_for_carrier sz) m (Ptrofs.unsigned ofs) with
+              match Mem.load (chunk_for_carrier sz) m (Int64.unsigned ofs) with
               | MemorySuccess (Vint c,vt) =>
-                  match load_ltags (chunk_for_carrier sz) m (Ptrofs.unsigned ofs) with
+                  match load_ltags (chunk_for_carrier sz) m (Int64.unsigned ofs) with
                   | MemorySuccess lts =>
                       Some (w, E0, MemorySuccess ((Vint (bitfield_extract sz sg pos width c),vt), lts))
                   | MemoryFail msg => Some (w, E0, MemoryFail msg)
@@ -215,33 +216,33 @@ Module Cexec (P:Policy).
           end
     end.
 
-    Definition assign_copy_ok (ty: type) (ofs: ptrofs) (ofs': ptrofs) : Prop :=
-      (alignof_blockcopy (snd ge) ty | Ptrofs.unsigned ofs') /\ (alignof_blockcopy (snd ge) ty | Ptrofs.unsigned ofs) /\
-        (Ptrofs.unsigned ofs' = Ptrofs.unsigned ofs
-         \/ Ptrofs.unsigned ofs' + sizeof (snd ge) ty <= Ptrofs.unsigned ofs
-         \/ Ptrofs.unsigned ofs + sizeof (snd ge) ty <= Ptrofs.unsigned ofs').
+    Definition assign_copy_ok (ty: type) (ofs: int64) (ofs': int64) : Prop :=
+      (alignof_blockcopy (snd ge) ty | Int64.unsigned ofs') /\ (alignof_blockcopy (snd ge) ty | Int64.unsigned ofs) /\
+        (Int64.unsigned ofs' = Int64.unsigned ofs
+         \/ Int64.unsigned ofs' + sizeof (snd ge) ty <= Int64.unsigned ofs
+         \/ Int64.unsigned ofs + sizeof (snd ge) ty <= Int64.unsigned ofs').
 
     Remark check_assign_copy:
-      forall (ty: type) (ofs ofs': ptrofs),
+      forall (ty: type) (ofs ofs': int64),
         { assign_copy_ok ty ofs ofs' } + {~ assign_copy_ok ty ofs ofs' }.
     Proof with try (right; intuition lia).
       intros. unfold assign_copy_ok.
-      destruct (Zdivide_dec (alignof_blockcopy (snd ge) ty) (Ptrofs.unsigned ofs')); auto...
-      destruct (Zdivide_dec (alignof_blockcopy (snd ge) ty) (Ptrofs.unsigned ofs)); auto...
-      assert (Y:{ Ptrofs.unsigned ofs' = Ptrofs.unsigned ofs \/
-                    Ptrofs.unsigned ofs' + sizeof (snd ge) ty <= Ptrofs.unsigned ofs \/
-                    Ptrofs.unsigned ofs + sizeof (snd ge) ty <= Ptrofs.unsigned ofs'} +
-                  {~ (Ptrofs.unsigned ofs' = Ptrofs.unsigned ofs \/
-                        Ptrofs.unsigned ofs' + sizeof (snd ge) ty <= Ptrofs.unsigned ofs \/
-                        Ptrofs.unsigned ofs + sizeof (snd ge) ty <= Ptrofs.unsigned ofs')}).
-      { destruct (zeq (Ptrofs.unsigned ofs') (Ptrofs.unsigned ofs)); auto.
-        destruct (zle (Ptrofs.unsigned ofs' + sizeof (snd ge) ty) (Ptrofs.unsigned ofs)); auto.
-        destruct (zle (Ptrofs.unsigned ofs + sizeof (snd ge) ty) (Ptrofs.unsigned ofs')); auto.
+      destruct (Zdivide_dec (alignof_blockcopy (snd ge) ty) (Int64.unsigned ofs')); auto...
+      destruct (Zdivide_dec (alignof_blockcopy (snd ge) ty) (Int64.unsigned ofs)); auto...
+      assert (Y:{ Int64.unsigned ofs' = Int64.unsigned ofs \/
+                    Int64.unsigned ofs' + sizeof (snd ge) ty <= Int64.unsigned ofs \/
+                    Int64.unsigned ofs + sizeof (snd ge) ty <= Int64.unsigned ofs'} +
+                  {~ (Int64.unsigned ofs' = Int64.unsigned ofs \/
+                        Int64.unsigned ofs' + sizeof (snd ge) ty <= Int64.unsigned ofs \/
+                        Int64.unsigned ofs + sizeof (snd ge) ty <= Int64.unsigned ofs')}).
+      { destruct (zeq (Int64.unsigned ofs') (Int64.unsigned ofs)); auto.
+        destruct (zle (Int64.unsigned ofs' + sizeof (snd ge) ty) (Int64.unsigned ofs)); auto.
+        destruct (zle (Int64.unsigned ofs + sizeof (snd ge) ty) (Int64.unsigned ofs')); auto.
         right. intro. destruct H. contradiction. destruct H. contradiction. contradiction. }
       destruct Y... left; intuition lia.
     Defined.
 
-    Definition do_assign_loc (w: world) (ty: type) (m: mem) (ofs: ptrofs)
+    Definition do_assign_loc (w: world) (ty: type) (m: mem) (ofs: int64)
                (pt:tag) (bf: bitfield) (v: atom) (lts: list tag)
       : option (world * trace * MemoryResult (mem * atom)) :=
       match bf with
@@ -249,23 +250,24 @@ Module Cexec (P:Policy).
           match access_mode ty with
           | By_value chunk =>
               match type_is_volatile ty with
-              | false => match Mem.store chunk m (Ptrofs.unsigned ofs) v lts with
+              | false => match Mem.store chunk m (Int64.unsigned ofs) v lts with
                          | MemorySuccess m' => Some (w, E0, MemorySuccess (m', v))
                          | MemoryFail msg => Some (w, E0, MemoryFail msg)
                          end
               | true => match do_volatile_store ge w chunk m ofs v lts with
-                        | (w', tr, MemorySuccess m') => Some (w', tr, MemorySuccess (m', v))
-                        | (w', tr, MemoryFail msg) => Some (w', tr, MemoryFail msg)
+                        | Some (w', tr, MemorySuccess m') => Some (w', tr, MemorySuccess (m', v))
+                        | Some (w', tr, MemoryFail msg) => Some (w', tr, MemoryFail msg)
+                        | None => None
                         end
               end
           | By_copy =>
               match v with
               | (Vlong ofs',vt) =>
-                  let ofs'' := (Ptrofs.of_int64 ofs') in
+                  let ofs'' := ofs' in
                   check (check_assign_copy ty ofs ofs'');
-                  match Mem.loadbytes m (Ptrofs.unsigned ofs'') (sizeof (snd ge) ty) with
+                  match Mem.loadbytes m (Int64.unsigned ofs'') (sizeof (snd ge) ty) with
                   | MemorySuccess bytes =>
-                      match Mem.storebytes m (Ptrofs.unsigned ofs) bytes lts with
+                      match Mem.storebytes m (Int64.unsigned ofs) bytes lts with
                       | MemorySuccess m' =>
                           Some (w, E0, MemorySuccess(m', v))
                       | MemoryFail msg =>
@@ -285,12 +287,12 @@ Module Cexec (P:Policy).
           zle (pos + width) (bitsize_carrier sz));
           match ty, v with
           | Tint sz1 sg1 _, (Vint n,vt) =>
-              match Mem.load (chunk_for_carrier sz) m (Ptrofs.unsigned ofs) with
+              match Mem.load (chunk_for_carrier sz) m (Int64.unsigned ofs) with
               | MemorySuccess (Vint c,ovt) =>
                   check (intsize_eq sz1 sz &&
                   signedness_eq sg1 (if zlt width (bitsize_intsize sz)
                                      then Signed else sg));
-                  match Mem.store (chunk_for_carrier sz) m (Ptrofs.unsigned ofs)
+                  match Mem.store (chunk_for_carrier sz) m (Int64.unsigned ofs)
                                      (Vint ((Int.bitfield_insert (first_bit sz pos width)
                                                                  width c n)),vt) lts with
                   | MemorySuccess m' =>
@@ -316,7 +318,7 @@ Module Cexec (P:Policy).
           intuition. eapply deref_loc_volatile; eauto.
         + intros. inv Heqm1. exploit do_volatile_load_sound; eauto.
           intuition. eapply deref_loc_volatile_fail1; eauto.
-        + intros. inv Heqp. exploit do_volatile_load_sound; eauto.
+        + intros. inv Heqo. exploit do_volatile_load_sound; eauto.
           intuition. eapply deref_loc_volatile_fail0; eauto.
         + intros. inv Heqb. split.
           * eapply deref_loc_value; eauto.
@@ -364,7 +366,7 @@ Module Cexec (P:Policy).
         + exploit do_volatile_store_sound; eauto.
           intros (P & Q). intuition. eapply assign_loc_volatile; eauto.
         + exploit do_volatile_store_sound; eauto. 
-          destruct v. inv Heqp. intros. intuition. eapply assign_loc_volatile_fail; eauto.
+          destruct v. inv Heqo. intros. intuition. eapply assign_loc_volatile_fail; eauto.
         + destruct v. exploit assign_loc_value; eauto.
           split.
           * eauto.
@@ -375,20 +377,14 @@ Module Cexec (P:Policy).
           * constructor.
         + destruct v0; mydestr; try congruence.
           * destruct a as [P [Q R]].
-            replace (Vlong i) with (Vlong (Ptrofs.to_int64 (Ptrofs.of_int64 i))) by
-              (rewrite Ptrofs.to_int64_of_int64; auto).                
             split.
             eapply assign_loc_copy; eauto.
             constructor.
           * destruct a as [P [Q R]].
-            replace (Vlong i) with (Vlong (Ptrofs.to_int64 (Ptrofs.of_int64 i))) by
-                (rewrite Ptrofs.to_int64_of_int64; auto).                
             split.
             eapply assign_loc_copy_fail1; eauto.
             constructor.
           * destruct a as [P [Q R]].
-            replace (Vlong i) with (Vlong (Ptrofs.to_int64 (Ptrofs.of_int64 i))) by
-                (rewrite Ptrofs.to_int64_of_int64; auto).                
             split.
             eapply assign_loc_copy_fail0; eauto.
             constructor.
@@ -410,15 +406,10 @@ Proof.
   - inv H0. rewrite H3; rewrite H7; rewrite H9; auto.
   - rewrite H3; rewrite H7. eapply do_volatile_store_complete in H9; eauto.
     rewrite H9. auto.
-  - rewrite H3. unfold Vofptrsize. unfold Ptrofs.of_int64.
-    rewrite Int64.unsigned_repr. rewrite Ptrofs.repr_unsigned.
+  - rewrite H3.
     destruct (check_assign_copy ty ofs ofs').
     + inv H0. rewrite H10; rewrite H12; auto.
     + elim n. red; tauto.
-    + pose (Ptrofs.unsigned_range ofs').
-      unfold Int64.max_unsigned. replace Int64.modulus with Ptrofs.modulus.
-      lia. unfold Ptrofs.modulus. unfold Int64.modulus.
-      auto.
   - inv H0. inv H7. 
     unfold proj_sumbool; rewrite ! zle_true, ! zlt_true by lia. cbn.
     rewrite ! dec_eq_true. rewrite H3. cbn. rewrite H4. auto.
@@ -578,13 +569,13 @@ Section EXPRS.
     | LV, Evar x ty =>
         match e!x with
         | Some (PUB (base, bound, pt)) =>
-            topred (Lred "red_var_local" (Eloc (Lmem (Ptrofs.repr base) pt Full) ty) te m)
+            topred (Lred "red_var_local" (Eloc (Lmem (Int64.repr base) pt Full) ty) te m)
         | Some PRIV =>
             topred (Lred "red_var_tmp" (Eloc (Ltmp x) ty) te m)
         | None =>
             match Genv.find_symbol (fst ge) x with
             | Some (inr (base, bound, t)) =>
-                topred (Lred "red_var_global" (Eloc (Lmem (Ptrofs.repr base) t Full) ty) te m)
+                topred (Lred "red_var_global" (Eloc (Lmem (Int64.repr base) t Full) ty) te m)
             | Some (inl (b, t)) =>
                 topred (Lred "red_var_func" (Eloc (Lfun b t) ty) te m)
             | None => stuck
@@ -593,9 +584,9 @@ Section EXPRS.
     | LV, Ederef r ty =>
         match is_val r with
         | Some (Vint ofs, t, ty') =>
-            topred (Lred "red_deref_short" (Eloc (Lmem (Ptrofs.of_int ofs) t Full) ty) te m)    
+            topred (Lred "red_deref_short" (Eloc (Lmem (cast_int_long Unsigned ofs) t Full) ty) te m)    
         | Some (Vlong ofs, t, ty') =>
-            topred (Lred "red_deref_long" (Eloc (Lmem (Ptrofs.of_int64 ofs) t Full) ty) te m)
+            topred (Lred "red_deref_long" (Eloc (Lmem ofs t Full) ty) te m)
         | Some _ =>
             stuck
         | None =>
@@ -611,9 +602,9 @@ Section EXPRS.
                 | Error _ => stuck
                 | OK (delta, bf) =>
                     at "failred_field_struct" trule pt' <- FieldT (snd ge) pct pt ty id;
-                    topred (Lred "red_field_struct" (Eloc (Lmem (Ptrofs.add
-                                                                   (Ptrofs.of_int64 ofs)
-                                                                   (Ptrofs.repr delta))
+                    topred (Lred "red_field_struct" (Eloc (Lmem (Int64.add
+                                                                   ofs
+                                                                   (Int64.repr delta))
                                                                 pt' bf) ty) te m)
                 end
             | Tunion id _ =>
@@ -622,9 +613,9 @@ Section EXPRS.
                 | Error _ => stuck
                 | OK (delta, bf) =>
                     at "failred_field_union" trule pt' <- FieldT (snd ge) pct pt ty id;
-                    topred (Lred "red_field_union" (Eloc (Lmem (Ptrofs.add
-                                                                  (Ptrofs.of_int64 ofs)
-                                                                  (Ptrofs.repr delta))
+                    topred (Lred "red_field_union" (Eloc (Lmem (Int64.add
+                                                                  ofs
+                                                                  (Int64.repr delta))
                                                                pt' bf) ty) te m)
                 end
             | _ => stuck
@@ -666,7 +657,7 @@ Section EXPRS.
         match is_loc l with
         | Some (Lmem ofs t bf, ty') =>
             match bf with Full => topred (Rred "red_addrof_loc" pct
-                                               (Eval (Vofptrsize (Ptrofs.unsigned ofs), t) ty) te m E0)
+                                               (Eval (Vlong ofs, t) ty) te m E0)
                      | Bits _ _ _ _ => stuck
             end
         | Some (Ltmp _, _) => stuck
@@ -703,9 +694,9 @@ Section EXPRS.
                 do v <- sem_cast v1 ty1 ty m;
                 match v1, v with
                 | Vlong ofs1, Vlong ofs =>
-                    match do_deref_loc w ty1 m (Ptrofs.of_int64 ofs1) vt1 Full with
+                    match do_deref_loc w ty1 m ofs1 vt1 Full with
                     | Some (w', tr1, MemorySuccess (_,lts1)) =>
-                        match do_deref_loc w' ty m (Ptrofs.of_int64 ofs) vt1 Full with
+                        match do_deref_loc w' ty m ofs vt1 Full with
                         | Some (w'', tr, MemorySuccess (_,lts)) =>
                             at "failred_cast_ptr_ptr" truletr (tr1++tr),
                             pt' <- PPCastT pct vt1 lts1 lts ty;
@@ -720,7 +711,7 @@ Section EXPRS.
                 do v <- sem_cast v1 ty1 ty m;
                 match v1 with
                 | Vlong ofs =>
-                    match do_deref_loc w ty1 m (Ptrofs.of_int64 ofs) vt1 Full with
+                    match do_deref_loc w ty1 m ofs vt1 Full with
                     | Some (w', tr, MemorySuccess (_,lts)) =>
                         at "failred_cast_ptr_int" truletr tr, pt' <- PICastT pct vt1 lts ty;
                         topred (Rred "red_cast_ptr_int" pct (Eval (v,pt') ty) te m tr)
@@ -733,7 +724,7 @@ Section EXPRS.
                 do v <- sem_cast v1 ty1 ty m;
                 match v with
                 | Vlong ofs =>
-                    match do_deref_loc w ty m (Ptrofs.of_int64 ofs) vt1 Full with
+                    match do_deref_loc w ty m ofs vt1 Full with
                     | Some (w', tr, MemorySuccess (_,lts)) =>
                         at "failred_cast_int_ptr" truletr tr, pt' <- IPCastT pct vt1 lts ty;
                         topred (Rred "red_cast_int_ptr" pct (Eval (v,pt') ty) te m tr)
@@ -781,10 +772,10 @@ Section EXPRS.
         end
     | RV, Esizeof ty' ty =>
         at "failred_sizeof" trule vt' <- ConstT pct;
-        topred (Rred "red_sizeof" pct (Eval (Vofptrsize (sizeof (snd ge) ty'), vt') ty) te m E0)
+        topred (Rred "red_sizeof" pct (Eval (Vlong (Int64.repr (sizeof (snd ge) ty')), vt') ty) te m E0)
     | RV, Ealignof ty' ty =>
         at "failred_alignor" trule vt' <- ConstT pct;
-        topred (Rred "red_alignof" pct (Eval (Vofptrsize (alignof (snd ge) ty'), vt') ty) te m E0)
+        topred (Rred "red_alignof" pct (Eval (Vlong (Int64.repr (alignof (snd ge) ty')), vt') ty) te m E0)
     | RV, Eassign l1 r2 ty =>
         match is_loc l1, is_val r2 with
         | Some (Lmem ofs pt1 bf, ty1), Some(v2, vt2, ty2) =>
@@ -933,11 +924,12 @@ Section EXPRS.
         | Some vtl =>
             do vargs <- sem_cast_arguments vtl tyargs m;
             match do_external ge do_external_function ef w vargs pct m with
-            | MemorySuccess (PolicySuccess (w',t,v,pct', m')) =>
-                topred (Rred "red_builtin" pct' (Eval v ty) te m' t)
-            | MemorySuccess (PolicyFail msg params) =>
-                failred "failred_builtin1" msg params E0
-            | MemoryFail msg => failred "failred_builtin0" msg [] E0
+            | Some (w', tr, (MemorySuccess (PolicySuccess (v,pct', m')))) =>
+                topred (Rred "red_builtin" pct' (Eval v ty) te m' tr)
+            | Some (w', tr, (MemorySuccess (PolicyFail msg params))) =>
+                failred "failred_builtin1" msg params tr
+            | Some (w', tr, MemoryFail msg) => failred "failred_builtin0" msg [] tr
+            | None => stuck
             end
         | _ =>
             incontext (fun x => Ebuiltin ef tyargs x ty) (step_exprlist pct rargs te m)
@@ -1047,21 +1039,21 @@ Definition invert_expr_prop (a: expr) (pct: tag) (te: tenv) (m: mem) : Prop :=
       exists v ofs1 ofs tr1 w' v2 vt2 lts1 tr w'' v3 vt3 lts,
       sem_cast v1 (Tpointer ty1 attr1) (Tpointer ty attr) m = Some v /\
         v1 = Vlong ofs1 /\ v = Vlong ofs /\
-        deref_loc ge (Tpointer ty1 attr1) m (Ptrofs.of_int64 ofs1) vt1 Full tr1 (MemorySuccess ((v2,vt2), lts1)) /\
+        deref_loc ge (Tpointer ty1 attr1) m ofs1 vt1 Full tr1 (MemorySuccess ((v2,vt2), lts1)) /\
         possible_trace w tr1 w' /\
-        deref_loc ge (Tpointer ty attr) m (Ptrofs.of_int64 ofs) vt1 Full tr (MemorySuccess ((v3,vt3), lts)) /\
+        deref_loc ge (Tpointer ty attr) m ofs vt1 Full tr (MemorySuccess ((v3,vt3), lts)) /\
         possible_trace w' tr w''
   | Ecast (Eval (v1,vt1) (Tpointer ty1 attr1)) ty =>
       exists v ofs1 tr1 w' v2 vt2 lts1,
       sem_cast v1 (Tpointer ty1 attr1) ty m = Some v /\
         v1 = Vlong ofs1 /\
-        deref_loc ge (Tpointer ty1 attr1) m (Ptrofs.of_int64 ofs1) vt1 Full tr1 (MemorySuccess ((v2,vt2), lts1)) /\
+        deref_loc ge (Tpointer ty1 attr1) m ofs1 vt1 Full tr1 (MemorySuccess ((v2,vt2), lts1)) /\
         possible_trace w tr1 w'
   | Ecast (Eval (v1,vt1) ty1) (Tpointer ty attr) =>
       exists v ofs tr w' v2 vt2 lts,
       sem_cast v1 ty1 (Tpointer ty attr) m = Some v /\
         v = Vlong ofs /\
-        deref_loc ge (Tpointer ty attr) m (Ptrofs.of_int64 ofs) vt1 Full tr (MemorySuccess ((v2,vt2), lts)) /\
+        deref_loc ge (Tpointer ty attr) m ofs vt1 Full tr (MemorySuccess ((v2,vt2), lts)) /\
         possible_trace w tr w'
   | Ecast (Eval (v1,vt1) ty1) ty =>
       exists v, sem_cast v1 ty1 ty m = Some v
@@ -2494,9 +2486,10 @@ Definition do_step (w: world) (s: Csem.state) : list transition :=
       end
   | Callstate (External ef targs tres cc) pct vargs k m =>
       match do_external ge do_external_function ef w vargs pct m with
-      | MemorySuccess (PolicySuccess (w',tr,v,pct',m')) => [TR "step_external_function" tr (Returnstate (External ef targs tres cc) pct' v k m')]
-      | MemorySuccess (PolicyFail msg params) => [TR "step_external_function_fail_1" E0 (Failstop msg params)]
-      | MemoryFail msg => [TR "step_external_function_fail_0" E0 (Failstop msg [])]
+      | Some (w', tr, MemorySuccess (PolicySuccess (v,pct',m'))) => [TR "step_external_function" tr (Returnstate (External ef targs tres cc) pct' v k m')]
+      | Some (w', tr, MemorySuccess (PolicyFail msg params)) => [TR "step_external_function_fail_1" tr (Failstop msg params)]
+      | Some (w', tr, MemoryFail msg) => [TR "step_external_function_fail_0" tr (Failstop msg [])]
+      | None => []
       end
 
   | Returnstate fd pct (v,vt) (Kcall f e te oldpct C ty k) m =>

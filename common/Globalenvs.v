@@ -101,7 +101,7 @@ Definition find_symbol (ge: t) (id: ident) :=
 Definition symbol_address (ge: t) (id: ident) (ofs: ptrofs) : atom :=
   match find_symbol ge id with
   | Some (inl (b,t)) => (Vfptr b, t)
-  | Some (inr (base,block,t)) => (Vint (Int.repr base), t)
+  | Some (inr (base,block,t)) => (Vlong (Int64.repr base), t)
   | None => (Vundef, def_tag)
   end.
 
@@ -115,8 +115,8 @@ Definition public_symbol (ge: t) (id: ident) : bool :=
 
 (** [find_def ge b] returns the global definition associated with the given address. *)
 
-Definition find_def (ge: t) (ofs: ptrofs) : option (globdef F V) :=
-  ZTree.get (Ptrofs.signed ofs) ge.(genv_glob_defs).
+Definition find_def (ge: t) (ofs: int64) : option (globdef F V) :=
+  ZTree.get (Int64.unsigned ofs) ge.(genv_glob_defs).
 
 (** [find_funct_ptr ge b] returns the function description associated with
     the given address. *)
@@ -144,8 +144,8 @@ Definition invert_symbol_block (ge: t) (b: block) : option ident :=
        | inl (b',t) => if (b =? b')%positive then Some id else res
        end) ge.(genv_symb) None.
 
-Definition invert_symbol_ofs (ge: t) (ofs: ptrofs) : option ident :=
-  let z := Ptrofs.signed ofs in
+Definition invert_symbol_ofs (ge: t) (ofs: int64) : option ident :=
+  let z := Int64.unsigned ofs in
   PTree.fold
     (fun res id stuff =>
        match stuff with
@@ -158,13 +158,13 @@ Definition invert_symbol_ofs (ge: t) (ofs: ptrofs) : option ident :=
 (** [find_var_info ge addr] returns the information attached to the variable
    at address [ofs]. *)
 
-Definition find_var_info (ge: t) (ofs: ptrofs) : option (globvar V) :=
+Definition find_var_info (ge: t) (ofs: int64) : option (globvar V) :=
   match find_def ge ofs with Some (Gvar v) => Some v | _ => None end.
 
 (** [block_is_volatile ge b] returns [true] if [b] points to a global variable
   of volatile type, [false] otherwise. *)
 
-Definition addr_is_volatile (ge: t) (addr: ptrofs) : bool :=
+Definition addr_is_volatile (ge: t) (addr: int64) : bool :=
   match find_var_info ge addr with
   | None => false
   | Some gv => gv.(gvar_volatile)
@@ -505,7 +505,7 @@ Theorem invert_find_symbol_ofs:
   forall ge id ofs,
     invert_symbol_ofs ge ofs = Some id ->
     exists base bound pt, find_symbol ge id = Some (inr (base,bound,pt)) /\
-                            base <= (Ptrofs.unsigned ofs) /\ (Ptrofs.unsigned ofs) < bound.
+                            base <= (Int64.unsigned ofs) /\ (Int64.unsigned ofs) < bound.
 Admitted.
 (*Proof.
   intros until b; unfold find_symbol, invert_symbol.
@@ -521,8 +521,8 @@ Qed.*)
 Theorem find_invert_symbol_ofs:
   forall ge id base bound t ofs,
     find_symbol ge id = Some (inr (base,bound,t)) ->
-    base <= (Ptrofs.signed ofs) ->
-    (Ptrofs.signed ofs) < bound ->
+    base <= (Int64.signed ofs) ->
+    (Int64.signed ofs) < bound ->
     invert_symbol_ofs ge ofs = Some id.
 Admitted.
 (*Proof.
@@ -541,6 +541,12 @@ Admitted.
   apply invert_find_symbol; auto.
   congruence.
 Qed.*)
+
+Theorem find_invert_symbol_block:
+  forall ge id t b,
+    find_symbol ge id = Some (inl (b,t)) ->
+    invert_symbol_block ge b = Some id.
+Admitted.
 
 (*Definition advance_next (gl: list (ident * globdef F V)) (x: positive) :=
   List.fold_left (fun n g => Pos.succ n) gl x.

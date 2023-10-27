@@ -38,7 +38,7 @@ Module Csyntax (P:Policy).
       id, or a function pointer *)
 
   Inductive loc_kind : Type :=
-  | Lmem (ofs: ptrofs) (pt: tag) (bf: bitfield)
+  | Lmem (ofs: int64) (pt: tag) (bf: bitfield)
   | Ltmp (b: block)
   | Lfun (b: block) (pt: tag)
   .

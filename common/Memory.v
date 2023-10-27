@@ -75,12 +75,17 @@ Module Mem (P:Policy).
 
     stkalloc : t -> Z -> option (t*Z*Z);
     stkfree : t -> Z -> Z -> t;
-    heapalloc : t -> Z -> option (t*Z*Z);
-    heapfree : t -> Z -> Z -> t;
+    heapalloc : t -> Z -> MemoryResult (t*Z*Z);
+    heapfree : t -> Z -> MemoryResult t;
+  }.
+
+  Definition freelist : Type := list (Z*Z).
+  
+  Record heap_state : Type := mkheap {
+    regions : ZMap.t (option Z);
+    fl : list (Z * Z);
   }.
   
-  Definition freelist : Type := list (Z*Z).
-
   Fixpoint fl_alloc (fl : freelist) (size : Z) : option (Z*Z*freelist) :=
     match fl with
     | [] => None
@@ -113,26 +118,51 @@ Module Mem (P:Policy).
                   end
     end.                       
 
+  Definition empty_heap : heap_state :=
+    mkheap (ZMap.init None) [(1000,2000)].
+  
+  Definition checked_malloc (h : heap_state) (size : Z) : MemoryResult (Z*heap_state) :=
+    match fl_alloc h.(fl) size with
+    | Some (base, bound, fl') =>
+        let regions' := ZMap.set base (Some bound) h.(regions) in
+        MemorySuccess (base, mkheap regions' fl')
+    | None => MemoryFail "Out of memory"
+    end.
+
+  Definition checked_free (h : heap_state) (base : Z) : MemoryResult heap_state :=
+    match ZMap.get base h.(regions) with
+    | Some bound => MemorySuccess (mkheap (ZMap.set base None h.(regions)) (fl_free h.(fl) (base, bound)))
+    | None => MemoryFail "Bad free"
+    end.
+  
   Definition al : allocator :=
     mkallocator
-      (Z*freelist)   
-      (3000,[(1000,2000)])
-      (fun '(sp,fl) size => Some ((sp-size,fl),sp-size,sp))
-      (fun '(sp,fl) base bound => (bound,fl))
-      (fun '(sp,fl) size => option_map (fun '(base,bound,fl') => ((sp,fl'),base,bound)) (fl_alloc fl size))
-      (fun '(sp,fl) base bound => (sp, fl_free fl (base,bound)))
+      (Z*heap_state)   
+      (3000,empty_heap)
+      (fun '(sp,heap) size => Some ((sp-size,heap),sp-size,sp))
+      (fun '(sp,heap) base bound => (bound,heap))
+      (fun '(sp,heap) size =>
+         match checked_malloc heap size with
+         | MemorySuccess (base,heap') => MemorySuccess (sp,heap',base,base+size)
+         | MemoryFail msg => MemoryFail msg
+         end)
+      (fun '(sp,heap) base =>
+         match checked_free heap base with
+         | MemorySuccess heap' => MemorySuccess (sp, heap')
+         | MemoryFail msg => MemoryFail msg
+         end)
   .
 
-Record mem' : Type := mkmem {
-  mem_contents: ZMap.t (memval*tag);  (**r [offset -> memval] *)
-  mem_access: Z -> permission;
+  Record mem' : Type := mkmem {
+    mem_contents: ZMap.t (memval*tag);  (**r [offset -> memval] *)
+    mem_access: Z -> permission;
                                          (**r [block -> offset -> kind -> option permission] *)
-  al_state: al.(t);
+    al_state: al.(t);
 
-  live: list (Z*Z);
+    live: list (Z*Z);
 
-  globals: (Z*Z);
-}.
+    globals: (Z*Z);
+  }.
 
 Definition mem := mem'.
 
@@ -466,7 +496,7 @@ Fixpoint free_list (m: mem) (l: list (Z * Z)) {struct l}: MemoryResult mem :=
 
 Definition malloc (m: mem) (lo hi: Z) : MemoryResult (mem*Z*Z) :=
   match al.(heapalloc) m.(al_state) (hi - lo) with
-  | Some (al_state', lo', hi') =>
+  | MemorySuccess (al_state', lo', hi') =>
       MemorySuccess (mkmem (ZMap.set lo' (Undef, def_tag) m.(mem_contents))
                            (fun ofs => if zle lo' ofs && zlt ofs hi'
                                        then Live
@@ -475,23 +505,32 @@ Definition malloc (m: mem) (lo hi: Z) : MemoryResult (mem*Z*Z) :=
                            ((lo',hi')::m.(live))
                            m.(globals),
                       lo', hi')
-  | None => MemoryFail "OOM"
+  | MemoryFail msg => MemoryFail msg
   end.
 
-Definition unchecked_mfree (m: mem) (lo hi: Z): mem :=
+(*Definition unchecked_mfree (m: mem) (lo hi: Z): mem :=
   mkmem m.(mem_contents)
             (fun ofs => if zle lo ofs && zlt ofs hi
                         then MostlyDead
                         else m.(mem_access) ofs)
-            (al.(heapfree) m.(al_state) lo hi)
+            (al.(heapfree) m.(al_state) lo)
             (remove region_eq_dec (lo,hi) m.(live))
-            m.(globals)
-        .
-
+            m.(globals)*)
+       
 Definition mfree (m: mem) (lo hi: Z): MemoryResult mem :=
-  if range_perm_dec m lo hi Live
-  then MemorySuccess (unchecked_mfree m lo hi)
-  else MemoryFail "Invalid Free".
+  match al.(heapfree) m.(al_state) lo with
+  | MemorySuccess al_state' =>
+      let access' := fun ofs => if zle lo ofs && zlt ofs hi
+                                then MostlyDead
+                                else m.(mem_access) ofs
+      in let m' := mkmem m.(mem_contents)
+                             access'
+                             al_state'
+                             (remove region_eq_dec (lo,hi) m.(live))
+                             m.(globals)
+         in MemorySuccess m'
+  | MemoryFail msg => MemoryFail ""
+  end.
         
 (** Memory reads. *)
 

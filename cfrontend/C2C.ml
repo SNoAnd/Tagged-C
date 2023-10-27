@@ -90,7 +90,8 @@ let atom_is_small_data a ofs  =
     && (match info.a_size with
         | None -> false
         | Some sz ->
-            let ofs = camlint64_of_ptrofs ofs in 0L <= ofs && ofs < sz)
+                        (*let ofs = camlint64_of_ptrofs ofs in*) 
+            0L <= ofs && ofs < sz)
   with Not_found ->
     false
 

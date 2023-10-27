@@ -475,7 +475,7 @@ and world_vload ge m chunk id ofs =
                 | Coq_inr((base,bound),t) ->
                         (match Mem.load chunk m ofs with
                          | Mem.MemorySuccess v ->
-                           Cexec.InterpreterEvents.eventval_of_val ge v (type_of_chunk chunk) >>= fun ev ->
+                           Cexec.InterpreterEvents.eventval_of_atom ge v (type_of_chunk chunk) >>= fun ev ->
                            Some(ev, world ge m)
                          | _ -> None)
                 | _ -> None
@@ -485,7 +485,7 @@ and world_vstore ge m chunk id ofs ev =
           fun res ->
                 match res with
                 | Coq_inr((base,bound),t) ->
-                        Cexec.InterpreterEvents.val_of_eventval ge ev (type_of_chunk chunk) >>= fun v ->
+                        Cexec.InterpreterEvents.atom_of_eventval ge ev (type_of_chunk chunk) >>= fun v ->
                         (match Mem.store chunk m ofs v [] with
                          | Mem.MemorySuccess m' -> Some(world ge m')
                          | _ -> None)

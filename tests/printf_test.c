@@ -1,7 +1,9 @@
 #include <stdio.h>
 
 int main() {
-  printf("Hello world!\n");
+  char hello[14] = {'H','e','l','l','o',' ','W','o','r','l','d','!','\n','\0'};
+      
+  printf(hello);
 
   return 0;
 }
