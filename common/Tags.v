@@ -195,7 +195,6 @@ Module NullPolicy <: Policy.
 
 End NullPolicy.
 
-(* anaaktge <: means subtype of *)
 Module PVI <: Policy.
   
   Inductive myTag :=
@@ -221,7 +220,7 @@ Module PVI <: Policy.
     | N => "N"
     end.
   
-  (* anaaktge does not inherit, more like impersonates *)
+  (* Does not inherit from Policy, more like impersonates *)
   Inductive PolicyResult (A: Type) :=
   | PolicySuccess (res: A) 
   | PolicyFail (r: string) (params: list tag).
@@ -336,7 +335,7 @@ Module PNVI <: Policy.
     | N => "N"
     end.
   
-  (* anaaktge does not inherit, more like impersonates *)
+  (* Does not inherit from Policy, more like impersonates *)
   Inductive PolicyResult (A: Type) :=
   | PolicySuccess (res: A) 
   | PolicyFail (r: string) (params: list tag).
@@ -474,7 +473,7 @@ End IFC_Spec.
   Definition tag : Type := myTag.
   Theorem tag_eq_dec : forall (t1 t2:tag), {t1 = t2} + {t1 <> t2}. Proof. repeat decide equality. Qed.
 
-  (* anaaktge does not inherit, more like impersonates *)
+  (* Does not inherit, more like impersonates *)
   Inductive PolicyResult (A: Type) :=
   | PolicySuccess (res: A) 
   | PolicyFail (r: string) (params: list tag).
@@ -538,3 +537,177 @@ End IFC_Spec.
 
   Definition LoopExitUnguarded (pct opct : tag) : PolicyResult tag := PolicySuccess pct.
 End IFC. *)
+
+(*
+Simple Double Free detection & diagnostic policy. Inherits from Policy.
+  - Detects some classic double free runtime behavior.
+  - The policy relevant functions are LabelT, MallocT, and FreeT.
+  - Intended for use with a fuzzer or other tool that consumes the failstop diagnostic information.
+  - Policy can be fooled if aliasing is comingled with double free pathology.
+
+Assumes:
+  - The base/fallback TaggedC heap policy is off or unavailable.
+  - The mapping of source location to free label is handled by externally. Policy has no knowledge of it.  
+  - All frees are staticly labeled post processed C source file.
+    - free sites might be hand labelled to start.
+    - Labels must be unique and consistent across executions (fuzzing runs)
+*)
+Module DoubleFree <: Policy.
+
+ Inductive myTag :=
+ | N (* N means unallocated, is also the starting "uncolor" *)
+ | FreeColor (id:ident) (* new tag carrying the free site unique color *)
+ | Alloc (*(id:ident)*) (* this memory is allocated. NB in a future policy it too might have a dynamic color*)
+ .
+
+ Definition tag := myTag.
+ (* boilerplate tag equality proof. Since myTag does not inherit, we have to have our own copy *)
+ Theorem tag_eq_dec : forall (t1 t2:tag), {t1 = t2} + {t1 <> t2}.
+ Proof.
+   unfold tag. intros. repeat decide equality.
+ Qed.
+ Definition def_tag := N.
+
+(* nothing has a color to start *)
+ Definition InitPCT := N.
+
+Definition print_tag (t : tag) : string :=
+    match t with
+    | FreeColor l => "Free Color" (* ++ l TODO: how do we get l to be a string? *)
+                      (* strings.v documentation says ++ is strcat*)
+    | N => "Unallocated"
+    | Alloc => "Allocated"
+    end.
+
+ (* NB: Does not inherit, more like impersonates.
+    It's here to keep it consistent with other policies.
+  *)
+ Inductive PolicyResult (A: Type) :=
+ | PolicySuccess (res: A)
+ | PolicyFail (r: string) (params: list tag).
+
+
+ Arguments PolicySuccess {_} _.
+ Arguments PolicyFail {_} _ _.
+
+ (* Required for policy interface. Not relevant to this particular policy, pass values through *)
+ Definition CallT (pct pt: tag) : PolicyResult tag := PolicySuccess pct.
+
+ (* Required for policy interface. Not relevant to this particular policy, pass values through *)
+ Definition ArgT (pct vt : tag) (f x: ident) : PolicyResult (tag * tag) := PolicySuccess (pct,vt).
+
+ (* TODO: confirm pct_cle is what should pass through *)
+ (* Required for policy interface. Not relevant to this particular policy, pass values through *)
+ Definition RetT (pct_clr pct_cle vt : tag) : PolicyResult (tag * tag) := PolicySuccess (pct_cle,vt).
+
+ (* Required for policy interface. Not relevant to this particular policy, pass values through *)
+ Definition LoadT (pct pt vt: tag) (lts : list tag) : PolicyResult tag := PolicySuccess pct.
+
+ (* Required for policy interface. Not relevant to this particular policy, pass values through *)
+ Definition StoreT (pct pt vt : tag) (lts : list tag) : PolicyResult (tag * tag * list tag) := PolicySuccess (pct,vt,lts).
+
+ (* Required for policy interface. Not relevant to this particular policy, pass values through *)
+ Definition AccessT (pct vt : tag) : PolicyResult tag := PolicySuccess vt.
+
+ (* Required for policy interface. Not relevant to this particular policy, pass values through *)
+ Definition AssignT (pct vt1 vt2 : tag) : PolicyResult (tag * tag) := PolicySuccess (pct,vt2).
+
+ (* Required for policy interface. Not relevant to this particular policy, pass values through *)
+ Definition UnopT (op : unary_operation) (pct vt : tag) : PolicyResult (tag * tag) := PolicySuccess (pct, vt).
+
+ (* Required for policy interface. Not relevant to this particular policy, pass values through *)
+ Definition BinopT (op : binary_operation) (pct vt1 vt2 : tag) : PolicyResult (tag * tag) := PolicySuccess (pct, vt2).
+
+ (* Required for policy interface. Not relevant to this particular policy, pass values through *)
+ Definition ConstT (pct : tag) : PolicyResult tag := PolicySuccess pct.
+
+(* Required for policy interface. Not relevant to this particular policy, pass values through *)
+ Definition InitT (pct : tag) : PolicyResult tag := PolicySuccess pct.
+
+ (* Required for policy interface. Not relevant to this particular policy, pass values through *)
+ Definition SplitT (pct vt : tag) (id : option ident) : PolicyResult tag := PolicySuccess pct.
+
+ (*
+    LabelT(pct, L) returns a new pct, which is updated( return value) to record the free color
+      of this free().
+      - pct is program counter tag
+      - l is the label or color of the free site
+        (l promised to be there, promised to be unique. See assumptions at top of policy)
+ *)
+ Definition LabelT (pct : tag) (l : ident) : PolicyResult tag := PolicySuccess (FreeColor l).
+
+ (* Required for policy interface. Not relevant to this particular policy, pass values through *)
+ Definition ExprSplitT (pct vt : tag) : PolicyResult tag := PolicySuccess pct.
+
+ (* Required for policy interface. Not relevant to this particular policy, pass values through *)
+ Definition ExprJoinT (pct vt : tag) : PolicyResult (tag * tag) := PolicySuccess (pct,vt).
+
+ (* TODO: confirm this one is correct and not erasing information*)
+ (* Required for policy interface. Not relevant to this particular policy, pass values through *)
+ Definition GlobalT (ce : composite_env) (id : ident) (ty : type) : tag * tag * list tag := (N, N, []).
+
+ (* Required for policy interface. Not relevant to this particular policy, pass values through *)
+ Definition LocalT (ce : composite_env) (pct : tag) (ty : type) : PolicyResult (tag * tag * (list tag))%type :=
+   PolicySuccess (N, N, []).
+
+ (* Required for policy interface. Not relevant to this particular policy, pass values through *)
+ Definition DeallocT (ce : composite_env) (pct : tag) (ty : type) : PolicyResult (tag * tag * list tag) :=
+   PolicySuccess (pct, N, []).
+
+ (* 
+    MallocT sets the tag to Alloc, and clears free color if one was present becausee
+      re-use of freed memory is legal.
+      - pct is program counter tag
+      - pt is the tag on the pointer
+      - vt is the tag on the value  
+    In the return tuple
+      - 1st spot is the program counter tag
+      - 4th spot is the location tag, now set to Alloc, this allocated memory. 
+  *)
+ Definition MallocT (pct pt vt : tag) : PolicyResult (tag * tag * tag * tag) :=
+   PolicySuccess (pct, N, N, Alloc).
+
+ (* 
+  FreeT colors the header/0th tag with the current Freecolor from the pct. If there is already 
+    a color present on the tag of the 0th element, this is a double free. 
+    pct - program counter tag, which has the current Freecolor (acquired in LabelT)
+    pt - pointer tag of pointer to block (tag on the argument passed to free() )
+    lt - the tag on the 0th element in the block to be freed. In effect,
+      the header tag of the memory block. Tags on memory after the 0th element
+      are not affected.
+  If rule succeeds, return tuple
+    1st tag - program counter tag
+    2nd tag - pt, passed through
+    3rd tag - free color from the pc tag 
+  If rule fails:
+    - 0th is color of 2nd free where the violation is detected
+    - 1st is pt, passed through
+    - 2nd is the color of the original/first free 
+ *)
+ Definition FreeT (pct pt lt : tag) : PolicyResult (tag * tag * tag) :=
+  match lt with 
+    | N => PolicySuccess(pct, pt, pct) (* N means no color, or unallocated *)
+    | Alloc => PolicySuccess(pct, pt, pct) (* was allocated, now assign color *)
+    | _ (* Freecolor *)
+        => PolicyFail "DoubleFree:FreeT detects two colors" [pct;pt;lt]
+  end.
+
+ (* Required for policy interface. Not relevant to this particular policy, pass values through *)
+ Definition BuiltinT (fn : string) (pct : tag) (args : list tag) : PolicyResult tag := PolicySuccess pct.
+
+ (* Required for policy interface. Not relevant to this particular policy, pass values through *)
+ Definition FieldT (ce : composite_env) (pct vt : tag) (ty : type) (id : ident) : PolicyResult tag := PolicySuccess vt.
+
+ (* Required for policy interface. Not relevant to this particular policy, pass values through *)
+ Definition PICastT (pct pt : tag)  (lts : list tag) (ty : type) : PolicyResult tag := PolicySuccess pt.
+
+ (* Required for policy interface. Not relevant to this particular policy, pass values through *)
+ Definition IPCastT (pct vt : tag)  (lts : list tag) (ty : type) : PolicyResult tag := PolicySuccess vt.
+ 
+ (* Required for policy interface. Not relevant to this particular policy, pass values through *)
+ Definition PPCastT (pct vt : tag) (lts1 lts2 : list tag) (ty : type) : PolicyResult tag := PolicySuccess vt.
+
+ (* Required for policy interface. Not relevant to this particular policy, pass values through *)
+ Definition IICastT (pct vt : tag) (ty : type) : PolicyResult tag := PolicySuccess vt.
+
+End DoubleFree.
