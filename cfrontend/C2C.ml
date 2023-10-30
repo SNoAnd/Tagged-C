@@ -331,7 +331,7 @@ let global_for_string s id =
     init := AST.Init_int8(Z.of_uint(Char.code c)) :: !init in
   add_char '\000';
   for i = String.length s - 1 downto 0 do add_char s.[i] done;
-  (id, AST.Gvar { AST.gvar_info = typeStringLiteral s; AST.gvar_size = P.of_int (String.length s); AST.gvar_init = !init;
+  (id, AST.Gvar { AST.gvar_info = typeStringLiteral s; AST.gvar_size = P.of_int (String.length s + 1); AST.gvar_init = !init;
               AST.gvar_readonly = true;  AST.gvar_volatile = false})
 
 let name_for_wide_string_literal s =

@@ -637,20 +637,22 @@ Definition global_block (m: mem) (id: ident) (sz: Z) : mem :=
   let bound := base + sz in
   let mem_access' := (fun ofs : Z => if zle base ofs && zlt ofs bound then Live else m.(Mem.mem_access) ofs) in
   Mem.mkmem m.(Mem.mem_contents) mem_access' m.(Mem.al_state) m.(Mem.live) (glob_base, bound).
-
+  
 Definition alloc_global (m: mem) (idg: ident * globdef F V): MemoryResult mem :=
   match idg with
   | (id, Gfun f) =>
       MemorySuccess m
   | (id, Gvar v) =>
       let init := v.(gvar_init) in
-      let sz := init_data_list_size init in
-      let m1 := global_block m id sz in
-      (*match*) store_zeros m1 0 sz(* with
-      | None => None
-      | Some m2 =>
-          store_init_data_list m2 id 0 init
-      end*)
+      let sz := v.(gvar_size) in
+      let init_sz := init_data_list_size init in
+      let '(_, base) := m.(globals) in
+      let m1 := global_block m id (Zpos sz) in
+      match store_zeros m1 base (Zpos sz) with
+      | MemoryFail msg => MemoryFail msg
+      | MemorySuccess m2 =>
+          store_init_data_list m2 base (map (fun d => (d, def_tag, [def_tag])) init)
+      end
   end.
 
 Fixpoint alloc_globals (m: mem) (gl: list (ident * globdef F V))
@@ -1190,7 +1192,7 @@ Qed.*)
 End INITMEM.
 
 Definition init_mem (p: program F V) :=
-  alloc_globals Mem.empty p.(prog_defs).
+  alloc_globals (globalenv p) Mem.empty p.(prog_defs).
 
 (*Theorem find_symbol_not_fresh:
   forall p id b m,
@@ -1452,10 +1454,10 @@ End INITMEM_INVERSION.
 
 Theorem init_mem_inversion:
   forall p m id v,
-  init_mem p = MemorySuccess m ->
-  In (id, Gvar v) p.(prog_defs) ->
-  init_data_list_aligned 0 v.(gvar_init)
-  /\ forall i o, In (Init_addrof i o) v.(gvar_init) -> exists b, find_symbol (globalenv p) i = Some b.
+    init_mem p = MemorySuccess m ->
+    In (id, Gvar v) p.(prog_defs) ->
+    init_data_list_aligned 0 v.(gvar_init)
+    /\ forall i o, In (Init_addrof i o) v.(gvar_init) -> exists b, find_symbol (globalenv p) i = Some b.
 Admitted.
 (*Proof.
   intros until v. unfold init_mem. set (ge := globalenv p).
@@ -1533,14 +1535,14 @@ Proof.
 Qed.*)
 
 Lemma alloc_global_exists:
-  forall m idg,
+  forall ge m idg,
   match idg with
   | (id, Gfun f) => True
   | (id, Gvar v) =>
         init_data_list_aligned 0 v.(gvar_init)
      /\ forall i o, In (Init_addrof i o) v.(gvar_init) -> exists b, find_symbol ge i = Some b
   end ->
-  exists m', alloc_global m idg = MemorySuccess m'.
+  exists m', alloc_global ge m idg = MemorySuccess m'.
 Admitted.
 (*Proof.
   intros m [id [f|v]]; intros; simpl.
@@ -1574,15 +1576,16 @@ Theorem init_mem_exists:
         init_data_list_aligned 0 v.(gvar_init)
      /\ forall i o, In (Init_addrof i o) v.(gvar_init) -> exists b, find_symbol (globalenv p) i = Some b) ->
   exists m, init_mem p = MemorySuccess m.
-Proof.
-  intros. set (ge := globalenv p) in *.
+Admitted.
+(*Proof.
+  intros.
   unfold init_mem. revert H. generalize (prog_defs p) Mem.empty.
   induction l as [ | idg l]; simpl; intros.
 - exists m; auto.
-- destruct (@alloc_global_exists ge m idg) as [m1 A1].
+- destruct (@alloc_global_exists ge ge m idg) as [m1 A1].
   destruct idg as [id [f|v]]; eauto.
   fold ge. rewrite A1. eapply IHl; eauto.
-Qed.
+Qed.*)
 
 End GENV.
 
