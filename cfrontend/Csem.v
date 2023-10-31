@@ -45,9 +45,12 @@ Module Csem (P: Policy).
       and function pointers to their definitions.  (See module [Globalenvs].)
       It also contains a composite environment, used by type-dependent operations. *)
 
-  Definition gcenv : Type := (Genv.t fundef type * composite_env).
-
-  Definition globalenv (p: program) := (Genv.globalenv p, p.(prog_comp_env)).
+  Definition genv : Type := Genv.t fundef type.
+  
+  Definition globalenv (p: program) : (Genv.t fundef type * composite_env * mem) :=
+    let ce := p.(prog_comp_env) in
+    let (ge, m) := Genv.globalenv ce p in
+    (ge, ce, m).
 
   Inductive var_entry : Type :=
   | PRIV
@@ -62,8 +65,9 @@ Module Csem (P: Policy).
   
   Section SEM.
 
-  Variable ge: gcenv.
-
+    Variable ge: genv.
+    Variable ce: composite_env.
+    
   (** [deref_loc ty m ofs bf t v] computes the value of a datum
       of type [ty] residing in memory [m] at offset [ofs],
       with bitfield designation [bf].
@@ -85,16 +89,16 @@ Module Csem (P: Policy).
       deref_loc ty m ofs pt Full E0 (load_all chunk m (Int64.unsigned ofs))
   | deref_loc_volatile: forall chunk t v vt lts,
       access_mode ty = By_value chunk -> type_is_volatile ty = true ->
-      volatile_load (fst ge) chunk m ofs t (MemorySuccess (v,vt)) ->
+      volatile_load ge chunk m ofs t (MemorySuccess (v,vt)) ->
       load_ltags chunk m (Int64.unsigned ofs) = MemorySuccess lts ->
       deref_loc ty m ofs pt Full t (MemorySuccess ((v,vt),lts))
   | deref_loc_volatile_fail0: forall chunk t msg,
       access_mode ty = By_value chunk -> type_is_volatile ty = true ->
-      volatile_load (fst ge) chunk m ofs t (MemoryFail msg) ->
+      volatile_load ge chunk m ofs t (MemoryFail msg) ->
       deref_loc ty m ofs pt Full t (MemoryFail msg)
   | deref_loc_volatile_fail1: forall chunk t v vt msg,
       access_mode ty = By_value chunk -> type_is_volatile ty = true ->
-      volatile_load (fst ge) chunk m ofs t (MemorySuccess (v,vt)) ->
+      volatile_load ge chunk m ofs t (MemorySuccess (v,vt)) ->
       load_ltags chunk m (Int64.unsigned ofs) = MemoryFail msg ->
       deref_loc ty m ofs pt Full t (MemoryFail msg)
   | deref_loc_reference:
@@ -132,43 +136,43 @@ Module Csem (P: Policy).
       assign_loc ty m ofs pt Full (v,vt) E0 (MemoryFail msg) lts
   | assign_loc_volatile: forall v lts chunk t m',
       access_mode ty = By_value chunk -> type_is_volatile ty = true ->
-      volatile_store (fst ge) chunk m ofs v lts t (MemorySuccess m') ->
+      volatile_store ge chunk m ofs v lts t (MemorySuccess m') ->
       assign_loc ty m ofs pt Full v t (MemorySuccess (m', v)) lts
   | assign_loc_volatile_fail: forall v lts chunk t msg,
       access_mode ty = By_value chunk -> type_is_volatile ty = true ->
-      volatile_store (fst ge) chunk m ofs v lts t (MemoryFail msg) ->
+      volatile_store ge chunk m ofs v lts t (MemoryFail msg) ->
       assign_loc ty m ofs pt Full v t (MemoryFail msg) lts
   | assign_loc_copy: forall ofs' bytes lts m' pt',
       access_mode ty = By_copy ->
-      (alignof_blockcopy (snd ge) ty | Int64.unsigned ofs') ->
-      (alignof_blockcopy (snd ge) ty | Int64.unsigned ofs) ->
+      (alignof_blockcopy ce ty | Int64.unsigned ofs') ->
+      (alignof_blockcopy ce ty | Int64.unsigned ofs) ->
       Int64.unsigned ofs' = Int64.unsigned ofs
-      \/ Int64.unsigned ofs' + sizeof (snd ge) ty <= Int64.unsigned ofs
-      \/ Int64.unsigned ofs + sizeof (snd ge) ty <= Int64.unsigned ofs' ->
-      Mem.loadbytes m (Int64.unsigned ofs') (sizeof (snd ge) ty) = MemorySuccess bytes ->
-      (* check on this: Mem.loadtags m b' (Int64.unsigned ofs') (sizeof (snd ge) ty) = Some lts ->*)
+      \/ Int64.unsigned ofs' + sizeof ce ty <= Int64.unsigned ofs
+      \/ Int64.unsigned ofs + sizeof ce ty <= Int64.unsigned ofs' ->
+      Mem.loadbytes m (Int64.unsigned ofs') (sizeof ce ty) = MemorySuccess bytes ->
+      (* check on this: Mem.loadtags m b' (Int64.unsigned ofs') (sizeof ce ty) = Some lts ->*)
       Mem.storebytes m (Int64.unsigned ofs) bytes lts = MemorySuccess m' ->
       assign_loc ty m ofs pt Full (Vlong ofs', pt') E0
                  (MemorySuccess (m', (Vlong ofs', pt'))) lts
   | assign_loc_copy_fail0: forall ofs' lts msg pt',
       access_mode ty = By_copy ->
-      (alignof_blockcopy (snd ge) ty | Int64.unsigned ofs') ->
-      (alignof_blockcopy (snd ge) ty | Int64.unsigned ofs) ->
+      (alignof_blockcopy ce ty | Int64.unsigned ofs') ->
+      (alignof_blockcopy ce ty | Int64.unsigned ofs) ->
       Int64.unsigned ofs' = Int64.unsigned ofs
-      \/ Int64.unsigned ofs' + sizeof (snd ge) ty <= Int64.unsigned ofs
-      \/ Int64.unsigned ofs + sizeof (snd ge) ty <= Int64.unsigned ofs' ->
-      Mem.loadbytes m (Int64.unsigned ofs') (sizeof (snd ge) ty) = MemoryFail msg ->
+      \/ Int64.unsigned ofs' + sizeof ce ty <= Int64.unsigned ofs
+      \/ Int64.unsigned ofs + sizeof ce ty <= Int64.unsigned ofs' ->
+      Mem.loadbytes m (Int64.unsigned ofs') (sizeof ce ty) = MemoryFail msg ->
       assign_loc ty m ofs pt Full (Vlong ofs', pt') E0
                  (MemoryFail msg) lts
   | assign_loc_copy_fail1: forall ofs' bytes lts msg pt',
       access_mode ty = By_copy ->
-      (alignof_blockcopy (snd ge) ty | Int64.unsigned ofs') ->
-      (alignof_blockcopy (snd ge) ty | Int64.unsigned ofs) ->
+      (alignof_blockcopy ce ty | Int64.unsigned ofs') ->
+      (alignof_blockcopy ce ty | Int64.unsigned ofs) ->
       Int64.unsigned ofs' = Int64.unsigned ofs
-      \/ Int64.unsigned ofs' + sizeof (snd ge) ty <= Int64.unsigned ofs
-      \/ Int64.unsigned ofs + sizeof (snd ge) ty <= Int64.unsigned ofs' ->
-      Mem.loadbytes m (Int64.unsigned ofs') (sizeof (snd ge) ty) = MemorySuccess bytes ->
-      (* check on this: Mem.loadtags m b' (Int64.unsigned ofs') (sizeof (snd ge) ty) = Some lts ->*)
+      \/ Int64.unsigned ofs' + sizeof ce ty <= Int64.unsigned ofs
+      \/ Int64.unsigned ofs + sizeof ce ty <= Int64.unsigned ofs' ->
+      Mem.loadbytes m (Int64.unsigned ofs') (sizeof ce ty) = MemorySuccess bytes ->
+      (* check on this: Mem.loadtags m b' (Int64.unsigned ofs') (sizeof ce ty) = Some lts ->*)
       Mem.storebytes m (Int64.unsigned ofs) bytes lts = MemoryFail msg ->
       assign_loc ty m ofs pt Full (Vlong ofs', pt') E0
                  (MemoryFail msg) lts
@@ -181,7 +185,7 @@ Module Csem (P: Policy).
     match l with
     | nil => MemorySuccess (PolicySuccess (pct,e,m))
     | (id, ty, init) :: l' =>
-        match Mem.alloc m 0 (sizeof (snd ge) ty), LocalT (snd ge) pct ty with
+        match Mem.alloc m 0 (sizeof ce ty), LocalT ce pct ty with
         | MemorySuccess (m',base,bound), PolicySuccess (pct', pt', lts') =>
             let init' := match init with Some (v,vt) => (v,vt) | None => (Vundef, def_tag) end in
             match Mem.store (chunk_of_type (typ_of_type ty)) m' base init' lts' with
@@ -269,12 +273,12 @@ Module Csem (P: Policy).
              (Eloc (Lmem (Int64.repr lo) pt Full) ty) te m
     | red_var_global: forall x ty pct lo hi pt te m,
         e!x = None ->
-        Genv.find_symbol (fst ge) x = Some (inr (lo, hi, pt)) ->
+        Genv.find_symbol ge x = Some (inr (lo, hi, pt)) ->
         lred (Evar x ty) pct te m
              (Eloc (Lmem (Int64.repr lo) pt Full) ty) te m
     | red_func: forall x pct b pt ty te m,
         e!x = None ->
-        Genv.find_symbol (fst ge) x = Some (inl (b, pt)) ->
+        Genv.find_symbol ge x = Some (inl (b, pt)) ->
         lred (Evar x ty) pct te m
              (Eloc (Lfun b pt) ty) te m
     | red_deref_short: forall ofs vt ty1 ty pct te m,
@@ -284,29 +288,29 @@ Module Csem (P: Policy).
         lred (Ederef (Eval (Vlong ofs,vt) ty1) ty) pct te m
              (Eloc (Lmem ofs vt Full) ty) te m
     | red_field_struct: forall ofs pt pt' id co a f ty pct delta bf te m,
-        (snd ge)!id = Some co ->
-        field_offset (snd ge) f (co_members co) = OK (delta, bf) ->
-        FieldT (snd ge) pct pt ty id = PolicySuccess pt' ->
+        ce!id = Some co ->
+        field_offset ce f (co_members co) = OK (delta, bf) ->
+        FieldT ce pct pt ty id = PolicySuccess pt' ->
         lred (Efield (Eval (Vlong ofs, pt) (Tstruct id a)) f ty) pct te m
              (Eloc (Lmem (Int64.add ofs (Int64.repr delta)) pt' bf) ty) te m
     | red_field_union: forall ofs pt pt' id co a f ty pct delta bf te m,
-        (snd ge)!id = Some co ->
-        union_field_offset (snd ge) f (co_members co) = OK (delta, bf) ->
-        FieldT (snd ge) pct pt ty id = PolicySuccess pt' ->
+        ce!id = Some co ->
+        union_field_offset ce f (co_members co) = OK (delta, bf) ->
+        FieldT ce pct pt ty id = PolicySuccess pt' ->
         lred (Efield (Eval (Vlong ofs, pt) (Tunion id a)) f ty) pct te m
              (Eloc (Lmem (Int64.add ofs (Int64.repr delta)) pt' bf) ty) te m.
 
     Inductive lfailred: expr -> tag -> string -> list tag -> Prop :=
     | failred_field_struct: forall ofs pt id co a f ty pct delta bf msg params,
-        (snd ge)!id = Some co ->
-        field_offset (snd ge) f (co_members co) = OK (delta, bf) ->
-        FieldT (snd ge) pct pt ty id = PolicyFail msg params ->
+        ce!id = Some co ->
+        field_offset ce f (co_members co) = OK (delta, bf) ->
+        FieldT ce pct pt ty id = PolicyFail msg params ->
         lfailred (Efield (Eval (Vlong ofs, pt) (Tstruct id a)) f ty) pct
                  msg params
     | failred_field_union: forall ofs pt id co a f ty pct delta bf msg params,
-        (snd ge)!id = Some co ->
-        union_field_offset (snd ge) f (co_members co) = OK (delta, bf) ->
-        FieldT (snd ge) pct pt ty id = PolicyFail msg params ->
+        ce!id = Some co ->
+        union_field_offset ce f (co_members co) = OK (delta, bf) ->
+        FieldT ce pct pt ty id = PolicyFail msg params ->
         lfailred (Efield (Eval (Vlong ofs, pt) (Tunion id a)) f ty) pct
                  msg params
     .
@@ -343,7 +347,7 @@ Module Csem (P: Policy).
         rred PCT (Eunop op (Eval (v1,vt1) ty1) ty) te m E0
              PCT' (Eval (v,vt) ty) te m
     | red_binop: forall op v1 vt1 ty1 v2 vt2 ty2 ty te m v vt' PCT',
-        sem_binary_operation (snd ge) op v1 ty1 v2 ty2 m = Some v ->
+        sem_binary_operation ce op v1 ty1 v2 ty2 m = Some v ->
         BinopT op PCT vt1 vt2 = PolicySuccess (PCT', vt') ->
         rred PCT (Ebinop op (Eval (v1,vt1) ty1) (Eval (v2,vt2) ty2) ty) te m E0
              PCT' (Eval (v,vt') ty) te m
@@ -411,11 +415,11 @@ Module Csem (P: Policy).
     | red_sizeof: forall ty1 ty te m vt',
         ConstT PCT = PolicySuccess vt' ->
         rred PCT (Esizeof ty1 ty) te m E0
-             PCT (Eval (Vlong (Int64.repr (sizeof (snd ge) ty1)), vt') ty) te m
+             PCT (Eval (Vlong (Int64.repr (sizeof ce ty1)), vt') ty) te m
     | red_alignof: forall ty1 ty te m vt',
         ConstT PCT = PolicySuccess vt' ->
         rred PCT (Ealignof ty1 ty) te m E0
-             PCT (Eval (Vlong (Int64.repr (alignof (snd ge) ty1)), vt') ty) te m
+             PCT (Eval (Vlong (Int64.repr (alignof ce ty1)), vt') ty) te m
     | red_assign_mem: forall ofs ty1 pt bf v1 vt1 v2 vt2 ty2 te m t1 t2 m' v' PCT' vt' PCT'' vt'' v'' vt''' lts lts',
         sem_cast v2 ty2 ty1 m = Some v' ->
         deref_loc ty1 m ofs pt bf t1 (MemorySuccess ((v1,vt1), lts)) ->
@@ -493,7 +497,7 @@ Module Csem (P: Policy).
              PCT' (Eval (v,vt') ty) te m
     | red_builtin: forall ef tyargs el ty te m vargs t vres PCT' m',
         cast_arguments m el tyargs vargs ->
-        external_call ef (fst ge) vargs PCT m t vres PCT' m' ->
+        external_call ef ge vargs PCT m t vres PCT' m' ->
         rred PCT (Ebuiltin ef tyargs el ty) te m t
              PCT' (Eval vres ty) te m'.
 
@@ -529,7 +533,7 @@ Module Csem (P: Policy).
         rfailred PCT (Eunop op (Eval (v1,vt1) ty1) ty) te m E0
                  msg params
     | failred_binop: forall op v1 vt1 ty1 v2 vt2 ty2 ty te m v msg params,
-        sem_binary_operation (snd ge) op v1 ty1 v2 ty2 m = Some v ->
+        sem_binary_operation ce op v1 ty1 v2 ty2 m = Some v ->
         BinopT op PCT vt1 vt2 = PolicyFail msg params ->
         rfailred PCT (Ebinop op (Eval (v1,vt1) ty1) (Eval (v2,vt2) ty2) ty) te m E0
                  msg params
@@ -635,7 +639,7 @@ Module Csem (P: Policy).
         rfailred PCT (Eparen (Eval (v1,vt1) ty1) ty2 ty) te m E0
                  msg params
     | failred_call: forall vf vft tyf te m tyargs tyres cconv el ty fd vargs msg params,
-        Genv.find_funct (fst ge) vf = Some fd ->
+        Genv.find_funct ge vf = Some fd ->
         cast_arguments m el tyargs vargs ->
         type_of_fundef fd = Tfunction tyargs tyres cconv ->
         classify_fun tyf = fun_case_f tyargs tyres cconv ->
@@ -685,7 +689,7 @@ Module Csem (P: Policy).
 
     Inductive callred: tag -> expr -> mem -> tag -> fundef -> list atom -> type -> Prop :=
     | red_call: forall PCT PCT' vf vft tyf m tyargs tyres cconv el ty fd vargs,
-        Genv.find_funct (fst ge) vf = Some fd ->
+        Genv.find_funct ge vf = Some fd ->
         cast_arguments m el tyargs vargs ->
         type_of_fundef fd = Tfunction tyargs tyres cconv ->
         classify_fun tyf = fun_case_f tyargs tyres cconv ->
@@ -1257,7 +1261,7 @@ Inductive sstep: state -> trace -> state -> Prop :=
 
           
 | step_external_function: forall ef PCT PCT' targs tres cc vargs k m vres t m',
-    external_call ef (fst ge) vargs PCT m t vres PCT' m' ->
+    external_call ef ge vargs PCT m t vres PCT' m' ->
     sstep (Callstate (External ef targs tres cc) PCT vargs k m)
           t (Returnstate (External ef targs tres cc) PCT' vres k m')
 
@@ -1284,11 +1288,10 @@ End SEM.
       without arguments and with an empty continuation. *)
 
   Inductive initial_state (p: program): state -> Prop :=
-  | initial_state_intro: forall b pt f m0,
-      let ge := globalenv p in
-      Genv.init_mem p = MemorySuccess m0 ->
-      Genv.find_symbol (fst ge) p.(prog_main) = Some (inl (b,pt)) ->
-      Genv.find_funct_ptr (fst ge) b = Some f ->
+  | initial_state_intro: forall b pt f ge ce m0,
+      globalenv p = (ge,ce,m0) ->
+      Genv.find_symbol ge p.(prog_main) = Some (inl (b,pt)) ->
+      Genv.find_funct_ptr ge b = Some f ->
       type_of_fundef f = Tfunction Tnil type_int32s cc_default ->
       initial_state p (Callstate f InitPCT nil Kstop m0).
 
@@ -1299,9 +1302,9 @@ End SEM.
       final_state (Returnstate fd PCT (Vint r, t) Kstop m) r.
 
   (** Wrapping up these definitions in a small-step semantics. *)
-
   Definition semantics (p: program) :=
-    Semantics_gen (fun ge => step (ge,snd (globalenv p))) (initial_state p) final_state (fst (globalenv p)).
+    let '(ge,ce,_) := globalenv p in
+    Semantics_gen (fun ge => step ge ce) (initial_state p) final_state ge.
 
   (** This semantics has the single-event property. *)
 

@@ -1768,8 +1768,8 @@ Admitted.
 Qed.*)
 
 Lemma wt_assign_loc:
-  forall ge ty m ofs pt bf v t m' v' lts,
-    assign_loc ge ty m ofs pt bf v t (MemorySuccess (m', v')) lts ->
+  forall ge ce ty m ofs pt bf v t m' v' lts,
+    assign_loc ge ce ty m ofs pt bf v t (MemorySuccess (m', v')) lts ->
     wt_atom v ty -> wt_atom v' ty.
 Admitted.
 (*Proof.
@@ -1846,8 +1846,8 @@ Proof.
 Qed.
 
 Lemma wt_rred:
-  forall ge tyenv PCT a te m t PCT' a' te' m',
-    rred ge PCT a te m t PCT' a' te' m' -> wt_rvalue (snd ge) tyenv a -> wt_rvalue (snd ge) tyenv a'.
+  forall ge ce tyenv PCT a te m t PCT' a' te' m',
+    rred ge ce PCT a te m t PCT' a' te' m' -> wt_rvalue ce tyenv a -> wt_rvalue ce tyenv a'.
 Proof.
   induction 1; intros WT; inversion WT.
   - (* const *) constructor. auto.
@@ -1921,8 +1921,8 @@ Proof.
 Admitted.
 
 Lemma wt_lred:
-  forall tyenv ge e a pct te m a' te' m',
-    lred ge e a pct te m a' te' m' -> wt_lvalue (snd ge) tyenv a -> wt_lvalue (snd ge) tyenv a'.
+  forall tyenv ge ce e a pct te m a' te' m',
+    lred ge ce e a pct te m a' te' m' -> wt_lvalue ce tyenv a -> wt_lvalue ce tyenv a'.
 Proof.
   induction 1; intros WT; try constructor.
   - admit.
@@ -1930,15 +1930,15 @@ Proof.
 Admitted.
 
 Lemma rred_same_type:
-  forall ge PCT a te m t PCT' a' te' m',
-    rred ge PCT a te m t PCT' a' te' m' -> typeof a' = typeof a.
+  forall ge ce PCT a te m t PCT' a' te' m',
+    rred ge ce PCT a te m t PCT' a' te' m' -> typeof a' = typeof a.
 Proof.
   induction 1; auto.
 Qed.
 
 Lemma lred_same_type:
-  forall ge e a pct te m a' te' m',
-    lred ge e a pct te m a' te' m' -> typeof a' = typeof a.
+  forall ge ce e a pct te m a' te' m',
+    lred ge ce e a pct te m a' te' m' -> typeof a' = typeof a.
 Proof.
   induction 1; auto.
 Qed.
@@ -2045,10 +2045,10 @@ Section PRESERVATION.
 
 Variable prog: program.
 Hypothesis WTPROG: wt_program prog.
-Let gce := Csem.globalenv prog.
-Let ge := fst gce.
-Let ce := snd gce.
-Let gtenv := bind_globdef (PTree.empty _) prog.(prog_defs).
+
+Definition ge := let '(ge,_,_) := Csem.globalenv prog in ge.
+Definition ce := let '(_,ce,_) := Csem.globalenv prog in ce.
+Definition gtenv := bind_globdef (PTree.empty _) prog.(prog_defs).
 
 Inductive wt_expr_cont: typenv -> function -> cont -> Prop :=
   | wt_Kdo: forall te f k,
@@ -2157,34 +2157,36 @@ Definition fundef_return (fd: fundef) : type :=
 Lemma wt_find_funct:
   forall v fd, Genv.find_funct ge v = Some fd -> wt_fundef ce gtenv fd.
 Proof.
-  intros. apply Genv.find_funct_prop with (p := prog) (v := v); auto.
+  unfold ge. unfold ce. unfold Csem.globalenv.
+  destruct (globalenv (prog_comp_env prog) prog) eqn:?.
+  intros. eapply Genv.find_funct_prop with (p := prog) (v := v); eauto.
   intros. inv WTPROG. apply H1 with id; auto.
 Qed.
 
-Inductive wt_state: Csem.state -> Prop :=
+Inductive wt_state (ce:composite_env): Csem.state -> Prop :=
 | wt_stmt_state: forall f PCT s k e m tye te
                         (WTK: wt_stmt_cont tye f k)
                         (WTB: wt_stmt ce tye f.(fn_return) f.(fn_body))
                         (WTS: wt_stmt ce tye f.(fn_return) s),
-    wt_state (State f PCT s k e te m)
+    wt_state ce (State f PCT s k e te m)
 | wt_expr_state: forall f PCT r k e m tye te
                         (WTK: wt_expr_cont tye f k)
                         (WTB: wt_stmt ce tye f.(fn_return) f.(fn_body))
                         (WTE: wt_rvalue ce tye r),
-    wt_state (ExprState f PCT r k e te m)
+    wt_state ce (ExprState f PCT r k e te m)
 | wt_call_state: forall b fd PCT vargs k m
                         (WTK: wt_call_cont k (fundef_return fd))
                         (WTFD: wt_fundef ce gtenv fd)
                         (FIND: Genv.find_funct ge b = Some fd),
-    wt_state (Callstate fd PCT vargs k m)
+    wt_state ce (Callstate fd PCT vargs k m)
 | wt_return_state: forall fd PCT v vt k m ty
                           (WTK: wt_call_cont k ty)
                           (VAL: wt_val v ty),
-    wt_state (Returnstate fd PCT (v,vt) k m)
+    wt_state ce (Returnstate fd PCT (v,vt) k m)
 | wt_stuck_state:
-  wt_state Stuckstate
+  wt_state ce Stuckstate
 | wt_failstop_state: forall r params,
-    wt_state (Failstop r params).
+    wt_state ce (Failstop r params).
 
 Hint Constructors wt_expr_cont wt_stmt_cont wt_stmt wt_state: ty.
 
@@ -2234,7 +2236,7 @@ Qed.
 End WT_FIND_LABEL.
 
 Lemma preservation_estep:
-  forall S t S', estep gce S t S' -> wt_state S -> wt_state S'.
+  forall S t S', estep ge ce S t S' -> wt_state ce S -> wt_state ce S'.
 Proof.
   induction 1; intros WT; inv WT.
 - (* lred *)
@@ -2270,7 +2272,7 @@ Proof.
 Qed.
 
 Lemma preservation_sstep:
-  forall S t S', sstep gce S t S' -> wt_state S -> wt_state S'.
+  forall S t S', sstep ge ce S t S' -> wt_state ce S -> wt_state ce S'.
 Proof.
   induction 1; intros WT; inv WT; try (inv WTS; eauto with ty; fail); try (inv WTK; eauto with ty; fail).
 - inv WTK; destruct b; eauto with ty.
@@ -2291,17 +2293,21 @@ Admitted.
 (*Qed.*)
 
 Theorem preservation:
-  forall S t S', Csem.step gce S t S' -> wt_state S -> wt_state S'.
+  forall S t S', Csem.step ge ce S t S' -> wt_state ce S -> wt_state ce S'.
 Proof.
   intros. destruct H. eapply preservation_estep; eauto. eapply preservation_sstep; eauto.
 Qed.
 
 Theorem wt_initial_state:
-  forall S, Csem.initial_state prog S -> wt_state S.
+  forall S, Csem.initial_state prog S -> wt_state (prog.(prog_comp_env)) S.
 Proof.
-  intros. inv H. econstructor. constructor.
-  apply Genv.find_funct_ptr_prop with (p := prog) (b := b); auto.
-  intros. inv WTPROG. apply H4 with id; auto.
+  intros. inv H.
+  unfold Csem.globalenv in *.
+  destruct (globalenv (prog_comp_env prog) prog) eqn:?.
+  inv H0. econstructor. constructor.  
+  eapply Genv.find_funct_ptr_prop with (p := prog) (b := b); eauto.
+  intros. inv WTPROG. apply H0 with id; auto.
+  unfold ge. unfold Csem.globalenv. rewrite Heqp.
   instantiate (1 := (Vfptr b)). rewrite Genv.find_funct_find_funct_ptr. auto.
 Qed.
 

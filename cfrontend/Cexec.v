@@ -148,10 +148,11 @@ Module Cexec (P:Policy).
 
   Section EXEC.
 
-    Variable ge: gcenv.
+    Variable ge: genv.
+    Variable ce: composite_env.
 
     Variable do_external_function:
-  string -> signature -> Genv.t fundef type -> world -> list atom -> tag -> mem -> option (world * trace * atom * tag * mem).
+      string -> signature -> Genv.t fundef type -> world -> list atom -> tag -> mem -> option (world * trace * atom * tag * mem).
 
     Hypothesis do_external_function_sound:
       forall id sg ge vargs pct m t vres pct' m' w w',
@@ -217,27 +218,27 @@ Module Cexec (P:Policy).
     end.
 
     Definition assign_copy_ok (ty: type) (ofs: int64) (ofs': int64) : Prop :=
-      (alignof_blockcopy (snd ge) ty | Int64.unsigned ofs') /\ (alignof_blockcopy (snd ge) ty | Int64.unsigned ofs) /\
+      (alignof_blockcopy ce ty | Int64.unsigned ofs') /\ (alignof_blockcopy ce ty | Int64.unsigned ofs) /\
         (Int64.unsigned ofs' = Int64.unsigned ofs
-         \/ Int64.unsigned ofs' + sizeof (snd ge) ty <= Int64.unsigned ofs
-         \/ Int64.unsigned ofs + sizeof (snd ge) ty <= Int64.unsigned ofs').
+         \/ Int64.unsigned ofs' + sizeof ce ty <= Int64.unsigned ofs
+         \/ Int64.unsigned ofs + sizeof ce ty <= Int64.unsigned ofs').
 
     Remark check_assign_copy:
       forall (ty: type) (ofs ofs': int64),
         { assign_copy_ok ty ofs ofs' } + {~ assign_copy_ok ty ofs ofs' }.
     Proof with try (right; intuition lia).
       intros. unfold assign_copy_ok.
-      destruct (Zdivide_dec (alignof_blockcopy (snd ge) ty) (Int64.unsigned ofs')); auto...
-      destruct (Zdivide_dec (alignof_blockcopy (snd ge) ty) (Int64.unsigned ofs)); auto...
+      destruct (Zdivide_dec (alignof_blockcopy ce ty) (Int64.unsigned ofs')); auto...
+      destruct (Zdivide_dec (alignof_blockcopy ce ty) (Int64.unsigned ofs)); auto...
       assert (Y:{ Int64.unsigned ofs' = Int64.unsigned ofs \/
-                    Int64.unsigned ofs' + sizeof (snd ge) ty <= Int64.unsigned ofs \/
-                    Int64.unsigned ofs + sizeof (snd ge) ty <= Int64.unsigned ofs'} +
+                    Int64.unsigned ofs' + sizeof ce ty <= Int64.unsigned ofs \/
+                    Int64.unsigned ofs + sizeof ce ty <= Int64.unsigned ofs'} +
                   {~ (Int64.unsigned ofs' = Int64.unsigned ofs \/
-                        Int64.unsigned ofs' + sizeof (snd ge) ty <= Int64.unsigned ofs \/
-                        Int64.unsigned ofs + sizeof (snd ge) ty <= Int64.unsigned ofs')}).
+                        Int64.unsigned ofs' + sizeof ce ty <= Int64.unsigned ofs \/
+                        Int64.unsigned ofs + sizeof ce ty <= Int64.unsigned ofs')}).
       { destruct (zeq (Int64.unsigned ofs') (Int64.unsigned ofs)); auto.
-        destruct (zle (Int64.unsigned ofs' + sizeof (snd ge) ty) (Int64.unsigned ofs)); auto.
-        destruct (zle (Int64.unsigned ofs + sizeof (snd ge) ty) (Int64.unsigned ofs')); auto.
+        destruct (zle (Int64.unsigned ofs' + sizeof ce ty) (Int64.unsigned ofs)); auto.
+        destruct (zle (Int64.unsigned ofs + sizeof ce ty) (Int64.unsigned ofs')); auto.
         right. intro. destruct H. contradiction. destruct H. contradiction. contradiction. }
       destruct Y... left; intuition lia.
     Defined.
@@ -265,7 +266,7 @@ Module Cexec (P:Policy).
               | (Vlong ofs',vt) =>
                   let ofs'' := ofs' in
                   check (check_assign_copy ty ofs ofs'');
-                  match Mem.loadbytes m (Int64.unsigned ofs'') (sizeof (snd ge) ty) with
+                  match Mem.loadbytes m (Int64.unsigned ofs'') (sizeof ce ty) with
                   | MemorySuccess bytes =>
                       match Mem.storebytes m (Int64.unsigned ofs) bytes lts with
                       | MemorySuccess m' =>
@@ -342,11 +343,11 @@ Module Cexec (P:Policy).
     Proof.
       unfold do_deref_loc; intros. inv H.
       - inv H0. rewrite H1; rewrite H2. auto.
-      - rewrite H1; rewrite H2. apply (do_volatile_load_complete ge w _ _ _ w') in H3.
+      - rewrite H1; rewrite H2. apply (do_volatile_load_complete ge ce w _ _ _ w') in H3.
         rewrite H4. rewrite H3; auto. apply H0.
-      - rewrite H1; rewrite H2. apply (do_volatile_load_complete ge w _ _ _ w') in H3.
+      - rewrite H1; rewrite H2. apply (do_volatile_load_complete ge ce w _ _ _ w') in H3.
         rewrite H3. auto. apply H0.
-      - rewrite H1; rewrite H2. apply (do_volatile_load_complete ge w _ _ _ w') in H3.
+      - rewrite H1; rewrite H2. apply (do_volatile_load_complete ge ce w _ _ _ w') in H3.
         rewrite H4. rewrite H3; auto. apply H0.        
       - inv H0. rewrite H1. auto.
       - inv H0. rewrite H1. auto.
@@ -358,7 +359,7 @@ Module Cexec (P:Policy).
     Lemma do_assign_loc_sound:
       forall w ty m ofs pt bf v w' t lts res,
         do_assign_loc w ty m ofs pt bf v lts = Some (w', t, res) ->
-        assign_loc ge ty m ofs pt bf v t res lts /\ possible_trace w t w'.
+        assign_loc ge ce ty m ofs pt bf v t res lts /\ possible_trace w t w'.
     Proof.
       unfold do_assign_loc; intros until res.
       destruct bf.
@@ -399,7 +400,7 @@ Module Cexec (P:Policy).
     
 Lemma do_assign_loc_complete:
   forall w ty m ofs pt bf v w' t m' v' lts,
-  assign_loc ge ty m ofs pt bf v t (MemorySuccess (m', v')) lts -> possible_trace w t w' ->
+  assign_loc ge ce ty m ofs pt bf v t (MemorySuccess (m', v')) lts -> possible_trace w t w' ->
   do_assign_loc w ty m ofs pt bf v lts = Some (w', t, MemorySuccess (m', v')).
 Proof.
   unfold do_assign_loc; intros. inv H.
@@ -573,7 +574,7 @@ Section EXPRS.
         | Some PRIV =>
             topred (Lred "red_var_tmp" (Eloc (Ltmp x) ty) te m)
         | None =>
-            match Genv.find_symbol (fst ge) x with
+            match Genv.find_symbol ge x with
             | Some (inr (base, bound, t)) =>
                 topred (Lred "red_var_global" (Eloc (Lmem (Int64.repr base) t Full) ty) te m)
             | Some (inl (b, t)) =>
@@ -597,22 +598,22 @@ Section EXPRS.
         | Some (Vlong ofs, pt, ty') =>
             match ty' with
             | Tstruct id _ =>
-                do co <- (snd ge)!id;
-                match field_offset (snd ge) f (co_members co) with
+                do co <- ce!id;
+                match field_offset ce f (co_members co) with
                 | Error _ => stuck
                 | OK (delta, bf) =>
-                    at "failred_field_struct" trule pt' <- FieldT (snd ge) pct pt ty id;
+                    at "failred_field_struct" trule pt' <- FieldT ce pct pt ty id;
                     topred (Lred "red_field_struct" (Eloc (Lmem (Int64.add
                                                                    ofs
                                                                    (Int64.repr delta))
                                                                 pt' bf) ty) te m)
                 end
             | Tunion id _ =>
-                do co <- (snd ge)!id;
-                match union_field_offset (snd ge) f (co_members co) with
+                do co <- ce!id;
+                match union_field_offset ce f (co_members co) with
                 | Error _ => stuck
                 | OK (delta, bf) =>
-                    at "failred_field_union" trule pt' <- FieldT (snd ge) pct pt ty id;
+                    at "failred_field_union" trule pt' <- FieldT ce pct pt ty id;
                     topred (Lred "red_field_union" (Eloc (Lmem (Int64.add
                                                                   ofs
                                                                   (Int64.repr delta))
@@ -679,7 +680,7 @@ Section EXPRS.
     | RV, Ebinop op r1 r2 ty =>
         match is_val r1, is_val r2 with
         | Some(v1, vt1, ty1), Some(v2, vt2, ty2) =>
-            do v <- sem_binary_operation (snd ge) op v1 ty1 v2 ty2 m;
+            do v <- sem_binary_operation ce op v1 ty1 v2 ty2 m;
             at "failred_binop" trule pct',vt' <- BinopT op pct vt1 vt2;
             topred (Rred "red_binop" pct' (Eval (v,vt') ty) te m E0) (* TODO: control points *)
         | _, _ =>
@@ -772,10 +773,10 @@ Section EXPRS.
         end
     | RV, Esizeof ty' ty =>
         at "failred_sizeof" trule vt' <- ConstT pct;
-        topred (Rred "red_sizeof" pct (Eval (Vlong (Int64.repr (sizeof (snd ge) ty')), vt') ty) te m E0)
+        topred (Rred "red_sizeof" pct (Eval (Vlong (Int64.repr (sizeof ce ty')), vt') ty) te m E0)
     | RV, Ealignof ty' ty =>
         at "failred_alignor" trule vt' <- ConstT pct;
-        topred (Rred "red_alignof" pct (Eval (Vlong (Int64.repr (alignof (snd ge) ty')), vt') ty) te m E0)
+        topred (Rred "red_alignof" pct (Eval (Vlong (Int64.repr (alignof ce ty')), vt') ty) te m E0)
     | RV, Eassign l1 r2 ty =>
         match is_loc l1, is_val r2 with
         | Some (Lmem ofs pt1 bf, ty1), Some(v2, vt2, ty2) =>
@@ -908,7 +909,7 @@ Section EXPRS.
         | Some(vf, ft, tyf), Some vtl =>
             match classify_fun tyf with
             | fun_case_f tyargs tyres cconv =>
-                do fd <- Genv.find_funct (fst ge) vf;
+                do fd <- Genv.find_funct ge vf;
                 do vargs <- sem_cast_arguments vtl tyargs m;
                 check type_eq (type_of_fundef fd) (Tfunction tyargs tyres cconv);
                 at "failred_call" trule pct' <- CallT pct ft;
@@ -953,19 +954,19 @@ Section EXPRS.
   | imm_safe_t_loc: forall l ty pct te m,
       imm_safe_t LV (Eloc l ty) pct te m
   | imm_safe_t_lred: forall to C l pct te m l' te' m',
-      lred ge e l pct te m l' te' m' ->
+      lred ge ce e l pct te m l' te' m' ->
       context LV to C ->
       imm_safe_t to (C l) pct te m
   | imm_safe_t_lfailred: forall to C l pct te m msg params,
-      lfailred ge l pct msg params ->
+      lfailred ce l pct msg params ->
       context LV to C ->
       imm_safe_t to (C l) pct te m
   | imm_safe_t_rred: forall to C pct r te m t pct' r' te' m' w',
-      rred ge pct r te m t pct' r' te' m' -> possible_trace w t w' ->
+      rred ge ce pct r te m t pct' r' te' m' -> possible_trace w t w' ->
       context RV to C ->
       imm_safe_t to (C r) pct te m
   | imm_safe_t_rfailred: forall to C r pct te m tr msg params w',
-      rfailred ge pct r te m tr msg params -> possible_trace w tr w' ->
+      rfailred ge ce pct r te m tr msg params -> possible_trace w tr w' ->
       context RV to C ->
       imm_safe_t to (C r) pct te m
   | imm_safe_t_callred: forall to C pct pct' r te m fd args ty,
@@ -974,7 +975,7 @@ Section EXPRS.
       imm_safe_t to (C r) pct te m.
 
 Remark imm_safe_t_imm_safe:
-  forall k a pct te m, imm_safe_t k a pct te m -> imm_safe ge e k a pct te m.
+  forall k a pct te m, imm_safe_t k a pct te m -> imm_safe ge ce e k a pct te m.
 Proof.
   induction 1.
   constructor.
@@ -999,8 +1000,8 @@ Definition invert_expr_prop (a: expr) (pct: tag) (te: tenv) (m: mem) : Prop :=
   | Evar x ty =>
       e!x = Some PRIV
       \/ (exists base bound pt, e!x = Some (PUB (base, bound, pt)))
-      \/ (e!x = None /\ exists base bound pt, Genv.find_symbol (fst ge) x = Some (inr (base,bound,pt)))
-      \/ (e!x = None /\ exists b pt, Genv.find_symbol (fst ge) x = Some (inl (b,pt)))
+      \/ (e!x = None /\ exists base bound pt, Genv.find_symbol ge x = Some (inr (base,bound,pt)))
+      \/ (e!x = None /\ exists b pt, Genv.find_symbol ge x = Some (inl (b,pt)))
   | Ederef (Eval v ty1) ty =>
       (exists ofs pt, v = (Vint ofs,pt)) \/ (exists ofs pt, v = (Vlong ofs,pt))
   | Eaddrof (Eloc (Lmem ofs pt bf) ty1) ty =>
@@ -1011,10 +1012,10 @@ Definition invert_expr_prop (a: expr) (pct: tag) (te: tenv) (m: mem) : Prop :=
       ty = ty1
   | Efield (Eval v ty1) f ty =>
       match v,ty1 with
-      | (Vlong ofs,vt), Tstruct id _ => exists co delta bf, (snd ge)!id = Some co /\
-                                                  field_offset (snd ge) f (co_members co) = OK (delta, bf)
-      | (Vlong ofs,vt), Tunion id _ => exists co delta bf, (snd ge)!id = Some co /\
-                                             union_field_offset (snd ge) f (co_members co) = OK (delta, bf)
+      | (Vlong ofs,vt), Tstruct id _ => exists co delta bf, ce!id = Some co /\
+                                                  field_offset ce f (co_members co) = OK (delta, bf)
+      | (Vlong ofs,vt), Tunion id _ => exists co delta bf, ce!id = Some co /\
+                                             union_field_offset ce f (co_members co) = OK (delta, bf)
       | _, _ => False
       end
   | Eval v ty => False
@@ -1034,7 +1035,7 @@ Definition invert_expr_prop (a: expr) (pct: tag) (te: tenv) (m: mem) : Prop :=
   | Eunop op (Eval (v1,vt1) ty1) ty =>
       exists v, sem_unary_operation op v1 ty1 m = Some v
   | Ebinop op (Eval (v1,vt1) ty1) (Eval (v2,vt2) ty2) ty =>
-      exists v, sem_binary_operation (snd ge) op v1 ty1 v2 ty2 m = Some v
+      exists v, sem_binary_operation ce op v1 ty1 v2 ty2 m = Some v
   | Ecast (Eval (v1,vt1) (Tpointer ty1 attr1)) (Tpointer ty attr) =>
       exists v ofs1 ofs tr1 w' v2 vt2 lts1 tr w'' v3 vt3 lts,
       sem_cast v1 (Tpointer ty1 attr1) (Tpointer ty attr) m = Some v /\
@@ -1074,7 +1075,7 @@ Definition invert_expr_prop (a: expr) (pct: tag) (te: tenv) (m: mem) : Prop :=
                   AssignT pct vt1 vt2 = PolicySuccess (pct', vt2') ->
                   StoreT pct' pt vt2' lts = PolicySuccess (pct'', vt', lts') ->
                   exists t' w'' res',
-                    assign_loc ge ty1 m ofs pt bf (v2',vt') t' res' lts' /\ possible_trace w' t' w''))
+                    assign_loc ge ce ty1 m ofs pt bf (v2',vt') t' res' lts' /\ possible_trace w' t' w''))
   | Eassign (Eloc (Ltmp b) ty1) (Eval (v2,vt2) ty2) ty =>
       exists v1 v2' vt1,
       ty = ty1 /\ te!b = Some (v1,vt1) /\ sem_cast v2 ty2 ty1 m = Some v2'
@@ -1087,20 +1088,20 @@ Definition invert_expr_prop (a: expr) (pct: tag) (te: tenv) (m: mem) : Prop :=
       exprlist_all_values rargs ->
       exists tyargs tyres cconv fd vl,
          classify_fun tyf = fun_case_f tyargs tyres cconv
-      /\ Genv.find_funct (fst ge) vf = Some fd
+      /\ Genv.find_funct ge vf = Some fd
       /\ cast_arguments m rargs tyargs vl
       /\ type_of_fundef fd = Tfunction tyargs tyres cconv
   | Ebuiltin ef tyargs rargs ty =>
       exprlist_all_values rargs ->
       exists vargs t vres pct' m' w',
          cast_arguments m rargs tyargs vargs
-      /\ external_call ef (fst ge) vargs pct m t vres pct' m'
+      /\ external_call ef ge vargs pct m t vres pct' m'
       /\ possible_trace w t w'
   | _ => True
   end.
 
 Lemma lred_invert:
-  forall l pct te m l' te' m', lred ge e l pct te m l' te' m' -> invert_expr_prop l pct te m.
+  forall l pct te m l' te' m', lred ge ce e l pct te m l' te' m' -> invert_expr_prop l pct te m.
 Proof.
   induction 1; red; auto.
   - right; left; exists lo, hi, pt; auto.
@@ -1113,7 +1114,7 @@ Proof.
 Qed.
 
 Lemma lfailred_invert:
-  forall l pct te m msg param, lfailred ge l pct msg param -> invert_expr_prop l pct te m.
+  forall l pct te m msg param, lfailred ce l pct msg param -> invert_expr_prop l pct te m.
 Proof.
   induction 1; red; auto.
   - exists co, delta, bf; auto.
@@ -1144,7 +1145,7 @@ Ltac chomp :=
   end.
 
 Lemma rred_invert:
-  forall w' pct r te m t pct' r' te' m', rred ge pct r te m t pct' r' te' m' -> possible_trace w t w' -> invert_expr_prop r pct te m.
+  forall w' pct r te m t pct' r' te' m', rred ge ce pct r te m t pct' r' te' m' -> possible_trace w t w' -> invert_expr_prop r pct te m.
 Proof.
   induction 1; intros; red; auto; repeat (repeat chomp; eexists; eauto; intros).
   - destruct ty1; destruct ty; try congruence; repeat (eexists; eauto). 
@@ -1156,7 +1157,7 @@ Proof.
 Qed.
 
 Lemma rfailred_invert:
-  forall w' pct r te m tr msg params, rfailred ge pct r te m tr msg params -> possible_trace w tr w' -> invert_expr_prop r pct te m.
+  forall w' pct r te m tr msg params, rfailred ge ce pct r te m tr msg params -> possible_trace w tr w' -> invert_expr_prop r pct te m.
 Proof.
   induction 1; intros; red; auto; repeat (repeat chomp; eexists; eauto; intros).
   - destruct ty1; destruct ty; try congruence; repeat (eexists; eauto).
@@ -1251,13 +1252,13 @@ Local Hint Resolve context_compose contextlist_compose : core.
 
 Definition reduction_ok (k: kind) (pct: tag) (a: expr) (te: tenv) (m: mem) (rd: reduction) : Prop :=
   match k, rd with
-  | LV, Lred _ l' te' m' => lred ge e a pct te m l' te' m'
-  | RV, Rred _ pct' r' te' m' t => rred ge pct a te m t pct' r' te' m' /\ exists w', possible_trace w t w'
+  | LV, Lred _ l' te' m' => lred ge ce e a pct te m l' te' m'
+  | RV, Rred _ pct' r' te' m' t => rred ge ce pct a te m t pct' r' te' m' /\ exists w', possible_trace w t w'
   | RV, Callred _ fd args tyres pct' te' m' => callred ge pct a m pct' fd args tyres /\ te' = te /\ m' = m
   | LV, Stuckred _ => ~imm_safe_t k a pct te m
   | RV, Stuckred _ => ~imm_safe_t k a pct te m
-  | LV, Failstopred _ msg params tr => lfailred ge a pct msg params /\ tr = E0
-  | RV, Failstopred _ msg params tr => rfailred ge pct a te m tr msg params /\ exists w', possible_trace w tr w'
+  | LV, Failstopred _ msg params tr => lfailred ce a pct msg params /\ tr = E0
+  | RV, Failstopred _ msg params tr => rfailred ge ce pct a te m tr msg params /\ exists w', possible_trace w tr w'
   | _, _ => False
   end.
 
@@ -1606,7 +1607,7 @@ Proof with (try (apply not_invert_ok; simpl; intro; myinv; repeat do_do; intuiti
       destruct (e!x) as [[|[[base bound] pt]]|] eqn:?.
       * apply topred_ok; auto. eapply red_var_tmp; eauto.
       * subst. apply topred_ok; auto. eapply red_var_local; eauto.
-      * destruct (Genv.find_symbol (fst ge) x) as [[[b pt]|[[base bound] pt]]|] eqn:?...
+      * destruct (Genv.find_symbol ge x) as [[[b pt]|[[base bound] pt]]|] eqn:?...
         apply topred_ok; auto. apply red_func; auto.
         apply topred_ok; auto. eapply red_var_global; eauto.
     + (* Econst *)
@@ -1617,13 +1618,13 @@ Proof with (try (apply not_invert_ok; simpl; intro; myinv; repeat do_do; intuiti
       rewrite (is_val_inv _ _ _ Heqo).
       destruct v; destruct v; destruct ty'...
       * (* top struct *)
-        destruct ((snd ge)!i0) as [co|] eqn:?...
-        destruct (field_offset (snd ge) f (co_members co)) as [[delta bf]|] eqn:?...
+        destruct (ce!i0) as [co|] eqn:?...
+        destruct (field_offset ce f (co_members co)) as [[delta bf]|] eqn:?...
         tagdestr_ok.
         apply topred_ok; auto. eapply red_field_struct; eauto.
       * (* top union *)
-        destruct ((snd ge)!i0) as [co|] eqn:?...
-        destruct (union_field_offset (snd ge) f (co_members co)) as [[delta bf]|] eqn:?...
+        destruct (ce!i0) as [co|] eqn:?...
+        destruct (union_field_offset ce f (co_members co)) as [[delta bf]|] eqn:?...
         tagdestr_ok.
         apply topred_ok; auto. eapply red_field_union; eauto.
       * (* in depth *)
@@ -1694,7 +1695,7 @@ Proof with (try (apply not_invert_ok; simpl; intro; myinv; repeat do_do; intuiti
       destruct (is_val a2) as [[[v2 vt2] ty2] | ] eqn:?.
       * rewrite (is_val_inv _ _ _ Heqo). rewrite (is_val_inv _ _ _ Heqo0).
         (* top *)
-        destruct (sem_binary_operation (snd ge) op v1 ty1 v2 ty2 m) as [v|] eqn:?...
+        destruct (sem_binary_operation ce op v1 ty1 v2 ty2 m) as [v|] eqn:?...
         tagdestr_ok. apply topred_ok; auto. split. apply red_binop; auto. exists w; constructor. constructor.
       * (* depth *)
         eapply incontext2_ok; eauto.
@@ -1853,7 +1854,7 @@ Proof with (try (apply not_invert_ok; simpl; intro; myinv; repeat do_do; intuiti
       rewrite (is_val_inv _ _ _ Heqo). exploit is_val_list_all_values; eauto. intros ALLVAL.
       * (* top *)
         destruct (classify_fun tyf) as [tyargs tyres cconv|] eqn:?...
-        destruct (Genv.find_funct (fst ge) vf) as [fd|] eqn:?...
+        destruct (Genv.find_funct ge vf) as [fd|] eqn:?...
         destruct (sem_cast_arguments vtl tyargs m) as [vargs|] eqn:?...
         destruct (type_eq (type_of_fundef fd) (Tfunction tyargs tyres cconv))...
         tagdestr_ok.
@@ -1923,7 +1924,7 @@ Qed.
 
 Lemma lred_topred:
   forall pct l1 te m l2 te' m',
-    lred ge e l1 pct te m l2 te' m' ->
+    lred ge ce e l1 pct te m l2 te' m' ->
     exists rule, step_expr LV pct l1 te m = topred (Lred rule l2 te' m').
 Proof.
   induction 1; simpl.
@@ -1947,7 +1948,7 @@ Qed.
 
 Lemma lfailred_topred:
   forall pct l1 msg params te m,
-    lfailred ge l1 pct msg params ->
+    lfailred ce l1 pct msg params ->
     exists rule, step_expr LV pct l1 te m = topred (Failstopred rule msg params E0).
 Proof.
   induction 1; simpl.
@@ -2003,7 +2004,7 @@ Ltac cronch :=
 
 Lemma rred_topred:
   forall w' pct1 r1 te1 m1 t pct2 r2 te2 m2,
-    rred ge pct1 r1 te1 m1 t pct2 r2 te2 m2 -> possible_trace w t w' ->
+    rred ge ce pct1 r1 te1 m1 t pct2 r2 te2 m2 -> possible_trace w t w' ->
     exists rule, step_expr RV pct1 r1 te1 m1 = topred (Rred rule pct2 r2 te2 m2 t).
 Admitted.
 (*Proof.
@@ -2028,7 +2029,7 @@ Qed.*)
 
 Lemma rfailred_topred:
   forall w' pct r1 tr msg params te m,
-    rfailred ge pct r1 te m tr msg params -> possible_trace w tr w' ->
+    rfailred ge ce pct r1 te m tr msg params -> possible_trace w tr w' ->
     exists rule, step_expr RV pct r1 te m = topred (Failstopred rule msg params tr).
 Admitted.
 (*Proof.
@@ -2255,12 +2256,12 @@ Qed.
 
 Lemma imm_safe_imm_safe_t:
   forall k pct a te m,
-    imm_safe ge e k a pct te m ->
+    imm_safe ge ce e k a pct te m ->
     imm_safe_t k a pct te m \/
       exists C a1 tr,
         context RV k C /\ a = C a1 /\
-          ((exists pct' a1' te' m', rred ge pct a1 te m tr pct' a1' te' m') \/
-             (exists msg params, rfailred ge pct a1 te m tr msg params))
+          ((exists pct' a1' te' m', rred ge ce pct a1 te m tr pct' a1' te' m') \/
+             (exists msg params, rfailred ge ce pct a1 te m tr msg params))
         /\ forall w', ~possible_trace w tr w'.
 Proof.
   intros. inv H.
@@ -2285,15 +2286,15 @@ Qed.
   whose trace is not accepted by the external world. *)
 
 Definition can_crash_world (w: world) (S: Csem.state) : Prop :=
-  exists t, exists S', Csem.step ge S t S' /\ forall w', ~possible_trace w t w'.
+  exists t, exists S', Csem.step ge ce S t S' /\ forall w', ~possible_trace w t w'.
 
 Theorem not_imm_safe_t:
   forall K C pct a te m f k,
     context K RV C ->
     ~imm_safe_t K a pct te m ->
-    Csem.step ge (ExprState f pct (C a) k e te m) E0 Stuckstate \/ can_crash_world w (ExprState f pct (C a) k e te m).
+    Csem.step ge ce (ExprState f pct (C a) k e te m) E0 Stuckstate \/ can_crash_world w (ExprState f pct (C a) k e te m).
 Proof.
-  intros. destruct (classic (imm_safe ge e K a pct te m)).
+  intros. destruct (classic (imm_safe ge ce e K a pct te m)).
   - exploit imm_safe_imm_safe_t; eauto.
     intros [A | [C1 [a1 [tr [A [B [[[pct' [a1' [te' [m' D]]]]|[msg [params D]]] E]]]]]]].
     + contradiction.
@@ -2476,7 +2477,7 @@ Definition do_step (w: world) (s: Csem.state) : list transition :=
 
   | Callstate (Internal f) pct vargs k m =>
       check (list_norepet_dec ident_eq (var_names (fn_params f) ++ var_names (fn_vars f)));
-      match do_alloc_variables ge pct empty_env m (option_zip (f.(fn_params) ++ f.(fn_vars)) vargs) with
+      match do_alloc_variables ce pct empty_env m (option_zip (f.(fn_params) ++ f.(fn_vars)) vargs) with
       | MemorySuccess (PolicySuccess (pct',e,m')) =>
           ret "step_internal_function" (State f pct' f.(fn_body) k e (empty_tenv) m')
       | MemorySuccess (PolicyFail msg params) =>
@@ -2521,7 +2522,7 @@ Local Hint Extern 3 => exact I : core.
 Theorem do_step_sound:
   forall w S rule t S',
   In (TR rule t S') (do_step w S) ->
-  Csem.step ge S t S' \/ (t = E0 /\ S' = Stuckstate /\ can_crash_world w S).
+  Csem.step ge ce S t S' \/ (t = E0 /\ S' = Stuckstate /\ can_crash_world w S).
 Admitted.
 (*Proof with try (left; right; econstructor; eauto; fail).
   intros until S'. destruct S; simpl.
@@ -2581,7 +2582,7 @@ Admitted.
 Qed.*)
 
 Remark estep_not_val:
-  forall f pct a k e te m t S, estep ge (ExprState f pct a k e te m) t S -> is_val a = None.
+  forall f pct a k e te m t S, estep ge ce (ExprState f pct a k e te m) t S -> is_val a = None.
 Proof.
   intros.
   assert (forall b from to C, context from to C -> (from = to /\ C = fun x => x) \/ is_val (C b) = None).
@@ -2597,7 +2598,7 @@ Qed.
 
 Theorem do_step_complete:
   forall w S t S' w',
-  possible_trace w t w' -> Csem.step ge S t S' -> exists rule, In (TR rule t S') (do_step w S).
+  possible_trace w t w' -> Csem.step ge ce S t S' -> exists rule, In (TR rule t S') (do_step w S).
 Admitted.
 (*Proof with (unfold ret; eauto with coqlib).
   intros until w'; intros PT H.
@@ -2702,16 +2703,11 @@ End EXEC.
 Local Open Scope option_monad_scope.
 
 Definition do_initial_state (p: program): option (Genv.t (Ctypes.fundef function) type * Csem.state) :=
-  let ge := globalenv p in
-  match Genv.init_mem p with
-  | MemorySuccess m0 =>
-      dol b, pt <- Genv.find_symbol ge p.(prog_main);
-      do f <- Genv.find_funct_ptr ge b;
-      check (type_eq (type_of_fundef f) (Tfunction Tnil type_int32s cc_default));
-      Some (ge, Callstate f def_tag nil Kstop m0)
-  | MemoryFail msg =>
-      Some (ge, Failstop msg [])
-  end.
+  let '(ge,ce,m) := Csem.globalenv p in
+  dol b, pt <- Genv.find_symbol ge p.(prog_main);
+  do f <- Genv.find_funct_ptr ge b;
+  check (type_eq (type_of_fundef f) (Tfunction Tnil type_int32s cc_default));
+  Some (ge, Callstate f def_tag nil Kstop m).
 
 Definition at_final_state (S: Csem.state): option (PolicyResult int) :=
   match S with

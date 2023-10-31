@@ -65,8 +65,9 @@ Module InterpreterEvents (P:Policy).
   Local Open Scope memory_monad_scope.
 
   Section EXEC.
-    Variable ge: gcenv.
-
+    Variable ge: genv.
+    Variable ce: composite_env.
+    
     (* Events are externally visible calls, loads, and stores. Tags should not
        appear in event values, so when an atom would be passed or stored visibly,
        we omit the tag. *)
@@ -90,11 +91,11 @@ Module InterpreterEvents (P:Policy).
           check (tag_eq_dec vt def_tag); Some (EVlong n)
           (* ev_match_long : forall i : int64, eventval_match ge (EVlong i) AST.Tlong (Vlong i, def_tag) *)
 (*          else check (typ_eq t AST.Tptr);
-          match invert_symbol_ofs (fst ge) n with
+          match invert_symbol_ofs ge n with
           | Some id =>
-              match find_symbol (fst ge) id with
+              match find_symbol ge id with
               | Some (inr (base, bound, pt)) =>
-                  check (public_symbol (fst ge) id);
+                  check (public_symbol ge id);
                   check (tag_eq_dec vt pt);
                   Some (EVptr_global id (Int64.repr ((Int64.unsigned n)-base)))
           (* ev_match_global : forall (id : ident) (i base bound : Z) (pt : tag),
@@ -110,10 +111,10 @@ Module InterpreterEvents (P:Policy).
           end*)
       | Vfptr b =>
           check (typ_eq t AST.Tptr);
-          do id <- invert_symbol_block (fst ge) b;
-          match find_symbol (fst ge) id with
+          do id <- invert_symbol_block ge b;
+          match find_symbol ge id with
           | Some (inl (b,pt)) =>
-              check (public_symbol (fst ge) id);
+              check (public_symbol ge id);
               check (tag_eq_dec vt pt);
               Some (EVptr_fun id)
           | _ => None
@@ -151,9 +152,9 @@ Module InterpreterEvents (P:Policy).
       | EVlong i => check (typ_eq t AST.Tlong); Some (Vlong i, def_tag)
         (* ev_match_long : forall i : int64, eventval_match ge (EVlong i) AST.Tlong (Vlong i, def_tag) *)
       | EVptr_global id ofs => None
-(*        check (Genv.public_symbol (fst ge) id);
+(*        check (Genv.public_symbol ge id);
         check (typ_eq t AST.Tptr);
-        match Genv.find_symbol (fst ge) id with
+        match Genv.find_symbol ge id with
         | Some (inr (base,bound,pt)) =>
             Some (Vofptrsize (base + (Int64.signed ofs)), pt)
         | _ => None
@@ -166,9 +167,9 @@ Module InterpreterEvents (P:Policy).
              eventval_match ge (EVptr_global id (Ptrofs.repr (i - base))) Tptr
              (Vint (Int.repr i), pt) *) *)
       | EVptr_fun id =>
-        check (Genv.public_symbol (fst ge) id);
+        check (Genv.public_symbol ge id);
         check (typ_eq t AST.Tptr);
-        match Genv.find_symbol (fst ge) id with
+        match Genv.find_symbol ge id with
         | Some (inl (b,pt)) =>
           Some (Vfptr b, pt)
         | _ => None
@@ -194,9 +195,9 @@ Module InterpreterEvents (P:Policy).
       end.
 
     Lemma eventval_of_atom_sound:
-      forall v vt ev, eventval_of_atom v vt = Some ev -> eventval_match (fst ge) ev vt v.
+      forall v vt ev, eventval_of_atom v vt = Some ev -> eventval_match ge ev vt v.
     Proof.
-      intros until ev. destruct v; destruct v; simpl; mydestr; try constructor.
+      intros until ev. destruct v; destruct v; simpl; mydestr; try constructor; auto.
 (*      - pose (i' := Int64.unsigned i).
         replace (Int64.unsigned i) with i' by auto.
         replace i with (Int64.repr i') in * by apply Int64.repr_unsigned.
@@ -205,21 +206,21 @@ Module InterpreterEvents (P:Policy).
         rewrite H1 in Heqo0. inv Heqo0. destruct H2.
         rewrite Int64.unsigned_repr in *; eauto.
         eapply ev_match_global; eauto. *)
-      - apply invert_find_symbol_block in Heqo. destruct Heqo. auto.
-      - apply invert_find_symbol_block in Heqo. destruct Heqo. rewrite H in Heqo0. inv Heqo0. auto.
+      - apply (invert_find_symbol_block ce) in Heqo. destruct Heqo. rewrite H in Heqo0.
+        inv Heqo0. auto.
       Qed.
 
     Lemma eventval_of_atom_complete:
-      forall ev t v, eventval_match (fst ge) ev t v -> eventval_of_atom v t = Some ev.
+      forall ev t v, eventval_match ge ev t v -> eventval_of_atom v t = Some ev.
     Proof.
       induction 1; simpl; repeat (rewrite dec_eq_true); auto.
-      rewrite (Genv.find_invert_symbol_block _ _ H0). rewrite H0.
+      rewrite (Genv.find_invert_symbol_block ce _ _ H0). rewrite H0.
       simpl in H; rewrite H.
       rewrite dec_eq_true. auto.
     Qed.
 
     Lemma list_eventval_of_atom_sound:
-      forall vl tl evl, list_eventval_of_atom vl tl = Some evl -> eventval_list_match (fst ge) evl tl vl.
+      forall vl tl evl, list_eventval_of_atom vl tl = Some evl -> eventval_list_match ge evl tl vl.
     Proof with try discriminate.
       induction vl; destruct tl; simpl; intros; inv H.
       constructor.
@@ -229,20 +230,20 @@ Module InterpreterEvents (P:Policy).
     Qed.
 
     Lemma list_eventval_of_atom_complete:
-      forall evl tl vl, eventval_list_match (fst ge) evl tl vl -> list_eventval_of_atom vl tl = Some evl.
+      forall evl tl vl, eventval_list_match ge evl tl vl -> list_eventval_of_atom vl tl = Some evl.
     Proof.
       induction 1; simpl. auto.
       rewrite (eventval_of_atom_complete _ _ _ H). rewrite IHeventval_list_match. auto.
     Qed.
 
     Lemma atom_of_eventval_sound:
-      forall ev t v, atom_of_eventval ev t = Some v -> eventval_match (fst ge) ev t v.
+      forall ev t v, atom_of_eventval ev t = Some v -> eventval_match ge ev t v.
     Proof.
       intros until v. destruct ev; simpl; mydestr; constructor; auto.
     Qed.
 
     Lemma val_of_eventval_complete:
-      forall ev t v, eventval_match (fst ge) ev t v -> atom_of_eventval ev t = Some v.
+      forall ev t v, eventval_match ge ev t v -> atom_of_eventval ev t = Some v.
     Proof.
       induction 1; simpl; auto.
       simpl in *. rewrite H, H0. rewrite dec_eq_true. auto.  
@@ -251,9 +252,9 @@ Module InterpreterEvents (P:Policy).
     (** Volatile memory accesses. *)
     Definition do_volatile_load (w: world) (chunk: memory_chunk) (m: mem)
                (ofs: int64) : option (world * trace * MemoryResult atom) :=
-      if Genv.addr_is_volatile (fst ge) ofs
+      if Genv.addr_is_volatile ge ofs
       then
-        do id <- Genv.invert_symbol_ofs (fst ge) ofs;
+        do id <- Genv.invert_symbol_ofs ge ofs;
         do res,w' <- nextworld_vload w chunk id ofs;
         do vres,vt <- atom_of_eventval res (type_of_chunk chunk);
         Some (w', Event_vload chunk id ofs res :: nil, MemorySuccess (Val.load_result chunk vres, vt))
@@ -267,8 +268,8 @@ Module InterpreterEvents (P:Policy).
 
     Definition do_volatile_store (w: world) (chunk: memory_chunk) (m: mem)
                (ofs: int64) (v: atom) (lts: list tag) : option (world * trace * MemoryResult mem) :=
-      if Genv.addr_is_volatile (fst ge) ofs
-      then  (do id <- Genv.invert_symbol_ofs (fst ge) ofs;
+      if Genv.addr_is_volatile ge ofs
+      then  (do id <- Genv.invert_symbol_ofs ge ofs;
              do ev <- eventval_of_atom (atom_map (Val.load_result chunk) v) (type_of_chunk chunk);
              do w' <- nextworld_vstore w chunk id ofs ev;
              Some(w', Event_vstore chunk id ofs ev :: nil, MemorySuccess m))
@@ -283,7 +284,7 @@ Module InterpreterEvents (P:Policy).
     Lemma do_volatile_load_sound:
       forall w chunk m ofs w' t res,
         do_volatile_load w chunk m ofs = Some (w', t, res) ->
-        volatile_load (fst ge) chunk m ofs t res /\ possible_trace w t w'.
+        volatile_load ge chunk m ofs t res /\ possible_trace w t w'.
     Proof.
       intros until res. unfold do_volatile_load. mydestr.
       - generalize Heqo. mydestr. intros.
@@ -300,7 +301,7 @@ Module InterpreterEvents (P:Policy).
 
     Lemma do_volatile_load_complete:
       forall w chunk m ofs w' t res,
-        volatile_load (fst ge) chunk m ofs t res -> possible_trace w t w' ->
+        volatile_load ge chunk m ofs t res -> possible_trace w t w' ->
         do_volatile_load w chunk m ofs = Some (w', t, res).
     Admitted.
     (*Proof.
@@ -313,7 +314,7 @@ Module InterpreterEvents (P:Policy).
     Lemma do_volatile_store_sound:
       forall w chunk m ofs v w' t res lts,
         do_volatile_store w chunk m ofs v lts = Some (w', t, res) ->
-        volatile_store (fst ge) chunk m ofs v lts t res /\ possible_trace w t w'.
+        volatile_store ge chunk m ofs v lts t res /\ possible_trace w t w'.
 (*Proof.
   intros until v'. unfold do_volatile_store. mydestr.
   split. constructor; auto. apply Genv.invert_find_symbol; auto.
@@ -325,7 +326,7 @@ Qed.*)
 
     Lemma do_volatile_store_complete:
       forall w chunk m ofs v w' t res lts,
-        volatile_store (fst ge) chunk m ofs v lts t res -> possible_trace w t w' ->
+        volatile_store ge chunk m ofs v lts t res -> possible_trace w t w' ->
         do_volatile_store w chunk m ofs v lts = Some (w', t, res).
     Admitted.
 (*Proof.
@@ -504,7 +505,7 @@ Definition do_builtin_or_external (name: string) (sg: signature)
                | Some v => Some(w, E0, v, m)
                | None => None
                end
-  | None    => do_external_function name sg (fst ge) w vargs m
+  | None    => do_external_function name sg ge w vargs m
   end.*)
 
 Definition do_external (ef: external_function) :
@@ -512,7 +513,7 @@ Definition do_external (ef: external_function) :
   match ef with
   | EF_external name sg =>
       fun w vargs pct m =>
-        match do_external_function name sg (fst ge) w vargs pct m with
+        match do_external_function name sg ge w vargs pct m with
         | Some (w', tr', (v',vt'), pct', m') =>
             Some (w', tr', (MemorySuccess (PolicySuccess ((v',vt'), pct', m'))))
         | None => None
@@ -533,7 +534,7 @@ Definition do_external (ef: external_function) :
 Lemma do_ef_external_sound:
   forall ef w vargs pct m w' t vres pct' m',
     do_external ef w vargs pct m = Some (w', t, MemorySuccess (PolicySuccess (vres, pct', m'))) ->
-    external_call ef (fst ge) vargs pct m t vres pct' m' /\ possible_trace w t w'.
+    external_call ef ge vargs pct m t vres pct' m' /\ possible_trace w t w'.
 Admitted.
 (*Proof with try congruence.
   intros until m'.
@@ -605,7 +606,7 @@ Qed.*)
 
 Lemma do_ef_external_complete:
   forall ef w vargs pct m w' t vres pct' m',
-    external_call ef (fst ge) vargs pct m t vres pct' m' -> possible_trace w t w' ->
+    external_call ef ge vargs pct m t vres pct' m' -> possible_trace w t w' ->
     do_external ef w vargs pct m = Some (w', t, MemorySuccess (PolicySuccess (vres, pct', m'))).
 Admitted.
 (*Proof.

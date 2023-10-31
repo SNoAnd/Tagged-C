@@ -469,7 +469,7 @@ and world_io ge m id args =
   None
 
 and world_vload ge m chunk id ofs =
-  Genv.find_symbol (fst ge) id >>=
+  Genv.find_symbol ge id >>=
           fun res ->
                 match res with
                 | Coq_inr((base,bound),t) ->
@@ -481,7 +481,7 @@ and world_vload ge m chunk id ofs =
                 | _ -> None
 
 and world_vstore ge m chunk id ofs ev =
-  Genv.find_symbol (fst ge) id >>=
+  Genv.find_symbol ge id >>=
           fun res ->
                 match res with
                 | Coq_inr((base,bound),t) ->
@@ -518,7 +518,7 @@ let is_stuck r =
   | Cexec.Stuckred msg -> true
   | _ -> false
 
-let diagnose_stuck_expr p ge w f a kont pct e te m =
+let diagnose_stuck_expr p ge ce w f a kont pct e te m =
   let rec diagnose k a =
   (* diagnose subexpressions first *)
   let found =
@@ -540,9 +540,9 @@ let diagnose_stuck_expr p ge w f a kont pct e te m =
     | Csem.RV, Csyntax.Ebuiltin(ef, tyargs, rargs, ty) -> diagnose_list rargs
     | _, _ -> false in
   if found then true else begin
-    let l = Cexec.step_expr ge do_external_function (*do_inline_assembly*) e w k pct a te m in
+    let l = Cexec.step_expr ge ce do_external_function (*do_inline_assembly*) e w k pct a te m in
     if List.exists (fun (ctx,red) -> is_stuck red) l then begin
-      Printing.print_pointer_hook := print_pointer (fst ge) e;
+      Printing.print_pointer_hook := print_pointer ge e;
       fprintf p "@[<hov 2>Stuck subexpression:@ %a@]@."
               Printing.print_expr a;
       true
@@ -556,14 +556,14 @@ let diagnose_stuck_expr p ge w f a kont pct e te m =
 
   in diagnose Csem.RV a
 
-let diagnose_stuck_state p ge w = function
-  | Csem.ExprState(f,pct,a,k,e,te,m) -> ignore(diagnose_stuck_expr p ge w f a k pct e te m)
+let diagnose_stuck_state p ge ce w = function
+  | Csem.ExprState(f,pct,a,k,e,te,m) -> ignore(diagnose_stuck_expr p ge ce w f a k pct e te m)
   | _ -> ()
 
 (* Execution of a single step.  Return list of triples
    (reduction rule, next state, next world). *)
 
-let do_step p prog ge time s w =
+let do_step p prog ge ce time s w =
   match Cexec.at_final_state s with
   | Some (Pol.PolicySuccess r) ->
       if !trace >= 1 then
@@ -581,13 +581,13 @@ let do_step p prog ge time s w =
          exit 0
 
   | None ->
-      let l = Cexec.do_step ge do_external_function (*do_inline_assembly*) w s in
+      let l = Cexec.do_step ge ce do_external_function (*do_inline_assembly*) w s in
       if l = []
       || List.exists (fun (Cexec.TR(r,t,s)) -> s = Csem.Stuckstate) l
       then begin
         pp_set_max_boxes p 1000;
-        fprintf p "@[<hov 2>Stuck state: %a@]@." print_state (prog, ge, s);
-        diagnose_stuck_state p ge w s;
+        fprintf p "@[<hov 2>Stuck state: %a@]@." print_state (prog, (ge,ce), s);
+        diagnose_stuck_state p ge ce w s;
         fprintf p "ERROR: Undefined behavior@.";
         exit 126
       end else begin
@@ -596,10 +596,10 @@ let do_step p prog ge time s w =
 
 (* Exploration of a single execution. *)
 
-let rec explore_one p prog ge time s w =
+let rec explore_one p prog ge ce time s w =
   if !trace >= 2 then
-    fprintf p "@[<hov 2>Time %d:@ %a@]@." time print_state (prog, ge, s);
-  let succs = do_step p prog ge time s w in
+    fprintf p "@[<hov 2>Time %d:@ %a@]@." time print_state (prog, (ge,ce), s);
+  let succs = do_step p prog ge ce time s w in
   if succs <> [] then begin
     let (r, s', w') =
       match !mode with
@@ -608,24 +608,24 @@ let rec explore_one p prog ge time s w =
       | All -> assert false in
     if !trace >= 2 then
       fprintf p "--[%s]-->@." (camlstring_of_coqstring r);
-    explore_one p prog ge (time + 1) s' w'
+    explore_one p prog ge ce (time + 1) s' w'
   end
 
 (* Exploration of all possible executions. *)
 
-let rec explore_all p prog ge time states =
+let rec explore_all p prog ge ce time states =
   if !trace >= 2 then begin
     List.iter
       (fun (n, s, w) ->
          fprintf p "@[<hov 2>Csem.State %d.%d: @ %a@]@."
-                   time n print_state (prog, ge, s))
+                   time n print_state (prog, (ge,ce), s))
       states
   end;
   let rec explore_next nextstates seen numseen = function
   | [] ->
       List.rev nextstates
   | (n, s, w) :: states ->
-      add_reducts nextstates seen numseen states n (do_step p prog ge time s w)
+      add_reducts nextstates seen numseen states n (do_step p prog ge ce time s w)
 
   and add_reducts nextstates seen numseen states n = function
   | [] ->
@@ -646,7 +646,7 @@ let rec explore_all p prog ge time states =
       add_reducts nextstates' seen' numseen' states n reducts
   in
     let nextstates = explore_next [] StateMap.empty 1 states in
-    if nextstates <> [] then explore_all p prog ge (time + 1) nextstates
+    if nextstates <> [] then explore_all p prog ge ce (time + 1) nextstates
 
 (* The variant of the source program used to build the world for
    executing events.
@@ -740,19 +740,20 @@ let execute prog =
   | Some prog1 ->
       let wprog = world_program prog1 in
       let wprog' = program_of_program wprog in
-      let wge = Genv.globalenv wprog' in
-      match Genv.init_mem wprog' with
+      let ce = prog1.prog_comp_env in
+      let (wge,wm) = Genv.globalenv ce wprog' in
+      (*match Genv.init_mem wprog' with
       | Mem.MemoryFail(msg) ->
           fprintf p "ERROR: World memory state undefined@."; exit 126
-      | Mem.MemorySuccess(wm) ->
+      | Mem.MemorySuccess(wm) -> *)
       match Cexec.do_initial_state prog1 with
       | None ->
           fprintf p "ERROR: Initial state undefined@."; exit 126
       | Some(ge, s) ->
           match !mode with
           | First | Random ->
-              explore_one p prog1 (ge,prog1.prog_comp_env) 0 s (world (wge,prog1.prog_comp_env) wm)
+              explore_one p prog1 ge ce 0 s (world wge wm)
           | All ->
-              explore_all p prog1 (ge,prog1.prog_comp_env) 0 [(1, s, world (wge,prog1.prog_comp_env) wm)]
+              explore_all p prog1 ge ce 0 [(1, s, world wge wm)]
 
         end
