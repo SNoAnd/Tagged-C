@@ -67,7 +67,7 @@ Module Type Policy. (* anaaktge this is the interface for rules
 
   Parameter ExprJoinT : tag -> tag -> PolicyResult (tag * tag).
   
-  Parameter GlobalT : composite_env -> ident -> type -> tag * tag * list tag.
+  Parameter GlobalT : composite_env -> ident -> type -> tag * tag * tag.
   
   Parameter LocalT : composite_env -> tag -> type -> PolicyResult (tag * tag * list tag).
 
@@ -169,7 +169,7 @@ Module NullPolicy <: Policy.
 
   Definition ExprJoinT (pct vt : tag) : PolicyResult (tag * tag) := PolicySuccess (tt,tt).
 
-  Definition GlobalT (ce : composite_env) (id : ident) (ty : type) : tag * tag * list tag := (tt, tt, []).
+  Definition GlobalT (ce : composite_env) (id : ident) (ty : type) : tag * tag * tag := (tt, tt, tt).
 
   Definition LocalT (ce : composite_env) (pct : tag) (ty : type) : PolicyResult (tag * tag * list tag)%type :=
     PolicySuccess (tt, tt, repeat tt (Z.to_nat (sizeof ce ty))).
@@ -272,8 +272,8 @@ Module PVI <: Policy.
 
   Definition ExprJoinT (pct vt : tag) : PolicyResult (tag * tag) := PolicySuccess (pct,vt).
 
-  Definition GlobalT (ce : composite_env) (id : ident) (ty : type) : tag * tag * list tag :=
-    (Glob id, N, repeat (Glob id) (Z.to_nat (sizeof ce ty))).
+  Definition GlobalT (ce : composite_env) (id : ident) (ty : type) : tag * tag * tag :=
+    (Glob id, N, Glob id).
   (* anaaktge the % in exp preceding, treat ambigous ops as its type version*)
 
   Definition LocalT (ce : composite_env) (pct : tag) (ty : type) : PolicyResult (tag * tag * (list tag))%type :=
@@ -387,8 +387,8 @@ Module PNVI <: Policy.
 
   Definition ExprJoinT (pct vt : tag) : PolicyResult (tag * tag) := PolicySuccess (pct,vt).
 
-  Definition GlobalT (ce : composite_env) (id : ident) (ty : type) : tag * tag * list tag :=
-    (Glob id, N, repeat (Glob id) (Z.to_nat (sizeof ce ty))).
+  Definition GlobalT (ce : composite_env) (id : ident) (ty : type) : tag * tag * tag :=
+    (Glob id, N, Glob id).
   (* anaaktge the % in exp preceding, treat ambigous ops as its type version*)
 
   Definition LocalT (ce : composite_env) (pct : tag) (ty : type) : PolicyResult (tag * tag * (list tag))%type :=
@@ -644,7 +644,7 @@ Definition print_tag (t : tag) : string :=
 
  (* TODO: confirm this one is correct and not erasing information*)
  (* Required for policy interface. Not relevant to this particular policy, pass values through *)
- Definition GlobalT (ce : composite_env) (id : ident) (ty : type) : tag * tag * list tag := (N, N, []).
+ Definition GlobalT (ce : composite_env) (id : ident) (ty : type) : tag * tag * tag := (N, N, N).
 
  (* Required for policy interface. Not relevant to this particular policy, pass values through *)
  Definition LocalT (ce : composite_env) (pct : tag) (ty : type) : PolicyResult (tag * tag * (list tag))%type :=
