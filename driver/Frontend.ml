@@ -231,3 +231,4 @@ end
 
 module WithNull = FrontendP (NullPolicy)
 module WithPVI = FrontendP (PVI)
+module WithDoubleFree = FrontendP (DoubleFree)
