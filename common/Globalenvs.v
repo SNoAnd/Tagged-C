@@ -246,8 +246,15 @@ Module Genv (P:Policy).
       Program Definition empty_genv (pub: list ident): t :=
         @mkgenv pub (PTree.empty _) (PTree.empty _) 2%positive.
 
+      Definition init_record (m: mem) (base: Z) (sz: Z) : mem :=
+        let szv := Vlong (Int64.neg (Int64.repr sz)) in
+        match store Mint64 m base (szv, def_tag) [def_tag] with
+        | MemorySuccess m'' => m''
+        | MemoryFail _ => m
+        end.
+      
       Definition globalenv (p: AST.program F V) :=
-        add_globals (empty_genv p.(AST.prog_public)) empty p.(AST.prog_defs).
+        add_globals (empty_genv p.(AST.prog_public)) (init_record empty 1000 1000) p.(AST.prog_defs).
 
       Section WITH_GE.
 
