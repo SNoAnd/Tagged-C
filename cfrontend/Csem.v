@@ -46,7 +46,7 @@ Module Csem (P: Policy).
       It also contains a composite environment, used by type-dependent operations. *)
 
   Definition genv : Type := Genv.t fundef type.
-  
+
   Definition globalenv (p: program) : (Genv.t fundef type * composite_env * mem) :=
     let ce := p.(prog_comp_env) in
     let (ge, m) := Genv.globalenv ce p in
@@ -76,7 +76,6 @@ Module Csem (P: Policy).
       reference, the pointer [Vptr ofs] is returned.  [v] is the value
       returned, and [t] the trace of observables (nonempty if this is
       a volatile access). *)
-
   
   (** Tag policies: these operations do not contain control points.
       They include tags in the relations in order to connect with control points
@@ -271,9 +270,9 @@ Module Csem (P: Policy).
         e!x = Some (PUB (lo, hi, pt)) ->
         lred (Evar x ty) pct te m
              (Eloc (Lmem (Int64.repr lo) pt Full) ty) te m
-    | red_var_global: forall x ty pct lo hi pt te m,
+    | red_var_global: forall x ty pct lo hi pt gv te m,
         e!x = None ->
-        Genv.find_symbol ge x = Some (inr (lo, hi, pt)) ->
+        Genv.find_symbol ge x = Some (inr (lo, hi, pt, gv)) ->
         lred (Evar x ty) pct te m
              (Eloc (Lmem (Int64.repr lo) pt Full) ty) te m
     | red_func: forall x pct b pt ty te m,

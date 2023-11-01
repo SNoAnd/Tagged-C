@@ -343,11 +343,11 @@ Module Cexec (P:Policy).
     Proof.
       unfold do_deref_loc; intros. inv H.
       - inv H0. rewrite H1; rewrite H2. auto.
-      - rewrite H1; rewrite H2. apply (do_volatile_load_complete ge ce w _ _ _ w') in H3.
+      - rewrite H1; rewrite H2. apply (do_volatile_load_complete ge w _ _ _ w') in H3.
         rewrite H4. rewrite H3; auto. apply H0.
-      - rewrite H1; rewrite H2. apply (do_volatile_load_complete ge ce w _ _ _ w') in H3.
+      - rewrite H1; rewrite H2. apply (do_volatile_load_complete ge w _ _ _ w') in H3.
         rewrite H3. auto. apply H0.
-      - rewrite H1; rewrite H2. apply (do_volatile_load_complete ge ce w _ _ _ w') in H3.
+      - rewrite H1; rewrite H2. apply (do_volatile_load_complete ge w _ _ _ w') in H3.
         rewrite H4. rewrite H3; auto. apply H0.        
       - inv H0. rewrite H1. auto.
       - inv H0. rewrite H1. auto.
@@ -357,9 +357,9 @@ Module Cexec (P:Policy).
     Admitted.
 
     Lemma do_assign_loc_sound:
-      forall w ty m ofs pt bf v w' t lts res,
-        do_assign_loc w ty m ofs pt bf v lts = Some (w', t, res) ->
-        assign_loc ge ce ty m ofs pt bf v t res lts /\ possible_trace w t w'.
+      forall w ty m ofs pt bf v vt w' t lts res,
+        do_assign_loc w ty m ofs pt bf (v,vt) lts = Some (w', t, res) ->
+        assign_loc ge ce ty m ofs pt bf (v,vt) t res lts /\ possible_trace w t w'.
     Proof.
       unfold do_assign_loc; intros until res.
       destruct bf.
@@ -367,16 +367,16 @@ Module Cexec (P:Policy).
         + exploit do_volatile_store_sound; eauto.
           intros (P & Q). intuition. eapply assign_loc_volatile; eauto.
         + exploit do_volatile_store_sound; eauto. 
-          destruct v. inv Heqo. intros. intuition. eapply assign_loc_volatile_fail; eauto.
-        + destruct v. exploit assign_loc_value; eauto.
+          inv Heqo. intros. intuition. eapply assign_loc_volatile_fail; eauto.
+        + exploit assign_loc_value; eauto.
           split.
           * eauto.
           * constructor.
-        + destruct v. exploit assign_loc_value_fail; eauto.
+        + exploit assign_loc_value_fail; eauto.
           split.
           * eauto.
           * constructor.
-        + destruct v0; mydestr; try congruence.
+        + destruct v; mydestr; try congruence.
           * destruct a as [P [Q R]].
             split.
             eapply assign_loc_copy; eauto.
@@ -390,7 +390,7 @@ Module Cexec (P:Policy).
             eapply assign_loc_copy_fail0; eauto.
             constructor.
       - mydestr. intros. InvBooleans.
-        destruct ty; destruct v; destruct v; try congruence.
+        destruct ty; destruct v; try congruence.
         generalize H; mydestr.
         destruct v; mydestr; try congruence.
         + InvBooleans. subst s i.
@@ -399,21 +399,21 @@ Module Cexec (P:Policy).
     Admitted.
     
 Lemma do_assign_loc_complete:
-  forall w ty m ofs pt bf v w' t m' v' lts,
-  assign_loc ge ce ty m ofs pt bf v t (MemorySuccess (m', v')) lts -> possible_trace w t w' ->
-  do_assign_loc w ty m ofs pt bf v lts = Some (w', t, MemorySuccess (m', v')).
+  forall w ty m ofs pt bf v vt w' t m' v' lts,
+    assign_loc ge ce ty m ofs pt bf (v,vt) t (MemorySuccess (m', v')) lts -> possible_trace w t w' ->
+    do_assign_loc w ty m ofs pt bf (v,vt) lts = Some (w', t, MemorySuccess (m', v')).
 Proof.
   unfold do_assign_loc; intros. inv H.
-  - inv H0. rewrite H3; rewrite H7; rewrite H9; auto.
+  - inv H0. rewrite H7; rewrite H9; rewrite H10; auto.
   - rewrite H3; rewrite H7. eapply do_volatile_store_complete in H9; eauto.
     rewrite H9. auto.
-  - rewrite H3.
+  - rewrite H5.
     destruct (check_assign_copy ty ofs ofs').
-    + inv H0. rewrite H10; rewrite H12; auto.
+    + inv H0. rewrite H12; rewrite H13; auto.
     + elim n. red; tauto.
   - inv H0. inv H7. 
     unfold proj_sumbool; rewrite ! zle_true, ! zlt_true by lia. cbn.
-    rewrite ! dec_eq_true. rewrite H3. cbn. rewrite H4. auto.
+    rewrite H14. rewrite ! dec_eq_true. cbn. rewrite H18. auto.
 Qed.
 
 (** * Reduction of expressions *)
@@ -575,8 +575,8 @@ Section EXPRS.
             topred (Lred "red_var_tmp" (Eloc (Ltmp x) ty) te m)
         | None =>
             match Genv.find_symbol ge x with
-            | Some (inr (base, bound, t)) =>
-                topred (Lred "red_var_global" (Eloc (Lmem (Int64.repr base) t Full) ty) te m)
+            | Some (inr (base, bound, pt, gv)) =>
+                topred (Lred "red_var_global" (Eloc (Lmem (Int64.repr base) pt Full) ty) te m)
             | Some (inl (b, t)) =>
                 topred (Lred "red_var_func" (Eloc (Lfun b t) ty) te m)
             | None => stuck
@@ -1000,7 +1000,7 @@ Definition invert_expr_prop (a: expr) (pct: tag) (te: tenv) (m: mem) : Prop :=
   | Evar x ty =>
       e!x = Some PRIV
       \/ (exists base bound pt, e!x = Some (PUB (base, bound, pt)))
-      \/ (e!x = None /\ exists base bound pt, Genv.find_symbol ge x = Some (inr (base,bound,pt)))
+      \/ (e!x = None /\ exists base bound pt gv, Genv.find_symbol ge x = Some (inr (base,bound,pt,gv)))
       \/ (e!x = None /\ exists b pt, Genv.find_symbol ge x = Some (inl (b,pt)))
   | Ederef (Eval v ty1) ty =>
       (exists ofs pt, v = (Vint ofs,pt)) \/ (exists ofs pt, v = (Vlong ofs,pt))
@@ -1105,7 +1105,7 @@ Lemma lred_invert:
 Proof.
   induction 1; red; auto.
   - right; left; exists lo, hi, pt; auto.
-  - right; right; left; split; auto; exists lo, hi, pt; auto.
+  - right; right; left; split; auto; exists lo, hi, pt, gv; auto.
   - right; right; right; split; auto; exists b, pt; auto.
   - left; exists ofs, vt; auto.
   - right; exists ofs, vt; auto.
@@ -1607,7 +1607,7 @@ Proof with (try (apply not_invert_ok; simpl; intro; myinv; repeat do_do; intuiti
       destruct (e!x) as [[|[[base bound] pt]]|] eqn:?.
       * apply topred_ok; auto. eapply red_var_tmp; eauto.
       * subst. apply topred_ok; auto. eapply red_var_local; eauto.
-      * destruct (Genv.find_symbol ge x) as [[[b pt]|[[base bound] pt]]|] eqn:?...
+      * destruct (Genv.find_symbol ge x) as [[[b pt]|[[[base bound] pt] gv]]|] eqn:?...
         apply topred_ok; auto. apply red_func; auto.
         apply topred_ok; auto. eapply red_var_global; eauto.
     + (* Econst *)

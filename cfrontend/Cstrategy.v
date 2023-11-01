@@ -115,9 +115,9 @@ Module Cstrategy (P: Policy).
       | esl_var_local: forall x ty lo hi pt,
           e!x = Some (PUB (lo, hi, pt)) ->
           eval_simple_lvalue (Evar x ty) (Lmem (Int64.repr lo) pt Full)
-      | esl_var_global: forall x ty base bound pt,
+      | esl_var_global: forall x ty base bound pt gv,
           e!x = None ->
-          Genv.find_symbol ge x = Some (inr (base, bound, pt)) ->
+          Genv.find_symbol ge x = Some (inr (base, bound, pt, gv)) ->
           eval_simple_lvalue (Evar x ty) (Lmem (Int64.repr base) pt Full)
       | esl_deref_short: forall r ty ofs pt,
           eval_simple_rvalue PCT r (Vint ofs, pt) ->

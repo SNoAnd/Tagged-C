@@ -593,30 +593,33 @@ Fixpoint output_trace (t: trace) : Prop :=
   end.
 
 (** * Semantics of volatile memory accesses *)
-(* TODO: tags on vloads and vstores *)
 Inductive volatile_load (ge: Genv.t F V):
                    memory_chunk -> mem -> int64 -> trace -> MemoryResult atom -> Prop :=
-  | volatile_load_vol: forall chunk m ofs id ev v vt,
-      addr_is_volatile ge ofs = true ->
+  | volatile_load_vol: forall chunk m ofs id gv ev v vt,
+      invert_symbol_ofs ge ofs = Some (id, gv) ->
+      gv.(gvar_volatile) = true ->
       eventval_match ge ev (type_of_chunk chunk) (v,vt) ->
       volatile_load ge chunk m ofs
                     (Event_vload chunk id ofs ev :: nil)
                     (MemorySuccess (Val.load_result chunk v,vt))
   | volatile_load_nonvol: forall chunk m ofs res,
-      addr_is_volatile ge ofs = false ->
+      (forall id gv, invert_symbol_ofs ge ofs = Some (id, gv) ->
+                     gv.(gvar_volatile) = false) ->
       load chunk m (Int64.unsigned ofs) = res ->
       volatile_load ge chunk m ofs E0 res.
 
 Inductive volatile_store (ge: Genv.t F V):
   memory_chunk ->  mem -> int64 -> atom -> list tag -> trace -> MemoryResult mem -> Prop :=
-  | volatile_store_vol: forall chunk m ofs id ev v vt lts,
-      Genv.addr_is_volatile ge ofs = true ->
+  | volatile_store_vol: forall chunk m ofs id gv ev v vt lts,
+      invert_symbol_ofs ge ofs = Some (id, gv) ->
+      gv.(gvar_volatile) = true ->
       eventval_match ge ev (type_of_chunk chunk) (Val.load_result chunk v, vt) ->
       volatile_store ge chunk m ofs (v,vt) lts
                      (Event_vstore chunk id ofs ev :: nil)
                      (MemorySuccess m)
   | volatile_store_nonvol: forall chunk m ofs  v vt lts res,
-      Genv.addr_is_volatile ge ofs = false ->
+      (forall id gv, invert_symbol_ofs ge ofs = Some (id, gv) ->
+                     gv.(gvar_volatile) = false) ->
       store chunk m (Int64.unsigned ofs) (v,vt) lts = res ->
       volatile_store ge chunk m ofs (v,vt) lts E0 res.
   
@@ -1653,12 +1656,12 @@ Inductive eval_builtin_arg: builtin_arg A -> val -> Prop :=
     eval_builtin_arg (BA_loadstack chunk ofs) v
 | eval_BA_addrstack: forall ofs,
     eval_builtin_arg (BA_addrstack ofs) (Vofptrsize (sp + Ptrofs.signed ofs))
-| eval_BA_loadglobal: forall chunk id base bound v vt pt,
-    find_symbol ge id = Some (inr (base,bound,pt)) ->
+| eval_BA_loadglobal: forall chunk id base bound v vt pt gv,
+    find_symbol ge id = Some (inr (base,bound,pt,gv)) ->
     Mem.load chunk m base = MemorySuccess (v,vt) ->
     eval_builtin_arg (BA_loadglobal chunk id (Ptrofs.repr base)) v
-| eval_BA_addrglobal: forall id base bound pt,
-    find_symbol ge id = Some (inr (base,bound,pt)) ->
+| eval_BA_addrglobal: forall id base bound pt gv,
+    find_symbol ge id = Some (inr (base,bound,pt,gv)) ->
     eval_builtin_arg (BA_addrglobal id (Ptrofs.repr base)) (Vofptrsize base)
 | eval_BA_splitlong: forall hi lo vhi vlo,
     eval_builtin_arg hi vhi -> eval_builtin_arg lo vlo ->
@@ -1689,80 +1692,4 @@ End EVAL_BUILTIN_ARG.
 
 Global Hint Constructors eval_builtin_arg: barg.
 
-(** Invariance by change of global environment. *)
-
-Section EVAL_BUILTIN_ARG_PRESERVED.
-
-Variables A F1 V1 F2 V2: Type.
-Variable ge1: Genv.t F1 V1.
-Variable ge2: Genv.t F2 V2.
-Variable e: A -> val.
-Variable sp: Z.
-Variable m: mem.
-
-Hypothesis symbols_preserved:
-  forall id, Genv.find_symbol ge2 id = Genv.find_symbol ge1 id.
-
-Lemma eval_builtin_arg_preserved:
-  forall a v, eval_builtin_arg ge1 e sp m a v -> eval_builtin_arg ge2 e sp m a v.
-Proof.
-  induction 1; eauto with barg; rewrite <- symbols_preserved in H; eauto with barg.
-Qed.
-
-Lemma eval_builtin_args_preserved:
-  forall al vl, eval_builtin_args ge1 e sp m al vl -> eval_builtin_args ge2 e sp m al vl.
-Proof.
-  induction 1; constructor; auto; eapply eval_builtin_arg_preserved; eauto.
-Qed.
-
-End EVAL_BUILTIN_ARG_PRESERVED.
-
-(** Compatibility with the "is less defined than" relation. *)
-
-(*Section EVAL_BUILTIN_ARG_LESSDEF.
-
-Variable A: Type.
-Variable ge: Senv.t.
-Variables e1 e2: A -> val.
-Variable sp: val.
-Variables m1 m2: mem.
-
-Hypothesis env_lessdef: forall x, Val.lessdef (e1 x) (e2 x).
-Hypothesis mem_extends: Mem.extends m1 m2.
-
-Lemma eval_builtin_arg_lessdef:
-  forall a v1, eval_builtin_arg ge e1 sp m1 a v1 ->
-  exists v2, eval_builtin_arg ge e2 sp m2 a v2 /\ Val.lessdef v1 v2.
-Proof.
-  induction 1.
-- exists (e2 x); auto with barg.
-- econstructor; eauto with barg.
-- econstructor; eauto with barg.
-- econstructor; eauto with barg.
-- econstructor; eauto with barg.
-- exploit Mem.loadv_extends; eauto. intros (v' & P & Q). exists v'; eauto with barg.
-- econstructor; eauto with barg.
-- exploit Mem.loadv_extends; eauto. intros (v' & P & Q). exists v'; eauto with barg.
-- econstructor; eauto with barg.
-- destruct IHeval_builtin_arg1 as (vhi' & P & Q).
-  destruct IHeval_builtin_arg2 as (vlo' & R & S).
-  econstructor; split; eauto with barg. apply Val.longofwords_lessdef; auto.
-- destruct IHeval_builtin_arg1 as (vhi' & P & Q).
-  destruct IHeval_builtin_arg2 as (vlo' & R & S).
-  econstructor; split; eauto with barg. 
-  destruct Archi.ptr64; auto using Val.add_lessdef, Val.addl_lessdef.
-Qed.
-
-Lemma eval_builtin_args_lessdef:
-  forall al vl1, eval_builtin_args ge e1 sp m1 al vl1 ->
-  exists vl2, eval_builtin_args ge e2 sp m2 al vl2 /\ Val.lessdef_list vl1 vl2.
-Proof.
-  induction 1.
-- econstructor; split. constructor. auto.
-- exploit eval_builtin_arg_lessdef; eauto. intros (v1' & P & Q).
-  destruct IHlist_forall2 as (vl' & U & V).
-  exists (v1'::vl'); split; constructor; auto.
-Qed.
-
-End EVAL_BUILTIN_ARG_LESSDEF.*)
 End Events.

@@ -566,6 +566,30 @@ Definition load_all (chunk: memory_chunk) (m: mem) (ofs: Z): MemoryResult (atom 
                        map (fun x => snd x) (getN (size_chunk_nat chunk) ofs (m.(mem_contents))))
   else MemoryFail "Private Load".
 
+Lemma load_all_compose :
+  forall chunk m ofs a lts,
+    load_all chunk m ofs = MemorySuccess (a,lts) <->
+      load chunk m ofs = MemorySuccess a /\ load_ltags chunk m ofs = MemorySuccess lts.
+Proof.
+  intros until lts.
+  unfold load_all; unfold load; unfold load_ltags.
+  split.
+  - destruct (allowed_access_dec m chunk ofs); intro H; inv H; auto.
+  - destruct (allowed_access_dec m chunk ofs); intro H; destruct H as [H1 H2]; inv H1; inv H2; auto.
+Qed.
+
+Lemma load_all_fail :
+  forall chunk m ofs msg,
+    load_all chunk m ofs = MemoryFail msg <->
+      load chunk m ofs = MemoryFail msg /\ load_ltags chunk m ofs = MemoryFail msg.
+Proof.
+  intros until msg.
+  unfold load_all; unfold load; unfold load_ltags.
+  split.
+  - destruct (allowed_access_dec m chunk ofs); intro H; inv H; auto.
+  - destruct (allowed_access_dec m chunk ofs); intro H; destruct H as [H1 H2]; inv H1; inv H2; auto.
+Qed. 
+  
 (** [loadbytes m ofs n] reads [n] consecutive bytes starting at
   location [(b, ofs)].  Returns [None] if the accessed locations are
   not readable. *)

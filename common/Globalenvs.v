@@ -65,16 +65,16 @@ Module Genv (P:Policy).
   
     Variable F: Type.  (**r The type of function descriptions *)
     Variable V: Type.  (**r The type of information attached to variables *)
-
-    Variable ce : composite_env.
+    Variable ce: composite_env.
     
     (** The type of global environments. *)
     Record t: Type := mkgenv {
-      genv_public: list ident;                 (**r which symbol names are public *)
-      genv_symb: PTree.t ((block*tag) + (Z*Z*tag));      (**r mapping symbol -> block (functions) or base, bound, tag *)
-      genv_glob_defs: ZTree.t (globdef F V);   (**r mapping base -> definition *)
-      genv_fun_defs: PTree.t (globdef F V);    (**r mapping block -> definition *)        
-      genv_next_block: block;                  (**r next block for functions *)
+      genv_public: list ident;                                 (**r which symbol names are public *)
+      genv_symb: PTree.t ((block*tag) + (Z*Z*tag*globvar V));  (**r mapping symbol ->
+                                                                  block (functions) or
+                                                                  base, bound, tag *)
+      genv_fun_defs: PTree.t (globdef F V);                    (**r mapping block -> definition *)
+      genv_next_block: block;                                  (**r next block for functions *)
     }.
 
     (** ** Lookup functions *)
@@ -86,44 +86,21 @@ Module Genv (P:Policy).
     (** [symbol_address ge id ofs] returns a pointer into the block associated
         with [id], at byte offset [ofs].  [Vundef] is returned if no block is associated
         to [id]. *)
-    Definition symbol_address (ge: t) (id: ident) (ofs: ptrofs) : atom :=
+    Definition symbol_address (ge: t) (id: ident) (ofs: int64) : atom :=
       match find_symbol ge id with
-      | Some (inl (b,t)) => (Vfptr b, t)
-      | Some (inr (base,block,t)) => (Vlong (Int64.repr base), t)
+      | Some (inl (b,pt)) => if Int64.eq ofs Int64.zero then (Vfptr b, pt) else (Vundef, def_tag)
+      | Some (inr (base,block,pt,gv)) => (Vlong (Int64.add (Int64.repr base) ofs), pt)
       | None => (Vundef, def_tag)
       end.
 
     (** [public_symbol ge id] says whether the name [id] is public and defined. *)
-
     Definition public_symbol (ge: t) (id: ident) : bool :=
       match find_symbol ge id with
       | None => false
       | Some _ => In_dec ident_eq id ge.(genv_public)
       end.
   
-    (** [find_def ge b] returns the global definition associated with the given address. *)
-    
-    Definition find_def (ge: t) (ofs: int64) : option (globdef F V) :=
-      ZTree.get (Int64.unsigned ofs) ge.(genv_glob_defs).
-    
-    (** [find_funct_ptr ge b] returns the function description associated with
-        the given address. *)
-
-    Definition find_funct_ptr (ge: t) (b: block) : option F :=
-      match PTree.get b ge.(genv_fun_defs) with Some (Gfun f) => Some f | _ => None end.
-
-    (** [find_funct] is similar to [find_funct_ptr], but the function address
-        is given as a value. *)
-
-    Definition find_funct (ge: t) (v: val) : option F :=
-      match v with
-      | Vfptr b =>
-          find_funct_ptr ge b
-      | _ => None
-      end.
-
     (** [invert_symbol ge addr] returns the name associated with the given address, if any *)
-
     Definition invert_symbol_block (ge: t) (b: block) : option ident :=
       PTree.fold
         (fun res id stuff =>
@@ -132,30 +109,29 @@ Module Genv (P:Policy).
            | inl (b',t) => if (b =? b')%positive then Some id else res
            end) ge.(genv_symb) None.
 
-    Definition invert_symbol_ofs (ge: t) (ofs: int64) : option ident :=
+    Definition invert_symbol_ofs (ge: t) (ofs: int64) : option (ident * globvar V) :=
       let z := Int64.unsigned ofs in
       PTree.fold
         (fun res id stuff =>
            match stuff with
-           | inr (base,bound,pt) =>
-               if (base <=? z) && (z <? bound) then Some id else res
+           | inr (base,bound,pt,gv) =>
+               if (base <=? z) && (z <? bound) then Some (id, gv) else res
            | inl (b,t) => res
            end)
         ge.(genv_symb) None.
+    
+    (** [find_funct_ptr ge b] returns the function description associated with
+        the given address. *)
+    Definition find_funct_ptr (ge: t) (b: block) : option F :=
+      match PTree.get b ge.(genv_fun_defs) with Some (Gfun f) => Some f | _ => None end.
 
-    (** [find_var_info ge addr] returns the information attached to the variable
-        at address [ofs]. *)
-
-    Definition find_var_info (ge: t) (ofs: int64) : option (globvar V) :=
-      match find_def ge ofs with Some (Gvar v) => Some v | _ => None end.
-
-    (** [block_is_volatile ge b] returns [true] if [b] points to a global variable
-        of volatile type, [false] otherwise. *)
-
-    Definition addr_is_volatile (ge: t) (addr: int64) : bool :=
-      match find_var_info ge addr with
-      | None => false
-      | Some gv => gv.(gvar_volatile)
+    (** [find_funct] is similar to [find_funct_ptr], but the function address
+        is given as a value. *)
+    Definition find_funct (ge: t) (v: val) : option F :=
+      match v with
+      | Vfptr b =>
+          find_funct_ptr ge b
+      | _ => None
       end.
     
     (** ** Constructing the global environment *)
@@ -192,7 +168,7 @@ Module Genv (P:Policy).
         | Init_addrof symb ofs =>
             match find_symbol ge symb with
             | None => MemoryFail "Symbol not found"
-            | Some (inr (base,bound,pt)) =>
+            | Some (inr (base,bound,pt,gv)) =>
                 Mem.store Mptr m p (Vint (Int.repr base), vt) [lt;lt;lt;lt;lt;lt;lt;lt]
             | Some (inl (b,pt)) => MemorySuccess m
             end
@@ -239,12 +215,10 @@ Module Genv (P:Policy).
             | MemorySuccess (base', m') =>
                 let size := Zpos gv.(gvar_size) in
                 let bound := base' + size in
-                let genv_symb' := PTree.set idg#1 (inr (base', bound, def_tag)) ge.(genv_symb) in
-                let genv_glob_defs' := ZTree.set base' idg#2 ge.(genv_glob_defs) in
+                let genv_symb' := PTree.set idg#1 (inr (base', bound, pt, gv)) ge.(genv_symb) in
                 let ge' := @mkgenv
                              ge.(genv_public)
                                   genv_symb'
-                                  genv_glob_defs'
                                   ge.(genv_fun_defs)
                                        ge.(genv_next_block)
                 in
@@ -255,7 +229,6 @@ Module Genv (P:Policy).
             let ge' := @mkgenv
                          ge.(genv_public)
                               (PTree.set idg#1 (inl (ge.(genv_next_block), def_tag)) ge.(genv_symb))
-                              ge.(genv_glob_defs)
                                    (PTree.set ge.(genv_next_block) idg#2 ge.(genv_fun_defs))
                                    (Pos.succ ge.(genv_next_block))
             in
@@ -271,7 +244,7 @@ Module Genv (P:Policy).
         end.
       
       Program Definition empty_genv (pub: list ident): t :=
-        @mkgenv pub (PTree.empty _) (PTree.empty _) (PTree.empty _) 2%positive.
+        @mkgenv pub (PTree.empty _) (PTree.empty _) 2%positive.
 
       Definition globalenv (p: AST.program F V) :=
         add_globals (empty_genv p.(AST.prog_public)) empty p.(AST.prog_defs).
@@ -292,7 +265,7 @@ Module Genv (P:Policy).
           | Init_addrof id ofs =>
               match find_symbol ge id with
               | Some (inl (b,pt)) => inj_value Q64 (Vfptr b, pt)
-              | Some (inr (base,bound,pt)) => inj_value Q64 (Vint (Int.repr base), t)
+              | Some (inr (base,bound,pt,gv)) => inj_value Q64 (Vint (Int.repr base), t)
               | None   => List.repeat Undef 8%nat
               end
           end.
@@ -364,11 +337,11 @@ Qed.*)
       intros; auto.
     Qed.
 
-    Theorem find_var_info_iff:
+(*    Theorem find_var_info_iff:
       forall ge ofs v, find_var_info ge ofs = Some v <-> find_def ge ofs = Some (Gvar v).
     Proof.
       intros. unfold find_var_info. destruct (find_def ge) as [[f1|v1]|]; intuition congruence.
-    Qed.
+    Qed. *)
 
     Theorem find_symbol_exists:
       forall p id g ge m,
@@ -402,12 +375,12 @@ Qed.*)
   unfold find_symbol; simpl; intros. rewrite PTree.gempty in H. discriminate.
 Qed.*)
 
-      Theorem find_def_inversion:
+(*      Theorem find_def_inversion:
         forall p ofs g ge m,
           globalenv p = (ge,m) ->
           find_def ge ofs = Some g ->
           exists id, In (id, g) (AST.prog_defs p).
-      Admitted.
+      Admitted. *)
 (*Proof.
   intros until g. unfold globalenv. apply add_globals_preserves.
 (* preserves *)
@@ -477,9 +450,9 @@ Qed.*)
       Admitted.
 
       Theorem invert_find_symbol_ofs:
-        forall ge id ofs,
-          invert_symbol_ofs ge ofs = Some id ->
-          exists base bound pt, find_symbol ge id = Some (inr (base,bound,pt)) /\
+        forall ge id gv ofs,
+          invert_symbol_ofs ge ofs = Some (id, gv) ->
+          exists base bound pt gv, find_symbol ge id = Some (inr (base,bound,pt,gv)) /\
                                   base <= (Int64.unsigned ofs) /\ (Int64.unsigned ofs) < bound.
       Admitted.
 (*Proof.
@@ -494,11 +467,11 @@ Qed.*)
 Qed.*)
 
       Theorem find_invert_symbol_ofs:
-        forall ge id base bound t ofs,
-          find_symbol ge id = Some (inr (base,bound,t)) ->
+        forall ge id base bound pt gv ofs,
+          find_symbol ge id = Some (inr (base,bound,pt,gv)) ->
           base <= (Int64.signed ofs) ->
           (Int64.signed ofs) < bound ->
-          invert_symbol_ofs ge ofs = Some id.
+          invert_symbol_ofs ge ofs = Some (id,gv).
       Admitted.
 (*Proof.
   intros until t0.
