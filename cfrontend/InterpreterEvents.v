@@ -476,6 +476,95 @@ Definition do_ef_volatile_store_global (chunk: memory_chunk) (id: ident) (ofs: p
       | _ => None
       end.
 
+    Definition check_record (m: mem) (base: Z) : option (bool * Z) :=
+      match load Mint64 m base with
+      | MemorySuccess (Vlong i, _) =>
+          let live := (0 <=? (Int64.signed i))%Z in
+          let sz := (Z.abs (Int64.signed i)) in
+          Some (live, sz)
+      | _ => None
+      end.
+
+    Definition update_record (m: mem) (base: Z) (live: bool) (sz: Z) : option mem :=
+      let rec :=
+        if live
+        then Vlong (Int64.repr sz)
+        else Vlong (Int64.neg (Int64.repr sz))
+      in
+      match store Mint64 m base (rec, def_tag) [def_tag] with
+      | MemorySuccess m'' => Some m''
+      | MemoryFail _ => None
+      end.
+
+    Definition record_size := size_chunk Mint64.
+    
+    Fixpoint find_free (c : nat) (m : mem) (base : Z) (sz : Z) : option (mem*Z) :=
+      match c with
+      | O => None
+      | S c' =>
+          (* Load a long from base.
+             Sign indictates: is this a live block? (Negative no, positive/zero yes)
+             Magnitude indicates size *)
+          match check_record m base with
+          (* If the block is live, keep looking. *)
+          | Some (true, bs) =>
+              let next := base + bs in
+              find_free c' m next sz
+          (* If the block is free: *)
+          | Some (false, bs) =>
+          (* Calculate how much space will be left *)
+              let remain := bs - sz in
+              if (remain <? 0)%Z then
+                (* If there is insufficient space, keep looking. *)
+                let next := base + bs in find_free c' m next sz
+              else
+                if (record_size <? remain)%Z then
+                  (* If there is space remaining, create a new record for it. *)
+                  let next := base + bs in
+                  let next_sz := remain - record_size in
+                  do m' <- update_record m base false sz;
+                  do m'' <- update_record m' next true next_sz;
+                  Some (m'',base)
+                else
+                  (* If there is not enough space, update the record for liveness. *)
+                  do m' <- update_record m base true bs;
+                  Some (m,base)
+          | None => None
+          end
+      end.
+
+    Definition do_ef_malloc_unsafe
+               (w: world) (vargs: list atom) (PCT: tag) (m: mem)
+      : option (world * trace * (MemoryResult (PolicyResult (atom * tag * mem)))) :=
+      match vargs with
+      | [(v,st)] =>
+          do sz <- option_map Ptrofs.unsigned (do_alloc_size v);
+          do m', base <- find_free 100 m 1000 sz;
+          match MallocT PCT def_tag st with
+          | PolicySuccess (PCT',pt',vt',lt') =>
+              match storebytes m' (base + record_size)
+                               (repeat (Byte Byte.zero vt') (Z.to_nat sz))
+                               (repeat lt' (Z.to_nat sz)) with
+              | MemorySuccess m'' =>
+                  Some (w, E0, (MemorySuccess (PolicySuccess((Vlong (Int64.repr (base + record_size)), def_tag), PCT', m''))))
+              | MemoryFail msg => Some (w, E0, (MemoryFail msg))
+              end
+          | PolicyFail msg params =>
+              Some (w, E0, (MemorySuccess (PolicyFail msg params)))
+          end
+      | _ => None
+      end.
+    
+    Definition free_block (m : mem) (addr : Z) : option (mem*Z) :=
+      (* Interpret addr - record_size as a record
+         First byte is a bool, is this live?
+         Next word is the size of the block.
+         And because we're being unsafe, we just always set that bool false.
+       *)
+      do live, sz <- check_record m (addr - record_size);
+      do m <- update_record m (addr - record_size) false sz;
+      Some (m,sz).
+    
     Definition do_ef_free
                (w: world) (vargs: list atom) (PCT: tag) (m: mem)
       : option (world * trace * (MemoryResult (PolicyResult (atom * tag * mem)))) :=
@@ -501,6 +590,16 @@ Definition do_ef_volatile_store_global (chunk: memory_chunk) (id: ident) (ofs: p
       | _ => None
       end.
 
+    Definition do_ef_free_unsafe
+               (w: world) (vargs: list atom) (PCT: tag) (m: mem)
+      : option (world * trace * (MemoryResult (PolicyResult (atom * tag * mem)))) :=
+      match vargs with
+      | [(Vlong lo,pt)] =>
+          do m',sz <- free_block m (Int64.unsigned lo);
+          Some (w, E0, MemorySuccess (PolicySuccess ((Vundef,def_tag),PCT,m')))
+      | _ => None
+      end.
+    
 (*Definition memcpy_args_ok
   (sz al: Z) (bdst: block) (odst: Z) (bsrc: block) (osrc: Z) : Prop :=
       (al = 1 \/ al = 2 \/ al = 4 \/ al = 8)
@@ -563,8 +662,8 @@ Definition do_builtin_or_external (name: string) (sg: signature)
   | EF_runtime name sg => do_builtin_or_external name sg
   | EF_vload chunk => do_ef_volatile_load chunk
   | EF_vstore chunk => do_ef_volatile_store chunk*)
-      | EF_malloc => do_ef_malloc
-      | EF_free => do_ef_free
+      | EF_malloc => do_ef_malloc_unsafe
+      | EF_free => do_ef_free_unsafe
   (*| EF_memcpy sz al => do_ef_memcpy sz al
   | EF_annot kind text targs => do_ef_annot text targs
   | EF_annot_val kind text targ => do_ef_annot_val text targ
@@ -699,6 +798,5 @@ Qed.*)
 - (* EF_debug *)
   inv H. inv H0. reflexivity.
 Qed.*)
-
   End EXEC.
 End InterpreterEvents.
