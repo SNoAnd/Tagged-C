@@ -539,11 +539,17 @@ End IFC_Spec.
 End IFC. *)
 
 (*
-Simple Double Free detection & diagnostic policy. Inherits from Policy.
+Simple Double Free detection & diagnostic policy. Implements Policy Interface.
   - Detects some classic double free runtime behavior.
   - The policy relevant functions are LabelT, MallocT, and FreeT.
   - Intended for use with a fuzzer or other tool that consumes the failstop diagnostic information.
   - Policy can be fooled if aliasing is comingled with double free pathology.
+
+Future:
+  - handlabeling will be relaced by automatic src location info. 
+  - still need to know how to make print tag print a value 
+  - TODO: what about free(0)? That is legal, even though I think the policy
+      will declare that a nonsense free c
 
 Assumes:
   - The base/fallback TaggedC heap policy is off or unavailable.
@@ -551,6 +557,10 @@ Assumes:
   - All frees are staticly labeled post processed C source file.
     - free sites might be hand labelled to start.
     - Labels must be unique and consistent across executions (fuzzing runs)
+
+Other Notes:
+  - in this version there is a tag on the value and one on memory. (abstraction of spliting htem
+    up to make reasoning easier. In hardware it is 1 on a byte)
 *)
 Module DoubleFree <: Policy.
 
@@ -574,18 +584,19 @@ Module DoubleFree <: Policy.
 Definition print_tag (t : tag) : string :=
     match t with
     | FreeColor l => "Free Color" (* ++ l TODO: how do we get l to be a string? *)
-                      (* strings.v documentation says ++ is strcat*)
+                      (* strings.v documentation says ++ is strcat
+                        instead an ocaml version of the tag and is able to gerenate the string
+                        by doing hte look up *)
     | N => "Unallocated"
     | Alloc => "Allocated"
     end.
 
- (* NB: Does not inherit, more like impersonates.
+ (* boilerplate. has to be reimplemented in each policy.
     It's here to keep it consistent with other policies.
   *)
  Inductive PolicyResult (A: Type) :=
  | PolicySuccess (res: A)
  | PolicyFail (r: string) (params: list tag).
-
 
  Arguments PolicySuccess {_} _.
  Arguments PolicyFail {_} _ _.
@@ -658,13 +669,16 @@ Definition print_tag (t : tag) : string :=
     MallocT sets the tag to Alloc, and clears free color if one was present becausee
       re-use of freed memory is legal.
       - pct is program counter tag
-      - pt is the tag on the pointer
-      - vt is the tag on the value  
+      - pt is the default tag (N) (not hte pointer tag )
+        TODO: ask sean about this tomorrow
+      - st is the tag on the size
     In the return tuple
-      - 1st spot is the program counter tag
-      - 4th spot is the location tag, now set to Alloc, this allocated memory. 
+      - pct' 1st spot is the new program counter tag
+      - pt' ?? tag on the pointer returned from malloc? but is ignored?
+      - vt' ?? value tag of the 00s written 
+      - lt' 4th is the new location tag, now set to Alloc, this now painted as allocated memory. 
   *)
- Definition MallocT (pct pt vt : tag) : PolicyResult (tag * tag * tag * tag) :=
+ Definition MallocT (pct pt st : tag) : PolicyResult (tag * tag * tag * tag) :=
    PolicySuccess (pct, N, N, Alloc).
 
  (* 
@@ -676,19 +690,21 @@ Definition print_tag (t : tag) : string :=
       the header tag of the memory block. Tags on memory after the 0th element
       are not affected.
   If rule succeeds, return tuple
-    1st tag - program counter tag
-    2nd tag - pt, passed through
+    1st tag - pct, program counter tag
+    2nd tag - vt, passed through
     3rd tag - free color from the pc tag 
-  If rule fails:
+  If rule fails, array contains:
     - 0th is color of 2nd free where the violation is detected
     - 1st is pt, passed through
     - 2nd is the color of the original/first free 
  *)
  Definition FreeT (pct pt lt : tag) : PolicyResult (tag * tag * tag) :=
   match lt with 
-    | N => PolicySuccess(pct, pt, pct) (* N means no color, or unallocated *)
-    | Alloc => PolicySuccess(pct, pt, pct) (* was allocated, now assign color *)
-    | _ (* Freecolor *)
+    | Alloc => PolicySuccess(pct, pt, pct) (* was allocated then freed, assign free color *)
+    (*| nil => PolicySuccess(pct, pt, pct)*) (* C allows free(0) or free nullpointers *)
+    | N (* trying to free unallocated memory *)
+        => PolicyFail "DoubleFree:FreeT detects free of unallocated memory" [pct;pt;lt]
+    | FreeColor l (* Freecolor *)
         => PolicyFail "DoubleFree:FreeT detects two colors" [pct;pt;lt]
   end.
 

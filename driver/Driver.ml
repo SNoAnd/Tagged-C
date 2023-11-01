@@ -296,9 +296,11 @@ let cmdline_actions =
         (fun arg ->
                 if arg = "pvi"
                 then (runner := WithPVI.run_i_file; initter := WithPVI.init_with)
+                else (if arg = "dfree"
+                then (runner := WithDoubleFree.run_i_file; initter := WithDoubleFree.init_with)
                 else (if arg = "null"
                 then (runner := WithNull.run_i_file; initter := WithNull.init_with)
-                else error no_loc "Unknown policy `%s'" arg))
+                else error no_loc "Unknown policy `%s'" arg)))
   ]
 (* Optimization options *)
 (* -f options: come in -f and -fno- variants *)
