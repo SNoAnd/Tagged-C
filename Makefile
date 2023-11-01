@@ -111,7 +111,7 @@ COMMON=Errors.v AST.v Linking.v \
 # C front-end modules (in cfrontend/)
 
 CFRONTEND=Ctypes.v Cop.v Csyntax.v Csem.v Ctyping.v Cstrategy.v Cexec.v \
-  Initializers.v \
+  Initializers.v InterpreterEvents.v \
 
 # Parser
 
