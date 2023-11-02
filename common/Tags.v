@@ -8,6 +8,8 @@ Require Import Ctypes.
 
 Require Import List. Import ListNotations. (* list notations is a module inside list *)
 
+Parameter extern_atom : positive -> string.
+
 Module Type Policy. (* anaaktge this is the interface for rules
                       start with where 
                       rule itself might not be structured
@@ -215,7 +217,7 @@ Module PVI <: Policy.
 
   Definition print_tag (t : tag) : string :=
     match t with
-    | Glob id => "Global"
+    | Glob id => "Global " ++ (extern_atom id)
     | Dyn c => "Dynamic"
     | N => "N"
     end.
@@ -583,7 +585,7 @@ Module DoubleFree <: Policy.
 
 Definition print_tag (t : tag) : string :=
     match t with
-    | FreeColor l => "Free Color" (* ++ l TODO: how do we get l to be a string? *)
+    | FreeColor l => "Free Color" ++ (extern_atom l) (* ?? *)
                       (* strings.v documentation says ++ is strcat
                         instead an ocaml version of the tag and is able to gerenate the string
                         by doing hte look up *)
