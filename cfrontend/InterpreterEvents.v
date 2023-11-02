@@ -587,16 +587,19 @@ Definition do_ef_volatile_store_global (chunk: memory_chunk) (id: ident) (ofs: p
       : option (world * trace * (MemoryResult (PolicyResult (atom * tag * mem)))) :=
       match vargs with
       | [(Vlong lo,pt)] =>
-          do live, sz, vt <- check_record m ((Int64.signed lo)-record_size);
-          match FreeT PCT def_tag pt vt with
-          | PolicySuccess (PCT', vt1, vt2, lt) =>
-              do m' <- update_record m ((Int64.signed lo)-record_size) false sz vt2 lt;
-              Some (w, E0, MemorySuccess (PolicySuccess ((Vundef,def_tag),PCT,m')))
-          | PolicyFail msg params =>
-              Some (w, E0, MemorySuccess (PolicyFail msg params))
-          end
+          if (Int64.signed lo =? 0)%Z
+          then Some (w, E0, MemorySuccess (PolicySuccess ((Vundef,def_tag),PCT,m)))
+          else
+            do live, sz, vt <- check_record m ((Int64.signed lo)-record_size);
+            match FreeT PCT def_tag pt vt with
+            | PolicySuccess (PCT', vt1, vt2, lt) =>
+                do m' <- update_record m ((Int64.signed lo)-record_size) false sz vt2 lt;
+                Some (w, E0, MemorySuccess (PolicySuccess ((Vundef,def_tag),PCT,m')))
+            | PolicyFail msg params =>
+                Some (w, E0, MemorySuccess (PolicyFail msg params))
+            end
       | _ => None
-      end.    
+      end.
 
 (*Definition memcpy_args_ok
   (sz al: Z) (bdst: block) (odst: Z) (bsrc: block) (osrc: Z) : Prop :=
