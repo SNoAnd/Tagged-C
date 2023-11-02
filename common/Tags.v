@@ -686,7 +686,10 @@ Definition print_tag (t : tag) : string :=
 
  (* 
   FreeT colors the header/0th tag with the current Freecolor from the pct. If there is already 
-    a color present on the tag of the 0th element, this is a double free. 
+    a color present on the tag of the 0th element, this is a double free. If it tries to free
+    something that is unallocated, this is a nonsense free, unless it is free(0). Freeing a
+    null pointer is legal C. 
+  Args:
     pct - program counter tag, which has the current Freecolor (acquired in LabelT)
     pt - pointer tag of pointer to block (tag on the argument passed to free() )
     lt - the tag on the 0th element in the block to be freed. In effect,
@@ -704,7 +707,6 @@ Definition print_tag (t : tag) : string :=
  Definition FreeT (pct pt1 pt2 vt : tag) : PolicyResult (tag * tag * tag * tag) :=
   match vt with 
     | Alloc => PolicySuccess(pct, pt1, pct, N) (* was allocated then freed, assign free color *)
-    (*| nil => PolicySuccess(pct, pt, pct)*) (* C allows free(0) or free nullpointers *)
     | N (* trying to free unallocated memory *)
         => PolicyFail "DoubleFree:FreeT detects free of unallocated memory" [pct;pt1;pt2;vt]
     | FreeColor l (* Freecolor *)
