@@ -162,18 +162,22 @@ let print_mem p m =
   print_at 2988 3000;
   fprintf p "\n"
 
+let print_tag t = Camlcoq.camlstring_of_coqstring (Pol.print_tag t)
+
 let print_state p (prog, ge, s) =
   match s with
   | Csem.State(f, pct, s, k, e, te, m) ->
       Printing.print_pointer_hook := print_pointer (fst ge) e;
-      fprintf p "in function %s, statement@ @[<hv 0>%a@]\n"
+      fprintf p "in function %s, pct %s, statement@ @[<hv 0>%a@] \n"
               (name_of_function prog f)
+	      (print_tag pct)
               Printing.print_stmt s;
       print_mem p m
   | Csem.ExprState(f, pct, r, k, e, te, m) ->
       Printing.print_pointer_hook := print_pointer (fst ge) e;
-      fprintf p "in function %s, expression@ @[<hv 0>%a@]"
+      fprintf p "in function %s, pct %s, expression@ @[<hv 0>%a@]"
               (name_of_function prog f)
+	      (print_tag pct)
               Printing.print_expr r
   | Csem.Callstate(fd, pct, args, k, m) ->
       Printing.print_pointer_hook := print_pointer (fst ge) Maps.PTree.empty;
@@ -187,7 +191,8 @@ let print_state p (prog, ge, s) =
   | Csem.Stuckstate ->
       fprintf p "stuck after an undefined expression"
   | Csem.Failstop(r, params) ->
-      fprintf p "@[failstop on policy @ %s@]@." (String.of_seq (List.to_seq r))
+      fprintf p "@[failstop on policy @ %s %s@]@." (String.of_seq (List.to_seq r)) (String.concat "," (List.map print_tag params))
+	(* APT: may be nicer ways to format, as comment below suggests *)
       (*  anaaktge 
           Notes 
           We need a function that converts tags to strings in ocaml

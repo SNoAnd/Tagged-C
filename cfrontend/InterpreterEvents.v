@@ -463,7 +463,7 @@ Definition do_ef_volatile_store_global (chunk: memory_chunk) (id: ident) (ofs: p
                                        (repeat (Byte Byte.zero vt') (Z.to_nat sz))
                                        (repeat lt2 (Z.to_nat sz)) with
                       | MemorySuccess m'' =>
-                          Some (w, E0, (MemorySuccess (PolicySuccess((Vlong (Int64.repr base), def_tag), PCT', m''))))
+                          Some (w, E0, (MemorySuccess (PolicySuccess((Vlong (Int64.repr base), pt' (* APT: changed from def_tag *)), PCT', m''))))
                       | MemoryFail msg => Some (w, E0, (MemoryFail msg))
                       end
                   | PolicyFail msg params =>

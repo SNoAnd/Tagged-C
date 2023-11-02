@@ -8,6 +8,8 @@ Require Import Ctypes.
 
 Require Import List. Import ListNotations. (* list notations is a module inside list *)
 
+Parameter extern_atom : positive -> string.
+
 Module Type Policy. (* anaaktge this is the interface for rules
                       start with where 
                       rule itself might not be structured
@@ -218,7 +220,7 @@ Module PVI <: Policy.
 
   Definition print_tag (t : tag) : string :=
     match t with
-    | Glob id => "Global"
+    | Glob id => "Global " ++ (extern_atom id)
     | Dyn c => "Dynamic"
     | N => "N"
     end.
@@ -586,10 +588,7 @@ Module DoubleFree <: Policy.
 
 Definition print_tag (t : tag) : string :=
     match t with
-    | FreeColor l => "Free Color" (* ++ l TODO: how do we get l to be a string? *)
-                      (* strings.v documentation says ++ is strcat
-                        instead an ocaml version of the tag and is able to gerenate the string
-                        by doing hte look up *)
+    | FreeColor l => "Free Color " ++ (extern_atom l)  (* converts internal id (positive) to string, using mapping established at parsing *)
     | N => "Unallocated"
     | Alloc => "Allocated"
     end.
@@ -682,8 +681,7 @@ Definition print_tag (t : tag) : string :=
       - lt' 4th is the new location tag, now set to Alloc, this now painted as allocated memory. 
   *)
  Definition MallocT (pct pt st : tag) : PolicyResult (tag * tag * tag * tag * tag) :=
-   PolicySuccess (pct, N, N, Alloc, N).
-
+   PolicySuccess (pct, Alloc (* APT: changed from N *), N, Alloc, N).
  (* 
   FreeT colors the header/0th tag with the current Freecolor from the pct. If there is already 
     a color present on the tag of the 0th element, this is a double free. If it tries to free
