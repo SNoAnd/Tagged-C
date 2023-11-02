@@ -2707,7 +2707,7 @@ Definition do_initial_state (p: program): option (Genv.t (Ctypes.fundef function
   dol b, pt <- Genv.find_symbol ge p.(prog_main);
   do f <- Genv.find_funct_ptr ge b;
   check (type_eq (type_of_fundef f) (Tfunction Tnil type_int32s cc_default));
-  Some (ge, Callstate f def_tag nil Kstop m).
+  Some (ge, Callstate f InitPCT nil Kstop m).
 
 Definition at_final_state (S: Csem.state): option (PolicyResult int) :=
   match S with

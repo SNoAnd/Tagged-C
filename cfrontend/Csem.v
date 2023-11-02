@@ -182,7 +182,7 @@ Module Csem (P: Policy).
   (* Allocates local variables and, if they are parameters with corresponding values, initializes them *)
   Fixpoint do_alloc_variables (pct: tag) (e: env) (m: mem) (l: list (ident * type * option atom)) {struct l} : MemoryResult (PolicyResult (tag * env * mem)) :=
     match l with
-    | nil => MemorySuccess (PolicySuccess (pct,e,m))
+    | [] => MemorySuccess (PolicySuccess (pct,e,m))
     | (id, ty, init) :: l' =>
         match Mem.alloc m 0 (sizeof ce ty), LocalT ce pct ty with
         | MemorySuccess (m',base,bound), PolicySuccess (pct', pt', lts') =>
