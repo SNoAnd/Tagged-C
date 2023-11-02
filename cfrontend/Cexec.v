@@ -2468,7 +2468,8 @@ Definition do_step (w: world) (s: Csem.state) : list transition :=
       ret "step_continue_switch" (State f pct (Scontinue loc) k e te m)
 
   | State f pct (Slabel lbl s) k e te m =>
-      ret "step_label" (State f pct s k e te m)
+      at "step_label_tfail" trule pct' <- LabelT pct lbl;
+      ret "step_label" (State f pct' s k e te m)
   | State f pct (Sgoto lbl loc) k e te m =>
       match find_label lbl f.(fn_body) (call_cont k) with
       | Some(s', k') => ret "step_goto" (State f pct s' k' e te m)
