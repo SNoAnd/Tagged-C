@@ -73,9 +73,12 @@ Module Type Policy. (* anaaktge this is the interface for rules
 
   Parameter DeallocT : composite_env -> tag -> type -> PolicyResult (tag * tag * list tag).
 
-  Parameter MallocT : tag -> tag -> tag -> PolicyResult (tag * tag * tag * tag).
+  Parameter MallocT : (*PCT*) tag -> (*fptr*) tag -> (*size*) tag ->
+                      PolicyResult ((*PCT*) tag * (*pt*) tag * (*vt (body) *) tag
+                                    * (*vt (header)*) tag * (*lt*) tag).
 
-  Parameter FreeT : tag -> tag -> tag -> PolicyResult (tag * tag * tag).
+  Parameter FreeT : (*PCT*) tag -> (*fptr*) tag -> (*pt*) tag -> (*vt (header)*) tag ->
+                    PolicyResult ((*PCT*) tag * (*vt (body)*) tag * (*vt (header)*) tag * (*lt*) tag).
 
   Parameter BuiltinT : string -> tag -> list tag -> PolicyResult tag.
   
@@ -177,11 +180,11 @@ Module NullPolicy <: Policy.
   Definition DeallocT (ce : composite_env) (pct : tag) (ty : type) : PolicyResult (tag * tag * list tag) :=
     PolicySuccess (tt, tt, repeat tt (Z.to_nat (sizeof ce ty))).
 
-  Definition MallocT (pct pt vt : tag) : PolicyResult (tag * tag * tag * tag) :=
-    PolicySuccess (tt, tt, tt, tt).
+  Definition MallocT (pct pt vt : tag) : PolicyResult (tag * tag * tag * tag * tag) :=
+    PolicySuccess (tt, tt, tt, tt, tt).
 
-  Definition FreeT (pct pt vt : tag) : PolicyResult (tag * tag * tag) :=
-    PolicySuccess (tt, tt, tt).
+  Definition FreeT (pct pt1 pt2 vt : tag) : PolicyResult (tag * tag * tag * tag) :=
+    PolicySuccess (tt, tt, tt, tt).
 
   Definition BuiltinT (fn : string) (pct : tag) (args : list tag) : PolicyResult tag :=
     PolicySuccess tt.
@@ -287,16 +290,16 @@ Module PVI <: Policy.
   Definition DeallocT (ce : composite_env) (pct : tag) (ty : type) : PolicyResult (tag * tag * list tag) :=
     PolicySuccess (pct, N, repeat N (Z.to_nat (sizeof ce ty))).
 
-  Definition MallocT (pct pt vt : tag) : PolicyResult (tag * tag * tag * tag) :=
+  Definition MallocT (pct pt vt : tag) : PolicyResult (tag * tag * tag * tag * tag) :=
     match pct with
     | Dyn c =>
-        PolicySuccess (Dyn (S c), Dyn c, N, Dyn c)
+        PolicySuccess (Dyn (S c), Dyn c, N, Dyn c, Dyn c)
     | _ =>
         PolicyFail "PVI::MallocT Failure" [pct;pt;vt]
     end.
 
-  Definition FreeT (pct pt vt : tag) : PolicyResult (tag * tag * tag) :=
-    PolicySuccess (pct, N, N).
+  Definition FreeT (pct pt1 pt2 vt : tag) : PolicyResult (tag * tag * tag * tag) :=
+    PolicySuccess (pct, N, N, N).
 
   Definition BuiltinT (fn : string) (pct : tag) (args : list tag) : PolicyResult tag :=
     PolicySuccess N.
@@ -402,16 +405,16 @@ Module PNVI <: Policy.
   Definition DeallocT (ce : composite_env) (pct : tag) (ty : type) : PolicyResult (tag * tag * list tag) :=
     PolicySuccess (pct, N, repeat N (Z.to_nat (sizeof ce ty))).
 
-  Definition MallocT (pct pt vt : tag) : PolicyResult (tag * tag * tag * tag) :=
+  Definition MallocT (pct pt vt : tag) : PolicyResult (tag * tag * tag * tag * tag) :=
     match pct with
     | Dyn c =>
-        PolicySuccess (Dyn (S c), Dyn c, N, Dyn c)
+        PolicySuccess (Dyn (S c), Dyn c, N, Dyn c, Dyn c)
     | _ =>
         PolicyFail "PNVI::MallocT Failure" [pct;pt;vt]
     end.
 
-  Definition FreeT (pct pt vt : tag) : PolicyResult (tag * tag * tag) :=
-    PolicySuccess (pct, N, N).
+  Definition FreeT (pct pt1 pt2 vt : tag) : PolicyResult (tag * tag * tag * tag) :=
+    PolicySuccess (pct, N, N, N).
 
   Definition BuiltinT (fn : string) (pct : tag) (args : list tag) : PolicyResult tag :=
     PolicySuccess N.
@@ -678,8 +681,8 @@ Definition print_tag (t : tag) : string :=
       - vt' ?? value tag of the 00s written 
       - lt' 4th is the new location tag, now set to Alloc, this now painted as allocated memory. 
   *)
- Definition MallocT (pct pt st : tag) : PolicyResult (tag * tag * tag * tag) :=
-   PolicySuccess (pct, N, N, Alloc).
+ Definition MallocT (pct pt st : tag) : PolicyResult (tag * tag * tag * tag * tag) :=
+   PolicySuccess (pct, N, N, Alloc, N).
 
  (* 
   FreeT colors the header/0th tag with the current Freecolor from the pct. If there is already 
@@ -698,14 +701,14 @@ Definition print_tag (t : tag) : string :=
     - 1st is pt, passed through
     - 2nd is the color of the original/first free 
  *)
- Definition FreeT (pct pt lt : tag) : PolicyResult (tag * tag * tag) :=
-  match lt with 
-    | Alloc => PolicySuccess(pct, pt, pct) (* was allocated then freed, assign free color *)
+ Definition FreeT (pct pt1 pt2 vt : tag) : PolicyResult (tag * tag * tag * tag) :=
+  match vt with 
+    | Alloc => PolicySuccess(pct, pt1, pct, N) (* was allocated then freed, assign free color *)
     (*| nil => PolicySuccess(pct, pt, pct)*) (* C allows free(0) or free nullpointers *)
     | N (* trying to free unallocated memory *)
-        => PolicyFail "DoubleFree:FreeT detects free of unallocated memory" [pct;pt;lt]
+        => PolicyFail "DoubleFree:FreeT detects free of unallocated memory" [pct;pt1;pt2;vt]
     | FreeColor l (* Freecolor *)
-        => PolicyFail "DoubleFree:FreeT detects two colors" [pct;pt;lt]
+        => PolicyFail "DoubleFree:FreeT detects two colors" [pct;pt1;pt2;vt]
   end.
 
  (* Required for policy interface. Not relevant to this particular policy, pass values through *)

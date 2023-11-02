@@ -999,15 +999,15 @@ Qed.*)
 (* TODO: def_tag -> function tag *)
 Inductive extcall_malloc_sem (ge: Genv.t F V):
               list atom -> tag -> mem -> trace -> atom -> tag -> mem -> Prop :=
-| extcall_malloc_sem_intro_int: forall sz st pct m m' lo hi vt lt pt pct' m'',
+| extcall_malloc_sem_intro_int: forall sz st pct m m' lo hi vt lt1 lt2 pt pct' m'',
     malloc m (- size_chunk Mptr) (Ptrofs.unsigned sz) = MemorySuccess (m', lo, hi) ->
-    MallocT pct def_tag st = PolicySuccess (pct', pt, vt, lt) ->
-    store Mptr m' (- size_chunk Mptr) (Vlong (Ptrofs.to_int64 sz), vt) (lt::nil) = MemorySuccess m'' ->
+    MallocT pct def_tag st = PolicySuccess (pct', pt, vt, lt1, lt2) ->
+    store Mptr m' (- size_chunk Mptr) (Vlong (Ptrofs.to_int64 sz), vt) (lt1::nil) = MemorySuccess m'' ->
     extcall_malloc_sem ge ((Vint (Ptrofs.to_int sz),st) :: nil) pct m E0 (Vlong (Int64.repr lo), pt) pct' m''
-| extcall_malloc_sem_intro_long: forall sz st pct m m' lo hi vt lt pt pct' m'',
+| extcall_malloc_sem_intro_long: forall sz st pct m m' lo hi vt lt1 lt2 pt pct' m'',
     malloc m (- size_chunk Mptr) (Ptrofs.unsigned sz) = MemorySuccess (m', lo, hi) ->
-    MallocT pct def_tag st = PolicySuccess (pct', pt, vt, lt) ->
-    store Mptr m' (- size_chunk Mptr) (Vlong (Ptrofs.to_int64 sz), vt) (lt::nil) = MemorySuccess m'' ->
+    MallocT pct def_tag st = PolicySuccess (pct', pt, vt, lt1, lt2) ->
+    store Mptr m' (- size_chunk Mptr) (Vlong (Ptrofs.to_int64 sz), vt) (lt1::nil) = MemorySuccess m'' ->
     extcall_malloc_sem ge ((Vlong (Ptrofs.to_int64 sz),st) :: nil) pct m E0 (Vlong (Int64.repr lo), pt) pct' m''.
 
 (*Lemma extcall_malloc_ok:
@@ -1090,13 +1090,13 @@ Qed.
 
 Inductive extcall_free_sem (ge: Genv.t F V):
               list atom -> tag -> mem -> trace -> atom -> tag -> mem -> Prop :=
-| extcall_free_sem_ptr: forall lo pt sz vt vt' pct pct' m m' lt lt',
+| extcall_free_sem_ptr: forall lo pt1 pt2 sz vt vt' pct pct' m m' lt1 lt2,
     (* TODO: update mem *)
     load Mptr m (lo - size_chunk Mptr) = MemorySuccess (Vlong (Ptrofs.to_int64 sz), vt) ->
     Ptrofs.unsigned sz > 0 ->
     mfree m (lo - size_chunk Mptr) (lo + Ptrofs.unsigned sz) = MemorySuccess m' ->
-    FreeT pct pt lt = PolicySuccess (pct', vt', lt') ->
-    extcall_free_sem ge ((Vint (Int.repr lo),pt) :: nil) pct m E0 (Vundef,def_tag) pct' m'
+    FreeT pct pt1 pt2 vt = PolicySuccess (pct', vt', lt1, lt2) ->
+    extcall_free_sem ge ((Vint (Int.repr lo),pt2) :: nil) pct m E0 (Vundef,def_tag) pct' m'
 | extcall_free_sem_null: forall pct pct' m pt,
     extcall_free_sem ge ((Vnullptr,pt) :: nil) pct m E0 (Vundef,def_tag) pct' m.
 
