@@ -57,9 +57,9 @@ let process_c_file sourcename =
     else
       tmp_file ".i" in
     preprocess sourcename preproname;
-    (*if !option_interp then begin*)
+    if !option_interp then begin
       !runner sourcename preproname;
-    (*end;*)
+    end;
     ""
   end
 
