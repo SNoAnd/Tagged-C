@@ -545,27 +545,28 @@ End IFC. *)
 
 (*
 Simple Double Free detection & diagnostic policy. Implements Policy Interface.
-  - Detects some classic double free runtime behavior.
+  - Detects some classic double free runtime behavior + some nonsense frees.
   - The policy relevant functions are LabelT, MallocT, and FreeT.
   - Intended for use with a fuzzer or other tool that consumes the failstop diagnostic information.
   - Policy can be fooled if aliasing is comingled with double free pathology.
+  - free(0) is legal, but it should never reach the tag rule, so the tag rule does not accoutn for it.
 
 Future:
   - handlabeling will be relaced by automatic src location info. 
-  - still need to know how to make print tag print a value 
-  - TODO: what about free(0)? That is legal, even though I think the policy
-      will declare that a nonsense free c
 
 Assumes:
   - The base/fallback TaggedC heap policy is off or unavailable.
   - The mapping of source location to free label is handled by externally. Policy has no knowledge of it.  
-  - All frees are staticly labeled post processed C source file.
+  - All frees are staticly labeled.
     - free sites might be hand labelled to start.
     - Labels must be unique and consistent across executions (fuzzing runs)
 
-Other Notes:
-  - in this version there is a tag on the value and one on memory. (abstraction of spliting htem
-    up to make reasoning easier. In hardware it is 1 on a byte)
+Notes:
+  - in this version there is a tag on the value and one on byte memory. 
+    (abstraction of spliting them up to make reasoning easier. 
+    In hardware it is 1 on a byte)
+    example on an int, tag on int, 4 location tags, one per byte.
+    Can be used to catch misaligned loads and stores, in theory.
 *)
 Module DoubleFree <: Policy.
 
@@ -575,8 +576,8 @@ Module DoubleFree <: Policy.
  | Alloc (*(id:ident)*) (* this memory is allocated. NB in a future policy it too might have a dynamic color*)
  .
 
+(* boilerplate tag equality proof. Since myTag does not inherit, we have to have our own copy *)
  Definition tag := myTag.
- (* boilerplate tag equality proof. Since myTag does not inherit, we have to have our own copy *)
  Theorem tag_eq_dec : forall (t1 t2:tag), {t1 = t2} + {t1 <> t2}.
  Proof.
    unfold tag. intros. repeat decide equality.
@@ -609,9 +610,9 @@ Definition print_tag (t : tag) : string :=
  (* Required for policy interface. Not relevant to this particular policy, pass values through *)
  Definition ArgT (pct vt : tag) (f x: ident) : PolicyResult (tag * tag) := PolicySuccess (pct,vt).
 
- (* TODO: confirm pct_cle is what should pass through *)
  (* Required for policy interface. Not relevant to this particular policy, pass values through *)
- Definition RetT (pct_clr pct_cle vt : tag) : PolicyResult (tag * tag) := PolicySuccess (pct_cle,vt).
+ (* pct_clr is pct of caller, pct_cle is callee *)
+ Definition RetT (pct_clr pct_cle vt : tag) : PolicyResult (tag * tag) := PolicySuccess (pct_clr,vt).
 
  (* Required for policy interface. Not relevant to this particular policy, pass values through *)
  Definition LoadT (pct pt vt: tag) (lts : list tag) : PolicyResult tag := PolicySuccess pct.
@@ -623,6 +624,7 @@ Definition print_tag (t : tag) : string :=
  Definition AccessT (pct vt : tag) : PolicyResult tag := PolicySuccess vt.
 
  (* Required for policy interface. Not relevant to this particular policy, pass values through *)
+ (* vt1 is lhs, vt2 is rhs *)
  Definition AssignT (pct vt1 vt2 : tag) : PolicyResult (tag * tag) := PolicySuccess (pct,vt2).
 
  (* Required for policy interface. Not relevant to this particular policy, pass values through *)
@@ -631,11 +633,11 @@ Definition print_tag (t : tag) : string :=
  (* Required for policy interface. Not relevant to this particular policy, pass values through *)
  Definition BinopT (op : binary_operation) (pct vt1 vt2 : tag) : PolicyResult (tag * tag) := PolicySuccess (pct, vt2).
 
- (* Required for policy interface. Not relevant to this particular policy, pass values through *)
- Definition ConstT (pct : tag) : PolicyResult tag := PolicySuccess pct.
+ (* Constants are never pointers to malloced memory. *)
+ Definition ConstT (pct : tag) : PolicyResult tag := PolicySuccess N.
 
-(* Required for policy interface. Not relevant to this particular policy, pass values through *)
- Definition InitT (pct : tag) : PolicyResult tag := PolicySuccess pct.
+(* Before pointer gets its value, it's not allocated *) 
+ Definition InitT (pct : tag) : PolicyResult tag := PolicySuccess N.
 
  (* Required for policy interface. Not relevant to this particular policy, pass values through *)
  Definition SplitT (pct vt : tag) (id : option ident) : PolicyResult tag := PolicySuccess pct.
@@ -646,6 +648,8 @@ Definition print_tag (t : tag) : string :=
       - pct is program counter tag
       - l is the label or color of the free site
         (l promised to be there, promised to be unique. See assumptions at top of policy)
+      returns a new pct after the label is applied. Imperative update to the PC tag.
+      PC tag will have the id of hte last label we saw
  *)
  Definition LabelT (pct : tag) (l : ident) : PolicyResult tag := PolicySuccess (FreeColor l).
 
@@ -655,60 +659,65 @@ Definition print_tag (t : tag) : string :=
  (* Required for policy interface. Not relevant to this particular policy, pass values through *)
  Definition ExprJoinT (pct vt : tag) : PolicyResult (tag * tag) := PolicySuccess (pct,vt).
 
- (* TODO: confirm this one is correct and not erasing information*)
  (* Required for policy interface. Not relevant to this particular policy, pass values through *)
  Definition GlobalT (ce : composite_env) (id : ident) (ty : type) : tag * tag * tag := (N, N, N).
 
  (* Required for policy interface. Not relevant to this particular policy, pass values through *)
  Definition LocalT (ce : composite_env) (pct : tag) (ty : type) : PolicyResult (tag * tag * (list tag))%type :=
-   PolicySuccess (N, N, []).
+   PolicySuccess (N, N, [N]).
 
  (* Required for policy interface. Not relevant to this particular policy, pass values through *)
+ (* NB this is for stack allocated variables. Not relevant to dynamic memory *)
  Definition DeallocT (ce : composite_env) (pct : tag) (ty : type) : PolicyResult (tag * tag * list tag) :=
-   PolicySuccess (pct, N, []).
+   PolicySuccess (pct, N, [N]).
 
  (* 
     MallocT sets the tag to Alloc, and clears free color if one was present becausee
       re-use of freed memory is legal.
       - pct is program counter tag
-      - pt is the default tag (N) (not hte pointer tag )
-        TODO: ask sean about this tomorrow
+      - fptrt is the tag on the function pointer that is being called, often left defT
+          In a world with multiple mallocs (like compartments) this is useful.
       - st is the tag on the size
     In the return tuple
-      - pct' 1st spot is the new program counter tag
-      - pt' ?? tag on the pointer returned from malloc? but is ignored?
-      - vt' ?? value tag of the 00s written 
-      - lt' 4th is the new location tag, now set to Alloc, this now painted as allocated memory. 
+      - pct' new program counter tag
+      - pt new tag on the pointer returned from malloc, set to alloc.
+      - vt body - tag on values written, 00s usually. These won't tell you if something is alloc
+      - vt header - tag on "header" or index -1, above what pointer points to 
+      - lt new location (in memory) tag, this now painted as allocated memory across
+           whole region. Even though it's 1 tag, it affects all tags in the buffer.
+           Free in this policy does not look at these at all, so it does not really
+           matter was value goes here. 
   *)
- Definition MallocT (pct pt st : tag) : PolicyResult (tag * tag * tag * tag * tag) :=
+ Definition MallocT (pct fptrt st : tag) : PolicyResult (tag * tag * tag * tag * tag) :=
    PolicySuccess (pct, Alloc (* APT: changed from N *), N, Alloc, N).
  (* 
-  FreeT colors the header/0th tag with the current Freecolor from the pct. If there is already 
-    a color present on the tag of the 0th element, this is a double free. If it tries to free
+  FreeT colors the header tag with the current Freecolor from the pct. If there is already 
+    a color present on the tag of the header, this is a double free. If it tries to free
     something that is unallocated, this is a nonsense free, unless it is free(0). Freeing a
-    null pointer is legal C. 
+    null pointer is legal C, but the rule should not be called on those. 
   Args:
     pct - program counter tag, which has the current Freecolor (acquired in LabelT)
+    fptrt - tag on the function pointer of this fn (useful in world with multiple frees)
     pt - pointer tag of pointer to block (tag on the argument passed to free() )
-    lt - the tag on the 0th element in the block to be freed. In effect,
-      the header tag of the memory block. Tags on memory after the 0th element
-      are not affected.
+    vth value tag on header, vt header, of block to free
+  
   If rule succeeds, return tuple
     1st tag - pct, program counter tag
-    2nd tag - vt, passed through
-    3rd tag - free color from the pc tag 
+    2nd tag - vt body, tags on body of valyes in block
+    3rd tag - vt header tag on the header, index -1 of block. This carries the free color.
+    4th tag - lt, location tags in block 
+  
   If rule fails, array contains:
-    - 0th is color of 2nd free where the violation is detected
-    - 1st is pt, passed through
-    - 2nd is the color of the original/first free 
+    - vht is the color of previous free
+    - pct is the color of the 2nd/current free
  *)
- Definition FreeT (pct pt1 pt2 vt : tag) : PolicyResult (tag * tag * tag * tag) :=
+ Definition FreeT (pct fptrt pt vht : tag) : PolicyResult (tag * tag * tag * tag) :=
   match vt with 
-    | Alloc => PolicySuccess(pct, pt1, pct, N) (* was allocated then freed, assign free color *)
+    | Alloc => PolicySuccess(pct, N, pct, N) (* was allocated then freed, assign free color from pct *)
     | N (* trying to free unallocated memory *)
-        => PolicyFail "DoubleFree:FreeT detects free of unallocated memory" [pct;pt1;pt2;vt]
+        => PolicyFail "DoubleFree:FreeT detects free of unallocated memory" [pct;fptrt;pt;vht]
     | FreeColor l (* Freecolor *)
-        => PolicyFail "DoubleFree:FreeT detects two colors" [pct;pt1;pt2;vt]
+        => PolicyFail "DoubleFree:FreeT detects two colors" [pct;fptrt;pt;vht]
   end.
 
  (* Required for policy interface. Not relevant to this particular policy, pass values through *)
