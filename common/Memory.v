@@ -48,19 +48,19 @@ Local Unset Case Analysis Schemes.
 
 Local Notation "a # b" := (PMap.get b a) (at level 1).
 
+Inductive MemoryResult (A:Type) : Type :=
+| MemorySuccess (a:A)
+| MemoryFail (msg:string)
+.
+
+Arguments MemorySuccess {_} _.
+Arguments MemoryFail {_} _.
+
 Module Mem (P:Policy).
   Module TLib := TagLib P.
   Import TLib.
   Module MD := Memdata P.
   Export MD.
-
-  Inductive MemoryResult (A:Type) : Type :=
-  | MemorySuccess (a:A)
-  | MemoryFail (msg:string)
-  .
-
-  Arguments MemorySuccess {_} _.
-  Arguments MemoryFail {_} _.
   
   Inductive permission : Type := Live | Dead | MostlyDead.
 
@@ -68,221 +68,112 @@ Module Mem (P:Policy).
   Proof.
     intros. destruct p1; destruct p2; try (right; intro; discriminate); left; auto.
   Qed.
-
-  Record allocator : Type := mkallocator {
-    t: Type;
-    init: t;
-
-    stkalloc : t -> Z -> option (t*Z*Z);
-    stkfree : t -> Z -> Z -> t;
-    heapalloc : t -> Z -> MemoryResult (t*Z*Z);
-    heapfree : t -> Z -> MemoryResult t;
-  }.
-
-  Definition freelist : Type := list (Z*Z).
   
-  Record heap_state : Type := mkheap {
-    regions : ZMap.t (option Z);
-    fl : list (Z * Z);
-  }.
-
-  Definition empty_heap : heap_state :=
-    mkheap (ZMap.init None) [(1000,2000)].
-  
-  Fixpoint fl_alloc (fl : freelist) (size : Z) : option (Z*Z*freelist) :=
-    match fl with
-    | [] => None
-    | (base, bound) :: fl' =>
-        if bound - base =? size
-        then Some (base,bound,fl')
-        else if size <? bound - base
-             then Some (base,base+size,(base+size+1,bound)::fl')
-             else match fl_alloc fl' size with
-                  | Some (base',bound',fl'') => Some (base', bound', (base, bound) :: fl'')
-                  | None => None
-                  end
-    end.
-  
-  Fixpoint fl_free (fl : freelist) (entry : Z*Z) : freelist :=
-    match fl with
-    | [] => [entry]
-    | (base1,bound1)::fl' =>
-        let (base,bound) := entry in
-        if bound =? base1
-        then (base,bound1)::fl'
-        else if bound <? base1
-             then (base,bound)::fl
-             else match fl_free fl' entry with
-                  | (base2,bound2)::fl'' =>
-                      if bound1 =? base2
-                      then (base1,bound2)::fl''
-                      else (base1,bound1)::(base2,bound2)::fl''
-                  | [] => [(base1,bound1);entry]
-                  end
-    end.                       
-  
-  Definition checked_malloc (h : heap_state) (size : Z) : MemoryResult (Z*heap_state) :=
-    match fl_alloc h.(fl) size with
-    | Some (base, bound, fl') =>
-        let regions' := ZMap.set base (Some bound) h.(regions) in
-        MemorySuccess (base, mkheap regions' fl')
-    | None => MemoryFail "Out of memory"
-    end.
-  
-  Definition checked_free (h : heap_state) (base : Z) : MemoryResult heap_state :=
-    match ZMap.get base h.(regions) with
-    | Some bound => MemorySuccess (mkheap (ZMap.set base None h.(regions)) (fl_free h.(fl) (base, bound)))
-    | None => MemoryFail "Bad free"
-    end.
-  
-  Definition al : allocator :=
-    mkallocator
-      (Z*heap_state)   
-      (3000,empty_heap)
-      (fun '(sp,heap) size => Some ((sp-size,heap),sp-size,sp))
-      (fun '(sp,heap) base bound => (bound,heap))
-      (fun '(sp,heap) size =>
-         match checked_malloc heap size with
-         | MemorySuccess (base,heap') => MemorySuccess (sp,heap',base,base+size)
-         | MemoryFail msg => MemoryFail msg
-         end)
-      (fun '(sp,heap) base =>
-         match checked_free heap base with
-         | MemorySuccess heap' => MemorySuccess (sp, heap')
-         | MemoryFail msg => MemoryFail msg
-         end)
-  .
-
   Record mem' : Type := mkmem {
     mem_contents: ZMap.t (memval*tag);  (**r [offset -> memval] *)
-    mem_access: Z -> permission;
-                                         (**r [block -> offset -> kind -> option permission] *)
-    al_state: al.(t);
-
+    mem_access: Z -> permission;        (**r [block -> offset -> kind -> option permission] *)
     live: list (Z*Z);
-
-    globals: (Z*Z);
   }.    
   
-Definition mem := mem'.
+  Definition mem := mem'.
 
-Lemma mkmem_ext:
- forall cont1 cont2 acc1 acc2 alloc1 alloc2 next1 next2,
-  cont1=cont2 -> alloc1=alloc2 -> acc1=acc2 -> next1=next2 ->
-  mkmem cont1 acc1 alloc1 next1 = mkmem cont2 acc2 alloc2 next2.
-Proof.
-  intros. subst. f_equal; apply proof_irr.
-Qed.
+  Lemma mkmem_ext:
+    forall cont1 cont2 acc1 acc2 live1 live2,
+      cont1=cont2 -> acc1=acc2 -> live1=live2 ->
+      mkmem cont1 acc1 live1 = mkmem cont2 acc2 live2.
+  Proof.
+    intros. subst. f_equal; apply proof_irr.
+  Qed.
 
-(** * Validity of blocks and accesses *)
+  (** * Validity of blocks and accesses *)
 
-(** A block address is valid if it was previously allocated. It remains valid
-  even after being freed. *)
+  (** A block address is valid if it was previously allocated. It remains valid
+      even after being freed. *)
 
-Definition valid_addr (m: mem) (addr: Z) :=
-  exists lo hi,
-    In (lo,hi) m.(live) /\
-      lo <= addr /\ addr < hi.
-
-Theorem valid_not_valid_diff:
-  forall m a a', valid_addr m a -> ~(valid_addr m a') -> a <> a'.
-Proof.
-  intros; red; intros. subst a'. contradiction.
-Qed.
-
-Local Hint Resolve valid_not_valid_diff: mem.
-
-(** Permissions *)
-
-Definition get_perm (m: mem) (ofs: Z) : permission :=
-  m.(mem_access) ofs.
-
-Definition perm (m: mem) (ofs: Z)  (p: permission) : Prop :=
-  get_perm m ofs = p.
-
-(*Theorem perm_valid_block:
-  forall m ofs p,
-    perm m ofs p ->
+  Definition valid_addr (m: mem) (addr: Z) :=
     exists lo hi,
-      m.(allocator).(live)#= (lo,hi) /\
-        lo < ofs /\ ofs <= hi /\
-        valid_block m b.
-Admitted.
-Proof.
-  unfold perm; intros.
-  destruct (plt m.(nextblock)).
-  auto.
-  assert (m.(mem_access)#ofs = None).
-  eapply nextblock_noaccess; eauto.
-  rewrite H0 in H.
-  contradiction.
-Qed.
+      In (lo,hi) m.(live) /\
+        lo <= addr /\ addr < hi.
+  
+  Theorem valid_not_valid_diff:
+    forall m a a', valid_addr m a -> ~(valid_addr m a') -> a <> a'.
+  Proof.
+    intros; red; intros. subst a'. contradiction.
+  Qed.
 
-Local Hint Resolve perm_valid_block: mem.*)
+  Local Hint Resolve valid_not_valid_diff: mem.
 
-Theorem perm_dec:
-  forall m ofs p, {perm m ofs p} + {~ perm m ofs p}.
-Proof.
-  unfold perm; intros. eapply permission_dec.
-Defined.
+  (** Permissions *)
 
-Definition range_perm (m: mem) (lo hi: Z)  (p: permission) : Prop :=
-  forall ofs, lo <= ofs < hi -> perm m ofs p.
+  Definition get_perm (m: mem) (ofs: Z) : permission :=
+    m.(mem_access) ofs.
 
-Lemma range_perm_dec:
-  forall m lo hi p, {range_perm m lo hi p} + {~ range_perm m lo hi p}.
-Proof.
-  intros.
-  induction lo using (well_founded_induction_type (Zwf_up_well_founded hi)).
-  destruct (zlt lo hi).
-  - destruct (perm_dec m lo p).
-    + destruct (H (lo + 1)).
-      * red. lia.
-      * left; red; intros. destruct (zeq lo ofs).
-        -- congruence.
-        -- apply r. lia.
-      * right; red; intros. elim n. red; intros; apply H0; lia.
-    + right; red; intros. elim n. apply H0. lia.
-  - left; red; intros. extlia.
-Defined.
+  Definition perm (m: mem) (ofs: Z)  (p: permission) : Prop :=
+    get_perm m ofs = p.
 
-Definition range_perm_neg (m: mem) (lo hi: Z) (p: permission) : Prop :=
-  forall ofs, lo <= ofs < hi -> ~ perm m ofs p.
+  Theorem perm_dec:
+    forall m ofs p, {perm m ofs p} + {~ perm m ofs p}.
+  Proof.
+    unfold perm; intros. eapply permission_dec.
+  Defined.
 
-Lemma range_perm_neg_dec:
-  forall m lo hi p, {range_perm_neg m lo hi p} + {~ range_perm_neg m lo hi p}.
-Proof.
-  intros.
-  induction lo using (well_founded_induction_type (Zwf_up_well_founded hi)).
-  destruct (zlt lo hi).
-  - destruct (perm_dec m lo p).
-    + right; red; intros. apply (H0 lo). lia. auto.
-    + destruct (H (lo + 1)).
-      * red. lia.
-      * left; red; intros. destruct (zeq lo ofs).
-        -- congruence.
-        -- apply r. lia.
-      * right; red; intros. elim n0. red; intros. apply H0; lia.
-  - left; red; intros. extlia.
-Defined.
+  Definition range_perm (m: mem) (lo hi: Z)  (p: permission) : Prop :=
+    forall ofs, lo <= ofs < hi -> perm m ofs p.
 
-(** [valid_access m chunk ofs] holds if a memory access
-    of the given chunk is possible in [m] at address [ofs].
-    This means:
-    - The offset [ofs] is aligned.
-    - If any of the range of bytes accessed have permission [Dead],
+  Lemma range_perm_dec:
+    forall m lo hi p, {range_perm m lo hi p} + {~ range_perm m lo hi p}.
+  Proof.
+    intros.
+    induction lo using (well_founded_induction_type (Zwf_up_well_founded hi)).
+    destruct (zlt lo hi).
+    - destruct (perm_dec m lo p).
+      + destruct (H (lo + 1)).
+        * red. lia.
+        * left; red; intros. destruct (zeq lo ofs).
+          -- congruence.
+          -- apply r. lia.
+        * right; red; intros. elim n. red; intros; apply H0; lia.
+      + right; red; intros. elim n. apply H0. lia.
+    - left; red; intros. extlia.
+  Defined.
+  
+  Definition range_perm_neg (m: mem) (lo hi: Z) (p: permission) : Prop :=
+    forall ofs, lo <= ofs < hi -> ~ perm m ofs p.
+
+  Lemma range_perm_neg_dec:
+    forall m lo hi p, {range_perm_neg m lo hi p} + {~ range_perm_neg m lo hi p}.
+  Proof.
+    intros.
+    induction lo using (well_founded_induction_type (Zwf_up_well_founded hi)).
+    destruct (zlt lo hi).
+    - destruct (perm_dec m lo p).
+      + right; red; intros. apply (H0 lo). lia. auto.
+      + destruct (H (lo + 1)).
+        * red. lia.
+        * left; red; intros. destruct (zeq lo ofs).
+          -- congruence.
+          -- apply r. lia.
+        * right; red; intros. elim n0. red; intros. apply H0; lia.
+    - left; red; intros. extlia.
+  Defined.
+
+  (** [valid_access m chunk ofs] holds if a memory access
+      of the given chunk is possible in [m] at address [ofs].
+      This means:
+      - The offset [ofs] is aligned.
+      - If any of the range of bytes accessed have permission [Dead],
       they are not shadowed by the compiler
-*)
+   *)
 
-Definition valid_access (m: mem) (chunk: memory_chunk) (ofs: Z): Prop :=
-  range_perm m ofs (ofs + size_chunk chunk) Live
-  /\ (align_chunk chunk | ofs).
+  Definition valid_access (m: mem) (chunk: memory_chunk) (ofs: Z): Prop :=
+    range_perm m ofs (ofs + size_chunk chunk) Live
+    /\ (align_chunk chunk | ofs).
 
-Theorem valid_access_valid_block:
-  forall m chunk ofs,
-    valid_access m chunk ofs ->
-    valid_addr m ofs.
-Admitted.
+  Theorem valid_access_valid_addr:
+    forall m chunk ofs,
+      valid_access m chunk ofs ->
+      valid_addr m ofs.
+  Admitted.
 (*Proof.
   intros. destruct H.
   assert (perm m ofs Cur Nonempty).
@@ -290,123 +181,99 @@ Admitted.
   eauto with mem.
 Qed. *)
 
-Local Hint Resolve valid_access_valid_block: mem.
+  Local Hint Resolve valid_access_valid_addr: mem.
 
-Theorem valid_block_valid_access:
-  forall m chunk ofs,
-    valid_addr m ofs ->
-    valid_access m chunk ofs.
-Admitted.
+  Theorem valid_addr_valid_access:
+    forall m chunk ofs,
+      valid_addr m ofs ->
+      valid_access m chunk ofs.
+  Admitted.
 
-Lemma valid_access_perm:
-  forall m chunk ofs,
-  valid_access m chunk ofs ->
-  perm m ofs Live.
-Proof.
-  intros. destruct H. apply H. generalize (size_chunk_pos chunk). lia.
-Qed.
+  Lemma valid_access_perm:
+    forall m chunk ofs,
+      valid_access m chunk ofs ->
+      perm m ofs Live.
+  Proof.
+    intros. destruct H. apply H. generalize (size_chunk_pos chunk). lia.
+  Qed.
 
-Lemma valid_access_compat:
-  forall m chunk1 chunk2 ofs,
-  size_chunk chunk1 = size_chunk chunk2 ->
-  align_chunk chunk2 <= align_chunk chunk1 ->
-  valid_access m chunk1 ofs ->
-  valid_access m chunk2 ofs.
-Proof.
-  intros. inv H1. rewrite H in H2. constructor; auto.
-  eapply Z.divide_trans; eauto. eapply align_le_divides; eauto.
-Qed.
+  Lemma valid_access_compat:
+    forall m chunk1 chunk2 ofs,
+      size_chunk chunk1 = size_chunk chunk2 ->
+      align_chunk chunk2 <= align_chunk chunk1 ->
+      valid_access m chunk1 ofs ->
+      valid_access m chunk2 ofs.
+  Proof.
+    intros. inv H1. rewrite H in H2. constructor; auto.
+    eapply Z.divide_trans; eauto. eapply align_le_divides; eauto.
+  Qed.
 
-Lemma valid_access_dec:
-  forall m chunk ofs,
-  {valid_access m chunk ofs} + {~ valid_access m chunk ofs}.
-Proof.
-  intros.
-  destruct (range_perm_dec m ofs (ofs + size_chunk chunk) Live).
-  destruct (Zdivide_dec (align_chunk chunk) ofs).
-  left; constructor; auto.
-  right; red; intro V; inv V; contradiction.
-  right; red; intro V; inv V; contradiction.
-Defined.
+  Lemma valid_access_dec:
+    forall m chunk ofs,
+      {valid_access m chunk ofs} + {~ valid_access m chunk ofs}.
+  Proof.
+    intros.
+    destruct (range_perm_dec m ofs (ofs + size_chunk chunk) Live).
+    destruct (Zdivide_dec (align_chunk chunk) ofs).
+    left; constructor; auto.
+    right; red; intro V; inv V; contradiction.
+    right; red; intro V; inv V; contradiction.
+  Defined.
 
-Definition allowed_access (m: mem) (chunk: memory_chunk) (ofs: Z) : Prop :=
-  range_perm_neg m ofs (ofs + size_chunk chunk) Dead
-  /\ (align_chunk chunk | ofs).
+  Definition allowed_access (m: mem) (chunk: memory_chunk) (ofs: Z) : Prop :=
+    range_perm_neg m ofs (ofs + size_chunk chunk) Dead
+    /\ (align_chunk chunk | ofs).
+  
+  Lemma allowed_access_perm:
+    forall m chunk ofs,
+      allowed_access m chunk ofs ->
+      ~ perm m ofs Dead.
+  Proof.
+    intros. destruct H. apply H. generalize (size_chunk_pos chunk). lia.
+  Qed.
 
-Lemma allowed_access_perm:
-  forall m chunk ofs,
-  allowed_access m chunk ofs ->
-  ~ perm m ofs Dead.
-Proof.
-  intros. destruct H. apply H. generalize (size_chunk_pos chunk). lia.
-Qed.
+  Lemma allowed_access_compat:
+    forall m chunk1 chunk2 ofs,
+      size_chunk chunk1 = size_chunk chunk2 ->
+      align_chunk chunk2 <= align_chunk chunk1 ->
+      allowed_access m chunk1 ofs ->
+      allowed_access m chunk2 ofs.
+  Proof.
+    intros. inv H1. rewrite H in H2. constructor; auto.
+    eapply Z.divide_trans; eauto. eapply align_le_divides; eauto.
+  Qed.
 
-Lemma allowed_access_compat:
-  forall m chunk1 chunk2 ofs,
-  size_chunk chunk1 = size_chunk chunk2 ->
-  align_chunk chunk2 <= align_chunk chunk1 ->
-  allowed_access m chunk1 ofs ->
-  allowed_access m chunk2 ofs.
-Proof.
-  intros. inv H1. rewrite H in H2. constructor; auto.
-  eapply Z.divide_trans; eauto. eapply align_le_divides; eauto.
-Qed.
+  Lemma allowed_access_dec:
+    forall m chunk ofs,
+      {allowed_access m chunk ofs} + {~ allowed_access m chunk ofs}.
+  Proof.
+    intros.
+    destruct (range_perm_neg_dec m ofs (ofs + size_chunk chunk) Dead).
+    destruct (Zdivide_dec (align_chunk chunk) ofs).
+    left; constructor; auto.
+    right; red; intro V; inv V; contradiction.
+    right; red; intro V; inv V; contradiction.
+  Defined.
 
-Lemma allowed_access_dec:
-  forall m chunk ofs,
-  {allowed_access m chunk ofs} + {~ allowed_access m chunk ofs}.
-Proof.
-  intros.
-  destruct (range_perm_neg_dec m ofs (ofs + size_chunk chunk) Dead).
-  destruct (Zdivide_dec (align_chunk chunk) ofs).
-  left; constructor; auto.
-  right; red; intro V; inv V; contradiction.
-  right; red; intro V; inv V; contradiction.
-Defined.
+  Lemma valid_access_allowed:
+    forall m chunk ofs,
+      valid_access m chunk ofs ->
+      allowed_access m chunk ofs.
+  Proof.
+    unfold valid_access, allowed_access. intros.
+    destruct H. split; auto.
+    unfold range_perm in *. unfold range_perm_neg. intros.
+    specialize H with ofs0. apply H in H1. intro.
+    unfold perm in *. rewrite H1 in H2. discriminate.
+  Qed.
 
-Lemma valid_access_allowed:
-  forall m chunk ofs,
-    valid_access m chunk ofs ->
-    allowed_access m chunk ofs.
-Proof.
-  unfold valid_access, allowed_access. intros.
-  destruct H. split; auto.
-  unfold range_perm in *. unfold range_perm_neg. intros.
-  specialize H with ofs0. apply H in H1. intro.
-  unfold perm in *. rewrite H1 in H2. discriminate.
-Qed.
-
-(** [valid_pointer m ofs] returns [true] if the address [b, ofs]
-  is nonempty in [m] and [false] if it is empty. *)
-Definition valid_pointer (m: mem) (ofs: Z): bool :=
-  perm_dec m ofs Live.
-
-Theorem valid_pointer_live_perm:
-  forall m ofs,
-  valid_pointer m ofs = true <-> perm m ofs Live.
-Proof.
-  intros. unfold valid_pointer. destruct (perm_dec m ofs Live); simpl; intuition congruence.
-Qed.
-
-Theorem valid_pointer_valid_access:
-  forall m ofs,
-  valid_pointer m ofs = true <-> valid_access m Mint8unsigned ofs.
-Proof.
-  intros. rewrite valid_pointer_live_perm.
-  split; intros.
-  split. simpl; red; intros. replace ofs0 with ofs by lia. auto.
-  simpl. apply Z.divide_1_l.
-  destruct H. simpl.
-  apply H. simpl. lia.
-Qed.
-
-(** C allows pointers one past the last element of an array.  These are not
-  valid according to the previously defined [valid_pointer]. The property
-  [weak_valid_pointer m ofs] holds if address [b, ofs] is a valid pointer
-  in [m], or a pointer one past a valid block in [m].  *)
-
-Definition weak_valid_pointer (m: mem) (ofs: Z) :=
-  valid_pointer m ofs || valid_pointer m (ofs - 1).
+  (** C allows pointers one past the last element of an array.  These are not
+      valid according to the previously defined [valid_pointer]. The property
+      [weak_valid_pointer m ofs] holds if address [b, ofs] is a valid pointer
+      in [m], or a pointer one past a valid block in [m].  *)
+  
+(*  Definition weak_valid_pointer (m: mem) (ofs: Z) :=
+    valid_pointer m ofs || valid_pointer m (ofs - 1).
 
 Lemma weak_valid_pointer_spec:
   forall m ofs,
@@ -421,415 +288,302 @@ Lemma valid_pointer_implies:
 Proof.
   intros. apply weak_valid_pointer_spec. auto.
 Qed.
-
+ *)
+  
 (** * Operations over memory stores *)
 
 (** The initial store *)
 
-Definition init_dead : Z -> bool := fun _ => false.
+  Definition init_dead : Z -> bool := fun _ => false.
 
-Definition empty: mem :=
-  mkmem (ZMap.init (Undef, def_tag))
-        (fun ofs => if init_dead ofs then Dead else MostlyDead)
-        al.(init)
-        []
-        (0,0).
+  Definition empty: mem :=
+    mkmem (ZMap.init (Undef, def_tag))
+          (fun ofs => if init_dead ofs then Dead else MostlyDead)
+          []
+  .
 
-(** Allocation of a fresh block with the given bounds.  Return an updated
-  memory state and the address of the fresh block, which initially contains
-  undefined cells.  Note that allocation never fails: we model an
-  infinite memory. *)
+  (** Freeing a block between the given bounds.
+      Return the updated memory state where the given range of the given block
+      has been invalidated: future reads and writes to this
+      range will fail.  Requires freeable permission on the given range. *)
 
-Definition alloc (m: mem) (lo hi: Z) : MemoryResult (mem*Z*Z) :=
-  match al.(stkalloc) m.(al_state) (hi - lo) with
-  | Some (al_state', lo', hi') =>
-      MemorySuccess (mkmem (ZMap.set lo' (Undef, def_tag) m.(mem_contents))
-                  (fun ofs => if zle lo' ofs && zlt ofs hi'
-                              then Live
-                              else m.(mem_access) ofs)
-                  al_state'
-                  ((lo',hi')::m.(live))
-                  m.(globals),
-             lo', hi')
-  | None => MemoryFail "OOM"
-  end.
-
-(** Freeing a block between the given bounds.
-  Return the updated memory state where the given range of the given block
-  has been invalidated: future reads and writes to this
-  range will fail.  Requires freeable permission on the given range. *)
-
-Remark region_eq_dec :
-  forall (r1 r2:Z*Z%type),
-    {r1 = r2} + {r1 <> r2}.
-Proof.
-  intros. decide equality; eapply Z.eq_dec.
-Qed.
-  
-Definition unchecked_free (m: mem) (lo hi: Z): mem :=
-  mkmem m.(mem_contents)
-            (fun ofs => if zle lo ofs && zlt ofs hi
-                        then MostlyDead
-                        else m.(mem_access) ofs)
-            (al.(stkfree) m.(al_state) lo hi)
-            (remove region_eq_dec (lo,hi) m.(live))
-            m.(globals)
-        .
-
-Definition free (m: mem) (lo hi: Z): MemoryResult mem :=
-  if range_perm_dec m lo hi Live
-  then MemorySuccess(unchecked_free m lo hi)
-  else MemoryFail "Invalid Free".
-
-Fixpoint free_list (m: mem) (l: list (Z * Z)) {struct l}: MemoryResult mem :=
-  match l with
-  | nil => MemorySuccess m
-  | (lo, hi) :: l' =>
-      match free m lo hi with
-      | MemorySuccess m' => free_list m' l'
-      | res => res
-      end
-  end.
-
-(** Malloc is now separate from alloc, because we need to keep stack and heap
-    allocs separate. *)
-
-Definition malloc (m: mem) (lo hi: Z) : MemoryResult (mem*Z*Z) :=
-  match al.(heapalloc) m.(al_state) (hi - lo) with
-  | MemorySuccess (al_state', lo', hi') =>
-      MemorySuccess (mkmem (ZMap.set lo' (Undef, def_tag) m.(mem_contents))
-                           (fun ofs => if zle lo' ofs && zlt ofs hi'
-                                       then Live
-                                       else m.(mem_access) ofs)
-                           al_state'
-                           ((lo',hi')::m.(live))
-                           m.(globals),
-                      lo', hi')
-  | MemoryFail msg => MemoryFail msg
-  end.
-
-(*Definition unchecked_mfree (m: mem) (lo hi: Z): mem :=
-  mkmem m.(mem_contents)
-            (fun ofs => if zle lo ofs && zlt ofs hi
-                        then MostlyDead
-                        else m.(mem_access) ofs)
-            (al.(heapfree) m.(al_state) lo)
-            (remove region_eq_dec (lo,hi) m.(live))
-            m.(globals)*)
-       
-Definition mfree (m: mem) (lo hi: Z): MemoryResult mem :=
-  match al.(heapfree) m.(al_state) lo with
-  | MemorySuccess al_state' =>
-      let access' := fun ofs => if zle lo ofs && zlt ofs hi
-                                then MostlyDead
-                                else m.(mem_access) ofs
-      in let m' := mkmem m.(mem_contents)
-                             access'
-                             al_state'
-                             (remove region_eq_dec (lo,hi) m.(live))
-                             m.(globals)
-         in MemorySuccess m'
-  | MemoryFail msg => MemoryFail ""
-  end.
+  Remark region_eq_dec :
+    forall (r1 r2:Z*Z%type),
+      {r1 = r2} + {r1 <> r2}.
+  Proof.
+    intros. decide equality; eapply Z.eq_dec.
+  Qed.
         
-(** Memory reads. *)
+  (** Memory reads. *)
 
-(** Reading N adjacent bytes in a block content. *)
-
-Fixpoint getN (n: nat) (p: Z) (c: ZMap.t (memval*tag)) {struct n}: list (memval * tag) :=
-  match n with
-  | O => nil
-  | S n' => ZMap.get p c :: getN n' (p + 1) c
-  end.
-
-(** [load chunk m ofs] perform a read in memory state [m], at address
-  [b] and offset [ofs].  It returns the value of the memory chunk
-  at that address.  [None] is returned if the accessed bytes
-  are not readable. *)
-
-Definition load (chunk: memory_chunk) (m: mem) (ofs: Z): MemoryResult atom :=
-  if allowed_access_dec m chunk ofs
-  then MemorySuccess (decode_val chunk (map (fun x => fst x) (getN (size_chunk_nat chunk) ofs (m.(mem_contents)))))
-  else MemoryFail "Private Load".
-
-Definition load_ltags (chunk: memory_chunk) (m: mem) (ofs: Z): MemoryResult (list tag) :=
-  if allowed_access_dec m chunk ofs
-  then MemorySuccess (map (fun x => snd x) (getN (size_chunk_nat chunk) ofs (m.(mem_contents))))
-  else MemoryFail "Private Load".
-
-Definition load_all (chunk: memory_chunk) (m: mem) (ofs: Z): MemoryResult (atom * list tag) :=
-  if allowed_access_dec m chunk ofs
-  then MemorySuccess (decode_val chunk
-                                 (map (fun x => fst x)
-                                      (getN (size_chunk_nat chunk)
-                                            ofs (m.(mem_contents)))),
-                       map (fun x => snd x) (getN (size_chunk_nat chunk) ofs (m.(mem_contents))))
-  else MemoryFail "Private Load".
-
-Lemma load_all_compose :
-  forall chunk m ofs a lts,
-    load_all chunk m ofs = MemorySuccess (a,lts) <->
-      load chunk m ofs = MemorySuccess a /\ load_ltags chunk m ofs = MemorySuccess lts.
-Proof.
-  intros until lts.
-  unfold load_all; unfold load; unfold load_ltags.
-  split.
-  - destruct (allowed_access_dec m chunk ofs); intro H; inv H; auto.
-  - destruct (allowed_access_dec m chunk ofs); intro H; destruct H as [H1 H2]; inv H1; inv H2; auto.
-Qed.
-
-Lemma load_all_fail :
-  forall chunk m ofs msg,
-    load_all chunk m ofs = MemoryFail msg <->
-      load chunk m ofs = MemoryFail msg /\ load_ltags chunk m ofs = MemoryFail msg.
-Proof.
-  intros until msg.
-  unfold load_all; unfold load; unfold load_ltags.
-  split.
-  - destruct (allowed_access_dec m chunk ofs); intro H; inv H; auto.
-  - destruct (allowed_access_dec m chunk ofs); intro H; destruct H as [H1 H2]; inv H1; inv H2; auto.
-Qed. 
+  (** Reading N adjacent bytes in a block content. *)
   
-(** [loadbytes m ofs n] reads [n] consecutive bytes starting at
-  location [(b, ofs)].  Returns [None] if the accessed locations are
-  not readable. *)
+  Fixpoint getN (n: nat) (p: Z) (c: ZMap.t (memval*tag)) {struct n}: list (memval * tag) :=
+    match n with
+    | O => nil
+    | S n' => ZMap.get p c :: getN n' (p + 1) c
+    end.
 
-Definition loadbytes (m: mem) (ofs n: Z): MemoryResult (list memval) :=
-  if range_perm_neg_dec m ofs (ofs + n) Dead
-  then MemorySuccess (map (fun x => fst x) (getN (Z.to_nat n) ofs (m.(mem_contents))))
-  else MemoryFail "Private Load".
+  (** [load chunk m ofs] perform a read in memory state [m], at address
+      [b] and offset [ofs].  It returns the value of the memory chunk
+      at that address.  [None] is returned if the accessed bytes
+      are not readable. *)
 
-Definition loadtags (m: mem) (ofs n: Z) : MemoryResult (list tag) :=
-  if range_perm_neg_dec m ofs (ofs + n) Dead
-  then MemorySuccess (map (fun x => snd x) (getN (Z.to_nat n) ofs (m.(mem_contents))))
-  else MemoryFail "Private Load".
+  Definition load (chunk: memory_chunk) (m: mem) (ofs: Z): MemoryResult atom :=
+    if allowed_access_dec m chunk ofs
+    then MemorySuccess (decode_val chunk (map (fun x => fst x) (getN (size_chunk_nat chunk) ofs (m.(mem_contents)))))
+    else MemoryFail "Private Load".
 
-(** Memory stores. *)
+  Definition load_ltags (chunk: memory_chunk) (m: mem) (ofs: Z): MemoryResult (list tag) :=
+    if allowed_access_dec m chunk ofs
+    then MemorySuccess (map (fun x => snd x) (getN (size_chunk_nat chunk) ofs (m.(mem_contents))))
+    else MemoryFail "Private Load".
 
-(** Writing N adjacent bytes in a block content. *)
+  Definition load_all (chunk: memory_chunk) (m: mem) (ofs: Z): MemoryResult (atom * list tag) :=
+    if allowed_access_dec m chunk ofs
+    then MemorySuccess (decode_val chunk
+                                   (map (fun x => fst x)
+                                        (getN (size_chunk_nat chunk)
+                                              ofs (m.(mem_contents)))),
+                         map (fun x => snd x) (getN (size_chunk_nat chunk) ofs (m.(mem_contents))))
+    else MemoryFail "Private Load".
 
-Fixpoint setN (vl: list (memval*tag)) (p: Z) (c: ZMap.t (memval*tag)) {struct vl}: ZMap.t (memval*tag) :=
-  match vl with
-  | nil => c
-  | v :: vl' => setN vl' (p + 1) (ZMap.set p v c)
-  end.
+  Lemma load_all_compose :
+    forall chunk m ofs a lts,
+      load_all chunk m ofs = MemorySuccess (a,lts) <->
+        load chunk m ofs = MemorySuccess a /\ load_ltags chunk m ofs = MemorySuccess lts.
+  Proof.
+    intros until lts.
+    unfold load_all; unfold load; unfold load_ltags.
+    split.
+    - destruct (allowed_access_dec m chunk ofs); intro H; inv H; auto.
+    - destruct (allowed_access_dec m chunk ofs); intro H; destruct H as [H1 H2]; inv H1; inv H2; auto.
+  Qed.
+  
+  Lemma load_all_fail :
+    forall chunk m ofs msg,
+      load_all chunk m ofs = MemoryFail msg <->
+        load chunk m ofs = MemoryFail msg /\ load_ltags chunk m ofs = MemoryFail msg.
+  Proof.
+    intros until msg.
+    unfold load_all; unfold load; unfold load_ltags.
+    split.
+    - destruct (allowed_access_dec m chunk ofs); intro H; inv H; auto.
+    - destruct (allowed_access_dec m chunk ofs); intro H; destruct H as [H1 H2]; inv H1; inv H2; auto.
+  Qed. 
+  
+  (** [loadbytes m ofs n] reads [n] consecutive bytes starting at
+      location [(b, ofs)].  Returns [None] if the accessed locations are
+      not readable. *)
 
-Remark setN_other:
-  forall vl c p q,
-  (forall r, p <= r < p + Z.of_nat (length vl) -> r <> q) ->
-  ZMap.get q (setN vl p c) = ZMap.get q c.
-Proof.
-  induction vl; intros; simpl.
-  auto.
-  simpl length in H. rewrite Nat2Z.inj_succ in H.
-  transitivity (ZMap.get q (ZMap.set p a c)).
-  apply IHvl. intros. apply H. lia.
-  apply ZMap.gso. apply not_eq_sym. apply H. lia.
-Qed.
+  Definition loadbytes (m: mem) (ofs n: Z): MemoryResult (list memval) :=
+    if range_perm_neg_dec m ofs (ofs + n) Dead
+    then MemorySuccess (map (fun x => fst x) (getN (Z.to_nat n) ofs (m.(mem_contents))))
+    else MemoryFail "Private Load".
 
-Remark setN_outside:
-  forall vl c p q,
-  q < p \/ q >= p + Z.of_nat (length vl) ->
-  ZMap.get q (setN vl p c) = ZMap.get q c.
-Proof.
-  intros. apply setN_other.
-  intros. lia.
-Qed.
+  Definition loadtags (m: mem) (ofs n: Z) : MemoryResult (list tag) :=
+    if range_perm_neg_dec m ofs (ofs + n) Dead
+    then MemorySuccess (map (fun x => snd x) (getN (Z.to_nat n) ofs (m.(mem_contents))))
+    else MemoryFail "Private Load".
 
-Remark getN_setN_same:
-  forall vl p c,
-  getN (length vl) p (setN vl p c) = vl.
-Proof.
-  induction vl; intros; simpl.
-  auto.
-  decEq.
-  rewrite setN_outside. apply ZMap.gss. lia.
-  apply IHvl.
-Qed.
+  (** Memory stores. *)
 
-Remark getN_exten:
-  forall c1 c2 n p,
-  (forall i, p <= i < p + Z.of_nat n -> ZMap.get i c1 = ZMap.get i c2) ->
-  getN n p c1 = getN n p c2.
-Proof.
-  induction n; intros. auto. rewrite Nat2Z.inj_succ in H. simpl. decEq.
-  apply H. lia. apply IHn. intros. apply H. lia.
-Qed.
+  (** Writing N adjacent bytes in a block content. *)
 
-Remark getN_setN_disjoint:
-  forall vl q c n p,
-  Intv.disjoint (p, p + Z.of_nat n) (q, q + Z.of_nat (length vl)) ->
-  getN n p (setN vl q c) = getN n p c.
-Proof.
-  intros. apply getN_exten. intros. apply setN_other.
-  intros; red; intros; subst r. eelim H; eauto.
-Qed.
+  Fixpoint setN (vl: list (memval*tag)) (p: Z) (c: ZMap.t (memval*tag)) {struct vl}: ZMap.t (memval*tag) :=
+    match vl with
+    | nil => c
+    | v :: vl' => setN vl' (p + 1) (ZMap.set p v c)
+    end.
 
-Remark getN_setN_outside:
-  forall vl q c n p,
-  p + Z.of_nat n <= q \/ q + Z.of_nat (length vl) <= p ->
-  getN n p (setN vl q c) = getN n p c.
-Proof.
-  intros. apply getN_setN_disjoint. apply Intv.disjoint_range. auto.
-Qed.
+  Remark setN_other:
+    forall vl c p q,
+      (forall r, p <= r < p + Z.of_nat (length vl) -> r <> q) ->
+      ZMap.get q (setN vl p c) = ZMap.get q c.
+  Proof.
+    induction vl; intros; simpl.
+    auto.
+    simpl length in H. rewrite Nat2Z.inj_succ in H.
+    transitivity (ZMap.get q (ZMap.set p a c)).
+    apply IHvl. intros. apply H. lia.
+    apply ZMap.gso. apply not_eq_sym. apply H. lia.
+  Qed.
 
-Remark setN_default:
-  forall vl q c, fst (setN vl q c) = fst c.
-Proof.
-  induction vl; simpl; intros. auto. rewrite IHvl. auto.
-Qed.
+  Remark setN_outside:
+    forall vl c p q,
+      q < p \/ q >= p + Z.of_nat (length vl) ->
+      ZMap.get q (setN vl p c) = ZMap.get q c.
+  Proof.
+    intros. apply setN_other.
+    intros. lia.
+  Qed.
 
-(** [store chunk m ofs v] perform a write in memory state [m].
-  Value [v] is stored at address [b] and offset [ofs].
-  Return the updated memory store, or [None] if the accessed bytes
-  are not writable. *)
+  Remark getN_setN_same:
+    forall vl p c,
+      getN (length vl) p (setN vl p c) = vl.
+  Proof.
+    induction vl; intros; simpl.
+    auto.
+    decEq.
+    rewrite setN_outside. apply ZMap.gss. lia.
+    apply IHvl.
+  Qed.
 
-Fixpoint merge_vals_tags (vs:list memval) (lts:list tag) :=
-  match vs with
-  | v::vs' =>
-      (v,hd def_tag lts)::(merge_vals_tags vs' (tl lts))
-  | _ => []
-  end.
+  Remark getN_exten:
+    forall c1 c2 n p,
+      (forall i, p <= i < p + Z.of_nat n -> ZMap.get i c1 = ZMap.get i c2) ->
+      getN n p c1 = getN n p c2.
+  Proof.
+    induction n; intros. auto. rewrite Nat2Z.inj_succ in H. simpl. decEq.
+    apply H. lia. apply IHn. intros. apply H. lia.
+  Qed.
 
-Program Definition store (chunk: memory_chunk) (m: mem) (ofs: Z) (a:atom) (lts:list tag)
-  : MemoryResult mem :=
-  if allowed_access_dec m chunk ofs then
-    MemorySuccess (mkmem (setN (merge_vals_tags (encode_val chunk a) lts) ofs (m.(mem_contents)))
-                m.(mem_access)
-                m.(al_state)
-                m.(live)
-                m.(globals))
-  else
-    MemoryFail "Private Store".
+  Remark getN_setN_disjoint:
+    forall vl q c n p,
+      Intv.disjoint (p, p + Z.of_nat n) (q, q + Z.of_nat (length vl)) ->
+      getN n p (setN vl q c) = getN n p c.
+  Proof.
+    intros. apply getN_exten. intros. apply setN_other.
+    intros; red; intros; subst r. eelim H; eauto.
+  Qed.
 
-(** [storebytes m ofs bytes] stores the given list of bytes [bytes]
-  starting at location [(b, ofs)].  Returns updated memory state
-  or [None] if the accessed locations are not writable. *)
+  Remark getN_setN_outside:
+    forall vl q c n p,
+      p + Z.of_nat n <= q \/ q + Z.of_nat (length vl) <= p ->
+      getN n p (setN vl q c) = getN n p c.
+  Proof.
+    intros. apply getN_setN_disjoint. apply Intv.disjoint_range. auto.
+  Qed.
 
-Program Definition storebytes (m: mem) (ofs: Z) (bytes: list memval) (lts:list tag)
-  : MemoryResult mem :=
-  if range_perm_neg_dec m ofs (ofs + Z.of_nat (length bytes)) Dead then
-    MemorySuccess (mkmem
-             (setN (merge_vals_tags bytes lts) ofs (m.(mem_contents)))
-             m.(mem_access)
-             m.(al_state)
-             m.(live)
-             m.(globals))
-  else
-    MemoryFail "Private Store".
+  Remark setN_default:
+    forall vl q c, fst (setN vl q c) = fst c.
+  Proof.
+    induction vl; simpl; intros. auto. rewrite IHvl. auto.
+  Qed.
 
-(** [drop_perm m lo hi p] sets the max permissions of the byte range
-    [(b, lo) ... (b, hi - 1)] to [p].  These bytes must have current permissions
-    [Freeable] in the initial memory state [m].
-    Returns updated memory state, or [None] if insufficient permissions. *)
+  (** [store chunk m ofs v] perform a write in memory state [m].
+      Value [v] is stored at address [b] and offset [ofs].
+      Return the updated memory store, or [None] if the accessed bytes
+      are not writable. *)
+  
+  Fixpoint merge_vals_tags (vs:list memval) (lts:list tag) :=
+    match vs with
+    | v::vs' =>
+        (v,hd def_tag lts)::(merge_vals_tags vs' (tl lts))
+    | _ => []
+    end.
 
-(*Program Definition drop_perm (m: mem) (b: block) (lo hi: Z) (p: permission): option mem :=
-  if range_perm_dec m lo hi Cur Freeable then
-    Some (mkmem m.(mem_contents)
-                (PMap.set b
-                        (fun ofs k => if zle lo ofs && zlt ofs hi then Some p else m.(mem_access)#ofs k)
-                        m.(mem_access))
-                m.(allocator)
-                m.(nextblock) _ _)
-  else None.
-Next Obligation.
-  repeat rewrite PMap.gsspec. destruct (peq b0 b). subst b0.
-  destruct (zle lo ofs && zlt ofs hi). red; auto with mem. apply access_max.
-  apply access_max.
-Qed.
-Next Obligation.
-  apply contents_default.
-Qed. *)
+  Program Definition store (chunk: memory_chunk) (m: mem) (ofs: Z) (a:atom) (lts:list tag)
+    : MemoryResult mem :=
+    if allowed_access_dec m chunk ofs then
+      MemorySuccess (mkmem (setN (merge_vals_tags (encode_val chunk a) lts) ofs (m.(mem_contents)))
+                           m.(mem_access) m.(live))
+    else
+      MemoryFail "Private Store".
 
-(** * Properties of the memory operations *)
+  (** [storebytes m ofs bytes] stores the given list of bytes [bytes]
+      starting at location [(b, ofs)].  Returns updated memory state
+      or [None] if the accessed locations are not writable. *)
 
-(** Properties of the empty store. *)
+  Program Definition storebytes (m: mem) (ofs: Z) (bytes: list memval) (lts:list tag)
+    : MemoryResult mem :=
+    if range_perm_neg_dec m ofs (ofs + Z.of_nat (length bytes)) Dead then
+      MemorySuccess (mkmem
+                       (setN (merge_vals_tags bytes lts) ofs (m.(mem_contents)))
+                       m.(mem_access) m.(live))
+    else
+      MemoryFail "Private Store".
 
-Theorem perm_empty: forall ofs, ~perm empty ofs Live.
-Proof.
-  intros. unfold perm, empty; simpl. unfold get_perm;simpl.
-  destruct (init_dead ofs); intro; discriminate.
-Qed.
+  (** * Properties of the memory operations *)
 
-Theorem valid_access_empty: forall chunk ofs, ~valid_access empty chunk ofs.
-Proof.
-  intros. red; intros. elim (perm_empty ofs). apply H.
-  generalize (size_chunk_pos chunk); lia.
-Qed.
+  (** Properties of the empty store. *)
 
-(** ** Properties related to [load] *)
+  Theorem perm_empty: forall ofs, ~perm empty ofs Live.
+  Proof.
+    intros. unfold perm, empty; simpl. unfold get_perm;simpl.
+    destruct (init_dead ofs); intro; discriminate.
+  Qed.
 
-Theorem allowed_access_load:
-  forall m chunk ofs,
-  allowed_access m chunk ofs ->
-  exists v, load chunk m ofs = MemorySuccess v.
-Proof.
-  intros. econstructor. unfold load. rewrite pred_dec_true; eauto.
-Qed.
+  Theorem valid_access_empty: forall chunk ofs, ~valid_access empty chunk ofs.
+  Proof.
+    intros. red; intros. elim (perm_empty ofs). apply H.
+    generalize (size_chunk_pos chunk); lia.
+  Qed.
 
-Theorem valid_access_load:
-  forall m chunk ofs,
-  valid_access m chunk ofs ->
-  exists v, load chunk m ofs = MemorySuccess v.
-Proof.
-  intros. econstructor. unfold load. rewrite pred_dec_true; eauto. eapply valid_access_allowed. auto.
-Qed.
+  (** ** Properties related to [load] *)
 
-Theorem load_allowed_access:
-  forall m chunk ofs v,
-  load chunk m ofs = MemorySuccess v ->
-  allowed_access m chunk ofs.
-Proof.
-  intros until v. unfold load.
-  destruct (allowed_access_dec m chunk ofs); intros.
-  auto.
-  inv H.
-Qed.
+  Theorem allowed_access_load:
+    forall m chunk ofs,
+      allowed_access m chunk ofs ->
+      exists v, load chunk m ofs = MemorySuccess v.
+  Proof.
+    intros. econstructor. unfold load. rewrite pred_dec_true; eauto.
+  Qed.
 
-Lemma load_result:
-  forall chunk m ofs v,
-  load chunk m ofs = MemorySuccess v ->
-  v = decode_val chunk (map (fun x => fst x) (getN (size_chunk_nat chunk) ofs (m.(mem_contents)))).
-Proof.
-  intros until v. unfold load.
-  destruct (allowed_access_dec m chunk ofs); intros.
-  congruence.
-  congruence.
-Qed.
+  Theorem valid_access_load:
+    forall m chunk ofs,
+      valid_access m chunk ofs ->
+      exists v, load chunk m ofs = MemorySuccess v.
+  Proof.
+    intros. econstructor. unfold load.
+    rewrite pred_dec_true; eauto. eapply valid_access_allowed. auto.
+  Qed.
 
-Local Hint Resolve load_allowed_access valid_access_load: mem.
+  Theorem load_allowed_access:
+    forall m chunk ofs v,
+      load chunk m ofs = MemorySuccess v ->
+      allowed_access m chunk ofs.
+  Proof.
+    intros until v. unfold load.
+    destruct (allowed_access_dec m chunk ofs); intros.
+    auto.
+    inv H.
+  Qed.
 
-Theorem load_type:
-  forall m chunk ofs v vt,
-  load chunk m ofs = MemorySuccess (v,vt) ->
-  Val.has_type v (type_of_chunk chunk).
-Admitted.
-(*Proof.
-  intros. exploit load_result; eauto; intros. rewrite H0.
-  apply decode_val_type.
-Qed.*)
+  Lemma load_result:
+    forall chunk m ofs v,
+      load chunk m ofs = MemorySuccess v ->
+      v = decode_val chunk (map (fun x => fst x) (getN (size_chunk_nat chunk) ofs (m.(mem_contents)))).
+  Proof.
+    intros until v. unfold load.
+    destruct (allowed_access_dec m chunk ofs); intros.
+    congruence.
+    congruence.
+  Qed.
 
-Theorem load_rettype:
-  forall m chunk ofs v vt,
-  load chunk m ofs = MemorySuccess (v,vt) ->
-  Val.has_rettype v (rettype_of_chunk chunk).
-Admitted.
-(*Proof.
-  intros. exploit load_result; eauto; intros. rewrite H0.
-  apply decode_val_rettype.
-Qed.*)
+  Local Hint Resolve load_allowed_access valid_access_load: mem.
 
-Theorem load_cast:
-  forall m chunk ofs v vt,
-  load chunk m ofs = MemorySuccess (v,vt) ->
-  match chunk with
-  | Mint8signed => v = Val.sign_ext 8 v
-  | Mint8unsigned => v = Val.zero_ext 8 v
-  | Mint16signed => v = Val.sign_ext 16 v
-  | Mint16unsigned => v = Val.zero_ext 16 v
-  | _ => True
-  end.
-Admitted.
+  Theorem load_type:
+    forall m chunk ofs v vt,
+      load chunk m ofs = MemorySuccess (v,vt) ->
+      Val.has_type v (type_of_chunk chunk).
+  Admitted.
+  (*Proof.
+    intros. exploit load_result; eauto; intros. rewrite H0.
+    apply decode_val_type.
+    Qed.*)
+
+  Theorem load_rettype:
+    forall m chunk ofs v vt,
+      load chunk m ofs = MemorySuccess (v,vt) ->
+      Val.has_rettype v (rettype_of_chunk chunk).
+  Admitted.
+  (*Proof.
+    intros. exploit load_result; eauto; intros. rewrite H0.
+    apply decode_val_rettype.
+    Qed.*)
+
+  Theorem load_cast:
+    forall m chunk ofs v vt,
+      load chunk m ofs = MemorySuccess (v,vt) ->
+      match chunk with
+      | Mint8signed => v = Val.sign_ext 8 v
+      | Mint8unsigned => v = Val.zero_ext 8 v
+      | Mint16signed => v = Val.sign_ext 16 v
+      | Mint16unsigned => v = Val.zero_ext 16 v
+      | _ => True
+      end.
+  Admitted.
 (*Proof.
   intros. exploit load_result; eauto.
   set (l := getN (size_chunk_nat chunk) ofs m.(mem_contents)#b).
@@ -1869,418 +1623,11 @@ Qed.*)
 
 (** ** Properties related to [alloc]. *)
 
-Section ALLOC.
-
-Variable m1: mem.
-Variables lo1 lo2 hi1 hi2: Z.
-Variable m2: mem.
-Hypothesis ALLOC: alloc m1 lo1 hi1 = MemorySuccess (m2, lo2, hi2).
-
-Ltac alloc_inv :=
-  let p := fresh "p" in
-  unfold alloc in ALLOC;
-  destruct (al.(stkalloc) m1.(al_state) (hi1 - lo1)) as [p |];
-  repeat destruct p;
-  inv ALLOC.
-
-Theorem valid_block_alloc:
-  forall ofs, valid_addr m1 ofs -> valid_addr m2 ofs.
-Proof.
-  unfold valid_addr; intros. destruct H as [lo [hi H]]. exists lo. exists hi.
-  unfold alloc in *.
-  destruct (stkalloc al (al_state m1) (hi1-lo1)) as [res |]; [|inv ALLOC].
-  destruct res as [[al_state' lo'] hi']. inv ALLOC.
-  simpl. destruct H. split;[right|]; auto.
-Qed.
-
-Theorem valid_new_block:
-  forall ofs, lo2 <= ofs -> ofs < hi2 -> valid_addr m2 ofs.
-Admitted.
-
-Local Hint Resolve valid_block_alloc valid_new_block : mem.
-
-Theorem valid_block_alloc_inv:
-  forall addr, valid_addr m2 addr -> (lo2 <= addr /\ addr < hi2) \/ valid_addr m1 addr.
-Admitted.
-(*Proof.
-  unfold valid_addr; intros.
-  destruct (lo2 <=? addr); [right | destruct (addr <? hi2); [left | right]].
-  - destruct H as [lo [hi H]]. exists lo. exists hi.
-    unfold alloc in *.
-    destruct (stkalloc al (al_state m1) (hi1-lo1)) as [res|]; [|inv ALLOC].
-    destruct res as [[al_state' lo'] hi']. inv ALLOC.
-    simpl in *. auto.
-Qed.*)
-
-(*Theorem perm_alloc_1:
-  forall ofs k p, perm m1 ofs k p -> perm m2 ofs k p.
-Proof.
-  unfold perm; intros. alloc_inv. simpl.
-  rewrite PMap.gsspec. destruct (peq b); auto.
-  destruct (zle lo2 ofs && zlt ofs hi); eauto.
-  rewrite nextblock_noaccess in H. contradiction. apply Plt_strict.
-Qed.
-
-Theorem perm_alloc_2:
-  forall ofs k, lo2 <= ofs < hi2 -> perm m2 ofs k Freeable.
-Proof.
-  unfold perm; intros. injection ALLOC; intros. rewrite <- H1; simpl.
-  subst b. rewrite PMap.gss. unfold proj_sumbool. rewrite zle_true.
-  rewrite zlt_true. simpl. auto with mem. lia. lia.
-Qed.
-
-Theorem perm_alloc_inv:
-  forall ofs k p,
-  perm m2 ofs k p ->
-  if eq_block then lo2 <= ofs < hi2 else perm m1 ofs k p.
-Proof.
-  intros until p; unfold perm. inv ALLOC. simpl.
-  rewrite PMap.gsspec. unfold eq_block. destruct (peq (nextblock m1)); intros.
-  destruct (zle lo2 ofs); try contradiction. destruct (zlt ofs hi); try contradiction.
-  split; auto.
-  auto.
-Qed.
-
-Theorem perm_alloc_3:
-  forall ofs k p, perm m2 ofs k p -> lo2 <= ofs < hi.
-Proof.
-  intros. exploit perm_alloc_inv; eauto. rewrite dec_eq_true; auto.
-Qed.
-
-Theorem perm_alloc_4:
-  forall ofs k p, perm m2 ofs k p -> <> -> perm m1 ofs k p.
-Proof.
-  intros. exploit perm_alloc_inv; eauto. rewrite dec_eq_false; auto.
-Qed.
-
-Local Hint Resolve perm_alloc_1 perm_alloc_2 perm_alloc_3 perm_alloc_4: mem.
-*)
-
-(*Theorem valid_access_alloc_other:
-  forall chunk ofs p,
-  valid_access m1 chunk ofs p ->
-  valid_access m2 chunk ofs p.
-Proof.
-  intros. inv H. constructor; auto with mem.
-  red; auto with mem.
-Qed.
-
-Theorem valid_access_alloc_same:
-  forall chunk ofs,
-  lo2 <= ofs -> ofs + size_chunk chunk <= hi2 -> (align_chunk chunk | ofs) ->
-  valid_access m2 chunk ofs Freeable.
-Proof.
-  intros. constructor; auto with mem.
-  red; intros. apply perm_alloc_2. lia.
-Qed.
-
-Local Hint Resolve valid_access_alloc_other valid_access_alloc_same: mem.
-
-Theorem valid_access_alloc_inv:
-  forall chunk ofs p,
-  valid_access m2 chunk ofs p ->
-  if eq_block b
-  then lo2 <= ofs /\ ofs + size_chunk chunk <= hi2 /\ (align_chunk chunk | ofs)
-  else valid_access m1 chunk ofs p.
-Proof.
-  intros. inv H.
-  generalize (size_chunk_pos chunk); intro.
-  destruct (eq_block b). subst b'.
-  assert (perm m2 ofs Cur p). apply H0. lia.
-  assert (perm m2 (ofs + size_chunk chunk - 1) Cur p). apply H0. lia.
-  exploit perm_alloc_inv. eexact H2. rewrite dec_eq_true. intro.
-  exploit perm_alloc_inv. eexact H3. rewrite dec_eq_true. intro.
-  intuition lia.
-  split; auto. red; intros.
-  exploit perm_alloc_inv. apply H0. eauto. rewrite dec_eq_false; auto.
-Qed.
- 
-
-Theorem load_alloc_unchanged:
-  forall chunk ofs,
-  valid_block m1 ->
-  load chunk m2 ofs = load chunk m1 ofs.
-Proof.
-  intros. unfold load.
-  destruct (valid_access_dec m2 chunk ofs Readable).
-  exploit valid_access_alloc_inv; eauto. destruct (eq_block b); intros.
-  subst b'. elimtype False. eauto with mem.
-  rewrite pred_dec_true; auto.
-  injection ALLOC; intros. rewrite <- H2; simpl.
-  rewrite PMap.gso. auto. rewrite H1. apply not_eq_sym; eauto with mem.
-  rewrite pred_dec_false. auto.
-  eauto with mem.
-Qed.
-
-Theorem load_alloc_other:
-  forall chunk ofs v,
-  load chunk m1 ofs = Some v ->
-  load chunk m2 ofs = Some v.
-Proof.
-  intros. rewrite <- H. apply load_alloc_unchanged. eauto with mem.
-Qed.
-
-Theorem load_alloc_same:
-  forall chunk ofs v,
-  load chunk m2 ofs = Some v ->
-  v = Vundef.
-Proof.
-  intros. exploit load_result; eauto. intro. rewrite H0.
-  injection ALLOC; intros. rewrite <- H2; simpl. rewrite <- H1.
-  rewrite PMap.gss. destruct (size_chunk_nat_pos chunk) as [n E]. rewrite E. simpl.
-  rewrite ZMap.gi. apply decode_val_undef.
-Qed.
-
-Theorem load_alloc_same':
-  forall chunk ofs,
-  lo2 <= ofs -> ofs + size_chunk chunk <= hi2 -> (align_chunk chunk | ofs) ->
-  load chunk m2 ofs = Some Vundef.
-Proof.
-  intros. assert (exists v, load chunk m2 ofs = Some v).
-    apply valid_access_load. constructor; auto.
-    red; intros. eapply perm_implies. apply perm_alloc_2. lia. auto with mem.
-  destruct H2 as [v LOAD]. rewrite LOAD. decEq.
-  eapply load_alloc_same; eauto.
-Qed.
-
-Theorem loadbytes_alloc_unchanged:
-  forall ofs n,
-  valid_block m1 ->
-  loadbytes m2 ofs n = loadbytes m1 ofs n.
-Proof.
-  intros. unfold loadbytes.
-  destruct (range_perm_dec m1 ofs (ofs + n) Cur Readable).
-  rewrite pred_dec_true.
-  injection ALLOC; intros A B. rewrite <- B; simpl.
-  rewrite PMap.gso. auto. rewrite A. eauto with mem.
-  red; intros. eapply perm_alloc_1; eauto.
-  rewrite pred_dec_false; auto.
-  red; intros; elim n0. red; intros. eapply perm_alloc_4; eauto. eauto with mem.
-Qed.
-
-Theorem loadbytes_alloc_same:
-  forall n ofs bytes byte,
-  loadbytes m2 ofs n = Some bytes ->
-  In byte bytes -> byte = Undef.
-Proof.
-  unfold loadbytes; intros. destruct (range_perm_dec m2 ofs (ofs + n) Cur Readable); inv H.
-  revert H0.
-  injection ALLOC; intros A B. rewrite <- A; rewrite <- B; simpl. rewrite PMap.gss.
-  generalize (Z.to_nat n) ofs. induction n0; simpl; intros.
-  contradiction.
-  rewrite ZMap.gi in H0. destruct H0; eauto.
-Qed.
-*)
-End ALLOC.
-
-Local Hint Resolve valid_block_alloc : mem.
-(*Local Hint Resolve valid_access_alloc_other valid_access_alloc_same: mem.*)
-
-(** ** Properties related to [free]. *)
-
-Theorem range_perm_free:
-  forall m1 lo hi,
-  range_perm m1 lo hi Live ->
-  { m2: mem | free m1 lo hi = MemorySuccess m2 }.
-Proof.
-  intros; unfold free. rewrite pred_dec_true; auto. econstructor; eauto.
-Defined.
-
-Section FREE.
-
-Variable m1: mem.
-Variables lo hi: Z.
-Variable m2: mem.
-Hypothesis FREE: free m1 lo hi = MemorySuccess m2.
-
-Theorem free_range_perm:
-  range_perm m1 lo hi Live.
-Proof.
-  unfold free in FREE. destruct (range_perm_dec m1 lo hi Live); auto.
-  congruence.
-Qed.
-
-Lemma free_result:
-  m2 = unchecked_free m1 lo hi.
-Proof.
-  unfold free in FREE. destruct (range_perm_dec m1 lo hi Live).
-  congruence. congruence.
-Qed.
-
-Theorem valid_block_free_1:
-  forall ofs,
-    (lo > ofs \/ hi <= ofs) ->
-    valid_addr m1 ofs ->
-    valid_addr m2 ofs.
-Admitted.
-(*Proof.
-  intros. rewrite free_result.
-  unfold unchecked_free.
-  assumption.
-Qed.*)
-
-Theorem valid_block_free_2:
-  forall ofs, valid_addr m2 ofs -> valid_addr m1 ofs.
-Admitted.
-(*Proof.
-  intros. rewrite free_result in H. assumption.
-Qed.*)
-
-Local Hint Resolve valid_block_free_1 valid_block_free_2: mem.
-
-(*Theorem perm_free_1:
-  forall ofs k p,
-  <> \/ ofs < lo \/ hi <= ofs ->
-  perm m1 ofs k p ->
-  perm m2 ofs k p.
-Proof.
-  intros. rewrite free_result. unfold perm, unchecked_free; simpl.
-  rewrite PMap.gsspec. destruct (peq bf). subst b.
-  destruct (zle lo ofs); simpl.
-  destruct (zlt ofs hi); simpl.
-  elimtype False; intuition.
-  auto. auto.
-  auto.
-Qed.
-
-Theorem perm_free_2:
-  forall ofs k p, lo <= ofs < hi -> ~ perm m2 ofs k p.
-Proof.
-  intros. rewrite free_result. unfold perm, unchecked_free; simpl.
-  rewrite PMap.gss. unfold proj_sumbool. rewrite zle_true. rewrite zlt_true.
-  simpl. tauto. lia. lia.
-Qed.
-
-Theorem perm_free_3:
-  forall ofs k p,
-  perm m2 ofs k p -> perm m1 ofs k p.
-Proof.
-  intros until p. rewrite free_result. unfold perm, unchecked_free; simpl.
-  rewrite PMap.gsspec. destruct (peq bf). subst b.
-  destruct (zle lo ofs); simpl.
-  destruct (zlt ofs hi); simpl. tauto.
-  auto. auto. auto.
-Qed.
-
-Theorem perm_free_inv:
-  forall ofs k p,
-  perm m1 ofs k p ->
-  (= /\ lo <= ofs < hi) \/ perm m2 ofs k p.
-Proof.
-  intros. rewrite free_result. unfold perm, unchecked_free; simpl.
-  rewrite PMap.gsspec. destruct (peq bf); auto. subst b.
-  destruct (zle lo ofs); simpl; auto.
-  destruct (zlt ofs hi); simpl; auto.
-Qed.
-
-Theorem valid_access_free_1:
-  forall chunk ofs p,
-  valid_access m1 chunk ofs p ->
-  <> \/ lo >= hi \/ ofs + size_chunk chunk <= lo \/ hi <= ofs ->
-  valid_access m2 chunk ofs p.
-Proof.
-  intros. inv H. constructor; auto with mem.
-  red; intros. eapply perm_free_1; eauto.
-  destruct (zlt lo hi). intuition. right. lia.
-Qed.
-
-Theorem valid_access_free_2:
-  forall chunk ofs p,
-  lo < hi -> ofs + size_chunk chunk > lo -> ofs < hi ->
-  ~(valid_access m2 chunk ofs p).
-Proof.
-  intros; red; intros. inv H2.
-  generalize (size_chunk_pos chunk); intros.
-  destruct (zlt ofs lo).
-  elim (perm_free_2 lo Cur p).
-  lia. apply H3. lia.
-  elim (perm_free_2 ofs Cur p).
-  lia. apply H3. lia.
-Qed.
-
-Theorem valid_access_free_inv_1:
-  forall chunk ofs p,
-  valid_access m2 chunk ofs p ->
-  valid_access m1 chunk ofs p.
-Proof.
-  intros. destruct H. split; auto.
-  red; intros. generalize (H ofs0 H1).
-  rewrite free_result. unfold perm, unchecked_free; simpl.
-  rewrite PMap.gsspec. destruct (peq bf). subst b.
-  destruct (zle lo ofs0); simpl.
-  destruct (zlt ofs0 hi); simpl.
-  tauto. auto. auto. auto.
-Qed.
-
-Theorem valid_access_free_inv_2:
-  forall chunk ofs p,
-  valid_access m2 chunk ofs p ->
-  lo >= hi \/ ofs + size_chunk chunk <= lo \/ hi <= ofs.
-Proof.
-  intros.
-  destruct (zlt lo hi); auto.
-  destruct (zle (ofs + size_chunk chunk) lo); auto.
-  destruct (zle hi ofs); auto.
-  elim (valid_access_free_2 chunk ofs p); auto. lia.
-Qed.
-
-Theorem load_free:
-  forall chunk ofs,
-  <> \/ lo >= hi \/ ofs + size_chunk chunk <= lo \/ hi <= ofs ->
-  load chunk m2 ofs = load chunk m1 ofs.
-Proof.
-  intros. unfold load.
-  destruct (valid_access_dec m2 chunk ofs Readable).
-  rewrite pred_dec_true.
-  rewrite free_result; auto.
-  eapply valid_access_free_inv_1; eauto.
-  rewrite pred_dec_false; auto.
-  red; intro; elim n. eapply valid_access_free_1; eauto.
-Qed.
-
-Theorem load_free_2:
-  forall chunk ofs v,
-  load chunk m2 ofs = Some v -> load chunk m1 ofs = Some v.
-Proof.
-  intros. unfold load. rewrite pred_dec_true.
-  rewrite (load_result _ _ _ _ _ H). rewrite free_result; auto.
-  apply valid_access_free_inv_1. eauto with mem.
-Qed.
-
-Theorem loadbytes_free:
-  forall ofs n,
-  <> \/ lo >= hi \/ ofs + n <= lo \/ hi <= ofs ->
-  loadbytes m2 ofs n = loadbytes m1 ofs n.
-Proof.
-  intros. unfold loadbytes.
-  destruct (range_perm_dec m2 ofs (ofs + n) Cur Readable).
-  rewrite pred_dec_true.
-  rewrite free_result; auto.
-  red; intros. eapply perm_free_3; eauto.
-  rewrite pred_dec_false; auto.
-  red; intros. elim n0; red; intros.
-  eapply perm_free_1; eauto. destruct H; auto. right; lia.
-Qed.
-
-Theorem loadbytes_free_2:
-  forall ofs n bytes,
-  loadbytes m2 ofs n = Some bytes -> loadbytes m1 ofs n = Some bytes.
-Proof.
-  intros. unfold loadbytes in *.
-  destruct (range_perm_dec m2 ofs (ofs + n) Cur Readable); inv H.
-  rewrite pred_dec_true. rewrite free_result; auto.
-  red; intros. apply perm_free_3; auto.
-Qed.
-*)
-End FREE.
-
-(*Notation mem := Mem.mem.*)
-
-Global Opaque Mem.alloc Mem.free Mem.store Mem.load Mem.storebytes Mem.loadbytes.
+Global Opaque Mem.store Mem.load Mem.storebytes Mem.loadbytes.
 
 Global Hint Resolve
   Mem.valid_not_valid_diff
-  Mem.valid_access_valid_block
+  Mem.valid_access_valid_addr
   Mem.valid_access_perm
   Mem.valid_access_load
   (*Mem.load_valid_access*)
@@ -2300,29 +1647,6 @@ Global Hint Resolve
   Mem.storebytes_valid_access_2
   Mem.storebytes_valid_block_1
   Mem.storebytes_valid_block_2
-  (*Mem.alloc_result*)
-  Mem.valid_block_alloc
-  Mem.valid_new_block
-  (*Mem.perm_alloc_1
-  Mem.perm_alloc_2
-  Mem.perm_alloc_3
-  Mem.perm_alloc_4
-  Mem.perm_alloc_inv*)
-  (*Mem.valid_access_alloc_other
-  Mem.valid_access_alloc_same
-  Mem.valid_access_alloc_inv*)
-  Mem.range_perm_free
-  Mem.free_range_perm
-  Mem.valid_block_free_1
-  Mem.valid_block_free_2
-  (*Mem.perm_free_1
-  Mem.perm_free_2
-  Mem.perm_free_3
-  Mem.valid_access_free_1
-  Mem.valid_access_free_2
-  Mem.valid_access_free_inv_1
-  Mem.valid_access_free_inv_2
-  Mem.unchanged_on_refl*)
 : mem.
 
 End Mem.

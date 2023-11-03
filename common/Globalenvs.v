@@ -41,6 +41,7 @@ Require Import Integers Floats Values Memory.
 Require Import List. Import ListNotations.
 Require Import Ctypes.
 Require Import Tags.
+Require Import Layout.
 
 Notation "s #1" := (fst s) (at level 9, format "s '#1'") : pair_scope.
 Notation "s #2" := (snd s) (at level 9, format "s '#2'") : pair_scope.
@@ -54,11 +55,12 @@ Set Implicit Arguments.
 Local Unset Elimination Schemes.
 Local Unset Case Analysis Schemes.
 
-Module Genv (P:Policy).
+Module Genv (L:Layout) (P:Policy).
   Module TLib := TagLib P.
   Import TLib.
   Module Mem := Mem P.
   Import Mem.
+  Import L.
   
   (** * Global environments *)
   Section GENV.
@@ -139,11 +141,11 @@ Module Genv (P:Policy).
     Section CONSTRUCTION.
   
       Definition global_block (m: mem) (id: ident) (sz: Z) : mem :=
-        let '(glob_base, base) := m.(globals) in
+        let '(glob_base, base) := global_min in
         let bound := base + sz in
         let mem_access' := (fun ofs : Z => if zle base ofs && zlt ofs bound then
                                              Live else m.(Mem.mem_access) ofs) in
-        Mem.mkmem m.(Mem.mem_contents) mem_access' m.(Mem.al_state) m.(Mem.live) (glob_base, bound).
+        Mem.mkmem m.(Mem.mem_contents) mem_access' m.(Mem.live) (glob_base, bound).
 
   (*Function store_zeros (m: mem) (p: Z) (n: Z) {wf (Zwf 0) n}: MemoryResult mem :=
     if zle n 0 then MemorySuccess m else
