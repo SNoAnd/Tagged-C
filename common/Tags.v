@@ -712,7 +712,7 @@ Definition print_tag (t : tag) : string :=
     - pct is the color of the 2nd/current free
  *)
  Definition FreeT (pct fptrt pt vht : tag) : PolicyResult (tag * tag * tag * tag) :=
-  match vt with 
+  match vht with 
     | Alloc => PolicySuccess(pct, N, pct, N) (* was allocated then freed, assign free color from pct *)
     | N (* trying to free unallocated memory *)
         => PolicyFail "DoubleFree:FreeT detects free of unallocated memory" [pct;fptrt;pt;vht]
