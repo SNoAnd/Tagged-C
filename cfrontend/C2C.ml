@@ -21,9 +21,10 @@ open! Floats
 open Values
 open Ctypes
 open Tags
+open Allocator
 
 module C2CP =
-        functor (Pol: Policy) ->
+        functor (Pol: Policy) (Alloc: Allocator) ->
                 struct
 
 module Init = Initializers.Initializers (Pol)

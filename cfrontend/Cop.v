@@ -21,21 +21,17 @@ Require Import AST.
 Require Import Integers.
 Require Import Floats.
 Require Import Memory.
+Require Import Allocator.
 Require Import Ctypes.
 Require Import Tags.
 Require Import Determinism.
 Require Archi.
 
-Module Cop (P:Policy).
+Module Cop (P:Policy) (A:Allocator P).
   Module TLib := TagLib P.
   Import TLib.
-  Module Deterministic := Deterministic P.
-  Import Deterministic.
-  Import Behaviors.
-  Import Smallstep.
-  Import Events.
-  Import Genv.
-  Import Mem.
+  Module Deterministic := Deterministic P A.
+  Export Deterministic.
 
 Inductive incr_or_decr : Type := Incr | Decr.
 
@@ -1051,7 +1047,7 @@ Inductive load_bitfield: type -> intsize -> signedness -> Z -> Z -> mem -> Z -> 
   | load_bitfield_intro: forall sz sg1 attr sg pos width m addr c vt lts,
       0 <= pos -> 0 < width <= bitsize_intsize sz -> pos + width <= bitsize_carrier sz ->
       sg1 = (if zlt width (bitsize_intsize sz) then Signed else sg) ->
-      Mem.load_all (chunk_for_carrier sz) m addr = MemorySuccess (Vint c, vt, lts) ->
+      load_all (chunk_for_carrier sz) m addr = MemorySuccess (Vint c, vt, lts) ->
       load_bitfield (Tint sz sg1 attr) sz sg pos width m addr
                     (Vint (bitfield_extract sz sg pos width c), vt) lts.
 
@@ -1059,8 +1055,8 @@ Inductive store_bitfield: type -> intsize -> signedness -> Z -> Z -> mem -> Z ->
   | store_bitfield_intro: forall sz sg1 attr sg pos width m addr pt c n vt ovt lts m',
       0 <= pos -> 0 < width <= bitsize_intsize sz -> pos + width <= bitsize_carrier sz ->
       sg1 = (if zlt width (bitsize_intsize sz) then Signed else sg) ->
-      Mem.load (chunk_for_carrier sz) m addr = MemorySuccess (Vint c, ovt) ->
-      Mem.store (chunk_for_carrier sz) m addr
+      load (chunk_for_carrier sz) m addr = MemorySuccess (Vint c, ovt) ->
+      store (chunk_for_carrier sz) m addr
                  (Vint (Int.bitfield_insert (first_bit sz pos width) width c n), vt) lts = MemorySuccess m' ->
       store_bitfield (Tint sz sg1 attr) sz sg pos width m addr pt (Vint n,vt) lts
                      m' (Vint (bitfield_normalize sz sg width n),vt).

@@ -23,6 +23,7 @@
 Require Import Relations.
 Require Import Wellfounded.
 Require Import Coqlib.
+Require Import Allocator.
 Require Import Events.
 Require Import Globalenvs.
 Require Import Integers.
@@ -30,13 +31,11 @@ Require Import Tags.
 
 Set Implicit Arguments.
 
-Module Smallstep (P:Policy).
+Module Smallstep (P:Policy) (A:Allocator P).
   Module TLib := TagLib P.
   Import TLib.
-  Module Events := Events P.
-  Import Events.
-  Import Genv.
-  Import Mem.
+  Module Events := Events P A.
+  Export Events.
   
 (** * Closures of transitions relations *)
 

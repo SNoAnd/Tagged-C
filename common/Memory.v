@@ -59,8 +59,8 @@ Arguments MemoryFail {_} _.
 Module Mem (P:Policy).
   Module TLib := TagLib P.
   Import TLib.
-  Module MD := Memdata P.
-  Export MD.
+  Module Memdata := Memdata P.
+  Export Memdata.
   
   Inductive permission : Type := Live | Dead | MostlyDead.
 
@@ -105,6 +105,18 @@ Module Mem (P:Policy).
 
   (** Permissions *)
 
+  Definition set_perm (m: mem) (ofs: Z) (p: permission) : mem :=
+    mkmem m.(mem_contents) (fun ofs' => if ofs =? ofs' then p else m.(mem_access) ofs') m.(live).
+
+  Definition set_perm_range (m: mem) (base bound: Z) (p: permission) : mem :=
+    let size := bound - base in
+    let fix loop off m :=
+      match off with
+      | O => set_perm m base p
+      | S off' => set_perm (loop off' m) (base + (Z.of_nat off)) p
+      end in
+    loop (Z.to_nat size) m.
+  
   Definition get_perm (m: mem) (ofs: Z) : permission :=
     m.(mem_access) ofs.
 

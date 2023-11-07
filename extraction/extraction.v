@@ -24,11 +24,11 @@ Require Ctypes.
 Require Csyntax.
 Require Parser.
 Require Initializers.
-Require Import Tags Initializers Csem.
+Require Import Tags Allocator Initializers Csem.
 
-Module Extracted (P : Policy).
+Module Extracted (P : Policy) (A : Allocator P).
 
-  Module I := Initializers P.
+  Module I := Initializers P A.
   Import I.
   Import Cexec.
   Import InterpreterEvents.
@@ -43,9 +43,7 @@ Module Extracted (P : Policy).
   Import Events.
   Import Genv.
   Import Mem.
-
-  (* Memory - work around an extraction bug. *)
-  Extraction NoInline valid_pointer.
+  Import A.
 
 End Extracted.
   
@@ -111,6 +109,7 @@ End Extracted.
 
   Separate Extraction
            Tags
+           Allocator
            Extracted
            Ctypes.merge_attributes Ctypes.remove_attributes
            Ctypes.build_composite_env Ctypes.signature_of_type Ctypes.typlist_of_typelist
@@ -122,7 +121,7 @@ End Extracted.
            Ctyping.eselection
            Ctypes.make_program*)
            AST
-           Floats.Float32.from_parsed Floats.Float.from_parsed
+           Floats
            (*invert_symbol*)
            Parser.translation_unit_file
            Values.Vnullptr.

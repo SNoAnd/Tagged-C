@@ -19,15 +19,15 @@
 Require Import String.
 Require Import Coqlib Maps Integers Floats Errors.
 Require Import AST Linking.
-Require Import Values Memory Globalenvs Builtins Events Tags.
+Require Import Values Allocator Memory Globalenvs Builtins Events Tags.
 Require Import Ctypes Cop Csyntax Csem.
 
 Local Open Scope error_monad_scope.
 
-Module Ctyping (P: Policy).
+Module Ctyping (P: Policy) (A: Allocator P).
   Module TLib := TagLib P.
   Import TLib.
-  Module Csem := Csem P.
+  Module Csem := Csem P A.
   Import Csem.
   Import Csyntax.
   Import Cop.
@@ -36,7 +36,9 @@ Module Ctyping (P: Policy).
   Import Smallstep.
   Import Events.
   Import Genv.
-  Import Mem.
+  Import A.
+  Import A.Mem.
+  Import Memdata.
   Import P.
 
   Definition strict := false.
@@ -1384,7 +1386,7 @@ Proof.
     + eapply ecomma_sound; eauto.
     + eapply ecall_sound; eauto.
     + eapply ebuiltin_sound; eauto.
-  - destruct al0; simpl; intros al' RT; monadInv RT.
+  - destruct al; simpl; intros al' RT; monadInv RT.
     + constructor.
     + constructor; eauto with ty.
 Qed.
@@ -1901,7 +1903,7 @@ Proof.
       { unfold sg, T; destruct ty as   [ | ? ? ? | ? | [] ? | ? ? | ? ? ? | ? ? ? | ? ? | ? ? ];
           simpl; unfold Tptr; destruct Archi.ptr64; reflexivity. }
       subst ef. red in H0. red in H0. rewrite LK in H0. inv H0. 
-      inv H. inv H8. inv H10. inv H11. simpl in H1.
+      inv H. inv H7. inv H9. inv H10. simpl in H0.
       assert (A: val_casted v1 type_bool) by (eapply cast_val_is_casted; eauto).
       inv A. 
       set (v' := if Int.eq n Int.zero then v4 else v2) in *.
@@ -1909,15 +1911,15 @@ Proof.
       destruct (type_eq ty Tvoid).
       subst. constructor.
       destruct vargs0; try discriminate. simpl in H5. inv H5.
-      destruct vargs0; try discriminate. simpl in H10. inv H10.
-      destruct vargs0; try discriminate. simpl in H9. inv H9.
+      destruct vargs0; try discriminate. simpl in H11. inv H11.
+      destruct vargs0; try discriminate. simpl in H8. inv H8.
       destruct vargs0; try discriminate.
       inv H1.
       assert (C: val_casted v' ty).
       { unfold v'; destruct (Int.eq n Int.zero); eapply cast_val_is_casted; eauto. }
       assert (EQ: Val.normalize v' T = v').
       { apply Val.normalize_idem. apply val_casted_has_type; auto. }
-      unfold v' in EQ. rewrite EQ. apply wt_val_casted; auto.
+      unfold v' in EQ. (*rewrite EQ. apply wt_val_casted; auto.*)
 Admitted.
 
 Lemma wt_lred:
@@ -2043,12 +2045,15 @@ End WT_SWITCH.
 
 Section PRESERVATION.
 
-Variable prog: program.
-Hypothesis WTPROG: wt_program prog.
+  Variable prog: program.
+  Variable ge: Genv.t fundef type.
+  Variable ce: composite_env.
+  Variable m: Genv.mem.
+  
+  Hypothesis WTPROG: wt_program prog.
+  Hypothesis globalenv_of_prog: Csem.globalenv prog = MemorySuccess (ge,ce,m).
 
-Definition ge := let '(ge,_,_) := Csem.globalenv prog in ge.
-Definition ce := let '(_,ce,_) := Csem.globalenv prog in ce.
-Definition gtenv := bind_globdef (PTree.empty _) prog.(prog_defs).
+  Definition gtenv := bind_globdef (PTree.empty _) prog.(prog_defs).
 
 Inductive wt_expr_cont: typenv -> function -> cont -> Prop :=
   | wt_Kdo: forall te f k,
@@ -2157,9 +2162,9 @@ Definition fundef_return (fd: fundef) : type :=
 Lemma wt_find_funct:
   forall v fd, Genv.find_funct ge v = Some fd -> wt_fundef ce gtenv fd.
 Proof.
-  unfold ge. unfold ce. unfold Csem.globalenv.
-  destruct (globalenv (prog_comp_env prog) prog) eqn:?.
-  intros. eapply Genv.find_funct_prop with (p := prog) (v := v); eauto.
+  unfold Csem.globalenv in *.
+  destruct (globalenv (prog_comp_env prog) prog) eqn:?; inv globalenv_of_prog.
+  destruct a. intros. inv H0. eapply Genv.find_funct_prop with (p := prog) (v := v); eauto.
   intros. inv WTPROG. apply H1 with id; auto.
 Qed.
 
@@ -2174,11 +2179,11 @@ Inductive wt_state (ce:composite_env): Csem.state -> Prop :=
                         (WTB: wt_stmt ce tye f.(fn_return) f.(fn_body))
                         (WTE: wt_rvalue ce tye r),
     wt_state ce (ExprState f PCT r k e te m)
-| wt_call_state: forall b fd PCT vargs k m
+| wt_call_state: forall b fd PCT vft vargs k m
                         (WTK: wt_call_cont k (fundef_return fd))
                         (WTFD: wt_fundef ce gtenv fd)
                         (FIND: Genv.find_funct ge b = Some fd),
-    wt_state ce (Callstate fd PCT vargs k m)
+    wt_state ce (Callstate fd PCT vargs vft k m)
 | wt_return_state: forall fd PCT v vt k m ty
                           (WTK: wt_call_cont k ty)
                           (VAL: wt_val v ty),
@@ -2251,7 +2256,7 @@ Proof.
   eapply wt_rred; eauto. change (wt_expr_kind ce tye RV a). eapply wt_subexpr; eauto.
 - (* call *)
   assert (A: wt_expr_kind ce tye RV a) by (eapply wt_subexpr; eauto).
-  simpl in A. inv H. inv A. simpl in H10; rewrite H4 in H10; inv H10.
+  simpl in A. inv H. inv A. simpl in H9; rewrite H4 in H9; inv H9.
   assert (fundef_return fd = ty).
   { destruct fd; simpl in *.
     unfold type_of_function in H3. congruence.
@@ -2259,7 +2264,7 @@ Proof.
   econstructor.
   rewrite H. econstructor; eauto.
   intros. change (wt_expr_kind ce tye RV (C (Eval (v,vt) ty))).
-  eapply wt_context with (a := Ecall (Eval (vf,vft) tyf) el ty); eauto.
+  eapply wt_context with (a := Ecall (Eval (vf,fpt) tyf) el ty); eauto.
   red; constructor; auto.
   eapply wt_find_funct; eauto.
   eauto.
@@ -2284,7 +2289,7 @@ Proof.
   apply wt_seq_of_ls. apply wt_select_switch; auto.
 - exploit wt_find_label. eexact WTB. eauto. eapply call_cont_wt'; eauto.
   intros [A B]. eauto with ty.
-- inv WTFD. inv H2. econstructor; eauto. apply wt_call_cont_stmt_cont; auto.
+- inv WTFD. inv H3. econstructor; eauto. apply wt_call_cont_stmt_cont; auto.
 - inv WTFD. destruct vres. econstructor; eauto.
   apply has_rettype_wt_val. simpl; rewrite <- H1.
   admit.
@@ -2303,11 +2308,11 @@ Theorem wt_initial_state:
 Proof.
   intros. inv H.
   unfold Csem.globalenv in *.
-  destruct (globalenv (prog_comp_env prog) prog) eqn:?.
-  inv H0. econstructor. constructor.  
+  destruct (globalenv (prog_comp_env prog) prog) eqn:?; inv globalenv_of_prog; inv H0.
+  destruct a. inv H4. inv H5.
+  econstructor. constructor.  
   eapply Genv.find_funct_ptr_prop with (p := prog) (b := b); eauto.
   intros. inv WTPROG. apply H0 with id; auto.
-  unfold ge. unfold Csem.globalenv. rewrite Heqp.
   instantiate (1 := (Vfptr b)). rewrite Genv.find_funct_find_funct_ptr. auto.
 Qed.
 

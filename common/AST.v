@@ -469,7 +469,7 @@ Inductive external_function : Type :=
   | EF_builtin (name: string) (sg: signature)
      (** A compiler built-in function.  Behaves like an external, but
          can be inlined by the compiler. *)
-  | EF_runtime (name: string) (sg: signature)
+(*  | EF_runtime (name: string) (sg: signature) *)
      (** A function from the run-time library.  Behaves like an
          external, but must not be redefined. *)
   | EF_vload (chunk: memory_chunk)
@@ -490,43 +490,44 @@ Inductive external_function : Type :=
          allocated by an [EF_malloc] external call and frees the
          corresponding block.
          Produces no observable event. *)
-  | EF_memcpy (sz: Z) (al: Z)
+(*  | EF_memcpy (sz: Z) (al: Z) *)
      (** Block copy, of [sz] bytes, between addresses that are [al]-aligned. *)
-  | EF_annot (kind: positive) (text: string) (targs: list typ)
+(*  | EF_annot (kind: positive) (text: string) (targs: list typ) *)
      (** A programmer-supplied annotation.  Takes zero, one or several arguments,
          produces an event carrying the text and the values of these arguments,
          and returns no value. *)
-  | EF_annot_val (kind: positive) (text: string) (targ: typ)
+(*  | EF_annot_val (kind: positive) (text: string) (targ: typ) *)
      (** Another form of annotation that takes one argument, produces
          an event carrying the text and the value of this argument,
          and returns the value of the argument. *)
-  | EF_inline_asm (text: string) (sg: signature) (clobbers: list string)
+(*  | EF_inline_asm (text: string) (sg: signature) (clobbers: list string) *)
      (** Inline [asm] statements.  Semantically, treated like an
          annotation with no parameters ([EF_annot text nil]).  To be
          used with caution, as it can invalidate the semantic
          preservation theorem.  Generated only if [-finline-asm] is
          given. *)
-  | EF_debug (kind: positive) (text: ident) (targs: list typ).
+(*  | EF_debug (kind: positive) (text: ident) (targs: list typ)*)
      (** Transport debugging information from the front-end to the generated
          assembly.  Takes zero, one or several arguments like [EF_annot].
          Unlike [EF_annot], produces no observable event. *)
-
+.
+              
 (** The type signature of an external function. *)
 
 Definition ef_sig (ef: external_function): signature :=
   match ef with
   | EF_external name sg => sg
   | EF_builtin name sg => sg
-  | EF_runtime name sg => sg
+(*  | EF_runtime name sg => sg *)
   | EF_vload chunk => mksignature (Tptr :: nil) (rettype_of_chunk chunk) cc_default
   | EF_vstore chunk => mksignature (Tptr :: type_of_chunk chunk :: nil) Tvoid cc_default
   | EF_malloc => mksignature (Tptr :: nil) Tptr cc_default
   | EF_free => mksignature (Tptr :: nil) Tvoid cc_default
-  | EF_memcpy sz al => mksignature (Tptr :: Tptr :: nil) Tvoid cc_default
+(*  | EF_memcpy sz al => mksignature (Tptr :: Tptr :: nil) Tvoid cc_default
   | EF_annot kind text targs => mksignature targs Tvoid cc_default
   | EF_annot_val kind text targ => mksignature (targ :: nil) targ cc_default
   | EF_inline_asm text sg clob => sg
-  | EF_debug kind text targs => mksignature targs Tvoid cc_default
+  | EF_debug kind text targs => mksignature targs Tvoid cc_default *)
   end.
 
 (** Whether an external function should be inlined by the compiler. *)
@@ -535,24 +536,24 @@ Definition ef_inline (ef: external_function) : bool :=
   match ef with
   | EF_external name sg => false
   | EF_builtin name sg => true
-  | EF_runtime name sg => false
+(*  | EF_runtime name sg => false *)
   | EF_vload chunk => true
   | EF_vstore chunk => true
   | EF_malloc => false
   | EF_free => false
-  | EF_memcpy sz al => true
+(*  | EF_memcpy sz al => true
   | EF_annot kind text targs => true
   | EF_annot_val kind Text rg => true
   | EF_inline_asm text sg clob => true
-  | EF_debug kind text targs => true
+  | EF_debug kind text targs => true *)
   end.
 
 (** Whether an external function must reload its arguments. *)
 
 Definition ef_reloads (ef: external_function) : bool :=
   match ef with
-  | EF_annot kind text targs => false
-  | EF_debug kind text targs => false
+(*  | EF_annot kind text targs => false
+  | EF_debug kind text targs => false *)
   | _ => true
   end.
 

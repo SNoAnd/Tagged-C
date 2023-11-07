@@ -21,20 +21,17 @@ Require Import String.
 Require Import Coqlib.
 Require Import AST.
 Require Import Integers.
+Require Import Allocator.
 Require Import Events.
 Require Import Globalenvs.
 Require Import Smallstep.
 Require Import Behaviors.
 Require Import Tags.
 
-Module Deterministic (P:Policy).
-  Module Behaviors := Behaviors P.
-  Import Behaviors.
-  Import Smallstep.
-  Import Events.
-  Import Genv.
-  Import Mem.
-
+Module Deterministic (P:Policy) (A:Allocator P).
+  Module Behaviors := Behaviors P A.
+  Export Behaviors.
+  
 (** * Deterministic worlds *)
 
 (** One source of possible nondeterminism is that our semantics leave
