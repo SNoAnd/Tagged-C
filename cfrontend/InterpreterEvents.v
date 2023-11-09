@@ -2,7 +2,7 @@ Require Import FunInd.
 Require Import Axioms Classical.
 Require Import String Coqlib Decidableplus.
 Require Import Errors Maps Integers Floats.
-Require Import AST Values Memory Events Globalenvs Builtins Determinism.
+Require Import AST Values Memory Allocator Events Globalenvs Builtins Determinism.
 Require Import Csem.
 Require Import Tags.
 Require Import List. Import ListNotations.
@@ -31,9 +31,9 @@ Notation " 'check' A ; B" := (if A then B else None)
   (at level 200, A at level 100, B at level 200)
   : option_monad_scope.
 
-Module InterpreterEvents (P:Policy).
-  Module Cstrategy := Cstrategy P.
-  Import Cstrategy.
+Module InterpreterEvents (P:Policy) (A:Allocator P).
+  Module Cstrategy := Cstrategy P A.
+  Export Cstrategy.
   Import Ctyping.
   Import Csem.
   Import Csyntax.
@@ -43,7 +43,8 @@ Module InterpreterEvents (P:Policy).
   Import Smallstep.
   Import Events.
   Import Genv.
-  Import Mem.
+  Import A.
+  Import Mem.MD.
   Import P.
   Import Csem.TLib.
 
@@ -265,7 +266,7 @@ Module InterpreterEvents (P:Policy).
           do vres,vt <- atom_of_eventval res (type_of_chunk chunk);
           Some (w', Event_vload chunk id ofs res :: nil, MemorySuccess (Val.load_result chunk vres, vt))
       | None =>
-          match Mem.load_all chunk m (Int64.unsigned ofs) with
+          match load_all chunk m (Int64.unsigned ofs) with
           | MemorySuccess (v,lts) =>
               Some (w, E0, MemorySuccess v)
           | MemoryFail msg =>
@@ -288,7 +289,7 @@ Module InterpreterEvents (P:Policy).
           do w' <- nextworld_vstore w chunk id ofs ev;
           Some(w', Event_vstore chunk id ofs ev :: nil, MemorySuccess m)
       | None =>
-          match Mem.store chunk m (Int64.unsigned ofs) v lts with
+          match store chunk m (Int64.unsigned ofs) v lts with
           | MemorySuccess m' =>
               Some (w, E0, MemorySuccess m')
           | MemoryFail msg =>
@@ -310,12 +311,12 @@ Module InterpreterEvents (P:Policy).
       - split.
         + apply volatile_load_nonvol; auto.
           * intros. rewrite H in Heqo. destruct (gvar_volatile gv); congruence.
-          * eapply load_all_compose in Heqm0 as [H1 H2]; auto.
+          * eapply A.Mem.load_all_compose in Heqm0 as [H1 H2]; auto.
         + constructor.
       - split.
         + apply volatile_load_nonvol; auto.
           * intros. rewrite H in Heqo. destruct (gvar_volatile gv); congruence.
-          * eapply load_all_fail in Heqm0 as [H1 H2]; auto.
+          * eapply A.Mem.load_all_fail in Heqm0 as [H1 H2]; auto.
         + constructor.          
     Qed.
           
@@ -334,12 +335,16 @@ Module InterpreterEvents (P:Policy).
           specialize H1 with id gv.
           rewrite H1; auto.
           destruct (load_all chunk m (Int64.unsigned ofs)) as [[[v vt] lts]|] eqn:?.
-          * eapply load_all_compose in Heqm0. destruct Heqm0. rewrite H. auto.
-          * eapply load_all_fail in Heqm0. destruct Heqm0. rewrite H. auto.
+          * eapply A.Mem.load_all_compose in Heqm0. destruct Heqm0.
+            unfold Genv.load. rewrite H. auto.
+          * eapply A.Mem.load_all_fail in Heqm0. destruct Heqm0.
+            unfold Genv.load. rewrite H. auto.
         + inv H0.
           destruct (load_all chunk m (Int64.unsigned ofs)) as [[[v vt] lts]|] eqn:?.
-          * eapply load_all_compose in Heqm0. destruct Heqm0. rewrite H. auto.
-          * eapply load_all_fail in Heqm0. destruct Heqm0. rewrite H. auto.
+          * eapply A.Mem.load_all_compose in Heqm0. destruct Heqm0.
+            unfold Genv.load. rewrite H. auto.
+          * eapply A.Mem.load_all_fail in Heqm0. destruct Heqm0.
+            unfold Genv.load. rewrite H. auto.
     Qed.
             
     Lemma do_volatile_store_sound:
@@ -380,18 +385,18 @@ Module InterpreterEvents (P:Policy).
 
     (** External calls *)
     Variable do_external_function:
-      string -> signature -> Genv.t fundef type -> world -> list atom -> tag -> mem -> option (world * trace * atom * tag * mem).
+      string -> signature -> Genv.t fundef type -> world -> list atom -> tag -> tag -> mem -> option (world * trace * (MemoryResult (PolicyResult (atom * tag * mem)))).
 
     Hypothesis do_external_function_sound:
-      forall id sg ge vargs pct m t vres pct' m' w w',
-        do_external_function id sg ge w vargs pct m = Some(w', t, vres, pct', m') ->
-        external_functions_sem id sg ge vargs pct m t vres pct' m' /\ possible_trace w t w'.
+      forall id sg ge vargs pct fpt m t res w w',
+        do_external_function id sg ge w vargs pct fpt m = Some(w', t, res) ->
+        external_functions_sem id sg ge vargs pct fpt m t res /\ possible_trace w t w'.
 
     Hypothesis do_external_function_complete:
-      forall id sg ge vargs pct m t vres pct' m' w w',
-        external_functions_sem id sg ge vargs pct m t vres pct' m' ->
+      forall id sg ge vargs pct fpt m t res w w',
+        external_functions_sem id sg ge vargs pct fpt m t res ->
         possible_trace w t w' ->
-        do_external_function id sg ge w vargs pct m = Some(w', t, vres, pct', m').
+        do_external_function id sg ge w vargs pct fpt m = Some(w', t, res).
 
 
 (*Variable do_inline_assembly:
@@ -448,156 +453,44 @@ Definition do_ef_volatile_store_global (chunk: memory_chunk) (id: ident) (ofs: p
       | _ => None
       end.
 
-    Definition do_ef_malloc
-               (w: world) (vargs: list atom) (PCT: tag) (m: mem)
+    Definition do_ef_malloc (w: world) (vargs: list atom) (PCT fpt: tag) (m: mem)
       : option (world * trace * (MemoryResult (PolicyResult (atom * tag * mem)))) :=
       match vargs with
       | [(v,st)] =>
           match option_map Ptrofs.unsigned (do_alloc_size v) with
           | Some sz =>
-              match malloc m 0 sz with
-              | MemorySuccess (m', base, bound) =>
-                  match MallocT PCT def_tag st with
-                  | PolicySuccess (PCT',pt',vt',lt1,lt2) =>
+              match MallocT PCT fpt st with
+              | PolicySuccess (PCT',pt',vt_body,vt_head,lt) =>
+                  match heapalloc m sz vt_head vt_body lt with
+                  | MemorySuccess (m', base, bound) =>
                       match storebytes m' base
-                                       (repeat (Byte Byte.zero vt') (Z.to_nat sz))
-                                       (repeat lt2 (Z.to_nat sz)) with
+                                       (repeat (Byte Byte.zero vt_body) (Z.to_nat sz))
+                                       (repeat lt (Z.to_nat sz)) with
                       | MemorySuccess m'' =>
                           Some (w, E0, (MemorySuccess (PolicySuccess((Vlong (Int64.repr base), pt' (* APT: changed from def_tag *)), PCT', m''))))
                       | MemoryFail msg => Some (w, E0, (MemoryFail msg))
                       end
-                  | PolicyFail msg params =>
-                      Some (w, E0, (MemorySuccess (PolicyFail msg params)))
+                  | MemoryFail msg => Some (w, E0, (MemoryFail msg))
                   end
-              | MemoryFail msg => Some (w, E0, (MemoryFail msg))
+              | PolicyFail msg params =>
+                  Some (w, E0, (MemorySuccess (PolicyFail msg params)))
               end
           | None => None
           end
       | _ => None
       end.
-
-    Definition check_record (m: mem) (base: Z) : option (bool * Z * tag) :=
-      match load Mint64 m base with
-      | MemorySuccess (Vlong i, vt) =>
-          let live := (0 <=? (Int64.signed i))%Z in
-          let sz := (Z.abs (Int64.signed i)) in
-          Some (live, sz, vt)
-      | _ => None
-      end.
-
-    Definition update_record (m: mem) (base: Z) (live: bool) (sz: Z) (vt: tag) (lt: tag) : option mem :=
-      let rec :=
-        if live
-        then Vlong (Int64.repr sz)
-        else Vlong (Int64.neg (Int64.repr sz))
-      in
-      match store Mint64 m base (rec, vt) [lt;lt;lt;lt;lt;lt;lt;lt] with
-      | MemorySuccess m'' => Some m''
-      | MemoryFail _ => None
-      end.
-
-    Definition record_size := size_chunk Mint64.
     
-    Fixpoint find_free (c : nat) (m : mem) (base : Z) (sz : Z) (vt lt : tag) : option (mem*Z) :=
-      match c with
-      | O => None
-      | S c' =>
-          (* Load a long from base.
-             Sign indictates: is this a live block? (Negative no, positive/zero yes)
-             Magnitude indicates size *)
-          match check_record m base with
-          (* If the block is live, keep looking. *)
-          | Some (true, bs, vt') =>
-              let next := base + bs in
-              find_free c' m next sz vt lt
-          (* If the block is free: *)
-          | Some (false, bs, vt') =>
-          (* Calculate how much space will be left *)
-              let remain := bs - sz in
-              if (remain <? 0)%Z then
-                (* If there is insufficient space, keep looking. *)
-                let next := base + bs in find_free c' m next sz vt lt
-              else
-                if (record_size <? remain)%Z then
-                  (* If there is space remaining, create a new record for it. *)
-                  let next := base + bs in
-                  let next_sz := remain - record_size in
-                  do m' <- update_record m base false sz vt lt;
-                  do m'' <- update_record m' next true next_sz def_tag def_tag;
-                  Some (m'',base)
-                else
-                  (* If there is not enough space, just update the record for liveness. *)
-                  do m' <- update_record m base true bs vt lt;
-                  Some (m',base)
-          | None => None
-          end
-      end.
-
-    Definition do_ef_malloc_unsafe
-               (w: world) (vargs: list atom) (PCT: tag) (m: mem)
+    Definition do_ef_free (w: world) (vargs: list atom) (PCT fpt: tag) (m: mem)
       : option (world * trace * (MemoryResult (PolicyResult (atom * tag * mem)))) :=
       match vargs with
-      | [(v,st)] =>
-          match MallocT PCT def_tag st with
-          | PolicySuccess (PCT',pt',vt1,vt2,lt) =>
-              do sz <- option_map Ptrofs.unsigned (do_alloc_size v);
-              do m', base <- find_free 100 m 1000 sz vt2 lt;
-              match storebytes m' (base + record_size)
-                               (repeat (Byte Byte.zero vt1) (Z.to_nat sz))
-                               (repeat lt (Z.to_nat sz)) with
-              | MemorySuccess m'' =>
-                  Some (w, E0, (MemorySuccess (PolicySuccess((Vlong (Int64.repr (base + record_size)), def_tag), PCT', m''))))
-              | MemoryFail msg => Some (w, E0, (MemoryFail msg))
-              end
-          | PolicyFail msg params =>
+      | [(Vlong addr,pt)] =>
+          match heapfree m (Int64.unsigned addr) (fun vt => FreeT PCT fpt pt vt) with
+          | MemorySuccess (PolicySuccess (PCT', m')) =>
+              Some (w, E0, (MemorySuccess (PolicySuccess ((Vundef,def_tag),PCT',m'))))
+          | MemorySuccess (PolicyFail msg params) =>
               Some (w, E0, (MemorySuccess (PolicyFail msg params)))
-          end
-      | _ => None
-      end.
-        
-    Definition do_ef_free
-               (w: world) (vargs: list atom) (PCT: tag) (m: mem)
-      : option (world * trace * (MemoryResult (PolicyResult (atom * tag * mem)))) :=
-      match vargs with
-      | [(Vlong lo,pt)] =>
-          match Mem.load_all Mptr m (Int64.unsigned lo) with
-          | MemorySuccess ((vsz,vt),lt::_) =>
-              match FreeT PCT pt vt lt with
-              | PolicySuccess (PCT',vt,lt1,lt2) =>
-                  match do_alloc_size vsz with
-                  | Some sz =>
-                      match Mem.mfree m (Int64.unsigned lo)
-                                      (Int64.unsigned lo + Ptrofs.unsigned sz) with
-                      | MemorySuccess m' =>
-                          Some (w, E0, (MemorySuccess (PolicySuccess ((Vundef,def_tag),PCT',m'))))
-                      | MemoryFail msg => Some (w, E0, (MemoryFail msg))
-                      end
-                  | None => None
-                  end
-              | PolicyFail msg params => Some (w, E0, (MemorySuccess (PolicyFail msg params)))
-              end
-          | MemorySuccess ((vsz,vt), []) => Some (w, E0, (MemoryFail "No location tags when freeing"))
           | MemoryFail msg => Some (w, E0, (MemoryFail msg))
           end
-      | _ => None
-      end.
-
-    Definition do_ef_free_unsafe
-               (w: world) (vargs: list atom) (PCT: tag) (m: mem)
-      : option (world * trace * (MemoryResult (PolicyResult (atom * tag * mem)))) :=
-      match vargs with
-      | [(Vlong lo,pt)] =>
-          if (Int64.signed lo =? 0)%Z
-          then Some (w, E0, MemorySuccess (PolicySuccess ((Vundef,def_tag),PCT,m)))
-          else
-            do live, sz, vt <- check_record m ((Int64.signed lo)-record_size);
-            match FreeT PCT def_tag pt vt with
-            | PolicySuccess (PCT', vt1, vt2, lt) =>
-                do m' <- update_record m ((Int64.signed lo)-record_size) false sz vt2 lt;
-                Some (w, E0, MemorySuccess (PolicySuccess ((Vundef,def_tag),PCT,m')))
-            | PolicyFail msg params =>
-                Some (w, E0, MemorySuccess (PolicyFail msg params))
-            end
       | _ => None
       end.
 
@@ -650,32 +543,28 @@ Definition do_builtin_or_external (name: string) (sg: signature)
   end.*)
 
     Definition do_external (ef: external_function) :
-      world -> list atom -> tag -> mem -> option (world * trace * (MemoryResult (PolicyResult (atom * tag * mem)))) :=
+      world -> list atom -> tag -> tag -> mem -> option (world * trace * (MemoryResult (PolicyResult (atom * tag * mem)))) :=
       match ef with
       | EF_external name sg =>
-          fun w vargs pct m =>
-            match do_external_function name sg ge w vargs pct m with
-            | Some (w', tr', (v',vt'), pct', m') =>
-                Some (w', tr', (MemorySuccess (PolicySuccess ((v',vt'), pct', m'))))
-            | None => None
-            end
+          fun w vargs pct fpt m =>
+            do_external_function name sg ge w vargs pct fpt m
   (*| EF_builtin name sg => do_builtin_or_external name sg
   | EF_runtime name sg => do_builtin_or_external name sg
   | EF_vload chunk => do_ef_volatile_load chunk
   | EF_vstore chunk => do_ef_volatile_store chunk*)
-      | EF_malloc => do_ef_malloc_unsafe
-      | EF_free => do_ef_free_unsafe
+      | EF_malloc => do_ef_malloc
+      | EF_free => do_ef_free
   (*| EF_memcpy sz al => do_ef_memcpy sz al
   | EF_annot kind text targs => do_ef_annot text targs
   | EF_annot_val kind text targ => do_ef_annot_val text targ
   | EF_debug kind text targs => do_ef_debug kind text targs*)
-      | _ => fun _ _ _ _ => None
+      | _ => fun _ _ _ _ _ => None
       end.
 
     Lemma do_ef_external_sound:
-      forall ef w vargs pct m w' t vres pct' m',
-        do_external ef w vargs pct m = Some (w', t, MemorySuccess (PolicySuccess (vres, pct', m'))) ->
-        external_call ef ge vargs pct m t vres pct' m' /\ possible_trace w t w'.
+      forall ef w vargs pct fpt m w' t res,
+        do_external ef w vargs pct fpt m = Some (w', t, res) ->
+        external_call ef ge vargs pct fpt m t res /\ possible_trace w t w'.
     Admitted.
 (*Proof with try congruence.
   intros until m'.
@@ -746,9 +635,9 @@ Qed.*)
 *)
 
     Lemma do_ef_external_complete:
-      forall ef w vargs pct m w' t vres pct' m',
-        external_call ef ge vargs pct m t vres pct' m' -> possible_trace w t w' ->
-        do_external ef w vargs pct m = Some (w', t, MemorySuccess (PolicySuccess (vres, pct', m'))).
+      forall ef w vargs pct fpt m w' t res,
+        external_call ef ge vargs pct fpt m t res -> possible_trace w t w' ->
+        do_external ef w vargs pct fpt m = Some (w', t, res).
     Admitted.
 (*Proof.
   intros.

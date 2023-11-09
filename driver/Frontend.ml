@@ -16,9 +16,9 @@ open Clflags
 open Commandline
 open Driveraux
 open Tags
-open PrintCsyntax
 open CPragmas
 open Interp
+open Allocator
 
 (* Common frontend functions between clightgen and ccomp *)
 
@@ -190,12 +190,12 @@ let init () =
   end
  
 module FrontendP =
-        functor (Pol: Policy) -> struct
+        functor (Pol: Policy) (Alloc: Allocator) -> struct
 
-                module InterpInst = InterpP (Pol)
-                module Printing = PrintCsyntaxP (Pol)
-                module PragmaInst = Pragma (Pol)
+                module InterpInst = InterpP (Pol) (Alloc)
+                module Printing = InterpInst.Printing
                 module C2CPInst = Printing.C2CPInst
+                module PragmaInst = Pragma (Pol) (Alloc)
  
                 let init_with () =
                 Env.set_builtins C2CPInst.builtins;
@@ -229,6 +229,6 @@ module FrontendP =
   InterpInst.execute csyntax
 end
 
-module WithNull = FrontendP (NullPolicy)
-module WithPVI = FrontendP (PVI)
-module WithDoubleFree = FrontendP (DoubleFree)
+module WithNull = FrontendP (NullPolicy) (FLAllocator)
+module WithPVI = FrontendP (PVI) (FLAllocator)
+module WithDoubleFree = FrontendP (DoubleFree) (ConcreteAllocator)

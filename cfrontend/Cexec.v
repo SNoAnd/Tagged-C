@@ -16,7 +16,7 @@ Require Import FunInd.
 Require Import Axioms Classical.
 Require Import String Coqlib Decidableplus.
 Require Import Errors Maps Integers Floats.
-Require Import AST Values Memory Events Globalenvs Builtins Determinism.
+Require Import AST Values Memory Allocator Events Globalenvs Builtins Determinism.
 Require Import Tags.
 Require Import List. Import ListNotations.
 Require Import InterpreterEvents Ctypes.
@@ -58,8 +58,8 @@ Notation " 'check' A ; B" := (if A then B else nil)
   (at level 200, A at level 100, B at level 200)
   : list_monad_scope.
 
-Module Cexec (P:Policy).
-  Module InterpreterEvents := InterpreterEvents P.
+Module Cexec (P:Policy) (A:Allocator P).
+  Module InterpreterEvents := InterpreterEvents P A.
   Import InterpreterEvents.
   Import Cstrategy.
   Import Ctyping.
@@ -71,7 +71,7 @@ Module Cexec (P:Policy).
   Import Smallstep.
   Import Events.
   Import Genv.
-  Import Mem.
+  Import A.
   Import P.
   Import Csem.TLib.
 
@@ -147,23 +147,22 @@ Module Cexec (P:Policy).
   (** * Events, volatile memory accesses, and external functions. *)
 
   Section EXEC.
-
     Variable ge: genv.
     Variable ce: composite_env.
 
     Variable do_external_function:
-      string -> signature -> Genv.t fundef type -> world -> list atom -> tag -> mem -> option (world * trace * atom * tag * mem).
+      string -> signature -> Genv.t fundef type -> world -> list atom -> tag -> tag -> mem -> option (world * trace * (MemoryResult (PolicyResult (atom * tag * mem)))).
 
     Hypothesis do_external_function_sound:
-      forall id sg ge vargs pct m t vres pct' m' w w',
-        do_external_function id sg ge w vargs pct m = Some(w', t, vres, pct', m') ->
-        external_functions_sem id sg ge vargs pct m t vres pct' m' /\ possible_trace w t w'.
+      forall id sg ge vargs pct fpt m t res w w',
+        do_external_function id sg ge w vargs pct fpt m = Some(w', t, res) ->
+        external_functions_sem id sg ge vargs pct fpt m t res /\ possible_trace w t w'.
 
     Hypothesis do_external_function_complete:
-      forall id sg ge vargs pct m t vres pct' m' w w',
-        external_functions_sem id sg ge vargs pct m t vres pct' m' ->
+      forall id sg ge vargs pct fpt m t res w w',
+        external_functions_sem id sg ge vargs pct fpt m t res ->
         possible_trace w t w' ->
-        do_external_function id sg ge w vargs pct m = Some(w', t, vres, pct', m').
+        do_external_function id sg ge w vargs pct fpt m = Some(w', t, res).
 
     Local Open Scope memory_monad_scope.
     (** Accessing locations *)
@@ -176,7 +175,7 @@ Module Cexec (P:Policy).
           | By_value chunk =>
               match type_is_volatile ty with
               | false =>
-                  Some (w, E0, Mem.load_all chunk m (Int64.unsigned ofs))
+                  Some (w, E0, load_all chunk m (Int64.unsigned ofs))
               | true =>
                   match do_volatile_load ge w chunk m ofs with
                   | Some (w', tr, MemorySuccess (v,vt)) =>
@@ -203,7 +202,7 @@ Module Cexec (P:Policy).
               signedness_eq sg1 (if zlt width (bitsize_intsize sz) then Signed else sg) &&
               zle 0 pos && zlt 0 width && zle width (bitsize_intsize sz) &&
               zle (pos + width) (bitsize_carrier sz));
-              match Mem.load (chunk_for_carrier sz) m (Int64.unsigned ofs) with
+              match load (chunk_for_carrier sz) m (Int64.unsigned ofs) with
               | MemorySuccess (Vint c,vt) =>
                   match load_ltags (chunk_for_carrier sz) m (Int64.unsigned ofs) with
                   | MemorySuccess lts =>
@@ -251,7 +250,7 @@ Module Cexec (P:Policy).
           match access_mode ty with
           | By_value chunk =>
               match type_is_volatile ty with
-              | false => match Mem.store chunk m (Int64.unsigned ofs) v lts with
+              | false => match store chunk m (Int64.unsigned ofs) v lts with
                          | MemorySuccess m' => Some (w, E0, MemorySuccess (m', v))
                          | MemoryFail msg => Some (w, E0, MemoryFail msg)
                          end
@@ -266,9 +265,9 @@ Module Cexec (P:Policy).
               | (Vlong ofs',vt) =>
                   let ofs'' := ofs' in
                   check (check_assign_copy ty ofs ofs'');
-                  match Mem.loadbytes m (Int64.unsigned ofs'') (sizeof ce ty) with
+                  match loadbytes m (Int64.unsigned ofs'') (sizeof ce ty) with
                   | MemorySuccess bytes =>
-                      match Mem.storebytes m (Int64.unsigned ofs) bytes lts with
+                      match storebytes m (Int64.unsigned ofs) bytes lts with
                       | MemorySuccess m' =>
                           Some (w, E0, MemorySuccess(m', v))
                       | MemoryFail msg =>
@@ -288,12 +287,12 @@ Module Cexec (P:Policy).
           zle (pos + width) (bitsize_carrier sz));
           match ty, v with
           | Tint sz1 sg1 _, (Vint n,vt) =>
-              match Mem.load (chunk_for_carrier sz) m (Int64.unsigned ofs) with
+              match load (chunk_for_carrier sz) m (Int64.unsigned ofs) with
               | MemorySuccess (Vint c,ovt) =>
                   check (intsize_eq sz1 sz &&
                   signedness_eq sg1 (if zlt width (bitsize_intsize sz)
                                      then Signed else sg));
-                  match Mem.store (chunk_for_carrier sz) m (Int64.unsigned ofs)
+                  match store (chunk_for_carrier sz) m (Int64.unsigned ofs)
                                      (Vint ((Int.bitfield_insert (first_bit sz pos width)
                                                                  width c n)),vt) lts with
                   | MemorySuccess m' =>
@@ -421,7 +420,7 @@ Qed.
 Inductive reduction: Type :=
 | Lred (rule: string) (l': expr) (te': tenv) (m': mem)
 | Rred (rule: string) (pct': tag) (r': expr) (te': tenv) (m': mem) (tr: trace)
-| Callred (rule: string) (fd: fundef) (args: list atom) (tyres: type) (pct': tag) (te': tenv) (m': mem)
+| Callred (rule: string) (fd: fundef) (fpt: tag) (args: list atom) (tyres: type) (te': tenv) (m': mem)
 | Stuckred (msg: string) (*anaaktge enters impossible state or would have to take impossible step. 
               think like a /0 *)
 | Failstopred (rule: string) (msg: string) (params: list tag) (tr: trace)
@@ -906,14 +905,13 @@ Section EXPRS.
         end
     | RV, Ecall r1 rargs ty =>
         match is_val r1, is_val_list rargs with
-        | Some(vf, ft, tyf), Some vtl =>
+        | Some(vf, fpt, tyf), Some vtl =>
             match classify_fun tyf with
             | fun_case_f tyargs tyres cconv =>
                 do fd <- Genv.find_funct ge vf;
                 do vargs <- sem_cast_arguments vtl tyargs m;
                 check type_eq (type_of_fundef fd) (Tfunction tyargs tyres cconv);
-                at "failred_call" trule pct' <- CallT pct ft;
-                topred (Callred "red_call" fd vargs ty pct' te m)
+                topred (Callred "red_call" fd fpt vargs ty te m)
             | _ => stuck
             end
         | _, _ =>
@@ -924,7 +922,7 @@ Section EXPRS.
         match is_val_list rargs with
         | Some vtl =>
             do vargs <- sem_cast_arguments vtl tyargs m;
-            match do_external ge do_external_function ef w vargs pct m with
+            match do_external ge do_external_function ef w vargs pct def_tag m with
             | Some (w', tr, (MemorySuccess (PolicySuccess (v,pct', m')))) =>
                 topred (Rred "red_builtin" pct' (Eval v ty) te m' tr)
             | Some (w', tr, (MemorySuccess (PolicyFail msg params))) =>
@@ -1093,9 +1091,9 @@ Definition invert_expr_prop (a: expr) (pct: tag) (te: tenv) (m: mem) : Prop :=
       /\ type_of_fundef fd = Tfunction tyargs tyres cconv
   | Ebuiltin ef tyargs rargs ty =>
       exprlist_all_values rargs ->
-      exists vargs t vres pct' m' w',
+      exists vargs t res w',
          cast_arguments m rargs tyargs vargs
-      /\ external_call ef ge vargs pct m t vres pct' m'
+      /\ external_call ef ge vargs pct def_tag m t res
       /\ possible_trace w t w'
   | _ => True
   end.
@@ -1169,8 +1167,8 @@ Proof.
 Admitted.
 
 Lemma callred_invert:
-  forall pct pct' r fd args ty te m,
-    callred ge pct r m pct' fd args ty ->
+  forall pct fpt r fd args ty te m,
+    callred ge pct r m fd fpt args ty ->
     invert_expr_prop r pct te m.
 Proof.
   intros. inv H. simpl.
@@ -1254,7 +1252,7 @@ Definition reduction_ok (k: kind) (pct: tag) (a: expr) (te: tenv) (m: mem) (rd: 
   match k, rd with
   | LV, Lred _ l' te' m' => lred ge ce e a pct te m l' te' m'
   | RV, Rred _ pct' r' te' m' t => rred ge ce pct a te m t pct' r' te' m' /\ exists w', possible_trace w t w'
-  | RV, Callred _ fd args tyres pct' te' m' => callred ge pct a m pct' fd args tyres /\ te' = te /\ m' = m
+  | RV, Callred _ fd fpt args tyres te' m' => callred ge pct a m fd fpt args tyres /\ te' = te /\ m' = m
   | LV, Stuckred _ => ~imm_safe_t k a pct te m
   | RV, Stuckred _ => ~imm_safe_t k a pct te m
   | LV, Failstopred _ msg params tr => lfailred ce a pct msg params /\ tr = E0
@@ -1448,9 +1446,9 @@ Qed.
 Lemma is_val_list_all_values:
   forall al vtl, is_val_list al = Some vtl -> exprlist_all_values al.
 Proof.
-  induction al0; simpl; intros; auto.
+  induction al; simpl; intros; auto.
   destruct (is_val r1) as [[[v vt] ty]|] eqn:?; try discriminate.
-  destruct (is_val_list al0) as [vtl'|] eqn:?; try discriminate.
+  destruct (is_val_list al) as [vtl'|] eqn:?; try discriminate.
   rewrite (is_val_inv _ _ _ Heqo). eauto.
 Qed.
 
@@ -1857,11 +1855,8 @@ Proof with (try (apply not_invert_ok; simpl; intro; myinv; repeat do_do; intuiti
         destruct (Genv.find_funct ge vf) as [fd|] eqn:?...
         destruct (sem_cast_arguments vtl tyargs m) as [vargs|] eqn:?...
         destruct (type_eq (type_of_fundef fd) (Tfunction tyargs tyres cconv))...
-        tagdestr_ok.
         -- apply topred_ok; auto. red. split; auto. eapply red_call; eauto.
            eapply sem_cast_arguments_sound; eauto.
-        -- exploit sem_cast_arguments_sound; eauto.
-        -- constructor.
         -- apply not_invert_ok; simpl; intros; myinv. specialize (H ALLVAL). myinv.
            exploit sem_cast_arguments_complete; eauto. intros [vtl' [P Q]]. congruence.
         -- apply not_invert_ok; simpl; intros; myinv. specialize (H ALLVAL). myinv.
@@ -1902,7 +1897,7 @@ Proof with (try (apply not_invert_ok; simpl; intro; myinv; repeat do_do; intuiti
       * (* depth *)
         eapply incontext_ok; eauto.
       
-  - clear step_exprlist_sound. induction al0; simpl; intros.
+  - clear step_exprlist_sound. induction al; simpl; intros.
     + (* nil *)
       split; intros. tauto. simpl; congruence.
     + (* cons *)
@@ -1912,12 +1907,12 @@ Admitted.
 Lemma step_exprlist_val_list:
   forall te m pct al, is_val_list al <> None -> step_exprlist pct al te m = nil.
 Proof.
-  induction al0; simpl; intros.
+  induction al; simpl; intros.
   auto.
   destruct (is_val r1) as [[v1 ty1]|] eqn:?; try congruence.
-  destruct (is_val_list al0) eqn:?; try congruence.
+  destruct (is_val_list al) eqn:?; try congruence.
   rewrite (is_val_inv _ _ _ Heqo).
-  rewrite IHal0. auto. congruence.
+  rewrite IHal. auto. congruence.
 Qed.
 
 (** Completeness part 1: [step_expr] contains all possible non-stuck reducts. *)
@@ -2043,13 +2038,13 @@ Admitted.
 Qed.*)
 
 Lemma callred_topred:
-  forall pct pct' a fd args ty te m,
-    callred ge pct a m pct' fd args ty ->
-    exists rule, step_expr RV pct a te m = topred (Callred rule fd args ty pct' te m).
+  forall pct a fd fpt args ty te m,
+    callred ge pct a m fd fpt args ty ->
+    exists rule, step_expr RV pct a te m = topred (Callred rule fd fpt args ty te m).
 Proof.
   induction 1; simpl.
   rewrite H2. exploit sem_cast_arguments_complete; eauto. intros [vtl [A B]].
-  rewrite A; rewrite H; rewrite B; rewrite <- H3; rewrite H1; rewrite dec_eq_true. econstructor; eauto.
+  rewrite A; rewrite H; rewrite B; rewrite H1; rewrite dec_eq_true. econstructor; eauto.
 Qed.
 
 Definition reducts_incl {A B: Type} (C: A -> B) (res1: reducts A) (res2: reducts B) : Prop :=
@@ -2316,7 +2311,7 @@ Definition expr_final_state (f: function) (k: cont) (pct: tag) (e: env) (C_rd: (
   match snd C_rd with
   | Lred rule a te m => TR rule E0 (ExprState f pct (fst C_rd a) k e te m)
   | Rred rule pct a te m t => TR rule t (ExprState f pct (fst C_rd a) k e te m)
-  | Callred rule fd vargs ty pct' te m => TR rule E0 (Callstate fd pct' vargs (Kcall f e te pct (fst C_rd) ty k) m)
+  | Callred rule fd fpt vargs ty te m => TR rule E0 (Callstate fd pct fpt vargs (Kcall f e te pct (fst C_rd) ty k) m)
   | Stuckred msg => TR ("step_stuck" ++ msg) E0 Stuckstate
   | Failstopred rule msg params tr => TR rule tr (Failstop msg params)
   end.
@@ -2387,7 +2382,7 @@ Definition do_step (w: world) (s: Csem.state) : list transition :=
             else ret "step_for_false" (State f pct' Sskip k e te m)
         | Kreturn k =>
             do v' <- sem_cast v ty f.(fn_return) m;
-            match Mem.free_list m (blocks_of_env e) with
+            match stkfree m (fold_left Z.add (sizes_of_env e) 0) with
             | MemorySuccess m' =>
                 ret "step_return_2" (Returnstate (Internal f) pct (v',vt) (call_cont k) m')
             | MemoryFail msg =>
@@ -2443,7 +2438,7 @@ Definition do_step (w: world) (s: Csem.state) : list transition :=
       ret "step_skip_for4" (State f pct (Sfor Sskip a2 a3 s olbl loc) k e te m)
 
   | State f pct (Sreturn None loc) k e te m =>
-      match Mem.free_list m (blocks_of_env e) with
+      match stkfree m (fold_left Z.add (sizes_of_env e) 0) with
       | MemorySuccess m' =>
           ret "step_return_0" (Returnstate (Internal f) pct (Vundef,def_tag) (call_cont k) m')
       | MemoryFail msg =>
@@ -2453,7 +2448,7 @@ Definition do_step (w: world) (s: Csem.state) : list transition :=
   | State f pct (Sreturn (Some x) loc) k e te m =>
       ret "step_return_1" (ExprState f pct x (Kreturn k) e te m)
   | State f pct Sskip ((Kstop | Kcall _ _ _ _ _ _ _) as k) e te m =>
-      match Mem.free_list m (blocks_of_env e) with
+      match stkfree m (fold_left Z.add (sizes_of_env e) 0) with
       | MemorySuccess m' =>
           ret "step_skip_call" (Returnstate (Internal f) pct (Vundef, def_tag) (call_cont k) m')
       | MemoryFail msg =>
@@ -2476,8 +2471,9 @@ Definition do_step (w: world) (s: Csem.state) : list transition :=
       | None => nil
       end
 
-  | Callstate (Internal f) pct vargs k m =>
+  | Callstate (Internal f) pct fpt vargs k m =>
       check (list_norepet_dec ident_eq (var_names (fn_params f) ++ var_names (fn_vars f)));
+      at "failred_call" trule pct' <- CallT pct fpt;
       match do_alloc_variables ce pct empty_env m (option_zip (f.(fn_params) ++ f.(fn_vars)) vargs) with
       | MemorySuccess (PolicySuccess (pct',e,m')) =>
           ret "step_internal_function" (State f pct' f.(fn_body) k e (empty_tenv) m')
@@ -2486,8 +2482,8 @@ Definition do_step (w: world) (s: Csem.state) : list transition :=
       | MemoryFail msg =>
           ret "step_internal_function_fail_0" (Failstop ("Baseline Policy Failure in do_alloc_variables: " ++ msg) [])
       end
-  | Callstate (External ef targs tres cc) pct vargs k m =>
-      match do_external ge do_external_function ef w vargs pct m with
+  | Callstate (External ef targs tres cc) pct fpt vargs k m =>
+      match do_external ge do_external_function ef w vargs pct fpt m with
       | Some (w', tr, MemorySuccess (PolicySuccess (v,pct',m'))) => [TR "step_external_function" tr (Returnstate (External ef targs tres cc) pct' v k m')]
       | Some (w', tr, MemorySuccess (PolicyFail msg params)) => [TR "step_external_function_fail_1" tr (Failstop msg params)]
       | Some (w', tr, MemoryFail msg) => [TR "step_external_function_fail_0" tr (Failstop msg [])]
@@ -2703,13 +2699,17 @@ End EXEC.
 
 Local Open Scope option_monad_scope.
 
-Definition do_initial_state (p: program): option (Genv.t (Ctypes.fundef function) type * Csem.state) :=
-  let '(ge,ce,m) := Csem.globalenv p in
-  dol b, pt <- Genv.find_symbol ge p.(prog_main);
-  do f <- Genv.find_funct_ptr ge b;
-  check (type_eq (type_of_fundef f) (Tfunction Tnil type_int32s cc_default));
-  Some (ge, Callstate f InitPCT nil Kstop m).
-
+Definition do_initial_state (p: program) :
+  option (MemoryResult (Genv.t (Ctypes.fundef function) type * Csem.state)) :=
+  match Csem.globalenv p with
+  | MemorySuccess (ge,ce,m) =>
+      dol b, pt <- Genv.find_symbol ge p.(prog_main);
+      do f <- Genv.find_funct_ptr ge b;
+      check (type_eq (type_of_fundef f) (Tfunction Tnil type_int32s cc_default));
+      Some (MemorySuccess (ge, Callstate f InitPCT def_tag nil Kstop m))
+  | MemoryFail msg => Some (MemoryFail msg)
+  end.
+           
 Definition at_final_state (S: Csem.state): option (PolicyResult int) :=
   match S with
   | Returnstate _ _ (Vint r,_) Kstop m => Some (PolicySuccess r)

@@ -25,6 +25,7 @@ Require Import Integers.
 Require Import Floats.
 Require Import Values.
 Require Import AST.
+Require Import Allocator.
 Require Import Memory.
 Require Import Events.
 Require Import Globalenvs.
@@ -36,10 +37,10 @@ Require Import Csem.
 Require Import Ctyping.
 Require Import Tags.
 
-Module Cstrategy (P: Policy).
+Module Cstrategy (P: Policy) (A: Allocator P).
   Module TLib := TagLib P.
   Import TLib.
-  Module Ctyping := Ctyping P.
+  Module Ctyping := Ctyping P A.
   Import Ctyping.
   Import Csem.
   Import Csyntax.
@@ -49,7 +50,7 @@ Module Cstrategy (P: Policy).
   Import Smallstep.
   Import Events.
   Import Genv.
-  Import Mem.
+  Import A.
   Import P.
 
 
@@ -377,20 +378,20 @@ Inductive estep: Csem.state -> trace -> Csem.state -> Prop :=
       estep (ExprState f PCT (C (Eparen r tycast ty)) k e te m)
          E0 (ExprState f PCT' (C (Eval (v,vt) ty)) k e te m)
 
-  | step_call: forall f C rf rargs ty k e te m PCT PCT' targs tres cconv vf ft vargs fd,
+  | step_call: forall f C rf rargs ty k e te m PCT PCT' targs tres cconv vf vft vargs fd,
       leftcontext RV RV C ->
       classify_fun (typeof rf) = fun_case_f targs tres cconv ->
-      eval_simple_rvalue e te m PCT PCT' rf (vf,ft) ->
+      eval_simple_rvalue e te m PCT PCT' rf (vf,vft) ->
       eval_simple_list e te m PCT rargs targs vargs ->
       Genv.find_funct ge vf = Some fd ->
       type_of_fundef fd = Tfunction targs tres cconv ->
       estep (ExprState f PCT (C (Ecall rf rargs ty)) k e te m)
-         E0 (Callstate fd PCT' vargs (Kcall f e te PCT C ty k) m)
+         E0 (Callstate fd PCT' vft vargs (Kcall f e te PCT C ty k) m)
 
   | step_builtin: forall f C ef tyargs rargs ty k e te m PCT PCT' vargs t vres m',
       leftcontext RV RV C ->
       eval_simple_list e te m PCT rargs tyargs vargs ->
-      external_call ef ge vargs PCT m t vres PCT' m' ->
+      external_call ef ge vargs PCT def_tag m t (MemorySuccess (PolicySuccess (vres, PCT', m'))) ->
       estep (ExprState f PCT (C (Ebuiltin ef tyargs rargs ty)) k e te m)
           t (ExprState f PCT' (C (Eval vres ty)) k e te m').
 

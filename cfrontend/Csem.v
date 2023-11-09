@@ -17,16 +17,16 @@
 (** Dynamic semantics for the Compcert C language *)
 
 Require Import Coqlib Errors Maps.
-Require Import Integers Floats Values AST Memory Builtins Events Globalenvs Tags.
+Require Import Integers Floats Values AST Memory Allocator Builtins Events Globalenvs Tags.
 Require Import Ctypes Cop Csyntax.
 Require Import Smallstep.
 Require Import List. Import ListNotations.
 Require Import String.
 
-Module Csem (P: Policy).
+Module Csem (P: Policy) (A: Allocator P).
   Module TLib := TagLib P.
   Import TLib.
-  Module Csyntax := Csyntax P.
+  Module Csyntax := Csyntax P A.
   Import Csyntax.
   Import Cop.
   Import Deterministic.
@@ -34,7 +34,7 @@ Module Csem (P: Policy).
   Import Smallstep.
   Import Events.
   Import Genv.
-  Import Mem.
+  Import A.
 
   Import P.
 
@@ -46,11 +46,13 @@ Module Csem (P: Policy).
       It also contains a composite environment, used by type-dependent operations. *)
 
   Definition genv : Type := Genv.t fundef type.
-
-  Definition globalenv (p: program) : (Genv.t fundef type * composite_env * mem) :=
+  
+  Definition globalenv (p: program) : MemoryResult (Genv.t fundef type * composite_env * mem) :=
     let ce := p.(prog_comp_env) in
-    let (ge, m) := Genv.globalenv ce p in
-    (ge, ce, m).
+    match Genv.globalenv ce p with
+    | MemorySuccess (ge,m) => MemorySuccess (ge, ce, m)
+    | MemoryFail msg => MemoryFail msg
+    end.
 
   Inductive var_entry : Type :=
   | PRIV
@@ -148,9 +150,9 @@ Module Csem (P: Policy).
       Int64.unsigned ofs' = Int64.unsigned ofs
       \/ Int64.unsigned ofs' + sizeof ce ty <= Int64.unsigned ofs
       \/ Int64.unsigned ofs + sizeof ce ty <= Int64.unsigned ofs' ->
-      Mem.loadbytes m (Int64.unsigned ofs') (sizeof ce ty) = MemorySuccess bytes ->
+      loadbytes m (Int64.unsigned ofs') (sizeof ce ty) = MemorySuccess bytes ->
       (* check on this: Mem.loadtags m b' (Int64.unsigned ofs') (sizeof ce ty) = Some lts ->*)
-      Mem.storebytes m (Int64.unsigned ofs) bytes lts = MemorySuccess m' ->
+      storebytes m (Int64.unsigned ofs) bytes lts = MemorySuccess m' ->
       assign_loc ty m ofs pt Full (Vlong ofs', pt') E0
                  (MemorySuccess (m', (Vlong ofs', pt'))) lts
   | assign_loc_copy_fail0: forall ofs' lts msg pt',
@@ -160,7 +162,7 @@ Module Csem (P: Policy).
       Int64.unsigned ofs' = Int64.unsigned ofs
       \/ Int64.unsigned ofs' + sizeof ce ty <= Int64.unsigned ofs
       \/ Int64.unsigned ofs + sizeof ce ty <= Int64.unsigned ofs' ->
-      Mem.loadbytes m (Int64.unsigned ofs') (sizeof ce ty) = MemoryFail msg ->
+      loadbytes m (Int64.unsigned ofs') (sizeof ce ty) = MemoryFail msg ->
       assign_loc ty m ofs pt Full (Vlong ofs', pt') E0
                  (MemoryFail msg) lts
   | assign_loc_copy_fail1: forall ofs' bytes lts msg pt',
@@ -170,24 +172,25 @@ Module Csem (P: Policy).
       Int64.unsigned ofs' = Int64.unsigned ofs
       \/ Int64.unsigned ofs' + sizeof ce ty <= Int64.unsigned ofs
       \/ Int64.unsigned ofs + sizeof ce ty <= Int64.unsigned ofs' ->
-      Mem.loadbytes m (Int64.unsigned ofs') (sizeof ce ty) = MemorySuccess bytes ->
+      loadbytes m (Int64.unsigned ofs') (sizeof ce ty) = MemorySuccess bytes ->
       (* check on this: Mem.loadtags m b' (Int64.unsigned ofs') (sizeof ce ty) = Some lts ->*)
-      Mem.storebytes m (Int64.unsigned ofs) bytes lts = MemoryFail msg ->
+      storebytes m (Int64.unsigned ofs) bytes lts = MemoryFail msg ->
       assign_loc ty m ofs pt Full (Vlong ofs', pt') E0
                  (MemoryFail msg) lts
   | assign_loc_bitfield: forall sz sg pos width v m' v' lts,
       store_bitfield ty sz sg pos width m (Int64.unsigned ofs) pt v lts m' v' ->
       assign_loc ty m ofs pt (Bits sz sg pos width) v E0 (MemorySuccess (m', v')) lts.
 
-  (* Allocates local variables and, if they are parameters with corresponding values, initializes them *)
+  (* Allocates local variables and, if they are parameters with corresponding values,
+     initializes them *)
   Fixpoint do_alloc_variables (pct: tag) (e: env) (m: mem) (l: list (ident * type * option atom)) {struct l} : MemoryResult (PolicyResult (tag * env * mem)) :=
     match l with
     | [] => MemorySuccess (PolicySuccess (pct,e,m))
     | (id, ty, init) :: l' =>
-        match Mem.alloc m 0 (sizeof ce ty), LocalT ce pct ty with
+        match stkalloc m (sizeof ce ty), LocalT ce pct ty with
         | MemorySuccess (m',base,bound), PolicySuccess (pct', pt', lts') =>
             let init' := match init with Some (v,vt) => (v,vt) | None => (Vundef, def_tag) end in
-            match Mem.store (chunk_of_type (typ_of_type ty)) m' base init' lts' with
+            match store (chunk_of_type (typ_of_type ty)) m' base init' lts' with
             | MemorySuccess m'' =>
                 do_alloc_variables pct' (PTree.set id (PUB (base, bound, pt')) e) m'' l'
             | _ =>
@@ -199,12 +202,12 @@ Module Csem (P: Policy).
             MemoryFail msg
         end
     end.
-  
-  (** Return the list of blocks in the codomain of [e] as a pair of low and high bounds. *)
-  Definition blocks_of_env (e: env) : list (Z * Z) :=
+
+  (** Return the list of block sizes in the codomain of [e]. *)
+  Definition sizes_of_env (e: env) : list Z :=
     List.fold_left (fun acc '(_,ent) =>
                       match ent with
-                      | PUB (lo,hi,t) => (lo, hi)::acc
+                      | PUB (lo,hi,t) => (hi-lo+1)::acc
                       | PRIV => acc
                       end) (PTree.elements e) [].
 
@@ -496,7 +499,7 @@ Module Csem (P: Policy).
              PCT' (Eval (v,vt') ty) te m
     | red_builtin: forall ef tyargs el ty te m vargs t vres PCT' m',
         cast_arguments m el tyargs vargs ->
-        external_call ef ge vargs PCT m t vres PCT' m' ->
+        external_call ef ge vargs PCT def_tag m t (MemorySuccess (PolicySuccess (vres, PCT', m'))) ->
         rred PCT (Ebuiltin ef tyargs el ty) te m t
              PCT' (Eval vres ty) te m'.
 
@@ -685,16 +688,14 @@ Module Csem (P: Policy).
     
     (** Head reduction for function calls.
         (More exactly, identification of function calls that can reduce.) *)
-
-    Inductive callred: tag -> expr -> mem -> tag -> fundef -> list atom -> type -> Prop :=
-    | red_call: forall PCT PCT' vf vft tyf m tyargs tyres cconv el ty fd vargs,
+    Inductive callred: tag -> expr -> mem -> fundef -> tag -> list atom -> type -> Prop :=
+    | red_call: forall PCT vf vft tyf m tyargs tyres cconv el ty fd vargs,
         Genv.find_funct ge vf = Some fd ->
         cast_arguments m el tyargs vargs ->
         type_of_fundef fd = Tfunction tyargs tyres cconv ->
         classify_fun tyf = fun_case_f tyargs tyres cconv ->
-        PolicySuccess PCT' = CallT PCT vft ->
         callred PCT (Ecall (Eval (vf,vft) tyf) el ty) m
-                PCT' fd vargs ty.
+                fd vft vargs ty.
 
     (** Reduction contexts.  In accordance with C's nondeterministic semantics,
         we allow reduction both to the left and to the right of a binary operator.
@@ -807,8 +808,8 @@ Module Csem (P: Policy).
         rfailred PCT e te m tr msg param ->
         context RV to C ->
         imm_safe to (C e) PCT te m
-    | imm_safe_callred: forall PCT PCT' to C e te m fd args ty,
-        callred PCT e m PCT' fd args ty ->
+    | imm_safe_callred: forall PCT to C e te m fd fpt args ty,
+        callred PCT e m fd fpt args ty ->
         context RV to C ->
         imm_safe to (C e) PCT te m.
 
@@ -954,7 +955,7 @@ Inductive state: Type :=
     (m: mem) : state
 | Callstate                           (**r calling a function *)
     (fd: fundef)                      (* callee that has just been entered *)
-    (PCT: tag)
+    (PCT fpt: tag)
     (args: list atom)
     (k: cont)
     (m: mem) : state
@@ -1034,11 +1035,11 @@ Inductive estep: state -> trace -> state -> Prop :=
     context RV RV C ->
     estep (ExprState f PCT (C a) k e te m)
           tr (ExprState f PCT' (C a') k e te' m')
-| step_call: forall C f PCT PCT' a k e te m fd vargs ty,
-    callred PCT a m PCT' fd vargs ty ->
+| step_call: forall C f PCT fpt a k e te m fd vargs ty,
+    callred PCT a m fd fpt vargs ty ->
     context RV RV C ->
     estep (ExprState f PCT (C a) k e te m)
-          E0 (Callstate fd PCT' vargs (Kcall f e te PCT C ty k) m)
+          E0 (Callstate fd PCT fpt vargs (Kcall f e te PCT C ty k) m)
 | step_stuck: forall C f PCT a k e te m K,
     context K RV C -> ~(imm_safe e K a PCT te m) ->
     estep (ExprState f PCT (C a) k e te m)
@@ -1183,11 +1184,11 @@ Inductive sstep: state -> trace -> state -> Prop :=
           E0 (Failstop msg params)
           
 | step_return_0: forall f PCT loc k e te m m',
-    Mem.free_list m (blocks_of_env e) = MemorySuccess m' ->
+    stkfree m (fold_left Z.add (sizes_of_env e) 0) = MemorySuccess m' ->
     sstep (State f PCT (Sreturn None loc) k e te m)
           E0 (Returnstate (Internal f) PCT (Vundef, def_tag) (call_cont k) m')
 | step_return_fail_0: forall f PCT loc k e te m msg,
-    Mem.free_list m (blocks_of_env e) = MemoryFail msg ->
+    stkfree m (fold_left Z.add (sizes_of_env e) 0) = MemoryFail msg ->
     sstep (State f PCT (Sreturn None loc) k e te m)
           E0 (Failstop ("Baseline Policy Failure in free_list: " ++ msg) [])
 | step_return_1: forall f PCT loc x k e te m,
@@ -1195,22 +1196,22 @@ Inductive sstep: state -> trace -> state -> Prop :=
           E0 (ExprState f PCT x (Kreturn k) e te m)
 | step_return_2:  forall f PCT v vt ty k e te m v' m',
     sem_cast v ty f.(fn_return) m = Some v' ->
-    Mem.free_list m (blocks_of_env e) = MemorySuccess m' ->
+    stkfree m (fold_left Z.add (sizes_of_env e) 0) = MemorySuccess m' ->
     sstep (ExprState f PCT (Eval (v,vt) ty) (Kreturn k) e te m)
           E0 (Returnstate (Internal f) PCT (v',vt) (call_cont k) m')
 | step_return_fail_2:  forall f PCT v vt ty k e te m v' msg,
     sem_cast v ty f.(fn_return) m = Some v' ->
-    Mem.free_list m (blocks_of_env e) = MemoryFail msg ->
+    stkfree m (fold_left Z.add (sizes_of_env e) 0) = MemoryFail msg ->
     sstep (ExprState f PCT (Eval (v,vt) ty) (Kreturn k) e te m)
           E0 (Failstop ("Baseline Policy Failure in free_list: " ++ msg) [])
 | step_skip_call: forall f PCT k e te m m',
     is_call_cont k ->
-    Mem.free_list m (blocks_of_env e) = MemorySuccess m' ->
+    stkfree m (fold_left Z.add (sizes_of_env e) 0) = MemorySuccess m' ->
     sstep (State f PCT Sskip k e te m)
           E0 (Returnstate (Internal f) PCT (Vundef, def_tag) k m')
 | step_skip_call_fail: forall f PCT k e te m msg,
     is_call_cont k ->
-    Mem.free_list m (blocks_of_env e) = MemoryFail msg ->
+    stkfree m (fold_left Z.add (sizes_of_env e) 0) = MemoryFail msg ->
     sstep (State f PCT Sskip k e te m)
           E0 (Failstop ("Baseline Policy Failure in free_list: " ++ msg) [])
           
@@ -1238,30 +1239,36 @@ Inductive sstep: state -> trace -> state -> Prop :=
     sstep (State f PCT (Sgoto lbl loc) k e te m)
           E0 (State f PCT s' k' e te m)
 
-| step_internal_function: forall f PCT PCT' vargs k m e m',
+| step_internal_function: forall f PCT PCT' PCT'' vft vargs k m e m',
     list_norepet (var_names (fn_params f) ++ var_names (fn_vars f)) ->
-    do_alloc_variables PCT empty_env m
-                       (option_zip (f.(fn_params) ++ f.(fn_vars)) vargs) =
-      MemorySuccess (PolicySuccess (PCT', e, m')) ->
-    sstep (Callstate (Internal f) PCT vargs k m)
+    CallT PCT vft = PolicySuccess PCT' ->
+    do_alloc_variables PCT' empty_env m (option_zip (f.(fn_params) ++ f.(fn_vars)) vargs) =
+      MemorySuccess (PolicySuccess (PCT'', e, m')) ->
+    sstep (Callstate (Internal f) PCT vft vargs k m)
           E0 (State f PCT' f.(fn_body) k e empty_tenv m')
-| step_internal_function_fail0: forall f PCT vargs k m msg,
+| step_internal_function_fail0: forall f PCT vft PCT' vargs k m msg,
     list_norepet (var_names (fn_params f) ++ var_names (fn_vars f)) ->
-    do_alloc_variables PCT empty_env m
-                       (option_zip (f.(fn_params) ++ f.(fn_vars)) vargs) =
+    CallT PCT vft = PolicySuccess PCT' ->
+    do_alloc_variables PCT empty_env m (option_zip (f.(fn_params) ++ f.(fn_vars)) vargs) =
       MemoryFail msg ->
-    sstep (Callstate (Internal f) PCT vargs k m)
+    sstep (Callstate (Internal f) PCT vft vargs k m)
           E0 (Failstop ("Baseline Policy Failure in do_alloc_variables" ++ msg) [])
-| step_internal_function_fail1: forall f PCT vargs k m msg params,
+| step_internal_function_fail1: forall f PCT vft vargs k m msg params,
     list_norepet (var_names (fn_params f) ++ var_names (fn_vars f)) ->
-    do_alloc_variables PCT empty_env m (option_zip (f.(fn_params) ++ f.(fn_vars)) vargs) = MemorySuccess (PolicyFail msg params) ->
-    sstep (Callstate (Internal f) PCT vargs k m)
+    CallT PCT vft = PolicyFail msg params ->
+    sstep (Callstate (Internal f) PCT vft vargs k m)
           E0 (Failstop msg params)
-
+| step_internal_function_fail2: forall f PCT vft PCT' vargs k m msg params,
+    list_norepet (var_names (fn_params f) ++ var_names (fn_vars f)) ->
+    CallT PCT vft = PCT' ->
+    do_alloc_variables PCT empty_env m (option_zip (f.(fn_params) ++ f.(fn_vars)) vargs) =
+      MemorySuccess (PolicyFail msg params) ->
+    sstep (Callstate (Internal f) PCT vft vargs k m)
+          E0 (Failstop msg params)
           
-| step_external_function: forall ef PCT PCT' targs tres cc vargs k m vres t m',
-    external_call ef ge vargs PCT m t vres PCT' m' ->
-    sstep (Callstate (External ef targs tres cc) PCT vargs k m)
+| step_external_function: forall ef PCT vft PCT' targs tres cc vargs k m vres t m',
+    external_call ef ge vargs PCT def_tag m t (MemorySuccess (PolicySuccess (vres, PCT', m'))) ->
+    sstep (Callstate (External ef targs tres cc) PCT vft vargs k m)
           t (Returnstate (External ef targs tres cc) PCT' vres k m')
 
 | step_returnstate: forall v vt vt' f f' PCT oldpct PCT' e C ty k te m,
@@ -1288,27 +1295,29 @@ End SEM.
 
   Inductive initial_state (p: program): state -> Prop :=
   | initial_state_intro: forall b pt f ge ce m0,
-      globalenv p = (ge,ce,m0) ->
+      globalenv p = MemorySuccess (ge,ce,m0) ->
       Genv.find_symbol ge p.(prog_main) = Some (inl (b,pt)) ->
       Genv.find_funct_ptr ge b = Some f ->
       type_of_fundef f = Tfunction Tnil type_int32s cc_default ->
-      initial_state p (Callstate f InitPCT nil Kstop m0).
+      initial_state p (Callstate f InitPCT def_tag nil Kstop m0).
 
   (** A final state is a [Returnstate] with an empty continuation. *)
 
   Inductive final_state: state -> int -> Prop :=
   | final_state_intro: forall fd PCT r m t,
       final_state (Returnstate fd PCT (Vint r, t) Kstop m) r.
-
-  (** Wrapping up these definitions in a small-step semantics. *)
+  
   Definition semantics (p: program) :=
-    let '(ge,ce,_) := globalenv p in
-    Semantics_gen (fun ge => step ge ce) (initial_state p) final_state ge.
+    match globalenv p with
+    | MemorySuccess (ge,ce,_) =>
+        MemorySuccess (Semantics_gen (fun ge => step ge ce) (initial_state p) final_state ge)
+    | MemoryFail msg => MemoryFail msg
+    end.
 
   (** This semantics has the single-event property. *)
 
   Lemma semantics_single_events:
-    forall p, single_events (semantics p).
+    forall sem p, semantics p = MemorySuccess sem -> single_events sem.
   Admitted.
 (*Proof.
   unfold semantics; intros; red; simpl; intros.

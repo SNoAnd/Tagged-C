@@ -37,10 +37,11 @@
 Require Import Recdef.
 Require Import Zwf.
 Require Import Axioms Coqlib Errors Maps AST Linking.
-Require Import Integers Floats Values Memory.
+Require Import Integers Floats Values Memory Allocator.
 Require Import List. Import ListNotations.
 Require Import Ctypes.
 Require Import Tags.
+Require Import Layout.
 
 Notation "s #1" := (fst s) (at level 9, format "s '#1'") : pair_scope.
 Notation "s #2" := (snd s) (at level 9, format "s '#2'") : pair_scope.
@@ -54,11 +55,18 @@ Set Implicit Arguments.
 Local Unset Elimination Schemes.
 Local Unset Case Analysis Schemes.
 
-Module Genv (P:Policy).
+Module Genv (P:Policy) (A:Allocator P).
   Module TLib := TagLib P.
   Import TLib.
-  Module Mem := Mem P.
-  Import Mem.
+  Import A.Mem.
+  Notation mem := A.mem.
+  Notation store := A.store.
+  Notation load := A.load.
+  Notation load_ltags := A.load_ltags.
+  Notation loat_all := A.load_all.
+  Notation empty := A.empty.
+  Import MD.
+  Import A.
   
   (** * Global environments *)
   Section GENV.
@@ -137,13 +145,6 @@ Module Genv (P:Policy).
     (** ** Constructing the global environment *)
 
     Section CONSTRUCTION.
-  
-      Definition global_block (m: mem) (id: ident) (sz: Z) : mem :=
-        let '(glob_base, base) := m.(globals) in
-        let bound := base + sz in
-        let mem_access' := (fun ofs : Z => if zle base ofs && zlt ofs bound then
-                                             Live else m.(Mem.mem_access) ofs) in
-        Mem.mkmem m.(Mem.mem_contents) mem_access' m.(Mem.al_state) m.(Mem.live) (glob_base, bound).
 
   (*Function store_zeros (m: mem) (p: Z) (n: Z) {wf (Zwf 0) n}: MemoryResult mem :=
     if zle n 0 then MemorySuccess m else
@@ -159,17 +160,17 @@ Module Genv (P:Policy).
       Definition store_init_data (ge: t) (m: mem) (p: Z) (id: init_data) (vt: tag) (lt: tag) :
         MemoryResult mem :=
         match id with
-        | Init_int8 n => Mem.store Mint8unsigned m p (Vint n, vt) [lt]
-        | Init_int16 n => Mem.store Mint16unsigned m p (Vint n, vt) [lt;lt]
-        | Init_int32 n => Mem.store Mint32 m p (Vint n, vt) [lt;lt;lt;lt]
-        | Init_int64 n => Mem.store Mint64 m p (Vlong n, vt) [lt;lt;lt;lt;lt;lt;lt;lt]
-        | Init_float32 n => Mem.store Mfloat32 m p (Vsingle n, vt) [lt;lt;lt;lt]
-        | Init_float64 n => Mem.store Mfloat64 m p (Vfloat n, vt) [lt;lt;lt;lt;lt;lt;lt;lt]
+        | Init_int8 n => store Mint8unsigned m p (Vint n, vt) [lt]
+        | Init_int16 n => store Mint16unsigned m p (Vint n, vt) [lt;lt]
+        | Init_int32 n => store Mint32 m p (Vint n, vt) [lt;lt;lt;lt]
+        | Init_int64 n => store Mint64 m p (Vlong n, vt) [lt;lt;lt;lt;lt;lt;lt;lt]
+        | Init_float32 n => store Mfloat32 m p (Vsingle n, vt) [lt;lt;lt;lt]
+        | Init_float64 n => store Mfloat64 m p (Vfloat n, vt) [lt;lt;lt;lt;lt;lt;lt;lt]
         | Init_addrof symb ofs =>
             match find_symbol ge symb with
             | None => MemoryFail "Symbol not found"
             | Some (inr (base,bound,pt,gv)) =>
-                Mem.store Mptr m p (Vint (Int.repr base), vt) [lt;lt;lt;lt;lt;lt;lt;lt]
+                store Mptr m p (Vint (Int.repr base), vt) [lt;lt;lt;lt;lt;lt;lt;lt]
             | Some (inl (b,pt)) => MemorySuccess m
             end
         | Init_space n => MemorySuccess m
@@ -192,26 +193,27 @@ Module Genv (P:Policy).
       
       Definition perm_globvar (gv: globvar V) : permission := Live.
       
-      Definition alloc_global (ge: t) (m: mem) (id: ident) (v: globvar V) (vt lt : tag) :
-        MemoryResult (Z * mem) :=
+      Definition alloc_global (ge: t) (m: mem) (tree: PTree.t (Z*Z)) (id: ident)
+                 (v: globvar V) (vt lt : tag) : MemoryResult (Z * mem) :=
         let init := v.(gvar_init) in
         let sz := v.(gvar_size) in
         let init_sz := init_data_list_size init in
-        let '(_, base) := m.(globals) in
-        let m1 := global_block m id (Zpos sz) in
-        let padded := pad_init_data_list (Pos.to_nat sz) init in
-        match store_init_data_list ge m1 base padded vt lt with
-        | MemorySuccess m2 =>
-            MemorySuccess (base,m2)
-        | MemoryFail msg => MemoryFail msg
-        end
-      .
+        match PTree.get id tree with
+        | Some (base, bound) =>
+            let padded := pad_init_data_list (Pos.to_nat sz) init in
+            match store_init_data_list ge m base padded vt lt with
+            | MemorySuccess m2 => MemorySuccess (base,m2)
+            | MemoryFail msg => MemoryFail msg
+            end
+        | None => MemoryFail "Globals weren't allocated correctly"
+        end.
 
-      Definition add_global (ge: t) (m: mem) (idg: ident * globdef F V) : (t*mem) :=
+      Definition add_global (ge: t) (m: mem) (tree: PTree.t (Z*Z)) (idg: ident * globdef F V)
+        : (t*mem) :=
         match idg#2 with
         | Gvar gv =>
             let '(pt, vt, lt) := GlobalT ce (idg#1) Tvoid in
-            match alloc_global ge m (idg#1) gv vt lt with
+            match alloc_global ge m tree (idg#1) gv vt lt with
             | MemorySuccess (base', m') =>
                 let size := Zpos gv.(gvar_size) in
                 let bound := base' + size in
@@ -235,26 +237,36 @@ Module Genv (P:Policy).
             (ge', m)
         end.
 
-      Fixpoint add_globals (ge: t) (m: mem) (gl: list (ident * globdef F V)) : (t*mem) :=
+      Fixpoint add_globals (ge: t) (m: mem) (tree: PTree.t (Z*Z)) (gl: list (ident * globdef F V))
+        : (t*mem) :=
         match gl with
         | [] => (ge,m)
         | g::gl' =>
-            let '(ge', m') := add_global ge m g in
-            add_globals ge' m' gl'
+            let '(ge', m') := add_global ge m tree g in
+            add_globals ge' m' tree gl'
         end.
       
       Program Definition empty_genv (pub: list ident): t :=
         @mkgenv pub (PTree.empty _) (PTree.empty _) 2%positive.
 
-      Definition init_record (m: mem) (base: Z) (sz: Z) : mem :=
+      Definition init_record (m: A.mem) (base: Z) (sz: Z) : MemoryResult A.mem :=
         let szv := Vlong (Int64.neg (Int64.repr sz)) in
-        match store Mint64 m base (szv, def_tag) [def_tag] with
-        | MemorySuccess m'' => m''
-        | MemoryFail _ => m
+        A.store Mint64 m base (szv, def_tag) [def_tag].
+
+      Fixpoint filter_var_sizes (idgs:list (ident*globdef F V)) :=
+        match idgs with
+        | [] => []
+        | (id,Gvar gv)::idgs' => (id, Zpos gv.(gvar_size))::(filter_var_sizes idgs')
+        | _::idgs' => filter_var_sizes idgs'
         end.
       
       Definition globalenv (p: AST.program F V) :=
-        add_globals (empty_genv p.(AST.prog_public)) (init_record empty 1000 1000) p.(AST.prog_defs).
+        match init_record A.empty 1000 1000 with
+        | MemorySuccess m =>
+            let (m',tree) := A.globalalloc m (filter_var_sizes p.(AST.prog_defs)) in
+            MemorySuccess (add_globals (empty_genv p.(AST.prog_public)) m tree p.(AST.prog_defs))
+        | MemoryFail msg => MemoryFail msg
+        end.
 
       Section WITH_GE.
 
@@ -353,7 +365,7 @@ Qed.*)
     Theorem find_symbol_exists:
       forall p id g ge m,
         In (id, g) (AST.prog_defs p) ->
-        globalenv p = (ge,m) ->
+        globalenv p = MemorySuccess (ge,m) ->
         exists b, find_symbol ge id = Some b.
     Admitted.
 (*Proof.
@@ -368,7 +380,7 @@ Qed.*)
 
       Theorem find_symbol_inversion : forall p x b,
         forall ge m,
-          globalenv p = (ge,m) ->
+          globalenv p = MemorySuccess (ge,m) ->
           find_symbol ge x = Some b ->
           In x (prog_defs_names p).
       Admitted.
@@ -401,7 +413,7 @@ Qed.*)
 
       Corollary find_funct_ptr_inversion:
         forall p b f ge m,
-          globalenv p = (ge,m) ->
+          globalenv p = MemorySuccess (ge,m) ->
           find_funct_ptr ge b = Some f ->
           exists id, In (id, Gfun f) (AST.prog_defs p).
       Admitted.
@@ -411,7 +423,7 @@ Qed.*)
 
       Corollary find_funct_inversion:
         forall p v f ge m,
-          globalenv p = (ge,m) ->
+          globalenv p = MemorySuccess (ge,m) ->
           find_funct ge v = Some f ->
           exists id, In (id, Gfun f) (AST.prog_defs p).
       Proof.
@@ -422,7 +434,7 @@ Qed.*)
 
       Theorem find_funct_ptr_prop:
         forall (P: F -> Prop) p b f ge m,
-          globalenv p = (ge,m) ->
+          globalenv p = MemorySuccess (ge,m) ->
           (forall id f, In (id, Gfun f) (AST.prog_defs p) -> P f) ->
           find_funct_ptr ge b = Some f ->
           P f.
@@ -432,7 +444,7 @@ Qed.*)
 
       Theorem find_funct_prop:
         forall (P: F -> Prop) p v f ge m,
-          globalenv p = (ge,m) ->
+          globalenv p = MemorySuccess (ge,m) ->
           (forall id f, In (id, Gfun f) (AST.prog_defs p) -> P f) ->
           find_funct ge v = Some f ->
           P f.
@@ -585,7 +597,7 @@ Qed.*)
           ofs <= p -> p + size_chunk chunk <= ofs + len ->
           (align_chunk chunk | p) ->
           exists t,
-            Mem.load chunk m p =
+            load chunk m p =
               MemorySuccess (match chunk with
                              | Mint8unsigned | Mint8signed | Mint16unsigned | Mint16signed | Mint32 => Vint Int.zero
                              | Mint64 => Vlong Int64.zero

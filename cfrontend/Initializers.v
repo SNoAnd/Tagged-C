@@ -13,17 +13,17 @@
 (** Compile-time evaluation of initializers for global C variables. *)
 
 Require Import Coqlib Maps Errors.
-Require Import Integers Floats Values AST Memory Globalenvs.
+Require Import Integers Floats Values AST Memory Allocator Globalenvs.
 Require Import Ctypes Cop Csyntax Csem.
 Require Import Cexec Tags.
 
 Open Scope error_monad_scope.
 
-Module Initializers (P:Policy).
+Module Initializers (P:Policy) (A:Allocator P).
   Module TLib := TagLib P.
   Import TLib.
-  Module Cexec := Cexec P.
-  Import Cexec.
+  Module Cexec := Cexec P A.
+  Export Cexec.
   Import InterpreterEvents.
   Import Cstrategy.
   Import Ctyping.  
@@ -35,7 +35,6 @@ Module Initializers (P:Policy).
   Import Smallstep.
   Import Events.
   Import Genv.
-  Import Mem.
   Import P.
 
 (** * Evaluation of compile-time constant expressions *)
@@ -58,7 +57,7 @@ If [a] is a l-value, the returned value denotes:
 *)
 
 Definition do_cast (v: val) (t1 t2: type) : res val :=
-  match sem_cast v t1 t2 Mem.empty with
+  match sem_cast v t1 t2 empty with
   | Some v' => OK v'
   | None => Error(msg "undefined cast")
   end.
@@ -85,14 +84,14 @@ Fixpoint constval (ce: composite_env) (a: expr) : res val :=
       constval ce l
   | Eunop op r1 ty =>
       do v1 <- constval ce r1;
-      match sem_unary_operation op v1 (typeof r1) Mem.empty with
+      match sem_unary_operation op v1 (typeof r1) empty with
       | Some v => OK v
       | None => Error(msg "undefined unary operation")
       end
   | Ebinop op r1 r2 ty =>
       do v1 <- constval ce r1;
       do v2 <- constval ce r2;
-      match sem_binary_operation ce op v1 (typeof r1) v2 (typeof r2) Mem.empty with
+      match sem_binary_operation ce op v1 (typeof r1) v2 (typeof r2) empty with
       | Some v => OK v
       | None => Error(msg "undefined binary operation")
       end
@@ -105,7 +104,7 @@ Fixpoint constval (ce: composite_env) (a: expr) : res val :=
   | Eseqand r1 r2 ty =>
       do v1 <- constval ce r1;
       do v2 <- constval ce r2;
-      match bool_val v1 (typeof r1) Mem.empty with
+      match bool_val v1 (typeof r1) empty with
       | Some true => do_cast v2 (typeof r2) type_bool
       | Some false => OK (Vint Int.zero)
       | None => Error(msg "undefined && operation")
@@ -113,7 +112,7 @@ Fixpoint constval (ce: composite_env) (a: expr) : res val :=
   | Eseqor r1 r2 ty =>
       do v1 <- constval ce r1;
       do v2 <- constval ce r2;
-      match bool_val v1 (typeof r1) Mem.empty with
+      match bool_val v1 (typeof r1) empty with
       | Some false => do_cast v2 (typeof r2) type_bool
       | Some true => OK (Vint Int.one)
       | None => Error(msg "undefined || operation")
@@ -122,7 +121,7 @@ Fixpoint constval (ce: composite_env) (a: expr) : res val :=
       do v1 <- constval ce r1;
       do v2 <- constval ce r2;
       do v3 <- constval ce r3;
-      match bool_val v1 (typeof r1) Mem.empty with
+      match bool_val v1 (typeof r1) empty with
       | Some true => do_cast v2 (typeof r2) ty
       | Some false => do_cast v3 (typeof r3) ty
       | None => Error(msg "condition is undefined")

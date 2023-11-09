@@ -19,12 +19,13 @@
 open Camlcoq
 open Tags
 open C2C
+open Allocator
 
 module Pragma =
-        functor (Pol: Policy) ->
+        functor (Pol: Policy) (Alloc: Allocator) ->
                 struct
 
-module C2CPInst = C2CP (Pol)
+module C2CPInst = C2CP (Pol) (Alloc)
 
 (* #pragma section *)
 

@@ -17,20 +17,19 @@
 (** Abstract syntax for the Compcert C language *)
 
 Require Import Coqlib Maps Integers Floats Errors.
-Require Import AST Linking Values Tags.
+Require Import AST Linking Values Tags Allocator.
 Require Import Cabs Ctypes Cop.
 
-Module Csyntax (P:Policy).
+Module Csyntax (P:Policy) (A:Allocator P).
   Module TLib := TagLib P.
   Import TLib.
-  Module Cop := Cop P.
+  Module Cop := Cop P A.
   Import Cop.
   Import Deterministic.
   Import Behaviors.
   Import Smallstep.
   Import Events.
   Import Genv.
-  Import Mem.
 
   (** ** Location Kinds *)
 
