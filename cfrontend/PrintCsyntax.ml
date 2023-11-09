@@ -23,12 +23,13 @@ open AST
 open! Ctypes
 open Tags
 open C2C
+open Allocator
 
 module PrintCsyntaxP =
-        functor (Pol: Policy) ->
+        functor (Pol: Policy) (Alloc: Allocator) ->
                 struct
 
-module C2CPInst = C2CP (Pol)
+module C2CPInst = C2CP (Pol) (Alloc)
 module Init = C2CPInst.Init
 module Ctyping = Init.Cexec.InterpreterEvents.Cstrategy.Ctyping
 module Csyntax = Ctyping.Csem.Csyntax
@@ -448,7 +449,7 @@ let print_function p id f =
 
 let print_fundef p id fd =
   match fd with
-  | Ctypes.External((AST.EF_external _ | AST.EF_runtime _| AST.EF_malloc | AST.EF_free), args, res, cconv) ->
+  | Ctypes.External((AST.EF_external _ (*| AST.EF_runtime _*) | AST.EF_malloc | AST.EF_free), args, res, cconv) ->
       fprintf p "extern %s;@ @ "
                 (name_cdecl (extern_atom id) (Tfunction(args, res, cconv)))
   | Ctypes.External(_, _, _, _) ->

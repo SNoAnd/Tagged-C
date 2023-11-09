@@ -59,8 +59,8 @@ Arguments MemoryFail {_} _.
 Module Mem (P:Policy).
   Module TLib := TagLib P.
   Import TLib.
-  Module Memdata := Memdata P.
-  Export Memdata.
+  Module MD := Memdata P.
+  Import MD.
   
   Inductive permission : Type := Live | Dead | MostlyDead.
 

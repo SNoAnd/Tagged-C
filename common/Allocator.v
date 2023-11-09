@@ -45,7 +45,7 @@ Open Scope option_monad_scope.
 Module Type Allocator (P : Policy).
   Module Mem := Mem P.
   Import Mem.
-  Export Memdata.
+  Import MD.
   Import P.
   
   Parameter t : Type.  
@@ -84,6 +84,7 @@ End Allocator.
 Module ConcreteAllocator (P : Policy) : Allocator P.
   Module Mem := Mem P.
   Import Mem.
+  Import MD.
   Import P.
 
   Definition t : Type := Z.
@@ -336,7 +337,7 @@ Module FLAllocator (P : Policy) : Allocator P.
     | MemoryFail msg => MemoryFail msg
     end.
 
-  Definition storebytes (m:mem) (ofs:Z) (bytes:list memval) (lts:list tag) :=
+  Definition storebytes (m:mem) (ofs:Z) (bytes:list MD.memval) (lts:list tag) :=
     let (m,st) := m in
     match Mem.storebytes m ofs bytes lts with
     | MemorySuccess m' => MemorySuccess (m',st)
@@ -778,3 +779,4 @@ Global Hint Resolve
   Mem.unchanged_on_refl*)
   : al.
 *)
+

@@ -58,14 +58,15 @@ Local Unset Case Analysis Schemes.
 Module Genv (P:Policy) (A:Allocator P).
   Module TLib := TagLib P.
   Import TLib.
-  Export A.Mem.
+  Import A.Mem.
   Notation mem := A.mem.
   Notation store := A.store.
   Notation load := A.load.
   Notation load_ltags := A.load_ltags.
   Notation loat_all := A.load_all.
   Notation empty := A.empty.
-  Export A.
+  Import MD.
+  Import A.
   
   (** * Global environments *)
   Section GENV.

@@ -38,7 +38,7 @@ Module Ctyping (P: Policy) (A: Allocator P).
   Import Genv.
   Import A.
   Import A.Mem.
-  Import Memdata.
+  Import MD.
   Import P.
 
   Definition strict := false.

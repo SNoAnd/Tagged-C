@@ -44,6 +44,7 @@ Module InterpreterEvents (P:Policy) (A:Allocator P).
   Import Events.
   Import Genv.
   Import A.
+  Import Mem.MD.
   Import P.
   Import Csem.TLib.
 
