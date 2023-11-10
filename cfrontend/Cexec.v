@@ -504,8 +504,6 @@ Section EXPRS.
 
   Local Open Scope reducts_monad_scope.
 
-  (* anaaktge - TODO does failstop give me the policy output yet? 
-     probably should do something with the str and list from PolicyFail *)
   Notation "'at' R 'trule' X <- A ; B" :=
     (match A with
      | PolicySuccess X => B

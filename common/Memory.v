@@ -86,6 +86,7 @@ Module Mem (P:Policy).
     fl : list (Z * Z);
   }.
 
+  (* the heap is hardcoded to a 1000 here *)
   Definition empty_heap : heap_state :=
     mkheap (ZMap.init None) [(1000,2000)].
   

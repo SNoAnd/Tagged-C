@@ -589,7 +589,7 @@ Module DoubleFree <: Policy.
 
 Definition print_tag (t : tag) : string :=
     match t with
-    | FreeColor l => "Free Color " ++ (extern_atom l)  (* converts internal id (positive) to string, using mapping established at parsing *)
+    | FreeColor l => "FreeColor " ++ (extern_atom l)  (* converts internal id (positive) to string, using mapping established at parsing *)
     | N => "Unallocated"
     | Alloc => "Allocated"
     end.
@@ -715,9 +715,9 @@ Definition print_tag (t : tag) : string :=
   match vht with 
     | Alloc => PolicySuccess(pct, N, pct, N) (* was allocated then freed, assign free color from pct *)
     | N (* trying to free unallocated memory *)
-        => PolicyFail "DoubleFree:FreeT detects free of unallocated memory" [pct;fptrt;pt;vht]
-    | FreeColor l (* Freecolor *)
-        => PolicyFail "DoubleFree:FreeT detects two colors" [pct;fptrt;pt;vht]
+        => PolicyFail "DoubleFree::FreeT detects free of unallocated memory: " [pct;fptrt;pt;vht]
+    | FreeColor l (* Freecolor means this was already freed and never reallocated *)
+        => PolicyFail "DoubleFree::FreeT detects two colors: " [pct;fptrt;pt;vht]
   end.
 
  (* Required for policy interface. Not relevant to this particular policy, pass values through *)

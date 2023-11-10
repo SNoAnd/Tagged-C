@@ -639,9 +639,8 @@ let do_step p prog ge ce time s w =
       end
   | Some (Pol.PolicyFail (r,params)) ->
       if !trace >= 1 then
-         (* anaaktge printing in the failstop *)
-         fprintf p "@[<hov 2>Failstop on policy %s @]@." 
-            (String.of_seq (List.to_seq r));
+         (* AMN This is the version without -trace, easier to consume (by fuzzer)*)
+         fprintf p "@[<hov 2>Failstop on policy @ %s %s@]@." (String.of_seq (List.to_seq r)) (String.concat ", " (List.map print_tag params));
          exit 0
 
   | None ->

@@ -4,10 +4,11 @@
  *      frees() are hand labelled. 
  *      "root remote code execution because of a double free in cleanup
  *      of TCP listeners when the -a option is enabled"
+ * @note "PPP" should fault, AAA should not fault
  */
 #include <stdlib.h> 
 #include <stdio.h>
-#define MAX_SIZE 1024
+#define MAX_SIZE 80 /*1024 too big */
 int main() {
     char* input = (char*) malloc(MAX_SIZE * sizeof(char));
     printf("enter some input:");
@@ -19,5 +20,5 @@ int main() {
     }
     label1: free(input);
     printf("You entered %s. Hope it doesn't have a problem!", input);
-	exit(EXIT_SUCCESS);
+	return EXIT_SUCCESS;
 }
