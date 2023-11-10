@@ -1005,16 +1005,16 @@ Qed.*)
 Inductive extcall_malloc_sem (ge: Genv.t F V):
   list atom -> tag -> tag -> mem -> trace ->
   (MemoryResult (PolicyResult (atom * tag * mem))) -> Prop :=
-| extcall_malloc_sem_intro_int: forall sz st pct fpt m m' lo hi vt_body vt_head lt pt pct' m'',
+| extcall_malloc_sem_intro_int: forall sz st pct fpt m m' lo hi vt_body vt_head lt pt pct',
     MallocT pct fpt st = PolicySuccess (pct', pt, vt_body, vt_head, lt) ->
     heapalloc m sz vt_head vt_body lt = MemorySuccess (m', lo, hi) ->
     extcall_malloc_sem ge ((Vint (Int.repr sz),st) :: nil) pct fpt m E0
-                       (MemorySuccess (PolicySuccess ((Vlong (Int64.repr lo), pt), pct', m'')))
-| extcall_malloc_sem_intro_long: forall sz st pct fpt m m' lo hi vt_body vt_head lt pt pct' m'',
+                       (MemorySuccess (PolicySuccess ((Vlong (Int64.repr lo), pt), pct', m')))
+| extcall_malloc_sem_intro_long: forall sz st pct fpt m m' lo hi vt_body vt_head lt pt pct',
     MallocT pct fpt st = PolicySuccess (pct', pt, vt_body, vt_head, lt) ->
     heapalloc m sz vt_head vt_body lt = MemorySuccess (m', lo, hi) ->
     extcall_malloc_sem ge ((Vlong (Int64.repr sz),st) :: nil) pct fpt m E0
-                       (MemorySuccess (PolicySuccess ((Vlong (Int64.repr lo), pt), pct', m''))).
+                       (MemorySuccess (PolicySuccess ((Vlong (Int64.repr lo), pt), pct', m'))).
 (* TODO: fail cases *)
 
 (*Lemma extcall_malloc_ok:

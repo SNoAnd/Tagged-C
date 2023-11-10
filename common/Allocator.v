@@ -105,7 +105,7 @@ Module ConcreteAllocator (P : Policy) : Allocator P.
     let '(m,sp) := m in
     MemorySuccess (m,sp+size).
 
-  Definition check_record (m: Mem.mem) (base: Z) : option (bool * Z * tag) :=
+  Definition check_header (m: Mem.mem) (base: Z) : option (bool * Z * tag) :=
     match load Mint64 m base with
     | MemorySuccess (Vlong i, vt) =>
         let live := (0 <=? (Int64.signed i))%Z in
@@ -114,7 +114,7 @@ Module ConcreteAllocator (P : Policy) : Allocator P.
     | _ => None
     end.
 
-  Definition update_record (m: Mem.mem) (base: Z) (live: bool) (sz: Z) (vt: tag) (lt: tag)
+  Definition update_header (m: Mem.mem) (base: Z) (live: bool) (sz: Z) (vt: tag) (lt: tag)
     : option Mem.mem :=
     if sz <? 0 then None else
     let rec :=
@@ -127,7 +127,7 @@ Module ConcreteAllocator (P : Policy) : Allocator P.
     | MemoryFail _ => None
     end.
 
-  Definition record_size := size_chunk Mint64.
+  Definition header_size := size_chunk Mint64.
     
   Fixpoint find_free (c : nat) (m : Mem.mem) (base : Z) (sz : Z) (vt lt : tag) : option (Mem.mem*Z) :=
     match c with
@@ -136,23 +136,35 @@ Module ConcreteAllocator (P : Policy) : Allocator P.
         (* Load a long from base.
            Sign indictates: is this a live block? (Negative no, positive/zero yes)
            Magnitude indicates size *)
-        match check_record m base with
-        | Some (true, bs, vt') =>
-            let next := base + bs + record_size in
+        match check_header m base with
+        | Some (true (* block is live *), bs, vt') =>
+            (* [base ][=================][next] *)
+            (* [hd_sz][        bs       ] *)
+            let next := base + bs + header_size in
             find_free c' m next sz vt lt
-        | Some (false, bs, vt') =>
-            let remain := bs - (sz + record_size) in
-            if (remain <? 0)%Z then
+        | Some (false (* block is free*), bs, vt') =>
+            (* [base ][=================][next] *)
+            (* [hd_sz][        bs       ] *)
+            let remain := bs - sz in
+            if (bs <? sz)%Z then
+              (* there is no room *)
               let next := base + bs in find_free c' m next sz vt lt
             else
-              if (record_size <? remain)%Z then
-                let next := base + bs in
-                let next_sz := remain - record_size in
-                do m' <- update_record m base false sz vt lt;
-                do m'' <- update_record m' next true next_sz def_tag def_tag;
+              if (sz + header_size <? bs)%Z then
+                (* [base ][========][ new  ][=============][next] *)
+                (* [hd_sz][   sz   ][rec_sz][bs-(sz+hd_sz)][next] *)
+                (* There is enough room to split *)
+                let new := base + header_size + sz in
+                let new_sz := bs - (header_size + sz) in
+                do m' <- update_header m base true sz vt lt;
+                do m'' <- update_header m' new false new_sz def_tag def_tag;
+                (* open question: how do we (re)tag new headers? *) 
                 Some (m'',base)
               else
-                do m' <- update_record m base true bs vt lt;
+                (* [base ][========][=][next] *)
+                (* [hd_sz][   sz   ][ ][next] *)
+                (* There is exactly enough room (or not enough extra to split) *)                
+                do m' <- update_header m base true bs vt lt;
                 Some (m',base)
         | None => None
         end
@@ -162,11 +174,11 @@ Module ConcreteAllocator (P : Policy) : Allocator P.
     let '(m,sp) := m in
     match find_free 100 m 1000 size vt_head lt with
     | Some (m', base) =>
-        match storebytes m' (base + record_size)
+        match storebytes m' (base + header_size)
                          (repeat (Byte Byte.zero vt_body) (Z.to_nat size))
                          (repeat lt (Z.to_nat size)) with
         | MemorySuccess m'' =>
-            MemorySuccess ((m'',sp), base + record_size, base + record_size + size)
+            MemorySuccess ((m'',sp), base + header_size, base + header_size + size)
         | MemoryFail msg => MemoryFail msg
         end
     | None => MemoryFail "Failure in find_free"
@@ -182,11 +194,11 @@ Module ConcreteAllocator (P : Policy) : Allocator P.
           | PolicySuccess (PCT',pt',vt1,vt2,lt) =>
               do sz <- option_map Ptrofs.unsigned (do_alloc_size v);
               do m', base <- find_free 100 m 1000 sz vt2 lt;
-              match storebytes m' (base + record_size)
+              match storebytes m' (base + header_size)
                                (repeat (Byte Byte.zero vt1) (Z.to_nat sz))
                                (repeat lt (Z.to_nat sz)) with
               | MemorySuccess m'' =>
-                  Some (w, E0, (MemorySuccess (PolicySuccess((Vlong (Int64.repr (base + record_size)), def_tag), PCT', m''))))
+                  Some (w, E0, (MemorySuccess (PolicySuccess((Vlong (Int64.repr (base + header_size)), def_tag), PCT', m''))))
               | MemoryFail msg => Some (w, E0, (MemoryFail msg))
               end
           | PolicyFail msg params =>
@@ -198,11 +210,11 @@ Module ConcreteAllocator (P : Policy) : Allocator P.
   Definition heapfree (m: mem) (addr: Z) (rule : tag -> PolicyResult (tag*tag*tag*tag))
     : MemoryResult (PolicyResult (tag * mem)) :=
     let (m, sp) := m in
-    match check_record m (addr-record_size) with
+    match check_header m (addr-header_size) with
     | Some (live, sz, vt) =>
         match rule vt with
         | PolicySuccess (PCT', vt1, vt2, lt) =>
-            match update_record m (addr-record_size) false sz vt2 lt with
+            match update_header m (addr-header_size) false sz vt2 lt with
             | Some m' =>
                 MemorySuccess (PolicySuccess (PCT', (m', sp)))
             | None => MemoryFail "Free failing"
@@ -250,7 +262,7 @@ End ConcreteAllocator.
 Module FLAllocator (P : Policy) : Allocator P.
   Module Mem := Mem P.
   Import Mem.
-  Import P.  
+  Import P.
   
   Definition freelist : Type := list (Z*Z).
 

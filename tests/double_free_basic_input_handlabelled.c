@@ -6,7 +6,7 @@
  */
 #include <stdlib.h> 
 #include <stdio.h>
-#define MAX_SIZE 1024
+#define MAX_SIZE 80 /*1024 too big atm */
 int main() {
     char* input = (char*) malloc(MAX_SIZE * sizeof(char));
     printf("enter some input:\n");

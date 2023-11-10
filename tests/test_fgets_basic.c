@@ -1,6 +1,6 @@
 #include <stdlib.h> 
 #include <stdio.h>
-#define MAX_SIZE 1024
+#define MAX_SIZE 100
 int main() {
     char input[MAX_SIZE];
     printf("enter some input:\n");
