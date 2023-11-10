@@ -463,13 +463,7 @@ Definition do_ef_volatile_store_global (chunk: memory_chunk) (id: ident) (ofs: p
               | PolicySuccess (PCT',pt',vt_body,vt_head,lt) =>
                   match heapalloc m sz vt_head vt_body lt with
                   | MemorySuccess (m', base, bound) =>
-                      match storebytes m' base
-                                       (repeat (Byte Byte.zero vt_body) (Z.to_nat sz))
-                                       (repeat lt (Z.to_nat sz)) with
-                      | MemorySuccess m'' =>
-                          Some (w, E0, (MemorySuccess (PolicySuccess((Vlong (Int64.repr base), pt' (* APT: changed from def_tag *)), PCT', m''))))
-                      | MemoryFail msg => Some (w, E0, (MemoryFail msg))
-                      end
+                      Some (w, E0, (MemorySuccess (PolicySuccess((Vlong (Int64.repr base), pt'), PCT', m'))))
                   | MemoryFail msg => Some (w, E0, (MemoryFail msg))
                   end
               | PolicyFail msg params =>
@@ -484,6 +478,9 @@ Definition do_ef_volatile_store_global (chunk: memory_chunk) (id: ident) (ofs: p
       : option (world * trace * (MemoryResult (PolicyResult (atom * tag * mem)))) :=
       match vargs with
       | [(Vlong addr,pt)] =>
+          if (Int64.unsigned addr =? 0)%Z then
+            Some (w, E0, (MemorySuccess (PolicySuccess ((Vundef,def_tag),PCT,m))))
+          else
           match heapfree m (Int64.unsigned addr) (fun vt => FreeT PCT fpt pt vt) with
           | MemorySuccess (PolicySuccess (PCT', m')) =>
               Some (w, E0, (MemorySuccess (PolicySuccess ((Vundef,def_tag),PCT',m'))))

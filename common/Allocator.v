@@ -53,11 +53,16 @@ Module Type Allocator (P : Policy).
   Definition mem : Type := (Mem.mem * t).
   Definition empty := (Mem.empty, init).
   
-  Parameter stkalloc : mem -> Z -> MemoryResult (mem * Z * Z).
-  Parameter stkfree : mem -> Z -> MemoryResult mem.
-  Parameter heapalloc : mem -> Z -> tag -> tag -> tag -> MemoryResult (mem * Z * Z).
-  Parameter heapfree : mem -> Z -> (tag -> PolicyResult (tag * tag * tag * tag)) ->
-                       MemoryResult (PolicyResult (tag*mem)).
+  Parameter stkalloc : mem -> Z (* size *) ->
+                       MemoryResult (mem * Z (* base *) * Z (* bound (base+size-1) *)).
+  Parameter stkfree : mem -> Z (* size *) -> MemoryResult mem.
+  Parameter heapalloc : mem -> Z (* size *) ->
+                        tag (* val tag (body) *) -> tag (* val tag (head) *) -> tag (* loc tag *) ->
+                        MemoryResult (mem * Z (* base *) * Z (* bound (base+size-1)*)).
+  Parameter heapfree : mem -> Z (* address *) ->
+                       (*partially applied tag rule, waiting for val tag on head *)
+                       (tag (* val (head) *) -> PolicyResult (tag * tag * tag * tag)) ->
+                       MemoryResult (PolicyResult (tag (* pc tag *) *mem)).
   Parameter globalalloc : mem -> list (ident*Z) -> (mem * PTree.t (Z * Z)).
   
   Definition load (chunk:memory_chunk) (m:mem) (addr:Z) := Mem.load chunk (fst m) addr.
@@ -87,7 +92,7 @@ Module ConcreteAllocator (P : Policy) : Allocator P.
   Import MD.
   Import P.
 
-  Definition t : Type := Z.
+  Definition t : Type := (* stack pointer *) Z.
   Definition init : t := 3000.
   Definition mem : Type := (Mem.mem * t).
   Definition empty := (Mem.empty, init).
@@ -111,6 +116,7 @@ Module ConcreteAllocator (P : Policy) : Allocator P.
 
   Definition update_record (m: Mem.mem) (base: Z) (live: bool) (sz: Z) (vt: tag) (lt: tag)
     : option Mem.mem :=
+    if sz <? 0 then None else
     let rec :=
       if live
       then Vlong (Int64.repr sz)
@@ -132,10 +138,10 @@ Module ConcreteAllocator (P : Policy) : Allocator P.
            Magnitude indicates size *)
         match check_record m base with
         | Some (true, bs, vt') =>
-            let next := base + bs in
+            let next := base + bs + record_size in
             find_free c' m next sz vt lt
         | Some (false, bs, vt') =>
-            let remain := bs - sz in
+            let remain := bs - (sz + record_size) in
             if (remain <? 0)%Z then
               let next := base + bs in find_free c' m next sz vt lt
             else
@@ -163,7 +169,7 @@ Module ConcreteAllocator (P : Policy) : Allocator P.
             MemorySuccess ((m'',sp), base + record_size, base + record_size + size)
         | MemoryFail msg => MemoryFail msg
         end
-    | None => MemoryFail "OOM"
+    | None => MemoryFail "Failure in find_free"
     end.
 
 

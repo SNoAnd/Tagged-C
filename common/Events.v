@@ -636,7 +636,7 @@ Inductive volatile_store (ge: Genv.t F V):
 *)
 
 Definition extcall_sem : Type :=
-  Genv.t F V -> list atom -> tag -> tag -> mem -> trace ->
+  Genv.t F V -> list atom -> tag (* PC *) -> tag (* function ptr *) -> mem -> trace ->
   MemoryResult (PolicyResult (atom * tag * mem)) -> Prop.
 
 (** We now specify the expected properties of this predicate. *)
@@ -1015,6 +1015,7 @@ Inductive extcall_malloc_sem (ge: Genv.t F V):
     heapalloc m sz vt_head vt_body lt = MemorySuccess (m', lo, hi) ->
     extcall_malloc_sem ge ((Vlong (Int64.repr sz),st) :: nil) pct fpt m E0
                        (MemorySuccess (PolicySuccess ((Vlong (Int64.repr lo), pt), pct', m''))).
+(* TODO: fail cases *)
 
 (*Lemma extcall_malloc_ok:
   extcall_properties extcall_malloc_sem

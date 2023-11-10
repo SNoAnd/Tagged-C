@@ -231,7 +231,7 @@ Qed. *)
     right; red; intro V; inv V; contradiction.
     right; red; intro V; inv V; contradiction.
   Defined.
-
+  
   Definition allowed_access (m: mem) (chunk: memory_chunk) (ofs: Z) : Prop :=
     range_perm_neg m ofs (ofs + size_chunk chunk) Dead
     /\ (align_chunk chunk | ofs).
@@ -344,12 +344,12 @@ Qed.
   Definition load (chunk: memory_chunk) (m: mem) (ofs: Z): MemoryResult atom :=
     if allowed_access_dec m chunk ofs
     then MemorySuccess (decode_val chunk (map (fun x => fst x) (getN (size_chunk_nat chunk) ofs (m.(mem_contents)))))
-    else MemoryFail "Private Load".
+    else MemoryFail "Private or Misaligned Load".
 
   Definition load_ltags (chunk: memory_chunk) (m: mem) (ofs: Z): MemoryResult (list tag) :=
     if allowed_access_dec m chunk ofs
     then MemorySuccess (map (fun x => snd x) (getN (size_chunk_nat chunk) ofs (m.(mem_contents))))
-    else MemoryFail "Private Load".
+    else MemoryFail "Private or Misaligned Load".
 
   Definition load_all (chunk: memory_chunk) (m: mem) (ofs: Z): MemoryResult (atom * list tag) :=
     if allowed_access_dec m chunk ofs
@@ -358,7 +358,7 @@ Qed.
                                         (getN (size_chunk_nat chunk)
                                               ofs (m.(mem_contents)))),
                          map (fun x => snd x) (getN (size_chunk_nat chunk) ofs (m.(mem_contents))))
-    else MemoryFail "Private Load".
+    else MemoryFail "Private or Misaligned Load".
 
   Lemma load_all_compose :
     forall chunk m ofs a lts,
@@ -491,7 +491,7 @@ Qed.
       MemorySuccess (mkmem (setN (merge_vals_tags (encode_val chunk a) lts) ofs (m.(mem_contents)))
                            m.(mem_access) m.(live))
     else
-      MemoryFail "Private Store".
+      MemoryFail "Private or Misaligned Store".
 
   (** [storebytes m ofs bytes] stores the given list of bytes [bytes]
       starting at location [(b, ofs)].  Returns updated memory state
@@ -504,7 +504,7 @@ Qed.
                        (setN (merge_vals_tags bytes lts) ofs (m.(mem_contents)))
                        m.(mem_access) m.(live))
     else
-      MemoryFail "Private Store".
+      MemoryFail "Private or Misaligned Store".
 
   (** * Properties of the memory operations *)
 
