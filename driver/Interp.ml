@@ -652,7 +652,7 @@ let do_step p prog ge ce time s w =
       if !trace >= 1 then
          (* AMN This is the version without -trace, easier to consume (by fuzzer)*)
          fprintf p "@[<hov 2>Failstop on policy @ %s %s@]@." (String.of_seq (List.to_seq r)) (String.concat ", " (List.map print_tag params));
-         exit 0
+         exit 42 (* error*)
 
   | None ->
       let l = Cexec.do_step ge ce do_external_function (*do_inline_assembly*) w s in

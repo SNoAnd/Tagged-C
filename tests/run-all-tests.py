@@ -4,8 +4,12 @@
 #       https://ep2016.europython.eu/media/conference/slides/writing-unit-tests-for-c-code-in-python.html 
 import subprocess
 
+# track total failures
 global testsfailed 
 testsfailed = 0
+# strings to reuse
+doublefree = "dfree"
+PVI = "pvi"
 passmsg = "\t\ttest passed"
 failmsg = "\t\ttest FAILED!"
 missinglabelsfail = b'Failstop on policy \n  DoubleFree::FreeT detects free of unallocated memory:  Unallocated, Unallocated, Unallocated, Unallocated\n'
@@ -13,22 +17,19 @@ missinglabelsfail = b'Failstop on policy \n  DoubleFree::FreeT detects free of u
 nofault_cleanexit = b'program terminated (exit code = 0)'
 
 # shell=True did not do what we hoped here. 
-# failstop found in output.stdout
-# TODO maybe use the in check for these tests as well
 def runACFileWithoutInput (filename, policy, expectedoutput):
     print(f"\ttesting {filename} with {policy} policy")
     # run is a blocking call
     completed_run = subprocess.run(["bash", "-c", f"../ccomp -interp -p {policy} {filename}"],
                                    capture_output=True )
-    #unexpectedly to me at least, the interpreter exit 0's for a failstop msg                          
-    #print(f"exit code was {completed_run.returncode}")
+
     #print(completed_run.stdout)
 
     # this is not fancy, but it should keep me from checking in dumb mistakes
-    if (completed_run.stdout == expectedoutput):
-        print(passmsg)
+    if (expectedoutput in completed_run.stdout):
+        print(f"{passmsg}")
     else:
-        print(failmsg)
+        print(f"{failmsg}\n\t\tret code:{completed_run.returncode}\n\t\toutput:\n\t\t{completed_run.stdout}")
         global testsfailed
         testsfailed+=1
 
@@ -43,23 +44,34 @@ def runACFileWithInput (filename, policy, testinput, expectedoutput):
         stdout, stderr = process.communicate(
             input=f"{testinput}\n".encode("utf-8"), timeout=10
         )
-
         #print(stdout.decode("utf-8"))
         if ( expectedoutput in stdout):
             print(passmsg)
         else:
-            print(failmsg)
+            #print(stderr) always None
+            print(f"{failmsg}\n\t\tret code:{process.returncode}\n\t\toutput:\n\t\t{stdout}")
             global testsfailed
             testsfailed+=1
-# tests still missing in /tests/
-#   - confused clean up multi is missing 
-#   - heap_load_store_ib.c policy? 
-#   - stack_load_store_ib.c
-#   - stack_load_store_ob.c
+
 if __name__ == '__main__':
 
-    doublefree = "dfree"
-    print("beginning /tests/\n=======\ntests without input\n=======")
+    print("beginning /tests/\n=======")
+    print("\n=======\npvi tests (without input)\n=======")
+
+    runACFileWithoutInput("printf_test.c", PVI,
+                          b'Hello World!\nTime 160: observable event: extcall printf(2986LL) -> 13\nTime 166: program terminated (exit code = 0)\n'
+                          )
+    runACFileWithoutInput("heap_load-store_ib.c", PVI,
+                          nofault_cleanexit)
+
+    runACFileWithoutInput("stack_load-store_ib.c", PVI,
+                          nofault_cleanexit)
+
+    runACFileWithoutInput("stack_load-store_ob.c", PVI,
+                          b'Failstop on policy \n PVI::StoreT')
+
+
+    print("\n=======\ndfree tests without input\n=======")
     runACFileWithoutInput("double_free_no_input_handlabelled.c", doublefree,
                           b'Failstop on policy \n  DoubleFree::FreeT detects two colors:  FreeColor label1, Unallocated, FreeColor label1, FreeColor label0\n'
                           )
@@ -68,11 +80,7 @@ if __name__ == '__main__':
                           b'Hello World!\nTime 160: observable event: extcall printf(2986LL) -> 13\nTime 166: program terminated (exit code = 0)\n'
                           )
     
-    runACFileWithoutInput("printf_test.c", "pvi",
-                          b'Hello World!\nTime 160: observable event: extcall printf(2986LL) -> 13\nTime 166: program terminated (exit code = 0)\n'
-                          )
-    
-    print("=======\ntests with input\n=======")
+    print("=======\ndfree tests with input\n=======")
     # these have much messier outputs from extern calls
     #   don't use an exact output match
     runACFileWithInput("test_fgets_basic.c", doublefree, 
@@ -103,6 +111,32 @@ if __name__ == '__main__':
     runACFileWithInput("double_free_confused_cleanup_2_handlabelled.c",
                        doublefree, "AAA",
                        nofault_cleanexit)
+    # TODO this set is currently broken, will need refinment
+    # AMN - will need to check that the right dfree colors are returned
+    # should not failstop
+    runACFileWithInput("double_free_confused_cleanup_multi_handlabelled.c",
+                       doublefree, "222",
+                       nofault_cleanexit)
+    
+    runACFileWithInput("double_free_confused_cleanup_multi_handlabelled.c",
+                       doublefree, "220",
+                       b'DoubleFree::FreeT detects two colors: ')
+    
+    runACFileWithInput("double_free_confused_cleanup_multi_handlabelled.c",
+                       doublefree, "222",
+                       b'DoubleFree::FreeT detects two colors: ')
+
+    runACFileWithInput("double_free_confused_cleanup_multi_handlabelled.c",
+                       doublefree, "BBB",
+                       b'DoubleFree::FreeT detects two colors: ')
+
+    runACFileWithInput("double_free_confused_cleanup_multi_handlabelled.c",
+                       doublefree, "!!!",
+                       b'DoubleFree::FreeT detects two colors: ')
+
+    runACFileWithInput("double_free_confused_cleanup_multi_handlabelled.c",
+                       doublefree, "!!0",
+                       b'DoubleFree::FreeT detects two colors: ')
     
     print("=======\nTests expected to get incorrect output but we'd like to know if that changes unexpectedly\n=======")
     # note tests like this should change when we get the automatic location info
@@ -120,5 +154,6 @@ if __name__ == '__main__':
     runACFileWithInput("double_free_confused_cleanup_2.c",
                        doublefree, "BBB",
                        missinglabelsfail)
+    # TODO should all the confused_clean_up multi be included?
     # end
     print(f"\n=======\ntest suit ending. total tests failed: {testsfailed}")
