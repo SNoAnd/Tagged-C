@@ -8,9 +8,24 @@
  * @note We expect the fuzzing output to report 0, 1, or 2 failures
  *  depending mostly on 2nd byte in input 
  * 
- *  B = 66 dec (/ 6) 
+ *  B = 66 dec (/ 6, /2 and /3) 
+ *      "BBB" -> 2 
+ *            -> for input, triggers dfree, label0, label2 
+ *            -> for x, triggers dfree, label3, label4
  *  2 = 50 dec ( /2 but not /3)
+ *      "222" -> 0 exit safely
+ *            -> for input, free at label0 (safe)
+ *            -> for x, free at label4 (safe)
+ *      "220" -> 1
+ *            -> for input, free at label0 (safe)
+ *            -> for x, triggers dfree for x, label3, label4
  *  ! = 33 dec ( /3 but not /2)
+ *      "!!!" -> 2
+ *            -> for input, triggers dfree at label1, label2
+ *            -> for x, free at label4 (safe)
+ *      "!!0" -> 1
+ *            -> for input, free at label0 (safe)
+ *            -> for x, triggers dfree for x, label3, label4
  * 
  */
 #include <stdlib.h> 
@@ -43,11 +58,11 @@ int main() {
     }
     */
 
-    // flag is 2nd byte
-    int flag = (char) input[1]; // always enough room in an int for a char
+    // flagb2 is 2nd byte
+    int flagb2 = (char) input[1]; // always enough room in an int for a char
     // simulating a control flag that can trigger clean up twice
     //      6 = 3*2, will trigger this if and a later one
-    if (!(flag % 2)) {
+    if (!(flagb2 % 2)) {
         label0: free (input);
     } else {
         label1: free (input);
@@ -55,12 +70,13 @@ int main() {
     // stand in for "program runs for a while and does other things."
     input[0] = foo2(foo(input[0]));
     // simulating later clean up in the program after doing other things for a while 
-    if (!(flag % 3)) {
+    if (!(flagb2 % 3)) {
         label2: free (input);
     }
 
-    // if flag is not 0, double free
-    if (flag) {
+    // if 3rd byte is not '0', double free
+    int flagb3 = (char) input[2];
+    if (flagb3 != '0') {
         label3: free (x);
     }
      label4: free (x);
