@@ -168,7 +168,7 @@ Module Genv (P:Policy) (A:Allocator P).
         | Init_float64 n => store Mfloat64 m p (Vfloat n, vt) [lt;lt;lt;lt;lt;lt;lt;lt]
         | Init_addrof symb ofs =>
             match find_symbol ge symb with
-            | None => MemoryFail "Symbol not found"
+            | None => MemoryFail "Symbol not found" OtherFailure
             | Some (inr (base,bound,pt,gv)) =>
                 store Mptr m p (Vint (Int.repr base), vt) [lt;lt;lt;lt;lt;lt;lt;lt]
             | Some (inl (b,pt)) => MemorySuccess m
@@ -203,9 +203,9 @@ Module Genv (P:Policy) (A:Allocator P).
             let padded := pad_init_data_list (Pos.to_nat sz) init in
             match store_init_data_list ge m base padded vt lt with
             | MemorySuccess m2 => MemorySuccess (base,m2)
-            | MemoryFail msg => MemoryFail msg
+            | MemoryFail msg failure => MemoryFail msg failure
             end
-        | None => MemoryFail "Globals weren't allocated correctly"
+        | None => MemoryFail "Globals weren't allocated correctly" OtherFailure
         end.
 
       Definition add_global (ge: t) (m: mem) (tree: PTree.t (Z*Z)) (idg: ident * globdef F V)
@@ -225,7 +225,7 @@ Module Genv (P:Policy) (A:Allocator P).
                                        ge.(genv_next_block)
                 in
                 (ge', m')
-            | MemoryFail msg => (ge, m)
+            | MemoryFail msg failure => (ge, m)
             end
         | Gfun _ =>
             let ge' := @mkgenv
@@ -265,7 +265,7 @@ Module Genv (P:Policy) (A:Allocator P).
         | MemorySuccess m =>
             let (m',tree) := A.globalalloc m (filter_var_sizes p.(AST.prog_defs)) in
             MemorySuccess (add_globals (empty_genv p.(AST.prog_public)) m tree p.(AST.prog_defs))
-        | MemoryFail msg => MemoryFail msg
+        | MemoryFail msg failure => MemoryFail msg failure
         end.
 
       Section WITH_GE.

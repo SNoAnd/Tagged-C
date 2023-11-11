@@ -2190,8 +2190,8 @@ Inductive wt_state (ce:composite_env): Csem.state -> Prop :=
     wt_state ce (Returnstate fd PCT (v,vt) k m)
 | wt_stuck_state:
   wt_state ce Stuckstate
-| wt_failstop_state: forall r params,
-    wt_state ce (Failstop r params).
+| wt_failstop_state: forall r failure params,
+    wt_state ce (Failstop r failure params).
 
 Hint Constructors wt_expr_cont wt_stmt_cont wt_stmt wt_state: ty.
 

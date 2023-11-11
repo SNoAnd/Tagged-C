@@ -84,7 +84,7 @@ Module Cexec (P:Policy) (A:Allocator P).
     | [ |- match ?x with true => _ | false => _ end = Some _ -> _ ] => destruct x eqn:?; mydestr
     | [ |- match ?x with inl _ => _ | inr _ => _ end = Some _ -> _ ] => destruct x; mydestr
     | [ |- match ?x with left _ => _ | right _ => _ end = Some _ -> _ ] => destruct x; mydestr
-    | [ |- match ?x with MemorySuccess _ => _ | MemoryFail _ => _ end = _ -> _ ] => destruct x eqn:?;mydestr
+    | [ |- match ?x with MemorySuccess _ => _ | MemoryFail _ _ => _ end = _ -> _ ] => destruct x eqn:?;mydestr
     | [ |- match ?x with true => _ | false => _ end = _ -> _ ] => destruct x eqn:?; mydestr
     | [ |- (if ?x then _ else _) = _ -> _ ] => destruct x eqn:?; mydestr
     | [ |- (let (_, _) := ?x in _) = _ -> _ ] => destruct x eqn:?; mydestr
@@ -93,14 +93,14 @@ Module Cexec (P:Policy) (A:Allocator P).
   
   Notation "'do' X <- A ; B" := (match A with
                                  | MemorySuccess X => B
-                                 | MemoryFail msg => MemoryFail msg
+                                 | MemoryFail msg failure => MemoryFail msg failure
                                  end)
                                   (at level 200, X name, A at level 100, B at level 200)
       : memory_monad_scope.
 
   Notation "'do' X , Y <- A ; B" := (match A with
                                      | MemorySuccess (X, Y) => B
-                                     | MemoryFail msg => MemoryFail msg
+                                     | MemoryFail msg failure => MemoryFail msg failure
                                      end)
                                       (at level 200, X name, Y name, A at level 100, B at level 200)
       : memory_monad_scope.
@@ -182,11 +182,11 @@ Module Cexec (P:Policy) (A:Allocator P).
                       match load_ltags chunk m (Int64.unsigned ofs) with
                       | MemorySuccess lts =>
                           Some (w', tr, MemorySuccess ((v,vt),lts))
-                      | MemoryFail msg =>
-                          Some (w', tr, MemoryFail msg)
+                      | MemoryFail msg failure =>
+                          Some (w', tr, MemoryFail msg failure)
                       end
-                  | Some (w', tr, MemoryFail msg) =>
-                      Some (w', tr, MemoryFail msg)
+                  | Some (w', tr, MemoryFail msg failure) =>
+                      Some (w', tr, MemoryFail msg failure)
                   | None => None
                   end
                       
@@ -207,10 +207,10 @@ Module Cexec (P:Policy) (A:Allocator P).
                   match load_ltags (chunk_for_carrier sz) m (Int64.unsigned ofs) with
                   | MemorySuccess lts =>
                       Some (w, E0, MemorySuccess ((Vint (bitfield_extract sz sg pos width c),vt), lts))
-                  | MemoryFail msg => Some (w, E0, MemoryFail msg)
+                  | MemoryFail msg failure => Some (w, E0, MemoryFail msg failure)
                   end
               | MemorySuccess _ => None    
-              | MemoryFail msg => Some (w, E0, MemoryFail msg)
+              | MemoryFail msg failure => Some (w, E0, MemoryFail msg failure)
               end
           | _ => None
           end
@@ -252,11 +252,11 @@ Module Cexec (P:Policy) (A:Allocator P).
               match type_is_volatile ty with
               | false => match store chunk m (Int64.unsigned ofs) v lts with
                          | MemorySuccess m' => Some (w, E0, MemorySuccess (m', v))
-                         | MemoryFail msg => Some (w, E0, MemoryFail msg)
+                         | MemoryFail msg failure => Some (w, E0, MemoryFail msg failure)
                          end
               | true => match do_volatile_store ge w chunk m ofs v lts with
                         | Some (w', tr, MemorySuccess m') => Some (w', tr, MemorySuccess (m', v))
-                        | Some (w', tr, MemoryFail msg) => Some (w', tr, MemoryFail msg)
+                        | Some (w', tr, MemoryFail msg failure) => Some (w', tr, MemoryFail msg failure)
                         | None => None
                         end
               end
@@ -270,11 +270,11 @@ Module Cexec (P:Policy) (A:Allocator P).
                       match storebytes m (Int64.unsigned ofs) bytes lts with
                       | MemorySuccess m' =>
                           Some (w, E0, MemorySuccess(m', v))
-                      | MemoryFail msg =>
-                          Some (w, E0, MemoryFail msg)
+                      | MemoryFail msg failure =>
+                          Some (w, E0, MemoryFail msg failure)
                       end
-                  | MemoryFail msg =>
-                      Some (w, E0, MemoryFail msg)
+                  | MemoryFail msg failure =>
+                      Some (w, E0, MemoryFail msg failure)
                   end
               | _ => None
               end
@@ -297,10 +297,10 @@ Module Cexec (P:Policy) (A:Allocator P).
                                                                  width c n)),vt) lts with
                   | MemorySuccess m' =>
                       Some (w, E0, MemorySuccess (m', (Vint (bitfield_normalize sz sg width n),vt)))
-                  | MemoryFail msg => Some (w, E0, MemoryFail msg)
+                  | MemoryFail msg failure => Some (w, E0, MemoryFail msg failure)
                   end
               | MemorySuccess _ => None
-              | MemoryFail msg => Some (w, E0, MemoryFail msg)
+              | MemoryFail msg failure => Some (w, E0, MemoryFail msg failure)
               end
           | _, _ => None
           end
@@ -423,7 +423,7 @@ Inductive reduction: Type :=
 | Callred (rule: string) (fd: fundef) (fpt: tag) (args: list atom) (tyres: type) (te': tenv) (m': mem)
 | Stuckred (msg: string) (*anaaktge enters impossible state or would have to take impossible step. 
               think like a /0 *)
-| Failstopred (rule: string) (msg: string) (params: list tag) (tr: trace)
+| Failstopred (rule: string) (msg: string) (failure: FailureClass) (params: list tag) (tr: trace)
            (* anaaktge - for tag fail stops add things here. dont add it to stuck *)
 .
 
@@ -454,8 +454,8 @@ Section EXPRS.
   Definition topred (r: reduction) : reducts expr :=
     ((fun (x: expr) => x), r) :: nil.
 
-  Definition failred (rule : string) (msg : string) (params : list tag) (tr : trace) : reducts expr :=
-    ((fun (x: expr) => x), Failstopred rule msg params tr) :: nil.
+  Definition failred (rule : string) (msg : string) (failure : FailureClass) (params : list tag) (tr : trace) : reducts expr :=
+    ((fun (x: expr) => x), Failstopred rule msg failure params tr) :: nil.
 
   Definition stuck : reducts expr :=
     [((fun (x: expr) => x), Stuckred "")].
@@ -506,7 +506,7 @@ Section EXPRS.
   Notation "'at' R 'trule' X <- A ; B" :=
     (match A with
      | PolicySuccess X => B
-     | PolicyFail msg params => failred R msg params E0
+     | PolicyFail msg params => failred R msg OtherFailure params E0
      end)
       (at level 200, X name, A at level 100, B at level 200)
       : tag_monad_scope.
@@ -514,7 +514,7 @@ Section EXPRS.
   Notation "'at' R 'truletr' T , X <- A ; B" :=
     (match A with
      | PolicySuccess X => B
-     | PolicyFail msg params => failred R msg params T
+     | PolicyFail msg params => failred R msg OtherFailure params T
      end)
       (at level 200, X name, A at level 100, B at level 200)
       : tag_monad_scope.
@@ -522,7 +522,7 @@ Section EXPRS.
   Notation "'at' R 'trule' X , Y <- A ; B" :=
     (match A with
      | PolicySuccess (X, Y) => B
-     | PolicyFail msg params => failred R msg params E0
+     | PolicyFail msg params => failred R msg OtherFailure params E0
      end)
       (at level 200, X name, Y name, A at level 100, B at level 200)
       : tag_monad_scope.
@@ -530,7 +530,7 @@ Section EXPRS.
   Notation "'at' R 'truletr' T , X , Y <- A ; B" :=
     (match A with
      | PolicySuccess (X, Y) => B
-     | PolicyFail msg params => failred R msg params T
+     | PolicyFail msg params => failred R msg OtherFailure params T
      end)
       (at level 200, X name, Y name, A at level 100, B at level 200)
       : tag_monad_scope.
@@ -538,7 +538,7 @@ Section EXPRS.
   Notation "'at' R 'trule' X , Y , Z <- A ; B" :=
     (match A with
      | PolicySuccess (X, Y, Z) => B
-     | PolicyFail msg params => failred R msg params E0
+     | PolicyFail msg params => failred R msg OtherFailure params E0
      end)
       (at level 200, X name, Y name, Z name, A at level 100, B at level 200)
       : tag_monad_scope.
@@ -546,7 +546,7 @@ Section EXPRS.
   Notation "'at' R 'truletr' T , X , Y , Z <- A ; B" :=
     (match A with
      | PolicySuccess (X, Y, Z) => B
-     | PolicyFail msg params => failred R msg params T
+     | PolicyFail msg params => failred R msg OtherFailure params T
      end)
       (at level 200, X name, Y name, Z name, A at level 100, B at level 200)
       : tag_monad_scope.
@@ -554,7 +554,7 @@ Section EXPRS.
   Notation "'at' R 'trule' X , Y , Z , W <- A ; B" :=
     (match A with
      | PolicySuccess (X, Y, Z, W) => B
-     | PolicyFail msg params => failred R msg params E0
+     | PolicyFail msg params => failred R msg OtherFailure params E0
      end)
       (at level 200, X name, Y name, Z name, W name, A at level 100, B at level 200)
       : tag_monad_scope.
@@ -637,8 +637,8 @@ Section EXPRS.
                 at "failred_rvalof_mem1" truletr tr, vt' <- LoadT pct pt vt lts;
                 at "failred_rvalof_mem2" truletr tr, vt'' <- AccessT pct vt';
                 topred (Rred "red_rvalof_mem" pct (Eval (v,vt'') ty) te m tr)
-            | Some (w', tr, MemoryFail msg) =>
-                failred "failred_rvalof_mem0" ("Baseline Policy Failure in deref_loc: " ++ msg) [] tr
+            | Some (w', tr, MemoryFail msg failure) =>
+                failred "failred_rvalof_mem0" ("Baseline Policy Failure in deref_loc: " ++ msg) failure [] tr
             | None => stuck
             end
         | Some (Ltmp b, ty') =>
@@ -787,13 +787,14 @@ Section EXPRS.
                 match do_assign_loc w' ty1 m ofs pt1 bf (v,vt'') lts' with
                 | Some (w'', tr', MemorySuccess (m',vvt')) =>
                     topred (Rred "red_assign_mem" pct'' (Eval vvt' ty) te m' (tr ++ tr'))
-                | Some (w'', tr', MemoryFail msg) =>
+                | Some (w'', tr', MemoryFail msg failure) =>
                     failred "failred_assign_mem3" ("Baseline Policy Failure in assign_loc: " ++ msg)
-                            [] (tr ++ tr')
+                            failure [] (tr ++ tr')
                 | None => stuck
                 end
-            | Some (w', tr, MemoryFail msg) =>
-                failred "failred_assign_mem0" ("Baseline Policy Failure in deref_loc: " ++ msg) [] tr
+            | Some (w', tr, MemoryFail msg failure) =>
+                failred "failred_assign_mem0" ("Baseline Policy Failure in deref_loc: " ++ msg)
+                        failure [] tr
             | None => stuck
             end
                 
@@ -821,8 +822,9 @@ Section EXPRS.
                 let r' := Eassign (Eloc (Lmem ofs pt1 bf) ty1)
                                   (Ebinop op (Eval (v1,vt'') ty1) (Eval (v2,vt2) ty2) tyres) ty1 in
                 topred (Rred "red_assignop_mem" pct r' te m tr)
-            | Some (w', tr, MemoryFail msg) =>
-                failred "failred_assignop_mem0" ("Baseline Policy Failure in deref_loc: " ++ msg) [] tr
+            | Some (w', tr, MemoryFail msg failure) =>
+                failred "failred_assignop_mem0" ("Baseline Policy Failure in deref_loc: " ++ msg)
+                        failure [] tr
             | None => stuck
             end                       
         | Some (Ltmp b, ty1), Some (v2, vt2, ty2) =>
@@ -857,8 +859,9 @@ Section EXPRS.
                                           (incrdecr_type ty)) ty)
                          (Eval (v,vt'') ty) ty in
                 topred (Rred "red_postincr_mem" pct r' te m tr)
-            | Some (w', tr, MemoryFail msg) =>
-                failred "failred_postincr_mem0" ("Baseline Policy Failure in deref_loc: " ++ msg) [] tr
+            | Some (w', tr, MemoryFail msg failure) =>
+                failred "failred_postincr_mem0" ("Baseline Policy Failure in deref_loc: " ++ msg)
+                        failure [] tr
             | None => stuck
             end
         | Some (Ltmp b, ty1) =>
@@ -924,8 +927,8 @@ Section EXPRS.
             | Some (w', tr, (MemorySuccess (PolicySuccess (v,pct', m')))) =>
                 topred (Rred "red_builtin" pct' (Eval v ty) te m' tr)
             | Some (w', tr, (MemorySuccess (PolicyFail msg params))) =>
-                failred "failred_builtin1" msg params tr
-            | Some (w', tr, MemoryFail msg) => failred "failred_builtin0" msg [] tr
+                failred "failred_builtin1" msg OtherFailure params tr
+            | Some (w', tr, MemoryFail msg failure) => failred "failred_builtin0" msg failure [] tr
             | None => stuck
             end
         | _ =>
@@ -953,16 +956,16 @@ Section EXPRS.
       lred ge ce e l pct te m l' te' m' ->
       context LV to C ->
       imm_safe_t to (C l) pct te m
-  | imm_safe_t_lfailred: forall to C l pct te m msg params,
-      lfailred ce l pct msg params ->
+  | imm_safe_t_lfailred: forall to C l pct te m msg failure params,
+      lfailred ce l pct msg failure params ->
       context LV to C ->
       imm_safe_t to (C l) pct te m
   | imm_safe_t_rred: forall to C pct r te m t pct' r' te' m' w',
       rred ge ce pct r te m t pct' r' te' m' -> possible_trace w t w' ->
       context RV to C ->
       imm_safe_t to (C r) pct te m
-  | imm_safe_t_rfailred: forall to C r pct te m tr msg params w',
-      rfailred ge ce pct r te m tr msg params -> possible_trace w tr w' ->
+  | imm_safe_t_rfailred: forall to C r pct te m tr msg failure params w',
+      rfailred ge ce pct r te m tr msg failure params -> possible_trace w tr w' ->
       context RV to C ->
       imm_safe_t to (C r) pct te m
   | imm_safe_t_callred: forall to C pct pct' r te m fd args ty,
@@ -1110,7 +1113,7 @@ Proof.
 Qed.
 
 Lemma lfailred_invert:
-  forall l pct te m msg param, lfailred ce l pct msg param -> invert_expr_prop l pct te m.
+  forall l pct te m msg failure param, lfailred ce l pct msg failure param -> invert_expr_prop l pct te m.
 Proof.
   induction 1; red; auto.
   - exists co, delta, bf; auto.
@@ -1131,9 +1134,9 @@ Ltac chomp :=
       rewrite H1 in H2; inv H2
   | [H: MemorySuccess _ = MemorySuccess _ |- _] =>
       inv H
-  | [H: MemorySuccess _ = MemoryFail _ |- _ ] =>
+  | [H: MemorySuccess _ = MemoryFail _ _ |- _ ] =>
       inv H
-  | [H: MemoryFail _ = MemorySuccess _ |- _ ] =>
+  | [H: MemoryFail _ _ = MemorySuccess _ |- _ ] =>
       inv H
   | [H1: forall _ _, ?ty <> Tpointer _ _, H2: ?ty = Tpointer _ _ |- _] =>
       congruence
@@ -1153,7 +1156,7 @@ Proof.
 Qed.
 
 Lemma rfailred_invert:
-  forall w' pct r te m tr msg params, rfailred ge ce pct r te m tr msg params -> possible_trace w tr w' -> invert_expr_prop r pct te m.
+  forall w' pct r te m tr msg failure params, rfailred ge ce pct r te m tr msg failure params -> possible_trace w tr w' -> invert_expr_prop r pct te m.
 Proof.
   induction 1; intros; red; auto; repeat (repeat chomp; eexists; eauto; intros).
   - destruct ty1; destruct ty; try congruence; repeat (eexists; eauto).
@@ -1253,8 +1256,8 @@ Definition reduction_ok (k: kind) (pct: tag) (a: expr) (te: tenv) (m: mem) (rd: 
   | RV, Callred _ fd fpt args tyres te' m' => callred ge pct a m fd fpt args tyres /\ te' = te /\ m' = m
   | LV, Stuckred _ => ~imm_safe_t k a pct te m
   | RV, Stuckred _ => ~imm_safe_t k a pct te m
-  | LV, Failstopred _ msg params tr => lfailred ce a pct msg params /\ tr = E0
-  | RV, Failstopred _ msg params tr => rfailred ge ce pct a te m tr msg params /\ exists w', possible_trace w tr w'
+  | LV, Failstopred _ msg failure params tr => lfailred ce a pct msg failure params /\ tr = E0
+  | RV, Failstopred _ msg failure params tr => rfailred ge ce pct a te m tr msg failure params /\ exists w', possible_trace w tr w'
   | _, _ => False
   end.
 
@@ -1940,9 +1943,9 @@ Proof.
 Qed.
 
 Lemma lfailred_topred:
-  forall pct l1 msg params te m,
-    lfailred ce l1 pct msg params ->
-    exists rule, step_expr LV pct l1 te m = topred (Failstopred rule msg params E0).
+  forall pct l1 msg failure params te m,
+    lfailred ce l1 pct msg failure params ->
+    exists rule, step_expr LV pct l1 te m = topred (Failstopred rule msg failure params E0).
 Proof.
   induction 1; simpl.
   - rewrite H. rewrite H1. rewrite H0. eexists. constructor.
@@ -2021,9 +2024,9 @@ Admitted.
 Qed.*)
 
 Lemma rfailred_topred:
-  forall w' pct r1 tr msg params te m,
-    rfailred ge ce pct r1 te m tr msg params -> possible_trace w tr w' ->
-    exists rule, step_expr RV pct r1 te m = topred (Failstopred rule msg params tr).
+  forall w' pct r1 tr msg failure params te m,
+    rfailred ge ce pct r1 te m tr msg failure params -> possible_trace w tr w' ->
+    exists rule, step_expr RV pct r1 te m = topred (Failstopred rule msg failure params tr).
 Admitted.
 (*Proof.
   induction 1; simpl; intros; eexists; unfold atom in *; repeat cronch; try constructor; eauto.
@@ -2254,7 +2257,7 @@ Lemma imm_safe_imm_safe_t:
       exists C a1 tr,
         context RV k C /\ a = C a1 /\
           ((exists pct' a1' te' m', rred ge ce pct a1 te m tr pct' a1' te' m') \/
-             (exists msg params, rfailred ge ce pct a1 te m tr msg params))
+             (exists msg failure params, rfailred ge ce pct a1 te m tr msg failure params))
         /\ forall w', ~possible_trace w tr w'.
 Proof.
   intros. inv H.
@@ -2270,7 +2273,7 @@ Proof.
   - destruct (classic (exists w', possible_trace w tr w')) as [[w' A] | A].
     + left. eapply imm_safe_t_rfailred; eauto.
     + right. exists C, e0, tr; intuition.
-      right. exists msg, param; intuition.
+      right. exists msg, failure, param; intuition.
       apply A; exists w'; auto.
   - left. eapply imm_safe_t_callred; eauto.
 Qed.
@@ -2289,7 +2292,7 @@ Theorem not_imm_safe_t:
 Proof.
   intros. destruct (classic (imm_safe ge ce e K a pct te m)).
   - exploit imm_safe_imm_safe_t; eauto.
-    intros [A | [C1 [a1 [tr [A [B [[[pct' [a1' [te' [m' D]]]]|[msg [params D]]] E]]]]]]].
+    intros [A | [C1 [a1 [tr [A [B [[[pct' [a1' [te' [m' D]]]]|[msg [failure [params D]]]] E]]]]]]].
     + contradiction.
     + right. red. exists tr; econstructor; split; auto.
       left. rewrite B. eapply step_rred with (C := fun x => C(C1 x)). eauto. eauto.
@@ -2311,35 +2314,35 @@ Definition expr_final_state (f: function) (k: cont) (pct: tag) (e: env) (C_rd: (
   | Rred rule pct a te m t => TR rule t (ExprState f pct (fst C_rd a) k e te m)
   | Callred rule fd fpt vargs ty te m => TR rule E0 (Callstate fd pct fpt vargs (Kcall f e te pct (fst C_rd) ty k) m)
   | Stuckred msg => TR ("step_stuck" ++ msg) E0 Stuckstate
-  | Failstopred rule msg params tr => TR rule tr (Failstop msg params)
+  | Failstopred rule msg failure params tr => TR rule tr (Failstop msg failure params)
   end.
 
 Local Open Scope list_monad_scope.
 
 Notation "'at' S 'trule' X <- A ; B" := (match A with
                                       | PolicySuccess X => B
-                                      | PolicyFail n ts => [TR S E0 (Failstop n ts)]
+                                      | PolicyFail n ts => [TR S E0 (Failstop n OtherFailure ts)]
                                       end)
   (at level 200, X name, A at level 100, B at level 200)
   : tag_monad_scope.
 
 Notation "'at' S 'trule' X , Y <- A ; B" := (match A with
                                           | PolicySuccess (X, Y) => B
-                                          | PolicyFail n ts => [TR S E0 (Failstop n ts)]
+                                          | PolicyFail n ts => [TR S E0 (Failstop n OtherFailure ts)]
                                           end)
   (at level 200, X name, Y name, A at level 100, B at level 200)
   : tag_monad_scope.
 
 Notation "'at' S 'trule' X , Y , Z <- A ; B" := (match A with
                                                  | PolicySuccess (X, Y, Z) => B
-                                                 | PolicyFail n ts => [TR S E0 (Failstop n ts)]
+                                                 | PolicyFail n ts => [TR S E0 (Failstop n OtherFailure ts)]
                                                  end)
   (at level 200, X name, Y name, Z name, A at level 100, B at level 200)
   : tag_monad_scope.
 
 Notation "'at' S 'trule' X , Y , Z , W <- A ; B" := (match A with
                                                      | PolicySuccess (X, Y, Z, W) => B
-                                                     | PolicyFail n ts => [TR S E0 (Failstop n ts)]
+                                                     | PolicyFail n ts => [TR S E0 (Failstop n OtherFailure ts)]
                                                      end)
   (at level 200, X name, Y name, Z name, W name, A at level 100, B at level 200)
   : tag_monad_scope.
@@ -2383,8 +2386,8 @@ Definition do_step (w: world) (s: Csem.state) : list transition :=
             match stkfree m (fold_left Z.add (sizes_of_env e) 0) with
             | MemorySuccess m' =>
                 ret "step_return_2" (Returnstate (Internal f) pct (v',vt) (call_cont k) m')
-            | MemoryFail msg =>
-                ret "step_return_fail_2" (Failstop ("Baseline Policy Failure in free_list: " ++ msg) [])
+            | MemoryFail msg failure =>
+                ret "step_return_fail_2" (Failstop ("Baseline Policy Failure in free_list: " ++ msg) failure [])
             end
         | Kswitch1 sl k =>
             do n <- sem_switch_arg v ty;
@@ -2439,8 +2442,8 @@ Definition do_step (w: world) (s: Csem.state) : list transition :=
       match stkfree m (fold_left Z.add (sizes_of_env e) 0) with
       | MemorySuccess m' =>
           ret "step_return_0" (Returnstate (Internal f) pct (Vundef,def_tag) (call_cont k) m')
-      | MemoryFail msg =>
-          ret "step_return_fail_0" (Failstop ("Baseline Policy Failure in free_list: " ++ msg) [])
+      | MemoryFail msg failure =>
+          ret "step_return_fail_0" (Failstop ("Baseline Policy Failure in free_list: " ++ msg) failure [])
       end
         
   | State f pct (Sreturn (Some x) loc) k e te m =>
@@ -2449,8 +2452,8 @@ Definition do_step (w: world) (s: Csem.state) : list transition :=
       match stkfree m (fold_left Z.add (sizes_of_env e) 0) with
       | MemorySuccess m' =>
           ret "step_skip_call" (Returnstate (Internal f) pct (Vundef, def_tag) (call_cont k) m')
-      | MemoryFail msg =>
-          ret "step_skip_call_fail" (Failstop ("Baseline Policy Failure in free_list: " ++ msg) [])
+      | MemoryFail msg failure =>
+          ret "step_skip_call_fail" (Failstop ("Baseline Policy Failure in free_list: " ++ msg) failure [])
       end
           
   | State f pct (Sswitch x sl loc) k e te m =>
@@ -2476,15 +2479,15 @@ Definition do_step (w: world) (s: Csem.state) : list transition :=
       | MemorySuccess (PolicySuccess (pct',e,m')) =>
           ret "step_internal_function" (State f pct' f.(fn_body) k e (empty_tenv) m')
       | MemorySuccess (PolicyFail msg params) =>
-          ret "step_internal_function_fail_1" (Failstop msg params)
-      | MemoryFail msg =>
-          ret "step_internal_function_fail_0" (Failstop ("Baseline Policy Failure in do_alloc_variables: " ++ msg) [])
+          ret "step_internal_function_fail_1" (Failstop msg OtherFailure params)
+      | MemoryFail msg failure =>
+          ret "step_internal_function_fail_0" (Failstop ("Baseline Policy Failure in do_alloc_variables: " ++ msg) failure [])
       end
   | Callstate (External ef targs tres cc) pct fpt vargs k m =>
       match do_external ge do_external_function ef w vargs pct fpt m with
       | Some (w', tr, MemorySuccess (PolicySuccess (v,pct',m'))) => [TR "step_external_function" tr (Returnstate (External ef targs tres cc) pct' v k m')]
-      | Some (w', tr, MemorySuccess (PolicyFail msg params)) => [TR "step_external_function_fail_1" tr (Failstop msg params)]
-      | Some (w', tr, MemoryFail msg) => [TR "step_external_function_fail_0" tr (Failstop msg [])]
+      | Some (w', tr, MemorySuccess (PolicyFail msg params)) => [TR "step_external_function_fail_1" tr (Failstop msg OtherFailure params)]
+      | Some (w', tr, MemoryFail msg failure) => [TR "step_external_function_fail_0" tr (Failstop msg failure [])]
       | None => []
       end
 
@@ -2705,13 +2708,12 @@ Definition do_initial_state (p: program) :
       do f <- Genv.find_funct_ptr ge b;
       check (type_eq (type_of_fundef f) (Tfunction Tnil type_int32s cc_default));
       Some (MemorySuccess (ge, Callstate f InitPCT def_tag nil Kstop m))
-  | MemoryFail msg => Some (MemoryFail msg)
+  | MemoryFail msg failure => Some (MemoryFail msg failure)
   end.
-           
-Definition at_final_state (S: Csem.state): option (PolicyResult int) :=
+
+Definition at_final_state (S: Csem.state): option int :=
   match S with
-  | Returnstate _ _ (Vint r,_) Kstop m => Some (PolicySuccess r)
-  | Failstop r params => Some (PolicyFail r params )
+  | Returnstate _ _ (Vint r,_) Kstop m => Some r
   | _ => None
   end.
 

@@ -48,9 +48,17 @@ Local Unset Case Analysis Schemes.
 
 Local Notation "a # b" := (PMap.get b a) (at level 1).
 
+Inductive FailureClass : Type :=
+| MisalignedStore (alignment ofs : Z)
+| MisalignedLoad (alignment ofs : Z)
+| PrivateStore (ofs : Z)
+| PrivateLoad (ofs : Z)
+| OtherFailure
+.
+
 Inductive MemoryResult (A:Type) : Type :=
 | MemorySuccess (a:A)
-| MemoryFail (msg:string)
+| MemoryFail (msg:string) (failure:FailureClass)
 .
 
 Arguments MemorySuccess {_} _.
@@ -233,26 +241,17 @@ Qed. *)
   Defined.
   
   Definition allowed_access (m: mem) (chunk: memory_chunk) (ofs: Z) : Prop :=
-    range_perm_neg m ofs (ofs + size_chunk chunk) Dead
-    /\ (align_chunk chunk | ofs).
+    range_perm_neg m ofs (ofs + size_chunk chunk) Dead.
+
+  Definition aligned_access (chunk: memory_chunk) (ofs: Z) : Prop :=
+    (align_chunk chunk | ofs).
   
   Lemma allowed_access_perm:
     forall m chunk ofs,
       allowed_access m chunk ofs ->
       ~ perm m ofs Dead.
   Proof.
-    intros. destruct H. apply H. generalize (size_chunk_pos chunk). lia.
-  Qed.
-
-  Lemma allowed_access_compat:
-    forall m chunk1 chunk2 ofs,
-      size_chunk chunk1 = size_chunk chunk2 ->
-      align_chunk chunk2 <= align_chunk chunk1 ->
-      allowed_access m chunk1 ofs ->
-      allowed_access m chunk2 ofs.
-  Proof.
-    intros. inv H1. rewrite H in H2. constructor; auto.
-    eapply Z.divide_trans; eauto. eapply align_le_divides; eauto.
+    intros. apply H. generalize (size_chunk_pos chunk). lia.
   Qed.
 
   Lemma allowed_access_dec:
@@ -261,13 +260,18 @@ Qed. *)
   Proof.
     intros.
     destruct (range_perm_neg_dec m ofs (ofs + size_chunk chunk) Dead).
-    destruct (Zdivide_dec (align_chunk chunk) ofs).
-    left; constructor; auto.
-    right; red; intro V; inv V; contradiction.
-    right; red; intro V; inv V; contradiction.
+    left; auto.
+    right; red; contradiction.
   Defined.
 
-  Lemma valid_access_allowed:
+  Lemma aligned_access_dec:
+    forall chunk ofs,
+      {aligned_access chunk ofs} + {~ aligned_access chunk ofs}.
+  Proof.
+    intros. destruct (Zdivide_dec (align_chunk chunk) ofs); auto.
+  Qed.
+  
+(*  Lemma valid_access_allowed:
     forall m chunk ofs,
       valid_access m chunk ofs ->
       allowed_access m chunk ofs.
@@ -277,7 +281,7 @@ Qed. *)
     unfold range_perm in *. unfold range_perm_neg. intros.
     specialize H with ofs0. apply H in H1. intro.
     unfold perm in *. rewrite H1 in H2. discriminate.
-  Qed.
+  Qed.*)
 
   (** C allows pointers one past the last element of an array.  These are not
       valid according to the previously defined [valid_pointer]. The property
@@ -342,23 +346,29 @@ Qed.
       are not readable. *)
 
   Definition load (chunk: memory_chunk) (m: mem) (ofs: Z): MemoryResult atom :=
-    if allowed_access_dec m chunk ofs
-    then MemorySuccess (decode_val chunk (map (fun x => fst x) (getN (size_chunk_nat chunk) ofs (m.(mem_contents)))))
-    else MemoryFail "Private or Misaligned Load".
+    if aligned_access_dec chunk ofs then
+      if allowed_access_dec m chunk ofs
+      then MemorySuccess (decode_val chunk (map (fun x => fst x) (getN (size_chunk_nat chunk) ofs (m.(mem_contents)))))
+      else MemoryFail "" (PrivateLoad ofs)
+    else MemoryFail "" (MisalignedLoad (align_chunk chunk) ofs).
 
   Definition load_ltags (chunk: memory_chunk) (m: mem) (ofs: Z): MemoryResult (list tag) :=
-    if allowed_access_dec m chunk ofs
-    then MemorySuccess (map (fun x => snd x) (getN (size_chunk_nat chunk) ofs (m.(mem_contents))))
-    else MemoryFail "Private or Misaligned Load".
+    if aligned_access_dec chunk ofs then
+      if allowed_access_dec m chunk ofs
+      then MemorySuccess (map (fun x => snd x) (getN (size_chunk_nat chunk) ofs (m.(mem_contents))))
+      else MemoryFail "" (PrivateLoad ofs)
+    else MemoryFail "" (MisalignedLoad (align_chunk chunk) ofs).
 
   Definition load_all (chunk: memory_chunk) (m: mem) (ofs: Z): MemoryResult (atom * list tag) :=
-    if allowed_access_dec m chunk ofs
-    then MemorySuccess (decode_val chunk
-                                   (map (fun x => fst x)
-                                        (getN (size_chunk_nat chunk)
-                                              ofs (m.(mem_contents)))),
-                         map (fun x => snd x) (getN (size_chunk_nat chunk) ofs (m.(mem_contents))))
-    else MemoryFail "Private or Misaligned Load".
+    if aligned_access_dec chunk ofs then
+      if allowed_access_dec m chunk ofs
+      then MemorySuccess (decode_val chunk
+                                     (map (fun x => fst x)
+                                          (getN (size_chunk_nat chunk)
+                                                ofs (m.(mem_contents)))),
+                           map (fun x => snd x) (getN (size_chunk_nat chunk) ofs (m.(mem_contents))))
+      else MemoryFail "" (PrivateLoad ofs)
+    else MemoryFail "" (MisalignedLoad (align_chunk chunk) ofs).
 
   Lemma load_all_compose :
     forall chunk m ofs a lts,
@@ -368,20 +378,20 @@ Qed.
     intros until lts.
     unfold load_all; unfold load; unfold load_ltags.
     split.
-    - destruct (allowed_access_dec m chunk ofs); intro H; inv H; auto.
-    - destruct (allowed_access_dec m chunk ofs); intro H; destruct H as [H1 H2]; inv H1; inv H2; auto.
+    - destruct (aligned_access_dec chunk ofs); destruct (allowed_access_dec m chunk ofs); intro H; inv H; auto.
+    - destruct (aligned_access_dec chunk ofs); destruct (allowed_access_dec m chunk ofs); intro H; destruct H as [H1 H2]; inv H1; inv H2; auto.
   Qed.
   
   Lemma load_all_fail :
-    forall chunk m ofs msg,
-      load_all chunk m ofs = MemoryFail msg <->
-        load chunk m ofs = MemoryFail msg /\ load_ltags chunk m ofs = MemoryFail msg.
+    forall chunk m ofs msg failure,
+      load_all chunk m ofs = MemoryFail msg failure <->
+        load chunk m ofs = MemoryFail msg failure /\ load_ltags chunk m ofs = MemoryFail msg failure.
   Proof.
-    intros until msg.
+    intros until failure.
     unfold load_all; unfold load; unfold load_ltags.
     split.
-    - destruct (allowed_access_dec m chunk ofs); intro H; inv H; auto.
-    - destruct (allowed_access_dec m chunk ofs); intro H; destruct H as [H1 H2]; inv H1; inv H2; auto.
+    - destruct (aligned_access_dec chunk ofs); destruct (allowed_access_dec m chunk ofs); intro H; inv H; auto.
+    - destruct (aligned_access_dec chunk ofs); destruct (allowed_access_dec m chunk ofs); intro H; destruct H as [H1 H2]; inv H1; inv H2; auto.
   Qed. 
   
   (** [loadbytes m ofs n] reads [n] consecutive bytes starting at
@@ -391,12 +401,12 @@ Qed.
   Definition loadbytes (m: mem) (ofs n: Z): MemoryResult (list memval) :=
     if range_perm_neg_dec m ofs (ofs + n) Dead
     then MemorySuccess (map (fun x => fst x) (getN (Z.to_nat n) ofs (m.(mem_contents))))
-    else MemoryFail "Private Load".
+    else MemoryFail "" (PrivateLoad ofs).
 
   Definition loadtags (m: mem) (ofs n: Z) : MemoryResult (list tag) :=
     if range_perm_neg_dec m ofs (ofs + n) Dead
     then MemorySuccess (map (fun x => snd x) (getN (Z.to_nat n) ofs (m.(mem_contents))))
-    else MemoryFail "Private Load".
+    else MemoryFail "" (PrivateLoad ofs).
 
   (** Memory stores. *)
 
@@ -484,28 +494,27 @@ Qed.
         (v,hd def_tag lts)::(merge_vals_tags vs' (tl lts))
     | _ => []
     end.
-
+  
   Program Definition store (chunk: memory_chunk) (m: mem) (ofs: Z) (a:atom) (lts:list tag)
     : MemoryResult mem :=
-    if allowed_access_dec m chunk ofs then
-      MemorySuccess (mkmem (setN (merge_vals_tags (encode_val chunk a) lts) ofs (m.(mem_contents)))
-                           m.(mem_access) m.(live))
-    else
-      MemoryFail "Private or Misaligned Store".
+    if aligned_access_dec chunk ofs then
+      if allowed_access_dec m chunk ofs then
+        MemorySuccess (mkmem (setN (merge_vals_tags (encode_val chunk a) lts) ofs (m.(mem_contents)))
+                             m.(mem_access) m.(live))
+      else MemoryFail "" (PrivateStore ofs)
+    else MemoryFail "" (MisalignedStore (align_chunk chunk) ofs).
 
   (** [storebytes m ofs bytes] stores the given list of bytes [bytes]
       starting at location [(b, ofs)].  Returns updated memory state
       or [None] if the accessed locations are not writable. *)
-
   Program Definition storebytes (m: mem) (ofs: Z) (bytes: list memval) (lts:list tag)
     : MemoryResult mem :=
     if range_perm_neg_dec m ofs (ofs + Z.of_nat (length bytes)) Dead then
       MemorySuccess (mkmem
                        (setN (merge_vals_tags bytes lts) ofs (m.(mem_contents)))
                        m.(mem_access) m.(live))
-    else
-      MemoryFail "Private or Misaligned Store".
-
+    else MemoryFail "" (PrivateStore ofs).
+  
   (** * Properties of the memory operations *)
 
   (** Properties of the empty store. *)
@@ -524,24 +533,24 @@ Qed.
 
   (** ** Properties related to [load] *)
 
-  Theorem allowed_access_load:
+(*  Theorem allowed_access_load:
     forall m chunk ofs,
       allowed_access m chunk ofs ->
       exists v, load chunk m ofs = MemorySuccess v.
   Proof.
     intros. econstructor. unfold load. rewrite pred_dec_true; eauto.
-  Qed.
+  Qed.*)
 
-  Theorem valid_access_load:
+(*  Theorem valid_access_load:
     forall m chunk ofs,
       valid_access m chunk ofs ->
       exists v, load chunk m ofs = MemorySuccess v.
   Proof.
     intros. econstructor. unfold load.
     rewrite pred_dec_true; eauto. eapply valid_access_allowed. auto.
-  Qed.
+  Qed.*)
 
-  Theorem load_allowed_access:
+(*  Theorem load_allowed_access:
     forall m chunk ofs v,
       load chunk m ofs = MemorySuccess v ->
       allowed_access m chunk ofs.
@@ -550,9 +559,9 @@ Qed.
     destruct (allowed_access_dec m chunk ofs); intros.
     auto.
     inv H.
-  Qed.
+  Qed.*)
 
-  Lemma load_result:
+(*  Lemma load_result:
     forall chunk m ofs v,
       load chunk m ofs = MemorySuccess v ->
       v = decode_val chunk (map (fun x => fst x) (getN (size_chunk_nat chunk) ofs (m.(mem_contents)))).
@@ -561,9 +570,9 @@ Qed.
     destruct (allowed_access_dec m chunk ofs); intros.
     congruence.
     congruence.
-  Qed.
+  Qed.*)
 
-  Local Hint Resolve load_allowed_access valid_access_load: mem.
+(*  Local Hint Resolve load_allowed_access valid_access_load: mem.*)
 
   Theorem load_type:
     forall m chunk ofs v vt,
@@ -661,7 +670,7 @@ Proof.
   congruence.
 Qed.
 
-Theorem loadbytes_load:
+(*Theorem loadbytes_load:
   forall chunk m ofs bytes,
   loadbytes m ofs (size_chunk chunk) = MemorySuccess bytes ->
   (align_chunk chunk | ofs) ->
@@ -672,7 +681,7 @@ Proof.
   try congruence.
   inv H. rewrite pred_dec_true. auto.
   split; auto.
-Qed.
+Qed.*)
 
 Theorem load_loadbytes:
   forall chunk m ofs v,
@@ -867,7 +876,7 @@ Qed.*)
 
 (** ** Properties related to [store] *)
 
-Theorem valid_access_store:
+(*Theorem valid_access_store:
   forall m1 chunk ofs a lts,
   valid_access m1 chunk ofs ->
   { m2: mem | store chunk m1 ofs a lts = MemorySuccess m2 }.
@@ -878,11 +887,11 @@ Proof.
   eauto.
   apply valid_access_allowed in H.
   contradiction.
-Defined.
+Defined.*)
 
-Local Hint Resolve valid_access_store: mem.
+(*Local Hint Resolve valid_access_store: mem.*)
 
-Theorem allowed_access_store:
+(*Theorem allowed_access_store:
   forall m1 chunk ofs v vt lts,
   allowed_access m1 chunk ofs ->
   { m2: mem | store chunk m1 ofs (v,vt) lts = MemorySuccess m2 }.
@@ -892,16 +901,16 @@ Proof.
   destruct (allowed_access_dec m1 chunk ofs).
   eauto.
   contradiction.
-Defined.
+Defined.*)
 
-Local Hint Resolve allowed_access_store: mem.
+(*Local Hint Resolve allowed_access_store: mem.*)
 
 Axiom disallowed_access_store:
   forall m1 chunk ofs v vt lts,
   ~ allowed_access m1 chunk ofs ->
-  store chunk m1 ofs (v,vt) lts = MemoryFail "Private Store".
+  store chunk m1 ofs (v,vt) lts = MemoryFail "" (PrivateStore ofs).
 
-Local Hint Resolve allowed_access_store: mem.
+(*Local Hint Resolve allowed_access_store: mem.*)
 
 Section STORE.
 Variable chunk: memory_chunk.
@@ -913,7 +922,7 @@ Variable lts: list tag.
 Variable m2: mem.
 Hypothesis STORE: store chunk m1 ofs (v,vt) lts = MemorySuccess m2.
 
-Lemma store_access: mem_access m2 = mem_access m1.
+(*Lemma store_access: mem_access m2 = mem_access m1.
 Proof.
   unfold store in STORE. destruct ( allowed_access_dec m1 chunk ofs); inv STORE.
   auto.
@@ -1126,13 +1135,13 @@ Proof.
   subst q. auto.
   right. apply IHn. lia.
 Qed.
-
+*)
 End STORE.
 
-Local Hint Resolve perm_store_1 perm_store_2: mem.
+(*Local Hint Resolve perm_store_1 perm_store_2: mem.
 Local Hint Resolve store_valid_block_1 store_valid_block_2: mem.
 Local Hint Resolve store_allowed_access_1 store_allowed_access_2
-             store_allowed_access_3 store_allowed_access_4: mem.
+             store_allowed_access_3 store_allowed_access_4: mem.*)
 
 (*Lemma load_store_overlap:
   forall chunk m1 ofs v vt lts m2 chunk' ofs' v',
@@ -1370,7 +1379,7 @@ Proof.
   contradiction.
 Defined.
 
-Theorem storebytes_store:
+(*Theorem storebytes_store:
   forall m1 ofs chunk v vt lts m2,
   storebytes m1 ofs (encode_val chunk (v,vt)) lts = MemorySuccess m2 ->
   (align_chunk chunk | ofs) ->
@@ -1382,9 +1391,9 @@ Proof.
   f_equal.
   elim n. constructor; auto.
   rewrite encode_val_length in r. rewrite size_chunk_conv. auto.
-Qed.
+Qed.*)
 
-Theorem store_storebytes:
+(*Theorem store_storebytes:
   forall m1 ofs chunk v lts m2,
   store chunk m1 ofs v lts = MemorySuccess m2 ->
   storebytes m1 ofs (encode_val chunk v) lts = MemorySuccess m2.
@@ -1396,7 +1405,7 @@ Proof.
   elim n.
   rewrite encode_val_length. rewrite <- size_chunk_conv.
   unfold allowed_access in *. destruct a. auto.
-Qed.
+Qed.*)
 
 Section STOREBYTES.
 Variable m1: mem.
@@ -1637,7 +1646,7 @@ Qed.*)
 
 Global Opaque Mem.store Mem.load Mem.storebytes Mem.loadbytes.
 
-Global Hint Resolve
+(*Global Hint Resolve
   Mem.valid_not_valid_diff
   Mem.valid_access_valid_addr
   Mem.valid_access_perm
@@ -1659,6 +1668,6 @@ Global Hint Resolve
   Mem.storebytes_valid_access_2
   Mem.storebytes_valid_block_1
   Mem.storebytes_valid_block_2
-: mem.
+: mem.*)
 
 End Mem.

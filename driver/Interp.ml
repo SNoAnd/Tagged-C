@@ -191,8 +191,16 @@ let print_state p (prog, ge, s) =
               print_val (fst res)
   | Csem.Stuckstate ->
       fprintf p "stuck after an undefined expression"
-  | Csem.Failstop(r, params) ->
-      fprintf p "@[failstop on policy @ %s %s@]@." (String.of_seq (List.to_seq r)) (String.concat "," (List.map print_tag params))
+  | Csem.Failstop(msg, Memory.OtherFailure, params) ->
+      fprintf p "@[failstop on policy @ %s %s@]@."
+      (String.of_seq (List.to_seq msg))
+      (String.concat "," (List.map print_tag params))
+  | Csem.Failstop(msg, _, params) ->
+      fprintf p "@[failstop in memory @ %s %s@]@."
+      (String.of_seq (List.to_seq msg))
+      (String.concat "," (List.map print_tag params))
+
+
 	(* APT: may be nicer ways to format, as comment below suggests *)
       (*  anaaktge 
           Notes 
@@ -632,7 +640,7 @@ let diagnose_stuck_state p ge ce w = function
 
 let do_step p prog ge ce time s w =
   match Cexec.at_final_state s with
-  | Some (Pol.PolicySuccess r) ->
+  | Some r ->
       if !trace >= 1 then
         fprintf p "Time %d: program terminated (exit code = %ld)@."
                   time (camlint_of_coqint r);
@@ -821,7 +829,7 @@ let execute prog =
            (*| All ->
                 explore_all p prog1 ge ce 0 [(1, s, world wge wm)])*)
         | _ -> fprintf p "ERROR: Initial state undefined@."; exit 126)
-      | Memory.MemoryFail msg ->
+      | Memory.MemoryFail (msg,failure) ->
         fprintf p "ERROR: Initial state undefined@."; exit 126)
   
 end

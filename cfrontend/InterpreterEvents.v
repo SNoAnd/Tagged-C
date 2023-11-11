@@ -50,14 +50,14 @@ Module InterpreterEvents (P:Policy) (A:Allocator P).
 
   Notation "'do_mem' X <- A ; B" := (match A with
                                      | MemorySuccess X => B
-                                     | MemoryFail msg => MemoryFail msg
+                                     | MemoryFail msg failure => MemoryFail msg failure
                                      end)
                                       (at level 200, X name, A at level 100, B at level 200)
       : memory_monad_scope.
 
   Notation "'do_mem' X , Y <- A ; B" := (match A with
                                          | MemorySuccess (X, Y) => B
-                                         | MemoryFail msg => MemoryFail msg
+                                         | MemoryFail msg failure => MemoryFail msg failure
                                          end)
                                           (at level 200, X name, Y name, A at level 100, B at level 200)
       : memory_monad_scope.
@@ -190,7 +190,7 @@ Module InterpreterEvents (P:Policy) (A:Allocator P).
       | [ |- match ?x with true => _ | false => _ end = _ -> _ ] => destruct x eqn:?; mydestr
       | [ |- match ?x with inl _ => _ | inr _ => _ end = _ -> _ ] => destruct x; mydestr
       | [ |- match ?x with left _ => _ | right _ => _ end = _ -> _ ] => destruct x; mydestr
-      | [ |- match ?x with MemorySuccess _ => _ | MemoryFail _ => _ end = _ -> _ ] => destruct x eqn:?; mydestr
+      | [ |- match ?x with MemorySuccess _ => _ | MemoryFail _ _ => _ end = _ -> _ ] => destruct x eqn:?; mydestr
       | [ |- (let (_, _) := ?x in _) = _ -> _ ] => destruct x; mydestr
       | _ => idtac
       end.
@@ -269,8 +269,8 @@ Module InterpreterEvents (P:Policy) (A:Allocator P).
           match load_all chunk m (Int64.unsigned ofs) with
           | MemorySuccess (v,lts) =>
               Some (w, E0, MemorySuccess v)
-          | MemoryFail msg =>
-              Some (w, E0, MemoryFail msg)
+          | MemoryFail msg failure =>
+              Some (w, E0, MemoryFail msg failure)
           end
       end.
 
@@ -292,8 +292,8 @@ Module InterpreterEvents (P:Policy) (A:Allocator P).
           match store chunk m (Int64.unsigned ofs) v lts with
           | MemorySuccess m' =>
               Some (w, E0, MemorySuccess m')
-          | MemoryFail msg =>
-              Some (w, E0, MemoryFail msg)
+          | MemoryFail msg failure =>
+              Some (w, E0, MemoryFail msg failure)
           end
       end.
 
@@ -419,13 +419,13 @@ Hypothesis do_inline_assembly_complete:
       | [Vint ofs] =>
           match do_volatile_load w chunk m (cast_int_long Unsigned ofs) with
           | Some (w', t, MemorySuccess v) => Some (w', t, MemorySuccess(v,m))
-          | Some (w', t, MemoryFail msg) => Some (w', t, MemoryFail msg)
+          | Some (w', t, MemoryFail msg failure) => Some (w', t, MemoryFail msg failure)
           | None => None
           end
       | [Vlong ofs] =>
           match do_volatile_load w chunk m ofs with
           | Some (w', t, MemorySuccess v) => Some (w', t, MemorySuccess(v,m))
-          | Some (w', t, MemoryFail msg) => Some (w', t, MemoryFail msg)
+          | Some (w', t, MemoryFail msg failure) => Some (w', t, MemoryFail msg failure)
           | None => None
           end
       | _ => None
@@ -464,7 +464,7 @@ Definition do_ef_volatile_store_global (chunk: memory_chunk) (id: ident) (ofs: p
                   match heapalloc m sz vt_head vt_body lt with
                   | MemorySuccess (m', base, bound) =>
                       Some (w, E0, (MemorySuccess (PolicySuccess((Vlong (Int64.repr base), pt'), PCT', m'))))
-                  | MemoryFail msg => Some (w, E0, (MemoryFail msg))
+                  | MemoryFail msg failure => Some (w, E0, (MemoryFail msg failure))
                   end
               | PolicyFail msg params =>
                   Some (w, E0, (MemorySuccess (PolicyFail msg params)))
@@ -486,7 +486,7 @@ Definition do_ef_volatile_store_global (chunk: memory_chunk) (id: ident) (ofs: p
               Some (w, E0, (MemorySuccess (PolicySuccess ((Vundef,def_tag),PCT',m'))))
           | MemorySuccess (PolicyFail msg params) =>
               Some (w, E0, (MemorySuccess (PolicyFail msg params)))
-          | MemoryFail msg => Some (w, E0, (MemoryFail msg))
+          | MemoryFail msg failure => Some (w, E0, (MemoryFail msg failure))
           end
       | _ => None
       end.

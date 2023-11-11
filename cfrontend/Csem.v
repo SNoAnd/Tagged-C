@@ -51,7 +51,7 @@ Module Csem (P: Policy) (A: Allocator P).
     let ce := p.(prog_comp_env) in
     match Genv.globalenv ce p with
     | MemorySuccess (ge,m) => MemorySuccess (ge, ce, m)
-    | MemoryFail msg => MemoryFail msg
+    | MemoryFail msg failure => MemoryFail msg failure
     end.
 
   Inductive var_entry : Type :=
@@ -93,15 +93,15 @@ Module Csem (P: Policy) (A: Allocator P).
       volatile_load ge chunk m ofs t (MemorySuccess (v,vt)) ->
       load_ltags chunk m (Int64.unsigned ofs) = MemorySuccess lts ->
       deref_loc ty m ofs pt Full t (MemorySuccess ((v,vt),lts))
-  | deref_loc_volatile_fail0: forall chunk t msg,
+  | deref_loc_volatile_fail0: forall chunk t msg failure,
       access_mode ty = By_value chunk -> type_is_volatile ty = true ->
-      volatile_load ge chunk m ofs t (MemoryFail msg) ->
-      deref_loc ty m ofs pt Full t (MemoryFail msg)
-  | deref_loc_volatile_fail1: forall chunk t v vt msg,
+      volatile_load ge chunk m ofs t (MemoryFail msg failure) ->
+      deref_loc ty m ofs pt Full t (MemoryFail msg failure)
+  | deref_loc_volatile_fail1: forall chunk t v vt msg failure,
       access_mode ty = By_value chunk -> type_is_volatile ty = true ->
       volatile_load ge chunk m ofs t (MemorySuccess (v,vt)) ->
-      load_ltags chunk m (Int64.unsigned ofs) = MemoryFail msg ->
-      deref_loc ty m ofs pt Full t (MemoryFail msg)
+      load_ltags chunk m (Int64.unsigned ofs) = MemoryFail msg failure ->
+      deref_loc ty m ofs pt Full t (MemoryFail msg failure)
   | deref_loc_reference:
       access_mode ty = By_reference ->
       deref_loc ty m ofs pt Full E0 (MemorySuccess ((Vlong ofs, pt),[]))
@@ -130,19 +130,19 @@ Module Csem (P: Policy) (A: Allocator P).
       type_is_volatile ty = false ->
       store chunk m (Int64.unsigned ofs) (v,vt) lts = MemorySuccess m' ->
       assign_loc ty m ofs pt Full (v,vt) E0 (MemorySuccess(m',(v,vt))) lts
-  | assign_loc_value_fail: forall v vt lts chunk msg,
+  | assign_loc_value_fail: forall v vt lts chunk msg failure,
       access_mode ty = By_value chunk ->
       type_is_volatile ty = false ->
-      store chunk m (Int64.unsigned ofs) (v,vt) lts = MemoryFail msg ->
-      assign_loc ty m ofs pt Full (v,vt) E0 (MemoryFail msg) lts
+      store chunk m (Int64.unsigned ofs) (v,vt) lts = MemoryFail msg failure ->
+      assign_loc ty m ofs pt Full (v,vt) E0 (MemoryFail msg failure) lts
   | assign_loc_volatile: forall v lts chunk t m',
       access_mode ty = By_value chunk -> type_is_volatile ty = true ->
       volatile_store ge chunk m ofs v lts t (MemorySuccess m') ->
       assign_loc ty m ofs pt Full v t (MemorySuccess (m', v)) lts
-  | assign_loc_volatile_fail: forall v lts chunk t msg,
+  | assign_loc_volatile_fail: forall v lts chunk t msg failure,
       access_mode ty = By_value chunk -> type_is_volatile ty = true ->
-      volatile_store ge chunk m ofs v lts t (MemoryFail msg) ->
-      assign_loc ty m ofs pt Full v t (MemoryFail msg) lts
+      volatile_store ge chunk m ofs v lts t (MemoryFail msg failure) ->
+      assign_loc ty m ofs pt Full v t (MemoryFail msg failure) lts
   | assign_loc_copy: forall ofs' bytes lts m' pt',
       access_mode ty = By_copy ->
       (alignof_blockcopy ce ty | Int64.unsigned ofs') ->
@@ -155,17 +155,17 @@ Module Csem (P: Policy) (A: Allocator P).
       storebytes m (Int64.unsigned ofs) bytes lts = MemorySuccess m' ->
       assign_loc ty m ofs pt Full (Vlong ofs', pt') E0
                  (MemorySuccess (m', (Vlong ofs', pt'))) lts
-  | assign_loc_copy_fail0: forall ofs' lts msg pt',
+  | assign_loc_copy_fail0: forall ofs' lts msg failure pt',
       access_mode ty = By_copy ->
       (alignof_blockcopy ce ty | Int64.unsigned ofs') ->
       (alignof_blockcopy ce ty | Int64.unsigned ofs) ->
       Int64.unsigned ofs' = Int64.unsigned ofs
       \/ Int64.unsigned ofs' + sizeof ce ty <= Int64.unsigned ofs
       \/ Int64.unsigned ofs + sizeof ce ty <= Int64.unsigned ofs' ->
-      loadbytes m (Int64.unsigned ofs') (sizeof ce ty) = MemoryFail msg ->
+      loadbytes m (Int64.unsigned ofs') (sizeof ce ty) = MemoryFail msg failure ->
       assign_loc ty m ofs pt Full (Vlong ofs', pt') E0
-                 (MemoryFail msg) lts
-  | assign_loc_copy_fail1: forall ofs' bytes lts msg pt',
+                 (MemoryFail msg failure) lts
+  | assign_loc_copy_fail1: forall ofs' bytes lts msg failure pt',
       access_mode ty = By_copy ->
       (alignof_blockcopy ce ty | Int64.unsigned ofs') ->
       (alignof_blockcopy ce ty | Int64.unsigned ofs) ->
@@ -174,9 +174,9 @@ Module Csem (P: Policy) (A: Allocator P).
       \/ Int64.unsigned ofs + sizeof ce ty <= Int64.unsigned ofs' ->
       loadbytes m (Int64.unsigned ofs') (sizeof ce ty) = MemorySuccess bytes ->
       (* check on this: Mem.loadtags m b' (Int64.unsigned ofs') (sizeof ce ty) = Some lts ->*)
-      storebytes m (Int64.unsigned ofs) bytes lts = MemoryFail msg ->
+      storebytes m (Int64.unsigned ofs) bytes lts = MemoryFail msg failure ->
       assign_loc ty m ofs pt Full (Vlong ofs', pt') E0
-                 (MemoryFail msg) lts
+                 (MemoryFail msg failure) lts
   | assign_loc_bitfield: forall sz sg pos width v m' v' lts,
       store_bitfield ty sz sg pos width m (Int64.unsigned ofs) pt v lts m' v' ->
       assign_loc ty m ofs pt (Bits sz sg pos width) v E0 (MemorySuccess (m', v')) lts.
@@ -193,13 +193,12 @@ Module Csem (P: Policy) (A: Allocator P).
             match store (chunk_of_type (typ_of_type ty)) m' base init' lts' with
             | MemorySuccess m'' =>
                 do_alloc_variables pct' (PTree.set id (PUB (base, bound, pt')) e) m'' l'
-            | _ =>
-                do_alloc_variables pct' (PTree.set id (PUB (base, bound, pt')) e) m' l'
+            | MemoryFail msg failure => MemoryFail msg failure
             end
         | MemorySuccess _, PolicyFail msg params =>
             MemorySuccess (PolicyFail msg params)
-        | MemoryFail msg, _ =>
-            MemoryFail msg
+        | MemoryFail msg failure, _ =>
+            MemoryFail msg failure
         end
     end.
 
@@ -302,19 +301,19 @@ Module Csem (P: Policy) (A: Allocator P).
         lred (Efield (Eval (Vlong ofs, pt) (Tunion id a)) f ty) pct te m
              (Eloc (Lmem (Int64.add ofs (Int64.repr delta)) pt' bf) ty) te m.
 
-    Inductive lfailred: expr -> tag -> string -> list tag -> Prop :=
+    Inductive lfailred: expr -> tag -> string -> FailureClass -> list tag -> Prop :=
     | failred_field_struct: forall ofs pt id co a f ty pct delta bf msg params,
         ce!id = Some co ->
         field_offset ce f (co_members co) = OK (delta, bf) ->
         FieldT ce pct pt ty id = PolicyFail msg params ->
         lfailred (Efield (Eval (Vlong ofs, pt) (Tstruct id a)) f ty) pct
-                 msg params
+                 msg OtherFailure params
     | failred_field_union: forall ofs pt id co a f ty pct delta bf msg params,
         ce!id = Some co ->
         union_field_offset ce f (co_members co) = OK (delta, bf) ->
         FieldT ce pct pt ty id = PolicyFail msg params ->
         lfailred (Efield (Eval (Vlong ofs, pt) (Tunion id a)) f ty) pct
-                 msg params
+                 msg OtherFailure params
     .
 
     (** Head reductions for r-values *)
@@ -504,142 +503,142 @@ Module Csem (P: Policy) (A: Allocator P).
              PCT' (Eval vres ty) te m'.
 
     (** Failstops for r-values *)
-    Inductive rfailred (PCT:tag) : expr -> tenv -> mem -> trace -> string -> list tag -> Prop :=
+    Inductive rfailred (PCT:tag) : expr -> tenv -> mem -> trace -> string -> FailureClass -> list tag -> Prop :=
     | failred_const: forall v ty te m msg params,
         ConstT PCT = PolicyFail msg params ->
         rfailred PCT (Econst v ty) te m E0
-                 msg params
-    | failred_rvalof_mem0: forall ofs pt bf ty te m tr msg,
-        deref_loc ty m ofs pt bf tr (MemoryFail msg) ->
+                 msg OtherFailure params
+    | failred_rvalof_mem0: forall ofs pt bf ty te m tr msg failure,
+        deref_loc ty m ofs pt bf tr (MemoryFail msg failure) ->
         rfailred PCT (Evalof (Eloc (Lmem ofs pt bf) ty) ty) te m tr
-                 ("Baseline Policy Failure in deref_loc: " ++ msg) []
+                 ("Baseline Policy Failure in deref_loc: " ++ msg) failure []
     | failred_rvalof_mem1: forall ofs pt lts bf ty te m tr v vt msg params,
         deref_loc ty m ofs pt bf tr (MemorySuccess ((v,vt), lts)) ->
         LoadT PCT pt vt lts = PolicyFail msg params ->
         rfailred PCT (Evalof (Eloc (Lmem ofs pt bf) ty) ty) te m tr
-                 msg params
+                 msg OtherFailure params
     | failred_rvalof_mem2: forall ofs pt lts bf ty te m tr v vt vt' msg params,
         deref_loc ty m ofs pt bf tr (MemorySuccess ((v,vt), lts)) ->
         LoadT PCT pt vt lts = PolicySuccess vt' ->
         AccessT PCT vt' = PolicyFail msg params ->
         rfailred PCT (Evalof (Eloc (Lmem ofs pt bf) ty) ty) te m tr
-                 msg params
+                 msg OtherFailure params
     | failred_rvalof_tmp: forall b ty te m v vt msg params,
         te!b = Some (v,vt) ->
         AccessT PCT vt = PolicyFail msg params ->
         rfailred PCT (Evalof (Eloc (Ltmp b) ty) ty) te m E0
-                 msg params
+                 msg OtherFailure params
     | failred_unop: forall op v1 vt1 ty1 ty te m v msg params,
         sem_unary_operation op v1 ty1 m = Some v ->
         UnopT op PCT vt1 = PolicyFail msg params ->
         rfailred PCT (Eunop op (Eval (v1,vt1) ty1) ty) te m E0
-                 msg params
+                 msg OtherFailure params
     | failred_binop: forall op v1 vt1 ty1 v2 vt2 ty2 ty te m v msg params,
         sem_binary_operation ce op v1 ty1 v2 ty2 m = Some v ->
         BinopT op PCT vt1 vt2 = PolicyFail msg params ->
         rfailred PCT (Ebinop op (Eval (v1,vt1) ty1) (Eval (v2,vt2) ty2) ty) te m E0
-                 msg params
+                 msg OtherFailure params
     | failred_seqand: forall v1 vt1 ty1 r2 ty b te m msg params,
         bool_val v1 ty1 m = Some b ->
         ExprSplitT PCT vt1 = PolicyFail msg params ->
         rfailred PCT (Eseqand (Eval (v1,vt1) ty1) r2 ty) te m E0
-                 msg params
+                 msg OtherFailure params
     | failred_seqor: forall v1 vt1 ty1 r2 ty b te m msg params,
         bool_val v1 ty1 m = Some b ->
         ExprSplitT PCT vt1 = PolicyFail msg params ->
         rfailred PCT (Eseqor (Eval (v1,vt1) ty1) r2 ty) te m E0
-                 msg params
+                 msg OtherFailure params
     | failred_condition: forall v1 vt1 ty1 r1 r2 ty b te m msg params,
         bool_val v1 ty1 m = Some b ->
         ExprSplitT PCT vt1 = PolicyFail msg params ->
         rfailred PCT (Econdition (Eval (v1,vt1) ty1) r1 r2 ty) te m E0
-                 msg params
+                 msg OtherFailure params
     | failred_sizeof: forall ty1 ty te m msg params,
         ConstT PCT = PolicyFail msg params ->
         rfailred PCT (Esizeof ty1 ty) te m E0
-                 msg params
+                 msg OtherFailure params
     | failred_alignof: forall ty1 ty te m msg params,
         ConstT PCT = PolicyFail msg params ->
         rfailred PCT (Ealignof ty1 ty) te m E0
-                 msg params
-    | failred_assign_mem0: forall ofs ty1 pt bf v2 vt2 ty2 te m t1 v' msg,
+                 msg OtherFailure params
+    | failred_assign_mem0: forall ofs ty1 pt bf v2 vt2 ty2 te m t1 v' msg failure,
         sem_cast v2 ty2 ty1 m = Some v' ->
-        deref_loc ty1 m ofs pt bf t1 (MemoryFail msg) ->
+        deref_loc ty1 m ofs pt bf t1 (MemoryFail msg failure) ->
         rfailred PCT (Eassign (Eloc (Lmem ofs pt bf) ty1) (Eval (v2, vt2) ty2) ty1) te m t1
-                 ("Baseline Policy Failure in deref_loc: " ++ msg) []
+                 ("Baseline Policy Failure in deref_loc: " ++ msg) failure []
     | failred_assign_mem1: forall ofs ty1 pt bf v1 vt1 v2 vt2 ty2 te m t1 v' lts msg params,
         sem_cast v2 ty2 ty1 m = Some v' ->
         deref_loc ty1 m ofs pt bf t1 (MemorySuccess ((v1,vt1), lts)) ->
         AssignT PCT vt1 vt2 = PolicyFail msg params ->
         rfailred PCT (Eassign (Eloc (Lmem ofs pt bf) ty1) (Eval (v2, vt2) ty2) ty1) te m t1
-             msg params
+             msg OtherFailure params
     | failred_assign_mem2: forall ofs ty1 pt bf v1 vt1 v2 vt2 ty2 te m t1 v' PCT' vt' lts msg params,
         sem_cast v2 ty2 ty1 m = Some v' ->
         deref_loc ty1 m ofs pt bf t1 (MemorySuccess ((v1,vt1), lts)) ->
         AssignT PCT vt1 vt2 = PolicySuccess (PCT',vt') ->
         StoreT PCT' pt vt' lts = PolicyFail msg params ->
         rfailred PCT (Eassign (Eloc (Lmem ofs pt bf) ty1) (Eval (v2, vt2) ty2) ty1) te m t1
-             msg params
-    | failred_assign_mem3: forall ofs ty1 pt bf v1 vt1 v2 vt2 ty2 te m t1 v' PCT' vt' lts PCT'' vt'' lts' t2 msg,
+             msg OtherFailure params
+    | failred_assign_mem3: forall ofs ty1 pt bf v1 vt1 v2 vt2 ty2 te m t1 v' PCT' vt' lts PCT'' vt'' lts' t2 msg failure,
         sem_cast v2 ty2 ty1 m = Some v' ->
         deref_loc ty1 m ofs pt bf t1 (MemorySuccess ((v1,vt1), lts)) ->
         AssignT PCT vt1 vt2 = PolicySuccess (PCT',vt') ->
         StoreT PCT' pt vt' lts = PolicySuccess (PCT'',vt'',lts') ->
-        assign_loc ty1 m ofs pt bf (v',vt'') t2 (MemoryFail msg) lts' ->
+        assign_loc ty1 m ofs pt bf (v',vt'') t2 (MemoryFail msg failure) lts' ->
         rfailred PCT (Eassign (Eloc (Lmem ofs pt bf) ty1) (Eval (v2, vt2) ty2) ty1) te m (t1++t2)
-             ("Baseline Policy Failure in assign_loc: " ++ msg) []
+             ("Baseline Policy Failure in assign_loc: " ++ msg) failure []
 
     | failred_assign_tmp: forall b ty1 v1 vt1 v2 vt2 ty2 te m v msg params,
         te!b = Some (v1,vt1) ->
         sem_cast v2 ty2 ty1 m = Some v ->
         AssignT PCT vt1 vt2 = PolicyFail msg params ->
         rfailred PCT (Eassign (Eloc (Ltmp b) ty1) (Eval (v2, vt2) ty2) ty1) te m E0
-                 msg params
-    | failred_assignop_mem0: forall op ofs pt ty1 bf v2 vt2 ty2 tyres te m t1 msg,
-        deref_loc ty1 m ofs pt bf t1 (MemoryFail msg) ->
+                 msg OtherFailure params
+    | failred_assignop_mem0: forall op ofs pt ty1 bf v2 vt2 ty2 tyres te m t1 msg failure,
+        deref_loc ty1 m ofs pt bf t1 (MemoryFail msg failure) ->
         rfailred PCT (Eassignop op (Eloc (Lmem ofs pt bf) ty1) (Eval (v2,vt2) ty2) tyres ty1) te m t1
-                 ("Baseline Policy Failure in deref_loc: " ++ msg) []
+                 ("Baseline Policy Failure in deref_loc: " ++ msg) failure []
     | failred_assignop_mem1: forall op ofs pt ty1 bf v2 vt2 ty2 tyres te m t1 v1 vt1 lts msg params,
         deref_loc ty1 m ofs pt bf t1 (MemorySuccess ((v1,vt1), lts)) ->
         LoadT PCT pt vt1 lts = PolicyFail msg params ->
         rfailred PCT (Eassignop op (Eloc (Lmem ofs pt bf) ty1) (Eval (v2,vt2) ty2) tyres ty1) te m t1
-                 msg params
+                 msg OtherFailure params
     | failred_assignop_mem2: forall op ofs pt ty1 bf v2 vt2 ty2 tyres te m t1 v1 vt1 vt1' lts msg params,
         deref_loc ty1 m ofs pt bf t1 (MemorySuccess ((v1,vt1), lts)) ->
         LoadT PCT pt vt1 lts = PolicySuccess vt1' ->
         AccessT PCT vt1' = PolicyFail msg params ->
         rfailred PCT (Eassignop op (Eloc (Lmem ofs pt bf) ty1) (Eval (v2,vt2) ty2) tyres ty1) te m t1
-                 msg params
+                 msg OtherFailure params
     | failred_assignop_tmp: forall op b ty1 v2 vt2 ty2 tyres te m v1 vt1 msg params,
         te!b = Some (v1,vt1) ->
         AccessT PCT vt1 = PolicyFail msg params ->
         rfailred PCT (Eassignop op (Eloc (Ltmp b) ty1) (Eval (v2,vt2) ty2) tyres ty1) te m E0
-                 msg params
-    | failred_postincr_mem0: forall id ofs pt ty bf te m tr msg,
-        deref_loc ty m ofs pt bf tr (MemoryFail msg) ->
+                 msg OtherFailure params
+    | failred_postincr_mem0: forall id ofs pt ty bf te m tr msg failure,
+        deref_loc ty m ofs pt bf tr (MemoryFail msg failure) ->
         rfailred PCT (Epostincr id (Eloc (Lmem ofs pt bf) ty) ty) te m tr
-                 ("Baseline Policy Failure in deref_loc: " ++ msg) []
+                 ("Baseline Policy Failure in deref_loc: " ++ msg) failure []
     | failred_postincr_mem1: forall id ofs pt ty bf te m tr v vt lts msg params,
         deref_loc ty m ofs pt bf tr (MemorySuccess ((v,vt), lts)) ->
         LoadT PCT pt vt lts = PolicyFail msg params ->
         rfailred PCT (Epostincr id (Eloc (Lmem ofs pt bf) ty) ty) te m tr
-                 msg params                 
+                 msg OtherFailure params                 
     | failred_postincr_mem2: forall id ofs pt ty bf te m tr v vt vt' lts msg params,
         deref_loc ty m ofs pt bf tr (MemorySuccess ((v,vt), lts)) ->
         LoadT PCT pt vt lts = PolicySuccess vt' ->
         AccessT PCT vt' = PolicyFail msg params ->
         rfailred PCT (Epostincr id (Eloc (Lmem ofs pt bf) ty) ty) te m tr
-                 msg params
+                 msg OtherFailure params
     | failred_postincr_tmp: forall id b ty te m v vt msg params,
         te!b = Some (v,vt) ->
         AccessT PCT vt = PolicyFail msg params ->
         rfailred PCT (Epostincr id (Eloc (Ltmp b) ty) ty) te m E0
-                 msg params
+                 msg OtherFailure params
     | failred_paren: forall v1 vt1 ty1 ty2 ty te m v msg params,
         sem_cast v1 ty1 ty2 m = Some v ->
         ExprJoinT PCT vt1 = PolicyFail msg params ->
         rfailred PCT (Eparen (Eval (v1,vt1) ty1) ty2 ty) te m E0
-                 msg params
+                 msg OtherFailure params
     | failred_call: forall vf vft tyf te m tyargs tyres cconv el ty fd vargs msg params,
         Genv.find_funct ge vf = Some fd ->
         cast_arguments m el tyargs vargs ->
@@ -647,14 +646,14 @@ Module Csem (P: Policy) (A: Allocator P).
         classify_fun tyf = fun_case_f tyargs tyres cconv ->
         CallT PCT vft = PolicyFail msg params ->
         rfailred PCT (Ecall (Eval (vf, vft) tyf) el ty) te m E0
-                 msg params
+                 msg OtherFailure params
     | failred_cast_int_int: forall ty v1 vt1 ty1 te m v msg params,
         (forall ty' attr, ty1 <> Tpointer ty' attr) ->
         (forall ty' attr, ty <> Tpointer ty' attr) ->
         sem_cast v1 ty1 ty m = Some v ->
         IICastT PCT vt1 ty = PolicyFail msg params -> 
         rfailred PCT (Ecast (Eval (v1,vt1) ty1) ty) te m E0
-             msg params
+             msg OtherFailure params
     | failred_cast_int_ptr: forall ty v1 vt1 ty1 te m v ofs tr v2 vt2 lts ty' attr msg params,
         (forall ty' attr, ty1 <> Tpointer ty' attr) ->
         ty = Tpointer ty' attr ->
@@ -663,7 +662,7 @@ Module Csem (P: Policy) (A: Allocator P).
         deref_loc ty m ofs vt1 Full tr (MemorySuccess ((v2,vt2), lts)) ->
         IPCastT PCT vt1 lts ty = PolicyFail msg params->
         rfailred PCT (Ecast (Eval (v1,vt1) ty1) ty) te m tr
-             msg params
+             msg OtherFailure params
     | failred_cast_ptr_int: forall ty v1 vt1 ty1 te m v ofs tr v2 vt2 lts ty' attr msg params,
         ty1 = Tpointer ty' attr ->
         (forall ty' attr, ty <> Tpointer ty' attr) ->
@@ -672,7 +671,7 @@ Module Csem (P: Policy) (A: Allocator P).
         deref_loc ty1 m ofs vt1 Full tr (MemorySuccess ((v2,vt2), lts)) ->
         PICastT PCT vt1 lts ty = PolicyFail msg params ->
         rfailred PCT (Ecast (Eval (v1,vt1) ty1) ty) te m tr
-             msg params
+             msg OtherFailure params
     | failred_cast_ptr_ptr: forall ty v1 vt1 ty1 te m v ofs ofs1 tr tr1 v2 vt2 v3 vt3 lts lts1 ty1' attr1 ty' attr2 msg params,
         ty1 = Tpointer ty1' attr1 ->
         ty = Tpointer ty' attr2 ->
@@ -683,7 +682,7 @@ Module Csem (P: Policy) (A: Allocator P).
         deref_loc ty m ofs vt1 Full tr (MemorySuccess ((v3,vt3), lts)) ->
         PPCastT PCT vt1 lts1 lts ty = PolicyFail msg params ->
         rfailred PCT (Ecast (Eval (v1,vt1) ty1) ty) te m (tr1 ++ tr)
-             msg params
+             msg OtherFailure params
     .
     
     (** Head reduction for function calls.
@@ -796,16 +795,16 @@ Module Csem (P: Policy) (A: Allocator P).
         lred e PCT te m e' te' m' ->
         context LV to C ->
         imm_safe to (C e) PCT te m
-    | imm_safe_lfailred: forall PCT to C e te m msg params,
-        lfailred e PCT msg params ->
+    | imm_safe_lfailred: forall PCT to C e te m msg failure params,
+        lfailred e PCT msg failure params ->
         context LV to C ->
         imm_safe to (C e) PCT te m                 
     | imm_safe_rred: forall PCT PCT' to C e te m t e' te' m',
         rred PCT e te m t PCT' e' te' m' ->
         context RV to C ->
         imm_safe to (C e) PCT te m
-    | imm_safe_rfailred: forall PCT to C e te m tr msg param,
-        rfailred PCT e te m tr msg param ->
+    | imm_safe_rfailred: forall PCT to C e te m tr msg failure param,
+        rfailred PCT e te m tr msg failure param ->
         context RV to C ->
         imm_safe to (C e) PCT te m
     | imm_safe_callred: forall PCT to C e te m fd fpt args ty,
@@ -968,6 +967,7 @@ Inductive state: Type :=
 | Stuckstate                          (**r undefined behavior occurred *)
 | Failstop                            (**r tag failure occurred, propagate details *)
     (msg: string)
+    (failure: FailureClass)
     (params: list tag) : state
 .
 (** Find the statement and manufacture the continuation
@@ -1044,16 +1044,16 @@ Inductive estep: state -> trace -> state -> Prop :=
     context K RV C -> ~(imm_safe e K a PCT te m) ->
     estep (ExprState f PCT (C a) k e te m)
           E0 Stuckstate
-| step_lfail: forall C f PCT a k e te m msg params,
-    lfailred a PCT msg params ->
+| step_lfail: forall C f PCT a k e te m msg failure params,
+    lfailred a PCT msg failure params ->
     context LV RV C ->
     estep (ExprState f PCT (C a) k e te m)
-          E0 (Failstop msg params)
-| step_rfail: forall C f PCT a k e te m tr msg params,
-    rfailred PCT a te m tr msg params ->
+          E0 (Failstop msg failure params)
+| step_rfail: forall C f PCT a k e te m tr msg failure params,
+    rfailred PCT a te m tr msg failure params ->
     context RV RV C ->
     estep (ExprState f PCT (C a) k e te m)
-          tr (Failstop msg params).
+          tr (Failstop msg failure params).
 
 Fixpoint option_zip {A:Type} {B:Type} (l1 : list A) (l2 : list B) : list (A*option B) :=
   match l1, l2 with
@@ -1166,31 +1166,31 @@ Inductive sstep: state -> trace -> state -> Prop :=
     bool_val v ty m = Some b ->
     SplitT PCT vt olbl = PolicyFail msg params ->
     sstep (ExprState f PCT (Eval (v,vt) ty) (Kifthenelse s1 s2 olbl k) e te m)
-          E0 (Failstop msg params)
+          E0 (Failstop msg OtherFailure params)
 | step_while_fail: forall f PCT msg params v vt ty x s loc olbl k e te m b,
     bool_val v ty m = Some b ->
     SplitT PCT vt olbl = PolicyFail msg params ->
     sstep (ExprState f PCT (Eval (v,vt) ty) (Kwhile1 x s olbl loc k) e te m)
-          E0 (Failstop msg params)
+          E0 (Failstop msg OtherFailure params)
 | step_dowhile_fail: forall f PCT msg params v vt ty x s loc olbl k e te m b,
     bool_val v ty m = Some b ->
     SplitT PCT vt olbl = PolicyFail msg params ->
     sstep (ExprState f PCT (Eval (v,vt) ty) (Kdowhile2 x s olbl loc k) e te m)
-          E0 (Failstop msg params)
+          E0 (Failstop msg OtherFailure params)
 | step_for_fail: forall f PCT msg params v vt ty a2 a3 s loc olbl k e te m b,
     bool_val v ty m = Some b ->
     SplitT PCT vt olbl = PolicyFail msg params ->
     sstep (ExprState f PCT (Eval (v,vt) ty) (Kfor2 a2 a3 s olbl loc k) e te m)
-          E0 (Failstop msg params)
+          E0 (Failstop msg OtherFailure params)
           
 | step_return_0: forall f PCT loc k e te m m',
     stkfree m (fold_left Z.add (sizes_of_env e) 0) = MemorySuccess m' ->
     sstep (State f PCT (Sreturn None loc) k e te m)
           E0 (Returnstate (Internal f) PCT (Vundef, def_tag) (call_cont k) m')
-| step_return_fail_0: forall f PCT loc k e te m msg,
-    stkfree m (fold_left Z.add (sizes_of_env e) 0) = MemoryFail msg ->
+| step_return_fail_0: forall f PCT loc k e te m msg failure,
+    stkfree m (fold_left Z.add (sizes_of_env e) 0) = MemoryFail msg failure ->
     sstep (State f PCT (Sreturn None loc) k e te m)
-          E0 (Failstop ("Baseline Policy Failure in free_list: " ++ msg) [])
+          E0 (Failstop ("Baseline Policy Failure in free_list: " ++ msg) failure [])
 | step_return_1: forall f PCT loc x k e te m,
     sstep (State f PCT (Sreturn (Some x) loc) k e te m)
           E0 (ExprState f PCT x (Kreturn k) e te m)
@@ -1199,21 +1199,21 @@ Inductive sstep: state -> trace -> state -> Prop :=
     stkfree m (fold_left Z.add (sizes_of_env e) 0) = MemorySuccess m' ->
     sstep (ExprState f PCT (Eval (v,vt) ty) (Kreturn k) e te m)
           E0 (Returnstate (Internal f) PCT (v',vt) (call_cont k) m')
-| step_return_fail_2:  forall f PCT v vt ty k e te m v' msg,
+| step_return_fail_2:  forall f PCT v vt ty k e te m v' msg failure,
     sem_cast v ty f.(fn_return) m = Some v' ->
-    stkfree m (fold_left Z.add (sizes_of_env e) 0) = MemoryFail msg ->
+    stkfree m (fold_left Z.add (sizes_of_env e) 0) = MemoryFail msg failure ->
     sstep (ExprState f PCT (Eval (v,vt) ty) (Kreturn k) e te m)
-          E0 (Failstop ("Baseline Policy Failure in free_list: " ++ msg) [])
+          E0 (Failstop ("Baseline Policy Failure in free_list: " ++ msg) failure [])
 | step_skip_call: forall f PCT k e te m m',
     is_call_cont k ->
     stkfree m (fold_left Z.add (sizes_of_env e) 0) = MemorySuccess m' ->
     sstep (State f PCT Sskip k e te m)
           E0 (Returnstate (Internal f) PCT (Vundef, def_tag) k m')
-| step_skip_call_fail: forall f PCT k e te m msg,
+| step_skip_call_fail: forall f PCT k e te m msg failure,
     is_call_cont k ->
-    stkfree m (fold_left Z.add (sizes_of_env e) 0) = MemoryFail msg ->
+    stkfree m (fold_left Z.add (sizes_of_env e) 0) = MemoryFail msg failure ->
     sstep (State f PCT Sskip k e te m)
-          E0 (Failstop ("Baseline Policy Failure in free_list: " ++ msg) [])
+          E0 (Failstop ("Baseline Policy Failure in free_list: " ++ msg) failure [])
           
 | step_switch: forall f PCT x sl loc k e te m,
     sstep (State f PCT (Sswitch x sl loc) k e te m)
@@ -1246,25 +1246,25 @@ Inductive sstep: state -> trace -> state -> Prop :=
       MemorySuccess (PolicySuccess (PCT'', e, m')) ->
     sstep (Callstate (Internal f) PCT vft vargs k m)
           E0 (State f PCT' f.(fn_body) k e empty_tenv m')
-| step_internal_function_fail0: forall f PCT vft PCT' vargs k m msg,
+| step_internal_function_fail0: forall f PCT vft PCT' vargs k m msg failure,
     list_norepet (var_names (fn_params f) ++ var_names (fn_vars f)) ->
     CallT PCT vft = PolicySuccess PCT' ->
     do_alloc_variables PCT empty_env m (option_zip (f.(fn_params) ++ f.(fn_vars)) vargs) =
-      MemoryFail msg ->
+      MemoryFail msg failure ->
     sstep (Callstate (Internal f) PCT vft vargs k m)
-          E0 (Failstop ("Baseline Policy Failure in do_alloc_variables" ++ msg) [])
+          E0 (Failstop ("Baseline Policy Failure in do_alloc_variables" ++ msg) failure [])
 | step_internal_function_fail1: forall f PCT vft vargs k m msg params,
     list_norepet (var_names (fn_params f) ++ var_names (fn_vars f)) ->
     CallT PCT vft = PolicyFail msg params ->
     sstep (Callstate (Internal f) PCT vft vargs k m)
-          E0 (Failstop msg params)
+          E0 (Failstop msg OtherFailure params)
 | step_internal_function_fail2: forall f PCT vft PCT' vargs k m msg params,
     list_norepet (var_names (fn_params f) ++ var_names (fn_vars f)) ->
     CallT PCT vft = PCT' ->
     do_alloc_variables PCT empty_env m (option_zip (f.(fn_params) ++ f.(fn_vars)) vargs) =
       MemorySuccess (PolicyFail msg params) ->
     sstep (Callstate (Internal f) PCT vft vargs k m)
-          E0 (Failstop msg params)
+          E0 (Failstop msg OtherFailure params)
           
 | step_external_function: forall ef PCT vft PCT' targs tres cc vargs k m vres t m',
     external_call ef ge vargs PCT def_tag m t (MemorySuccess (PolicySuccess (vres, PCT', m'))) ->
@@ -1278,7 +1278,7 @@ Inductive sstep: state -> trace -> state -> Prop :=
 | step_returnstate_fail: forall v vt f f' PCT oldpct e C ty k te m msg params,
     RetT PCT oldpct vt = PolicyFail msg params ->
     sstep (Returnstate (Internal f') PCT (v,vt) (Kcall f e te oldpct C ty k) m)
-          E0 (Failstop msg params)
+          E0 (Failstop msg OtherFailure params)
 .
 
 Definition step (S: state) (t: trace) (S': state) : Prop :=
@@ -1311,7 +1311,7 @@ End SEM.
     match globalenv p with
     | MemorySuccess (ge,ce,_) =>
         MemorySuccess (Semantics_gen (fun ge => step ge ce) (initial_state p) final_state ge)
-    | MemoryFail msg => MemoryFail msg
+    | MemoryFail msg failure => MemoryFail msg failure
     end.
 
   (** This semantics has the single-event property. *)

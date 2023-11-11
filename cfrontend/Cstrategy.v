@@ -480,7 +480,7 @@ Proof.
 Qed.
 
 Lemma lfailred_kind:
-  forall a PCT msg params, lfailred ce a PCT msg params -> expr_kind a = LV.
+  forall a PCT msg failure params, lfailred ce a PCT msg failure params -> expr_kind a = LV.
 Proof.
   induction 1; auto.
 Qed.
@@ -492,7 +492,7 @@ Proof.
 Qed.
 
 Lemma rfailred_kind:
-  forall PCT a m e tr msg params, rfailred ge ce PCT a e m tr msg params -> expr_kind a = RV.
+  forall PCT a m e tr msg failure params, rfailred ge ce PCT a e m tr msg failure params -> expr_kind a = RV.
 Proof.
   induction 1; auto.
 Qed.

@@ -74,14 +74,14 @@ Module Type Allocator (P : Policy).
     let (m,st) := m in
     match Mem.store chunk m addr v lts with
     | MemorySuccess m' => MemorySuccess (m',st)
-    | MemoryFail msg => MemoryFail msg
+    | MemoryFail msg failure => MemoryFail msg failure
     end.
 
   Definition storebytes (m:mem) (ofs:Z) (bytes:list memval) (lts:list tag) :=
     let (m,st) := m in
     match Mem.storebytes m ofs bytes lts with
     | MemorySuccess m' => MemorySuccess (m',st)
-    | MemoryFail msg => MemoryFail msg
+    | MemoryFail msg failure => MemoryFail msg failure
     end.
   
 End Allocator.
@@ -124,7 +124,7 @@ Module ConcreteAllocator (P : Policy) : Allocator P.
     in
     match store Mint64 m base (rec, vt) [lt;lt;lt;lt;lt;lt;lt;lt] with
     | MemorySuccess m'' => Some m''
-    | MemoryFail _ => None
+    | MemoryFail _ _ => None
     end.
 
   Definition header_size := size_chunk Mint64.
@@ -179,9 +179,9 @@ Module ConcreteAllocator (P : Policy) : Allocator P.
                          (repeat lt (Z.to_nat size)) with
         | MemorySuccess m'' =>
             MemorySuccess ((m'',sp), base + header_size, base + header_size + size)
-        | MemoryFail msg => MemoryFail msg
+        | MemoryFail msg failure => MemoryFail msg failure
         end
-    | None => MemoryFail "Failure in find_free"
+    | None => MemoryFail "Failure in find_free" OtherFailure
     end.
 
 
@@ -199,10 +199,10 @@ Module ConcreteAllocator (P : Policy) : Allocator P.
                                (repeat lt (Z.to_nat sz)) with
               | MemorySuccess m'' =>
                   Some (w, E0, (MemorySuccess (PolicySuccess((Vlong (Int64.repr (base + header_size)), def_tag), PCT', m''))))
-              | MemoryFail msg => Some (w, E0, (MemoryFail msg))
+              | MemoryFail msg failure => Some (w, E0, (MemoryFail msg failure))
               end
-          | PolicyFail msg params =>
-              Some (w, E0, (MemorySuccess (PolicyFail msg params)))
+          | PolicyFail msg failure params =>
+              Some (w, E0, (MemorySuccess (PolicyFail msg failure params)))
           end
       | _ => None
       end. *)
@@ -217,12 +217,12 @@ Module ConcreteAllocator (P : Policy) : Allocator P.
             match update_header m (addr-header_size) false sz vt2 lt with
             | Some m' =>
                 MemorySuccess (PolicySuccess (PCT', (m', sp)))
-            | None => MemoryFail "Free failing"
+            | None => MemoryFail "Free failing" OtherFailure
             end
         | PolicyFail msg params =>
             MemorySuccess (PolicyFail msg params)
         end
-    | None => MemoryFail "Free failing"
+    | None => MemoryFail "Free failing" OtherFailure
     end.
   
   Fixpoint globals (m : Mem.mem) (gs : list (ident*Z)) (next : Z) : (Mem.mem * PTree.t (Z*Z)) :=
@@ -247,14 +247,14 @@ Module ConcreteAllocator (P : Policy) : Allocator P.
     let (m,sp) := m in
     match Mem.store chunk m addr v lts with
     | MemorySuccess m' => MemorySuccess (m',sp)
-    | MemoryFail msg => MemoryFail msg
+    | MemoryFail msg failure => MemoryFail msg failure
     end.
 
   Definition storebytes (m:mem) (ofs:Z) (bytes:list memval) (lts:list tag) :=
     let (m,st) := m in
     match Mem.storebytes m ofs bytes lts with
     | MemorySuccess m' => MemorySuccess (m',st)
-    | MemoryFail msg => MemoryFail msg
+    | MemoryFail msg failure => MemoryFail msg failure
     end.
   
 End ConcreteAllocator.
@@ -311,7 +311,7 @@ Module FLAllocator (P : Policy) : Allocator P.
     | Some (base, bound, fl') =>
         let regions' := ZMap.set base (Some (bound,vt_head)) heap.(regions) in
         MemorySuccess ((m, (sp, mkheap regions' fl')), base, bound)
-    | None => MemoryFail "Out of memory"
+    | None => MemoryFail "Out of memory" OtherFailure
     end.
 
   Definition heapfree (m : mem) (base : Z) (rule : tag -> PolicyResult (tag*tag*tag*tag))
@@ -327,7 +327,7 @@ Module FLAllocator (P : Policy) : Allocator P.
         | PolicyFail msg params =>
             MemorySuccess (PolicyFail msg params)
         end
-    | None => MemoryFail "Bad free"
+    | None => MemoryFail "Bad free" OtherFailure
     end.
 
   Fixpoint globals (m : Mem.mem) (gs : list (ident*Z)) (next : Z) : (Mem.mem * PTree.t (Z*Z)) :=
@@ -352,14 +352,14 @@ Module FLAllocator (P : Policy) : Allocator P.
     let (m,sp) := m in
     match Mem.store chunk m addr v lts with
     | MemorySuccess m' => MemorySuccess (m',sp)
-    | MemoryFail msg => MemoryFail msg
+    | MemoryFail msg failure => MemoryFail msg failure
     end.
 
   Definition storebytes (m:mem) (ofs:Z) (bytes:list MD.memval) (lts:list tag) :=
     let (m,st) := m in
     match Mem.storebytes m ofs bytes lts with
     | MemorySuccess m' => MemorySuccess (m',st)
-    | MemoryFail msg => MemoryFail msg
+    | MemoryFail msg failure => MemoryFail msg failure
     end.
   
 End FLAllocator.
