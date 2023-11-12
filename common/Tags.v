@@ -356,16 +356,16 @@ Module PNVI <: Policy.
 
   Definition LoadT (pct pt vt: tag) (lts : list tag) : PolicyResult tag :=
     match pt with
-    | N => PolicyFail "PNVI::LoadT X Failure" ([pct;pt;vt]++lts)
+    | N => PolicyFail "PNVI::LoadT::No_Color" ([pct;pt;vt]++lts)
     | _ => if forallb (tag_eq_dec pt) lts then PolicySuccess vt 
-           else (PolicyFail "PNVI::LoadT tag_eq_dec Failure" ([pct;pt;vt]++lts))
+           else (PolicyFail "PNVI::LoadT::Wrong_Color" ([pct;pt;vt]++lts))
     end.
 
   Definition StoreT (pct pt vt : tag) (lts : list tag) : PolicyResult (tag * tag * list tag) :=
     match pt with
-    | N => (PolicyFail "PNVI::StoreT X Failure" ([pct;pt;vt]++lts))
+    | N => (PolicyFail "PNVI::StoreT::No_Color" ([pct;pt;vt]++lts))
     | _ => if forallb (tag_eq_dec pt) lts then PolicySuccess (pct,vt,lts) 
-           else (PolicyFail "PNVI::StoreT tag_eq_dec Failure" ([pct;pt;vt]++lts))
+           else (PolicyFail "PNVI::StoreT::Wrong_Color" ([pct;pt;vt]++lts))
     end.
   
   Definition AccessT (pct vt : tag) : PolicyResult tag := PolicySuccess vt.

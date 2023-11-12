@@ -102,7 +102,7 @@ Module ConcreteAllocator (P : Policy) : Allocator P.
     let sp' := sp - sz in
     let aligned_sp := floor sp' al in
     MemorySuccess ((m,aligned_sp),aligned_sp,sp).
-
+  
   Definition stkfree (m: mem) (base bound: Z) : MemoryResult mem :=
     let '(m,sp) := m in
     MemorySuccess (m,base).
@@ -130,7 +130,8 @@ Module ConcreteAllocator (P : Policy) : Allocator P.
     end.
 
   Definition header_size := size_chunk Mint64.
-    
+  Definition header_align := align_chunk Mint64.
+  
   Fixpoint find_free (c : nat) (m : Mem.mem) (base : Z) (sz : Z) (vt lt : tag) : option (Mem.mem*Z) :=
     match c with
     | O => None
@@ -147,24 +148,24 @@ Module ConcreteAllocator (P : Policy) : Allocator P.
         | Some (false (* block is free*), bs, vt') =>
             (* [base ][=================][next] *)
             (* [hd_sz][        bs       ] *)
-            let remain := bs - sz in
-            if (bs <? sz)%Z then
+            let padded_sz := align sz header_align in
+            if (bs <? padded_sz)%Z then
               (* there is no room *)
               let next := base + bs in find_free c' m next sz vt lt
             else
-              if (sz + header_size <? bs)%Z then
-                (* [base ][========][ new  ][=============][next] *)
-                (* [hd_sz][   sz   ][rec_sz][bs-(sz+hd_sz)][next] *)
+              if (padded_sz + header_size <? bs)%Z then
+                (* [base ][========|==][ new  ][=============][next] *)
+                (* [hd_sz][   sz   |/8][rec_sz][bs-(sz+hd_sz)][next] *)
                 (* There is enough room to split *)
-                let new := base + header_size + sz in
-                let new_sz := bs - (header_size + sz) in
-                do m' <- update_header m base true sz vt lt;
+                let new := base + header_size + padded_sz in
+                let new_sz := bs - (header_size + padded_sz) in
+                do m' <- update_header m base true padded_sz vt lt;
                 do m'' <- update_header m' new false new_sz def_tag def_tag;
-                (* open question: how do we (re)tag new headers? *) 
+                (* open question: how do we (re)tag new, free headers? *) 
                 Some (m'',base)
               else
-                (* [base ][========][=][next] *)
-                (* [hd_sz][   sz   ][ ][next] *)
+                (* [base ][========|==][=][next] *)
+                (* [hd_sz][   sz   |/8][ ][next] *)
                 (* There is exactly enough room (or not enough extra to split) *)                
                 do m' <- update_header m base true bs vt lt;
                 Some (m',base)
