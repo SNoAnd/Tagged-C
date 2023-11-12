@@ -165,6 +165,20 @@ let print_val_list p vl =
 
 let print_tag t = Camlcoq.camlstring_of_coqstring (Pol.print_tag t)
 
+let print_failure failure =
+  match failure with
+  | Memory.OtherFailure -> ""
+  | Memory.PrivateLoad ofs ->
+    sprintf "Private Load at address %Ld" (Camlcoq.camlint64_of_coqint ofs)
+  | Memory.PrivateStore ofs ->
+    sprintf "Private Store at address %Ld" (Camlcoq.camlint64_of_coqint ofs)
+  | Memory.MisalignedLoad (align,ofs) ->
+    sprintf "Misaligned Load - %Ld does not divide %Ld"
+    (Camlcoq.camlint64_of_coqint align) (Camlcoq.camlint64_of_coqint ofs)
+  | Memory.MisalignedStore (align,ofs) ->
+    sprintf "Misaligned Store - %Ld does not divide %Ld"
+    (Camlcoq.camlint64_of_coqint align) (Camlcoq.camlint64_of_coqint ofs)
+
 let print_state p (prog, ge, s) =
   match s with
   | Csem.State(f, pct, s, k, e, te, m) ->
@@ -195,9 +209,10 @@ let print_state p (prog, ge, s) =
       fprintf p "@[failstop on policy @ %s %s@]@."
       (String.of_seq (List.to_seq msg))
       (String.concat "," (List.map print_tag params))
-  | Csem.Failstop(msg, _, params) ->
-      fprintf p "@[failstop in memory @ %s %s@]@."
+  | Csem.Failstop(msg, failure, params) ->
+      fprintf p "@[failstop in memory @ %s %s %s@]@."
       (String.of_seq (List.to_seq msg))
+      (print_failure failure)
       (String.concat "," (List.map print_tag params))
 
 
@@ -648,25 +663,25 @@ let do_step p prog ge ce time s w =
       | All -> []
       | First | Random -> exit (Int32.to_int (camlint_of_coqint r))
       end
-  | Some (Pol.PolicyFail (r,params)) ->
-      if !trace >= 1 then
-         (* AMN This is the version without -trace, easier to consume (by fuzzer)*)
-         fprintf p "@[<hov 2>Failstop on policy @ %s %s@]@." (String.of_seq (List.to_seq r)) (String.concat ", " (List.map print_tag params));
-         exit 42 (* error*)
-
   | None ->
-      let l = Cexec.do_step ge ce do_external_function (*do_inline_assembly*) w s in
-      if l = []
-      || List.exists (fun (Cexec.TR(r,t,s)) -> s = Csem.Stuckstate) l
-      then begin
-        pp_set_max_boxes p 1000;
-        fprintf p "@[<hov 2>Stuck state: %a@]@." print_state (prog, (ge,ce), s);
-        diagnose_stuck_state p ge ce w s;
-        fprintf p "ERROR: Undefined behavior@.";
-        exit 126
-      end else begin
+      match s with
+      | Csem.Stuckstate ->
+        begin
+          pp_set_max_boxes p 1000;
+          fprintf p "@[<hov 2>Stuck state: %a@]@." print_state (prog, (ge,ce), s);
+          diagnose_stuck_state p ge ce w s;
+          fprintf p "ERROR: Undefined behavior@.";
+          exit 126
+        end
+      | Csem.Failstop(msg,failure,params) ->
+        if !trace >= 1 then
+        (* AMN This is the version without -trace, easier to consume (by fuzzer)*)
+        fprintf p "@[<hov 2>Failstop on policy @ %s %s@]@."
+        (String.of_seq (List.to_seq msg)) (String.concat ", " (List.map print_tag params));
+        exit 42 (* error*)
+      | _ ->
+        let l = Cexec.do_step ge ce do_external_function (*do_inline_assembly*) w s in
         List.map (fun (Cexec.TR(r, t, s')) -> (r, s', do_events p ge time w t)) l
-      end
 
 (* Exploration of a single execution. *)
 

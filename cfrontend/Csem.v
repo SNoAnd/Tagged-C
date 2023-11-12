@@ -55,8 +55,8 @@ Module Csem (P: Policy) (A: Allocator P).
     end.
 
   Inductive var_entry : Type :=
-  | PRIV
-  | PUB (e:Z * Z * tag)
+  | PRIV (ty: type)
+  | PUB (base bound:Z) (pt:tag) (ty:type)
   .
   
   Definition env := PTree.t var_entry. (* map variable -> base address & bound & ptr tag *)
@@ -180,19 +180,37 @@ Module Csem (P: Policy) (A: Allocator P).
   | assign_loc_bitfield: forall sz sg pos width v m' v' lts,
       store_bitfield ty sz sg pos width m (Int64.unsigned ofs) pt v lts m' v' ->
       assign_loc ty m ofs pt (Bits sz sg pos width) v E0 (MemorySuccess (m', v')) lts.
-
+  
+  Fixpoint chunk_of_type (ty:type) :=
+    match ty with
+    | Tint sz sgn _ =>
+        match sz, sgn with
+        | I8, Signed | IBool, Signed => Mint8signed
+        | I8, Unsigned | IBool, Unsigned => Mint8unsigned
+        | I16, Signed => Mint8signed
+        | I16, Unsigned => Mint8unsigned
+        | I32, _ => Mint32
+        end
+    | Tlong _ _ => Mint64
+    | Tfloat F32 _ => Mfloat32
+    | Tfloat F64 _ => Mfloat64
+    | Tarray ty' _ _ => chunk_of_type ty'
+    | _ => Mint64 (* composite types are pointers are longs *)
+    end.
+  
   (* Allocates local variables and, if they are parameters with corresponding values,
      initializes them *)
-  Fixpoint do_alloc_variables (pct: tag) (e: env) (m: mem) (l: list (ident * type * option atom)) {struct l} : MemoryResult (PolicyResult (tag * env * mem)) :=
+  Fixpoint do_alloc_variables (pct: tag) (e: env) (m: mem) (l: list (ident * type * option atom))
+    : MemoryResult (PolicyResult (tag * env * mem)) :=
     match l with
     | [] => MemorySuccess (PolicySuccess (pct,e,m))
     | (id, ty, init) :: l' =>
-        match stkalloc m (sizeof ce ty), LocalT ce pct ty with
+        match stkalloc m (alignof ce ty) (sizeof ce ty), LocalT ce pct ty with
         | MemorySuccess (m',base,bound), PolicySuccess (pct', pt', lts') =>
             let init' := match init with Some (v,vt) => (v,vt) | None => (Vundef, def_tag) end in
-            match store (chunk_of_type (typ_of_type ty)) m' base init' lts' with
+            match store (chunk_of_type ty) m' base init' lts' with
             | MemorySuccess m'' =>
-                do_alloc_variables pct' (PTree.set id (PUB (base, bound, pt')) e) m'' l'
+                do_alloc_variables pct' (PTree.set id (PUB base bound pt' ty) e) m'' l'
             | MemoryFail msg failure => MemoryFail msg failure
             end
         | MemorySuccess _, PolicyFail msg params =>
@@ -202,12 +220,28 @@ Module Csem (P: Policy) (A: Allocator P).
         end
     end.
 
-  (** Return the list of block sizes in the codomain of [e]. *)
-  Definition sizes_of_env (e: env) : list Z :=
-    List.fold_left (fun acc '(_,ent) =>
-                      match ent with
-                      | PUB (lo,hi,t) => (hi-lo+1)::acc
-                      | PRIV => acc
+  Fixpoint do_free_variables (pct: tag) (m: mem) (l: list (Z*Z*type))
+    : MemoryResult (PolicyResult (tag * mem)) :=
+    match l with
+    | [] => MemorySuccess (PolicySuccess (pct,m))
+    | (base,bound,ty) :: l' =>
+        match stkfree m base bound, DeallocT ce pct ty with
+        | MemorySuccess m', PolicySuccess (pct', vt', lts') =>
+            do_free_variables pct' m' l'
+        | MemorySuccess _, PolicyFail msg params =>
+            MemorySuccess (PolicyFail msg params)
+        | MemoryFail msg failure, _ =>
+            MemoryFail msg failure
+        end
+    end.
+
+  (** Return the list of types in the (public) codomain of [e]. *)
+  Definition variables_of_env (e: env) : list (Z*Z*type) :=
+    List.fold_left (fun acc '(_,entry) =>
+                      match entry with
+                      | PUB base bound pt ty =>
+                          (base,bound,ty)::acc
+                      | PRIV ty => acc
                       end) (PTree.elements e) [].
 
   (** Selection of the appropriate case of a [switch], given the value [n]
@@ -265,13 +299,13 @@ Module Csem (P: Policy) (A: Allocator P).
     (* anaaktge - part of prop, we can asswert its valid if it succeeds *)
     Inductive lred: expr -> tag -> tenv -> mem -> expr -> tenv -> mem -> Prop :=
     | red_var_tmp: forall x ty pct te m,
-        e!x = Some PRIV ->
+        e!x = Some (PRIV ty) ->
         lred (Evar x ty) pct te m
              (Eloc (Ltmp x) ty) te m
-    | red_var_local: forall x pt ty pct lo hi te m,
-        e!x = Some (PUB (lo, hi, pt)) ->
+    | red_var_local: forall x pt ty pct base bound te m,
+        e!x = Some (PUB base bound pt ty) ->
         lred (Evar x ty) pct te m
-             (Eloc (Lmem (Int64.repr lo) pt Full) ty) te m
+             (Eloc (Lmem (Int64.repr base) pt Full) ty) te m
     | red_var_global: forall x ty pct lo hi pt gv te m,
         e!x = None ->
         Genv.find_symbol ge x = Some (inr (lo, hi, pt, gv)) ->
@@ -1183,35 +1217,35 @@ Inductive sstep: state -> trace -> state -> Prop :=
     sstep (ExprState f PCT (Eval (v,vt) ty) (Kfor2 a2 a3 s olbl loc k) e te m)
           E0 (Failstop msg OtherFailure params)
           
-| step_return_0: forall f PCT loc k e te m m',
-    stkfree m (fold_left Z.add (sizes_of_env e) 0) = MemorySuccess m' ->
+| step_return_0: forall f PCT PCT' loc k e te m m',
+    do_free_variables PCT m (variables_of_env e) = MemorySuccess (PolicySuccess (PCT', m')) ->
     sstep (State f PCT (Sreturn None loc) k e te m)
           E0 (Returnstate (Internal f) PCT (Vundef, def_tag) (call_cont k) m')
 | step_return_fail_0: forall f PCT loc k e te m msg failure,
-    stkfree m (fold_left Z.add (sizes_of_env e) 0) = MemoryFail msg failure ->
+    do_free_variables PCT m (variables_of_env e) = MemoryFail msg failure ->
     sstep (State f PCT (Sreturn None loc) k e te m)
           E0 (Failstop ("Baseline Policy Failure in free_list: " ++ msg) failure [])
 | step_return_1: forall f PCT loc x k e te m,
     sstep (State f PCT (Sreturn (Some x) loc) k e te m)
           E0 (ExprState f PCT x (Kreturn k) e te m)
-| step_return_2:  forall f PCT v vt ty k e te m v' m',
+| step_return_2:  forall f PCT PCT' v vt ty k e te m v' m',
     sem_cast v ty f.(fn_return) m = Some v' ->
-    stkfree m (fold_left Z.add (sizes_of_env e) 0) = MemorySuccess m' ->
+    do_free_variables PCT m (variables_of_env e) = MemorySuccess (PolicySuccess (PCT', m')) ->
     sstep (ExprState f PCT (Eval (v,vt) ty) (Kreturn k) e te m)
           E0 (Returnstate (Internal f) PCT (v',vt) (call_cont k) m')
 | step_return_fail_2:  forall f PCT v vt ty k e te m v' msg failure,
     sem_cast v ty f.(fn_return) m = Some v' ->
-    stkfree m (fold_left Z.add (sizes_of_env e) 0) = MemoryFail msg failure ->
+    do_free_variables PCT m (variables_of_env e) = MemoryFail msg failure ->
     sstep (ExprState f PCT (Eval (v,vt) ty) (Kreturn k) e te m)
           E0 (Failstop ("Baseline Policy Failure in free_list: " ++ msg) failure [])
-| step_skip_call: forall f PCT k e te m m',
+| step_skip_call: forall f PCT PCT' k e te m m',
     is_call_cont k ->
-    stkfree m (fold_left Z.add (sizes_of_env e) 0) = MemorySuccess m' ->
+    do_free_variables PCT m (variables_of_env e) = MemorySuccess (PolicySuccess (PCT', m')) ->
     sstep (State f PCT Sskip k e te m)
           E0 (Returnstate (Internal f) PCT (Vundef, def_tag) k m')
 | step_skip_call_fail: forall f PCT k e te m msg failure,
     is_call_cont k ->
-    stkfree m (fold_left Z.add (sizes_of_env e) 0) = MemoryFail msg failure ->
+    do_free_variables PCT m (variables_of_env e) = MemoryFail msg failure ->
     sstep (State f PCT Sskip k e te m)
           E0 (Failstop ("Baseline Policy Failure in free_list: " ++ msg) failure [])
           

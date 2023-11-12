@@ -53,9 +53,9 @@ Module Type Allocator (P : Policy).
   Definition mem : Type := (Mem.mem * t).
   Definition empty := (Mem.empty, init).
   
-  Parameter stkalloc : mem -> Z (* size *) ->
-                       MemoryResult (mem * Z (* base *) * Z (* bound (base+size-1) *)).
-  Parameter stkfree : mem -> Z (* size *) -> MemoryResult mem.
+  Parameter stkalloc : mem -> Z (* align *) -> Z (* size *) ->
+                       MemoryResult (mem * Z (* base *) * Z (* bound (base+size+padding) *)).
+  Parameter stkfree : mem -> Z (* base *) -> Z (* bound *) -> MemoryResult mem.
   Parameter heapalloc : mem -> Z (* size *) ->
                         tag (* val tag (body) *) -> tag (* val tag (head) *) -> tag (* loc tag *) ->
                         MemoryResult (mem * Z (* base *) * Z (* bound (base+size-1)*)).
@@ -96,14 +96,16 @@ Module ConcreteAllocator (P : Policy) : Allocator P.
   Definition init : t := 3000.
   Definition mem : Type := (Mem.mem * t).
   Definition empty := (Mem.empty, init).
-  
-  Definition stkalloc (m: mem) (size: Z) : MemoryResult (mem*Z*Z) :=
-    let '(m,sp) := m in
-    MemorySuccess ((m,sp-size),sp-size,sp).
 
-  Definition stkfree (m: mem) (size: Z) : MemoryResult mem :=
+  Definition stkalloc (m: mem) (al sz: Z) : MemoryResult (mem*Z*Z) :=
     let '(m,sp) := m in
-    MemorySuccess (m,sp+size).
+    let sp' := sp - sz in
+    let aligned_sp := floor sp' al in
+    MemorySuccess ((m,aligned_sp),aligned_sp,sp).
+
+  Definition stkfree (m: mem) (base bound: Z) : MemoryResult mem :=
+    let '(m,sp) := m in
+    MemorySuccess (m,base).
 
   Definition check_header (m: Mem.mem) (base: Z) : option (bool * Z * tag) :=
     match load Mint64 m base with
@@ -283,13 +285,15 @@ Module FLAllocator (P : Policy) : Allocator P.
       memory state and the address of the fresh block, which initially contains
       undefined cells.  Note that allocation never fails: we model an
       infinite memory. *)
-  Definition stkalloc (m: mem) (size: Z) : MemoryResult (mem*Z*Z) :=
+  Definition stkalloc (m: mem) (al sz: Z) : MemoryResult (mem*Z*Z) :=
     let '(m,(sp,heap)) := m in
-    MemorySuccess ((m,(sp-size,heap)),sp-size,sp).
+    let sp' := sp - sz in
+    let aligned_sp := floor sp' al in
+    MemorySuccess ((m,(aligned_sp,heap)),aligned_sp,sp).
 
-  Definition stkfree (m: mem) (size: Z) : MemoryResult mem :=
+  Definition stkfree (m: mem) (base bound: Z) : MemoryResult mem :=
     let '(m,(sp,heap)) := m in
-    MemorySuccess (m,(sp+size,heap)).
+    MemorySuccess (m,(base,heap)).
   
   Fixpoint fl_alloc (fl : freelist) (size : Z) : option (Z*Z*freelist) :=
     match fl with

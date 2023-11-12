@@ -560,15 +560,17 @@ Section EXPRS.
       : tag_monad_scope.
 
   Local Open Scope tag_monad_scope.
-  
+
   Fixpoint step_expr (k: kind) (pct: tag) (a: expr) (te: tenv) (m: mem): reducts expr :=
     match k, a with
     | LV, Eloc l ty => []
     | LV, Evar x ty =>
         match e!x with
-        | Some (PUB (base, bound, pt)) =>
+        | Some (PUB base bound pt ty') =>
+            check (type_eq ty ty');
             topred (Lred "red_var_local" (Eloc (Lmem (Int64.repr base) pt Full) ty) te m)
-        | Some PRIV =>
+        | Some (PRIV ty') =>
+            check (type_eq ty ty');
             topred (Lred "red_var_tmp" (Eloc (Ltmp x) ty) te m)
         | None =>
             match Genv.find_symbol ge x with
@@ -997,8 +999,8 @@ Definition invert_expr_prop (a: expr) (pct: tag) (te: tenv) (m: mem) : Prop :=
   match a with
   | Eloc l ty => False
   | Evar x ty =>
-      e!x = Some PRIV
-      \/ (exists base bound pt, e!x = Some (PUB (base, bound, pt)))
+      e!x = Some (PRIV ty)
+      \/ (exists base bound pt, e!x = Some (PUB base bound pt ty))
       \/ (e!x = None /\ exists base bound pt gv, Genv.find_symbol ge x = Some (inr (base,bound,pt,gv)))
       \/ (e!x = None /\ exists b pt, Genv.find_symbol ge x = Some (inl (b,pt)))
   | Ederef (Eval v ty1) ty =>
@@ -1103,7 +1105,7 @@ Lemma lred_invert:
   forall l pct te m l' te' m', lred ge ce e l pct te m l' te' m' -> invert_expr_prop l pct te m.
 Proof.
   induction 1; red; auto.
-  - right; left; exists lo, hi, pt; auto.
+  - right; left; exists base, bound, pt; auto.
   - right; right; left; split; auto; exists lo, hi, pt, gv; auto.
   - right; right; right; split; auto; exists b, pt; auto.
   - left; exists ofs, vt; auto.
@@ -1603,9 +1605,11 @@ Proof with (try (apply not_invert_ok; simpl; intro; myinv; repeat do_do; intuiti
     + (* Eval *)
       split; intros. tauto. simpl; congruence.
     + (* Evar *)
-      destruct (e!x) as [[|[[base bound] pt]]|] eqn:?.
-      * apply topred_ok; auto. eapply red_var_tmp; eauto.
-      * subst. apply topred_ok; auto. eapply red_var_local; eauto.
+      destruct (e!x) as [[ty' | base bound pt ty'] | ] eqn:?.
+      * destruct (type_eq ty ty')... subst ty'.
+        apply topred_ok; auto. eapply red_var_tmp; eauto.
+      * destruct (type_eq ty ty')... subst ty'.
+        subst. apply topred_ok; auto. eapply red_var_local; eauto.
       * destruct (Genv.find_symbol ge x) as [[[b pt]|[[[base bound] pt] gv]]|] eqn:?...
         apply topred_ok; auto. apply red_func; auto.
         apply topred_ok; auto. eapply red_var_global; eauto.
@@ -1917,7 +1921,6 @@ Proof.
 Qed.
 
 (** Completeness part 1: [step_expr] contains all possible non-stuck reducts. *)
-
 Lemma lred_topred:
   forall pct l1 te m l2 te' m',
     lred ge ce e l1 pct te m l2 te' m' ->
@@ -1925,9 +1928,9 @@ Lemma lred_topred:
 Proof.
   induction 1; simpl.
   (* var tmp *)
-  - rewrite H. econstructor; eauto.
+  - rewrite H. rewrite dec_eq_true. econstructor; eauto.
   (* var local *)
-  - rewrite H. econstructor; eauto.
+  - rewrite H. rewrite dec_eq_true. econstructor; eauto.
   (* var fun *)
   - rewrite H; rewrite H0. econstructor; eauto.
   (* var global *)
@@ -2383,11 +2386,13 @@ Definition do_step (w: world) (s: Csem.state) : list transition :=
             else ret "step_for_false" (State f pct' Sskip k e te m)
         | Kreturn k =>
             do v' <- sem_cast v ty f.(fn_return) m;
-            match stkfree m (fold_left Z.add (sizes_of_env e) 0) with
-            | MemorySuccess m' =>
-                ret "step_return_2" (Returnstate (Internal f) pct (v',vt) (call_cont k) m')
+            match do_free_variables ce pct m (variables_of_env e) with
+            | MemorySuccess (PolicySuccess (pct', m')) =>
+                ret "step_return_2" (Returnstate (Internal f) pct' (v',vt) (call_cont k) m')
+            | MemorySuccess (PolicyFail msg params) =>
+                ret "step_return_fail_2"  (Failstop msg OtherFailure params)
             | MemoryFail msg failure =>
-                ret "step_return_fail_2" (Failstop ("Baseline Policy Failure in free_list: " ++ msg) failure [])
+                ret "step_return_fail_0" (Failstop ("Baseline Policy Failure in free_list: " ++ msg) failure [])
             end
         | Kswitch1 sl k =>
             do n <- sem_switch_arg v ty;
@@ -2439,9 +2444,11 @@ Definition do_step (w: world) (s: Csem.state) : list transition :=
       ret "step_skip_for4" (State f pct (Sfor Sskip a2 a3 s olbl loc) k e te m)
 
   | State f pct (Sreturn None loc) k e te m =>
-      match stkfree m (fold_left Z.add (sizes_of_env e) 0) with
-      | MemorySuccess m' =>
-          ret "step_return_0" (Returnstate (Internal f) pct (Vundef,def_tag) (call_cont k) m')
+      match do_free_variables ce pct m (variables_of_env e) with
+      | MemorySuccess (PolicySuccess (pct', m')) =>
+          ret "step_return_0" (Returnstate (Internal f) pct' (Vundef,def_tag) (call_cont k) m')
+      | MemorySuccess (PolicyFail msg params) =>
+          ret "step_return_fail_1" (Failstop msg OtherFailure params)
       | MemoryFail msg failure =>
           ret "step_return_fail_0" (Failstop ("Baseline Policy Failure in free_list: " ++ msg) failure [])
       end
@@ -2449,11 +2456,13 @@ Definition do_step (w: world) (s: Csem.state) : list transition :=
   | State f pct (Sreturn (Some x) loc) k e te m =>
       ret "step_return_1" (ExprState f pct x (Kreturn k) e te m)
   | State f pct Sskip ((Kstop | Kcall _ _ _ _ _ _ _) as k) e te m =>
-      match stkfree m (fold_left Z.add (sizes_of_env e) 0) with
-      | MemorySuccess m' =>
-          ret "step_skip_call" (Returnstate (Internal f) pct (Vundef, def_tag) (call_cont k) m')
+      match do_free_variables ce pct m (variables_of_env e) with
+      | MemorySuccess (PolicySuccess (pct', m')) =>
+          ret "step_skip_call" (Returnstate (Internal f) pct' (Vundef, def_tag) (call_cont k) m')
+      | MemorySuccess (PolicyFail msg params) =>
+          ret "step_skip_call_fail_1" (Failstop msg OtherFailure params)
       | MemoryFail msg failure =>
-          ret "step_skip_call_fail" (Failstop ("Baseline Policy Failure in free_list: " ++ msg) failure [])
+          ret "step_skip_call_fail_0" (Failstop ("Baseline Policy Failure in free_list: " ++ msg) failure [])
       end
           
   | State f pct (Sswitch x sl loc) k e te m =>

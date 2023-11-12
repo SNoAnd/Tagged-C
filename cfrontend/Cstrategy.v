@@ -113,9 +113,9 @@ Module Cstrategy (P: Policy) (A: Allocator P).
       Inductive eval_simple_lvalue: expr -> loc_kind -> Prop :=
       | esl_loc: forall loc ty,
           eval_simple_lvalue (Eloc loc ty) loc
-      | esl_var_local: forall x ty lo hi pt,
-          e!x = Some (PUB (lo, hi, pt)) ->
-          eval_simple_lvalue (Evar x ty) (Lmem (Int64.repr lo) pt Full)
+      | esl_var_local: forall x base bound pt ty,
+          e!x = Some (PUB base bound pt ty) ->
+          eval_simple_lvalue (Evar x ty) (Lmem (Int64.repr base) pt Full)
       | esl_var_global: forall x ty base bound pt gv,
           e!x = None ->
           Genv.find_symbol ge x = Some (inr (base, bound, pt, gv)) ->
