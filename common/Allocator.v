@@ -77,6 +77,13 @@ Module Type Allocator (P : Policy).
     | MemoryFail msg failure => MemoryFail msg failure
     end.
 
+  Definition store_atom (chunk:memory_chunk) (m:mem) (addr:Z) (v:Mem.TLib.atom) :=
+    let (m,st) := m in
+    match Mem.store_atom chunk m addr v with
+    | MemorySuccess m' => MemorySuccess (m',st)
+    | MemoryFail msg failure => MemoryFail msg failure
+    end.
+  
   Definition storebytes (m:mem) (ofs:Z) (bytes:list memval) (lts:list tag) :=
     let (m,st) := m in
     match Mem.storebytes m ofs bytes lts with
@@ -253,6 +260,13 @@ Module ConcreteAllocator (P : Policy) : Allocator P.
     | MemoryFail msg failure => MemoryFail msg failure
     end.
 
+  Definition store_atom (chunk:memory_chunk) (m:mem) (addr:Z) (v:Mem.TLib.atom) :=
+    let (m,st) := m in
+    match Mem.store_atom chunk m addr v with
+    | MemorySuccess m' => MemorySuccess (m',st)
+    | MemoryFail msg failure => MemoryFail msg failure
+    end.
+  
   Definition storebytes (m:mem) (ofs:Z) (bytes:list memval) (lts:list tag) :=
     let (m,st) := m in
     match Mem.storebytes m ofs bytes lts with
@@ -360,6 +374,13 @@ Module FLAllocator (P : Policy) : Allocator P.
     | MemoryFail msg failure => MemoryFail msg failure
     end.
 
+  Definition store_atom (chunk:memory_chunk) (m:mem) (addr:Z) (v:Mem.TLib.atom) :=
+    let (m,st) := m in
+    match Mem.store_atom chunk m addr v with
+    | MemorySuccess m' => MemorySuccess (m',st)
+    | MemoryFail msg failure => MemoryFail msg failure
+    end.
+  
   Definition storebytes (m:mem) (ofs:Z) (bytes:list MD.memval) (lts:list tag) :=
     let (m,st) := m in
     match Mem.storebytes m ofs bytes lts with

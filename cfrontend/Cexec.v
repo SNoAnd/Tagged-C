@@ -2484,14 +2484,21 @@ Definition do_step (w: world) (s: Csem.state) : list transition :=
   | Callstate (Internal f) pct fpt vargs k m =>
       check (list_norepet_dec ident_eq (var_names (fn_params f) ++ var_names (fn_vars f)));
       at "failred_call" trule pct' <- CallT pct fpt;
-      match do_alloc_variables ce pct empty_env m (option_zip (f.(fn_params) ++ f.(fn_vars)) vargs) with
-      | MemorySuccess (PolicySuccess (pct',e,m')) =>
-          ret "step_internal_function" (State f pct' f.(fn_body) k e (empty_tenv) m')
-      | MemorySuccess (PolicyFail msg params) =>
-          ret "step_internal_function_fail_1" (Failstop msg OtherFailure params)
-      | MemoryFail msg failure =>
-          ret "step_internal_function_fail_0" (Failstop ("Baseline Policy Failure in do_alloc_variables: " ++ msg) failure [])
-      end
+    match do_alloc_variables ce pct empty_env m f.(fn_vars) with
+    | MemorySuccess (PolicySuccess (pct',e,m')) =>
+        match do_init_params ce pct' e m' (option_zip f.(fn_params) vargs) with
+        | MemorySuccess (PolicySuccess (pct'',e',m'')) =>          
+            ret "step_internal_function" (State f pct'' f.(fn_body) k e' (empty_tenv) m'')
+        | MemorySuccess (PolicyFail msg params) =>
+            ret "step_internal_function_fail_1" (Failstop msg OtherFailure params)
+        | MemoryFail msg failure =>
+            ret "step_internal_function_fail_0" (Failstop ("Baseline Policy Failure in do_alloc_variables: " ++ msg) failure [])
+        end
+    | MemorySuccess (PolicyFail msg params) =>
+        ret "step_internal_function_fail_1" (Failstop msg OtherFailure params)
+    | MemoryFail msg failure =>
+        ret "step_internal_function_fail_0" (Failstop ("Baseline Policy Failure in do_alloc_variables: " ++ msg) failure [])
+    end
   | Callstate (External ef targs tres cc) pct fpt vargs k m =>
       match do_external ge do_external_function ef w vargs pct fpt m with
       | Some (w', tr, MemorySuccess (PolicySuccess (v,pct',m'))) => [TR "step_external_function" tr (Returnstate (External ef targs tres cc) pct' v k m')]

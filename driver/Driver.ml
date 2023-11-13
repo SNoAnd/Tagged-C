@@ -286,6 +286,7 @@ let cmdline_actions =
  [ Exact "-interp", Set option_interp;
   Exact "-quiet", Unit (fun () -> Interp.trace := 0);
   Exact "-trace", Unit (fun () -> Interp.trace := 2);
+  Exact "-memtrace", Unit (fun () -> Interp.trace := 3);
   Exact "-random", Unit (fun () -> Interp.mode := Interp.Random);
   Exact "-all", Unit (fun () -> Interp.mode := Interp.All);
   Exact "-main", String (fun s -> main_function_name := s)

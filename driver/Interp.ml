@@ -21,7 +21,7 @@ open AST
 (*open! Integers*)
 open Values
 open! Ctypes
-(*open Maps*)
+open Maps
 open Tags
 open PrintCsyntax
 open Datatypes
@@ -145,25 +145,25 @@ let print_val_list p vl =
       print_val p v1;
       List.iter (fun v -> fprintf p ",@ %a" print_val v) vl
 
-(*let print_mem p m =
+let print_tag t = Camlcoq.camlstring_of_coqstring (Pol.print_tag t)
+
+let print_mem p m =
   fprintf p "|";
   let rec print_at i max =
     if i <= max then
      (fprintf p " %ld " (Int32.of_int i);
-      (match (Mem.mem_access m) (coqint_of_camlint (Int32.of_int i)) with
-      | Mem.Live -> fprintf p "L"
-      | Mem.Dead -> fprintf p "D"
-      | Mem.MostlyDead -> fprintf p "/");
-      let (mv,t) = (ZMap.get (coqint_of_camlint (Int32.of_int i)) (Mem.mem_contents m)) in
+      (match (A.Mem.mem_access m) (coqint_of_camlint (Int32.of_int i)) with
+      | A.Mem.Live -> fprintf p "L"
+      | A.Mem.Dead -> fprintf p "D"
+      | A.Mem.MostlyDead -> fprintf p "/");
+      let (mv,t) = (ZMap.get (coqint_of_camlint (Int32.of_int i)) (A.Mem.mem_contents m)) in
       match mv with
-      | Mem.MD.Undef -> fprintf p " U |"; print_at (i+1) max
-      | Mem.MD.Byte (b,t) -> fprintf p " %lu |" (camlint_of_coqint b); print_at (i+1) max
-      | Mem.MD.Fragment ((v,_), q, n) -> fprintf p "| %a |" print_val v; print_at (i+(camlint_of_coqnat (Memdata.size_quantity_nat q))) max)
+      | A.Mem.MD.Undef -> fprintf p " U @ %s|" (print_tag t); print_at (i+1) max
+      | A.Mem.MD.Byte (b,t) -> fprintf p " %lu |" (camlint_of_coqint b); print_at (i+1) max
+      | A.Mem.MD.Fragment ((v,_), q, n) -> fprintf p "| %a |" print_val v; print_at (i+(camlint_of_coqnat (Memdata.size_quantity_nat q))) max)
     else () in
-  print_at 2988 3000;
-  fprintf p "\n"*)
-
-let print_tag t = Camlcoq.camlstring_of_coqstring (Pol.print_tag t)
+  print_at 2960 3000;
+  fprintf p "\n"
 
 let print_failure failure =
   match failure with
@@ -186,8 +186,8 @@ let print_state p (prog, ge, s) =
       fprintf p "in function %s, pct %s, statement@ @[<hv 0>%a@] \n"
               (name_of_function prog f)
 	      (print_tag pct)
-              Printing.print_stmt s(*;*)
-      (*print_mem p m*)
+              Printing.print_stmt s;
+              if !trace > 2 then print_mem p (fst m) else ()
   | Csem.ExprState(f, pct, r, k, e, te, m) ->
       Printing.print_pointer_hook := print_pointer (fst ge) e;
       fprintf p "in function %s, pct %s, expression@ @[<hv 0>%a@]"

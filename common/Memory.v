@@ -344,7 +344,6 @@ Qed.
       [b] and offset [ofs].  It returns the value of the memory chunk
       at that address.  [None] is returned if the accessed bytes
       are not readable. *)
-
   Definition load (chunk: memory_chunk) (m: mem) (ofs: Z): MemoryResult atom :=
     if aligned_access_dec chunk ofs then
       if allowed_access_dec m chunk ofs
@@ -381,7 +380,7 @@ Qed.
     - destruct (aligned_access_dec chunk ofs); destruct (allowed_access_dec m chunk ofs); intro H; inv H; auto.
     - destruct (aligned_access_dec chunk ofs); destruct (allowed_access_dec m chunk ofs); intro H; destruct H as [H1 H2]; inv H1; inv H2; auto.
   Qed.
-  
+
   Lemma load_all_fail :
     forall chunk m ofs msg failure,
       load_all chunk m ofs = MemoryFail msg failure <->
@@ -495,7 +494,7 @@ Qed.
     | _ => []
     end.
   
-  Program Definition store (chunk: memory_chunk) (m: mem) (ofs: Z) (a:atom) (lts:list tag)
+  Definition store (chunk: memory_chunk) (m: mem) (ofs: Z) (a:atom) (lts:list tag)
     : MemoryResult mem :=
     if aligned_access_dec chunk ofs then
       if allowed_access_dec m chunk ofs then
@@ -504,6 +503,16 @@ Qed.
       else MemoryFail "" (PrivateStore ofs)
     else MemoryFail "" (MisalignedStore (align_chunk chunk) ofs).
 
+  Definition store_atom (chunk: memory_chunk) (m: mem) (ofs: Z) (a:atom)
+    : MemoryResult mem :=
+    if aligned_access_dec chunk ofs then
+      if allowed_access_dec m chunk ofs then
+        let lts := map snd (getN (Z.to_nat (size_chunk chunk)) ofs (m.(mem_contents))) in
+        MemorySuccess (mkmem (setN (merge_vals_tags (encode_val chunk a) lts) ofs (m.(mem_contents)))
+                             m.(mem_access) m.(live))
+      else MemoryFail "" (PrivateStore ofs)
+    else MemoryFail "" (MisalignedStore (align_chunk chunk) ofs).
+  
   (** [storebytes m ofs bytes] stores the given list of bytes [bytes]
       starting at location [(b, ofs)].  Returns updated memory state
       or [None] if the accessed locations are not writable. *)

@@ -197,29 +197,66 @@ Module Csem (P: Policy) (A: Allocator P).
     | Tarray ty' _ _ => chunk_of_type ty'
     | _ => Mint64 (* composite types are pointers are longs *)
     end.
-  
-  (* Allocates local variables and, if they are parameters with corresponding values,
-     initializes them *)
-  Fixpoint do_alloc_variables (pct: tag) (e: env) (m: mem) (l: list (ident * type * option atom))
-    : MemoryResult (PolicyResult (tag * env * mem)) :=
-    match l with
-    | [] => MemorySuccess (PolicySuccess (pct,e,m))
-    | (id, ty, init) :: l' =>
-        match stkalloc m (alignof ce ty) (sizeof ce ty), LocalT ce pct ty with
-        | MemorySuccess (m',base,bound), PolicySuccess (pct', pt', lts') =>
-            let init' := match init with Some (v,vt) => (v,vt) | None => (Vundef, def_tag) end in
-            match store (chunk_of_type ty) m' base init' lts' with
-            | MemorySuccess m'' =>
-                do_alloc_variables pct' (PTree.set id (PUB base bound pt' ty) e) m'' l'
-            | MemoryFail msg failure => MemoryFail msg failure
-            end
-        | MemorySuccess _, PolicyFail msg params =>
-            MemorySuccess (PolicyFail msg params)
-        | MemoryFail msg failure, _ =>
-            MemoryFail msg failure
+
+  (* Allocates local (public) variables *)
+  Definition do_alloc_variable (pct: tag) (e: env) (m: mem) (id: ident) (ty:type) :
+    MemoryResult (PolicyResult (tag * env * mem)) :=
+    match stkalloc m (alignof ce ty) (sizeof ce ty), LocalT ce pct ty with
+    | MemorySuccess (m',base,bound), PolicySuccess (pct', pt', lts') =>
+        match storebytes m' base (repeat Mem.MD.Undef (Z.to_nat (sizeof ce ty))) lts' with
+        | MemorySuccess m'' =>
+            MemorySuccess (PolicySuccess (pct', PTree.set id (PUB base bound pt' ty) e, m''))
+        | MemoryFail msg failure => MemoryFail msg failure
         end
+    | MemorySuccess _, PolicyFail msg params =>
+        MemorySuccess (PolicyFail msg params)
+    | MemoryFail msg failure, _ =>
+        MemoryFail msg failure
     end.
 
+  Definition do_alloc_variables (pct: tag) (e: env) (m: mem) (l: list (ident * type)) :
+    MemoryResult (PolicyResult (tag * env * mem)) :=
+    fold_left (fun res '(id,ty) =>
+                 match res with
+                 | MemorySuccess (PolicySuccess (pct, e, m)) =>
+                     do_alloc_variable pct e m id ty
+                 | MemorySuccess (PolicyFail msg params) =>
+                     MemorySuccess (PolicyFail msg params)
+                 | MemoryFail msg failure =>
+                     MemoryFail msg failure
+                 end) l (MemorySuccess (PolicySuccess (pct, e, m))).
+  
+  (* Allocates local (public) arguments and initializes them with their corresponding values *)
+  Definition do_init_param (pct: tag) (e: env) (m: mem) (id: ident) (ty: type) (init: option atom) :
+    MemoryResult (PolicyResult (tag * env * mem)) :=
+    match do_alloc_variable pct e m id ty with
+    | MemorySuccess (PolicySuccess (pct', e', m')) =>
+        match e'!id, init with
+        | Some (PUB base _ _ _), Some init =>
+            match store_atom (chunk_of_type ty) m' base init with
+            | MemorySuccess m'' => MemorySuccess (PolicySuccess (pct',e',m''))
+            | MemoryFail msg failure => MemoryFail msg failure
+            end
+        | _, _ => MemorySuccess (PolicySuccess (pct', e', m')) 
+        end
+    | MemorySuccess (PolicyFail msg params) =>
+        MemorySuccess (PolicyFail msg params)
+    | MemoryFail msg failure =>
+        MemoryFail msg failure
+    end.
+
+  Definition do_init_params (pct: tag) (e: env) (m: mem) (l: list (ident * type * option atom))
+    : MemoryResult (PolicyResult (tag * env * mem)) :=
+    fold_left (fun res '(id,ty,init) =>
+                 match res with
+                 | MemorySuccess (PolicySuccess (pct, e, m)) =>
+                     do_init_param pct e m id ty init
+                 | MemorySuccess (PolicyFail msg params) =>
+                     MemorySuccess (PolicyFail msg params)
+                 | MemoryFail msg failure =>
+                     MemoryFail msg failure
+                 end) l (MemorySuccess (PolicySuccess (pct, e, m))).    
+    
   Fixpoint do_free_variables (pct: tag) (m: mem) (l: list (Z*Z*type))
     : MemoryResult (PolicyResult (tag * mem)) :=
     match l with
@@ -1273,14 +1310,14 @@ Inductive sstep: state -> trace -> state -> Prop :=
     sstep (State f PCT (Sgoto lbl loc) k e te m)
           E0 (State f PCT s' k' e te m)
 
-| step_internal_function: forall f PCT PCT' PCT'' vft vargs k m e m',
+| step_internal_function: forall f PCT PCT' PCT'' PCT''' vft vargs k m e m' e' m'',
     list_norepet (var_names (fn_params f) ++ var_names (fn_vars f)) ->
     CallT PCT vft = PolicySuccess PCT' ->
-    do_alloc_variables PCT' empty_env m (option_zip (f.(fn_params) ++ f.(fn_vars)) vargs) =
-      MemorySuccess (PolicySuccess (PCT'', e, m')) ->
+    do_alloc_variables PCT' empty_env m f.(fn_vars) = MemorySuccess (PolicySuccess (PCT'', e, m')) ->
+    do_init_params PCT'' e m' (option_zip f.(fn_params) vargs) = MemorySuccess (PolicySuccess (PCT''', e', m'')) ->
     sstep (Callstate (Internal f) PCT vft vargs k m)
-          E0 (State f PCT' f.(fn_body) k e empty_tenv m')
-| step_internal_function_fail0: forall f PCT vft PCT' vargs k m msg failure,
+          E0 (State f PCT''' f.(fn_body) k e' empty_tenv m'')
+(*| step_internal_function_fail0: forall f PCT vft PCT' vargs k m msg failure,
     list_norepet (var_names (fn_params f) ++ var_names (fn_vars f)) ->
     CallT PCT vft = PolicySuccess PCT' ->
     do_alloc_variables PCT empty_env m (option_zip (f.(fn_params) ++ f.(fn_vars)) vargs) =
@@ -1298,7 +1335,7 @@ Inductive sstep: state -> trace -> state -> Prop :=
     do_alloc_variables PCT empty_env m (option_zip (f.(fn_params) ++ f.(fn_vars)) vargs) =
       MemorySuccess (PolicyFail msg params) ->
     sstep (Callstate (Internal f) PCT vft vargs k m)
-          E0 (Failstop msg OtherFailure params)
+          E0 (Failstop msg OtherFailure params)*)
           
 | step_external_function: forall ef PCT vft PCT' targs tres cc vargs k m vres t m',
     external_call ef ge vargs PCT def_tag m t (MemorySuccess (PolicySuccess (vres, PCT', m'))) ->
@@ -1367,4 +1404,3 @@ End SEM.
 Qed.*)
 
 End Csem.
-

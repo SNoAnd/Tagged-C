@@ -2289,7 +2289,7 @@ Proof.
   apply wt_seq_of_ls. apply wt_select_switch; auto.
 - exploit wt_find_label. eexact WTB. eauto. eapply call_cont_wt'; eauto.
   intros [A B]. eauto with ty.
-- inv WTFD. inv H3. econstructor; eauto. apply wt_call_cont_stmt_cont; auto.
+- inv WTFD. inv H4. econstructor; eauto. apply wt_call_cont_stmt_cont; auto.
 - inv WTFD. destruct vres. econstructor; eauto.
   apply has_rettype_wt_val. simpl; rewrite <- H1.
   admit.
