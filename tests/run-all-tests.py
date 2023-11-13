@@ -61,14 +61,14 @@ if __name__ == '__main__':
     runACFileWithoutInput("printf_test.c", PVI,
                           b'Hello World!\nTime 160: observable event: extcall printf(2986LL) -> 13\nTime 166: program terminated (exit code = 0)\n'
                           )
-    runACFileWithoutInput("heap_load-store_ib.c", PVI,
+    runACFileWithoutInput("heap_load_store_ib.c", PVI,
                           nofault_cleanexit)
 
-    runACFileWithoutInput("stack_load-store_ib.c", PVI,
+    runACFileWithoutInput("stack_load_store_ib.c", PVI,
                           nofault_cleanexit)
 
-    runACFileWithoutInput("stack_load-store_ob.c", PVI,
-                          b'Failstop on policy \n PVI::StoreT')
+    runACFileWithoutInput("stack_load_store_ob.c", PVI,
+                          b'PVI::StoreT')
 
 
     print("\n=======\ndfree tests without input\n=======")

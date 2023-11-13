@@ -8,5 +8,9 @@ int main() {
 		x[i] = i;
 	}
 
-	return y[4];
+	if (y[4]) {
+		return 0;
+	} else {
+		return -1;
+	}
 }
