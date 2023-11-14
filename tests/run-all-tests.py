@@ -23,8 +23,6 @@ def runACFileWithoutInput (filename, policy, expectedoutput):
     completed_run = subprocess.run(["bash", "-c", f"../ccomp -interp -p {policy} {filename}"],
                                    capture_output=True )
 
-    #print(completed_run.stdout)
-
     # this is not fancy, but it should keep me from checking in dumb mistakes
     if (expectedoutput in completed_run.stdout):
         print(f"{passmsg}")
@@ -155,5 +153,6 @@ if __name__ == '__main__':
                        doublefree, "BBB",
                        missinglabelsfail)
     # TODO should all the confused_clean_up multi be included?
+
     # end
     print(f"\n=======\ntest suit ending. total tests failed: {testsfailed}")
