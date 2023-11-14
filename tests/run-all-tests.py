@@ -81,6 +81,9 @@ if __name__ == '__main__':
     print("=======\ndfree tests with input\n=======")
     # these have much messier outputs from extern calls
     #   don't use an exact output match
+    #   If there is a violation, in the array
+    #       0th - 2nd free (current)
+    #       3rd in array is 1st free (from the header we just tried to free)
     runACFileWithInput("test_fgets_basic.c", doublefree, 
                        "AAAA", b"Hope it doesn't have a problem!")
 
