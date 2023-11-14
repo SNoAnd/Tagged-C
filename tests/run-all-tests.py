@@ -109,32 +109,29 @@ if __name__ == '__main__':
     runACFileWithInput("double_free_confused_cleanup_2_handlabelled.c",
                        doublefree, "AAA",
                        nofault_cleanexit)
-    # TODO this set is currently broken, will need refinment
-    # AMN - will need to check that the right dfree colors are returned
-    # should not failstop
+    # TODO this set is more complicated. We need to detect the right double free
+    # dfree on x, but not input
+    # xx0 skips x's double free, x2x skips input's double free
     runACFileWithInput("double_free_confused_cleanup_multi_handlabelled.c",
-                       doublefree, "222",
+                       doublefree, "220",
                        nofault_cleanexit)
     
     runACFileWithInput("double_free_confused_cleanup_multi_handlabelled.c",
-                       doublefree, "220",
-                       b'DoubleFree::FreeT detects two colors: ')
-    
-    runACFileWithInput("double_free_confused_cleanup_multi_handlabelled.c",
                        doublefree, "222",
-                       b'DoubleFree::FreeT detects two colors: ')
+                       b"DoubleFree::FreeT detects two colors:  FreeColor label4, Unallocated, FreeColor label4, FreeColor label3")
 
     runACFileWithInput("double_free_confused_cleanup_multi_handlabelled.c",
                        doublefree, "BBB",
-                       b'DoubleFree::FreeT detects two colors: ')
+                       b'DoubleFree::FreeT detects two colors:  FreeColor label2, Unallocated, FreeColor label2, FreeColor label0')
 
+    # these two seem to be teh same, but if we skipped input's dfree, we should see different behavior for x in these two
     runACFileWithInput("double_free_confused_cleanup_multi_handlabelled.c",
                        doublefree, "!!!",
-                       b'DoubleFree::FreeT detects two colors: ')
+                       b'DoubleFree::FreeT detects two colors:  FreeColor label2, Unallocated, FreeColor label2, FreeColor label1')
 
     runACFileWithInput("double_free_confused_cleanup_multi_handlabelled.c",
                        doublefree, "!!0",
-                       b'DoubleFree::FreeT detects two colors: ')
+                       b'DoubleFree::FreeT detects two colors:  FreeColor label2, Unallocated, FreeColor label2, FreeColor label1')
     
     print("=======\nTests expected to get incorrect output but we'd like to know if that changes unexpectedly\n=======")
     # note tests like this should change when we get the automatic location info

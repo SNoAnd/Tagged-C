@@ -11,20 +11,21 @@
  *  B = 66 dec (/ 6, /2 and /3) 
  *      "BBB" -> 2 
  *            -> for input, triggers dfree, label0, label2 
- *            -> for x, triggers dfree, label3, label4
+ *            -> for x, triggers dfree, label3, label4 (if we got there)
  *  2 = 50 dec ( /2 but not /3)
- *      "222" -> 0 exit safely
- *            -> for input, free at label0 (safe)
- *            -> for x, free at label4 (safe)
- *      "220" -> 1
+ *      "222" -> 1 
  *            -> for input, free at label0 (safe)
  *            -> for x, triggers dfree for x, label3, label4
+ *      "220" -> 0
+ *            -> for input, free at label0 (safe)
+ *            -> for x, for x, free at label4 (safe, skips label 3)
+ *              
  *  ! = 33 dec ( /3 but not /2)
- *      "!!!" -> 2
+ *      "!!!" -> 1
  *            -> for input, triggers dfree at label1, label2
  *            -> for x, free at label4 (safe)
  *      "!!0" -> 1
- *            -> for input, free at label0 (safe)
+ *            -> for input, triggers dfree at label1, label2 
  *            -> for x, triggers dfree for x, label3, label4
  * 
  */
