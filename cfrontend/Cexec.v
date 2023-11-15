@@ -202,13 +202,9 @@ Module Cexec (P:Policy) (A:Allocator P).
               signedness_eq sg1 (if zlt width (bitsize_intsize sz) then Signed else sg) &&
               zle 0 pos && zlt 0 width && zle width (bitsize_intsize sz) &&
               zle (pos + width) (bitsize_carrier sz));
-              match load (chunk_for_carrier sz) m (Int64.unsigned ofs) with
-              | MemorySuccess (Vint c,vt) =>
-                  match load_ltags (chunk_for_carrier sz) m (Int64.unsigned ofs) with
-                  | MemorySuccess lts =>
-                      Some (w, E0, MemorySuccess ((Vint (bitfield_extract sz sg pos width c),vt), lts))
-                  | MemoryFail msg failure => Some (w, E0, MemoryFail msg failure)
-                  end
+              match load_all (chunk_for_carrier sz) m (Int64.unsigned ofs) with
+              | MemorySuccess (Vint c,vt,lts) =>
+                  Some (w, E0, MemorySuccess ((Vint (bitfield_extract sz sg pos width c),vt), lts))
               | MemorySuccess _ => None    
               | MemoryFail msg failure => Some (w, E0, MemoryFail msg failure)
               end
@@ -287,11 +283,11 @@ Module Cexec (P:Policy) (A:Allocator P).
           zle (pos + width) (bitsize_carrier sz));
           match ty, v with
           | Tint sz1 sg1 _, (Vint n,vt) =>
+              check (intsize_eq sz1 sz &&
+                       signedness_eq sg1 (if zlt width (bitsize_intsize sz)
+                                          then Signed else sg));
               match load (chunk_for_carrier sz) m (Int64.unsigned ofs) with
               | MemorySuccess (Vint c,ovt) =>
-                  check (intsize_eq sz1 sz &&
-                  signedness_eq sg1 (if zlt width (bitsize_intsize sz)
-                                     then Signed else sg));
                   match store (chunk_for_carrier sz) m (Int64.unsigned ofs)
                                      (Vint ((Int.bitfield_insert (first_bit sz pos width)
                                                                  width c n)),vt) lts with
@@ -327,14 +323,11 @@ Module Cexec (P:Policy) (A:Allocator P).
           eapply deref_loc_reference; eauto. inv Heqm0. constructor.
         + split. inv Heqm0. eapply deref_loc_copy; eauto. inv Heqm0. constructor.
       - destruct ty; mydestr; try congruence.
-        intros. inv H. generalize H1; mydestr. 
-        InvBooleans. subst i. destruct v; mydestr; try congruence.
-        split.
-        + eapply deref_loc_bitfield; eauto. econstructor; eauto.
-          eapply load_all_compose.
-        (* add axiom, load_all <-> load and load_ltags *)
-        + constructor.
-    Admitted.
+        + intros. inv H. generalize H1; mydestr. 
+          InvBooleans. subst i. destruct v; mydestr; try congruence.
+          split; constructor. econstructor; eauto.            
+        + split; constructor. InvBooleans. rewrite H. econstructor; auto.
+    Qed.
 
     Lemma do_deref_loc_complete:
       forall w ty m ofs pt bf w' t res,
@@ -352,10 +345,12 @@ Module Cexec (P:Policy) (A:Allocator P).
       - inv H0. rewrite H1. auto.
       - inv H0. rewrite H1. auto.
       - inv H0. inv H1.
-        unfold proj_sumbool; rewrite ! dec_eq_true, ! zle_true, ! zlt_true by lia. cbn.
-        (*cbn in H14; rewrite H14. auto.*) admit. (* Need that axiom again. *) 
-    Admitted.
-
+        + unfold proj_sumbool; rewrite ! dec_eq_true, ! zle_true, ! zlt_true by lia. cbn.
+          rewrite H4. auto.
+        + unfold proj_sumbool; rewrite ! dec_eq_true, ! zle_true, ! zlt_true by lia. cbn.
+          rewrite H4. auto.
+    Qed.
+    
     Lemma do_assign_loc_sound:
       forall w ty m ofs pt bf v vt w' t lts res,
         do_assign_loc w ty m ofs pt bf (v,vt) lts = Some (w', t, res) ->
@@ -395,8 +390,11 @@ Module Cexec (P:Policy) (A:Allocator P).
         destruct v; mydestr; try congruence.
         + InvBooleans. subst s i.
           split. eapply assign_loc_bitfield; eauto. econstructor; eauto. constructor.
-        + admit. (* TODO: store_bitfield needs fail cases. *)
-    Admitted.
+        + InvBooleans. subst s i.
+          split; constructor. eapply store_bitfield_fail_1; eauto.
+        + InvBooleans. subst s i.
+          split; constructor. eapply store_bitfield_fail_0; eauto.
+    Qed.
     
 Lemma do_assign_loc_complete:
   forall w ty m ofs pt bf v vt w' t m' v' lts,
@@ -411,9 +409,9 @@ Proof.
     destruct (check_assign_copy ty ofs ofs').
     + inv H0. rewrite H12; rewrite H13; auto.
     + elim n. red; tauto.
-  - inv H0. inv H7. 
-    unfold proj_sumbool; rewrite ! zle_true, ! zlt_true by lia. cbn.
-    rewrite H14. rewrite ! dec_eq_true. cbn. rewrite H18. auto.
+  - inv H0. inv H1. unfold proj_sumbool; rewrite ! zle_true, ! zlt_true by lia. cbn.
+    rewrite ! dec_eq_true. cbn.
+    rewrite H17. rewrite H18. auto.
 Qed.
 
 (** * Reduction of expressions *)

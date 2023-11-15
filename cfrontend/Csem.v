@@ -108,9 +108,9 @@ Module Csem (P: Policy) (A: Allocator P).
   | deref_loc_copy:
       access_mode ty = By_copy ->
       deref_loc ty m ofs pt Full E0 (MemorySuccess ((Vlong ofs, pt),[]))
-  | deref_loc_bitfield: forall sz sg pos width v vt lts,
-      load_bitfield ty sz sg pos width m (Int64.unsigned ofs) (v,vt) lts ->
-      deref_loc ty m ofs pt (Bits sz sg pos width) E0 (MemorySuccess ((v,vt),lts)).
+  | deref_loc_bitfield: forall sz sg pos width res,
+      load_bitfield ty sz sg pos width m (Int64.unsigned ofs) res ->
+      deref_loc ty m ofs pt (Bits sz sg pos width) E0 res.
 
   (** Symmetrically, [assign_loc ty m ofs bf v t m' v'] returns the
       memory state after storing the value [v] in the datum
@@ -177,9 +177,9 @@ Module Csem (P: Policy) (A: Allocator P).
       storebytes m (Int64.unsigned ofs) bytes lts = MemoryFail msg failure ->
       assign_loc ty m ofs pt Full (Vlong ofs', pt') E0
                  (MemoryFail msg failure) lts
-  | assign_loc_bitfield: forall sz sg pos width v m' v' lts,
-      store_bitfield ty sz sg pos width m (Int64.unsigned ofs) pt v lts m' v' ->
-      assign_loc ty m ofs pt (Bits sz sg pos width) v E0 (MemorySuccess (m', v')) lts.
+  | assign_loc_bitfield: forall sz sg pos width v lts res,
+      store_bitfield ty sz sg pos width m (Int64.unsigned ofs) pt v lts res ->
+      assign_loc ty m ofs pt (Bits sz sg pos width) v E0 res lts.
   
   Fixpoint chunk_of_type (ty:type) :=
     match ty with
