@@ -63,7 +63,7 @@ Module Genv (P:Policy) (A:Allocator P).
   Notation store := A.store.
   Notation load := A.load.
   Notation load_ltags := A.load_ltags.
-  Notation loat_all := A.load_all.
+  Notation load_all := A.load_all.
   Notation empty := A.empty.
   Import MD.
   Import A.
