@@ -194,29 +194,6 @@ Module ConcreteAllocator (P : Policy) : Allocator P.
     | None => MemoryFail "Failure in find_free" OtherFailure
     end.
 
-
-(*        Definition do_ef_malloc_unsafe
-               (w: world) (vargs: list atom) (PCT: tag) (m: mem)
-      : option (world * trace * (MemoryResult (PolicyResult (atom * tag * mem)))) :=
-      match vargs with
-      | [(v,st)] =>
-          match MallocT PCT def_tag st with
-          | PolicySuccess (PCT',pt',vt1,vt2,lt) =>
-              do sz <- option_map Ptrofs.unsigned (do_alloc_size v);
-              do m', base <- find_free 100 m 1000 sz vt2 lt;
-              match storebytes m' (base + header_size)
-                               (repeat (Byte Byte.zero vt1) (Z.to_nat sz))
-                               (repeat lt (Z.to_nat sz)) with
-              | MemorySuccess m'' =>
-                  Some (w, E0, (MemorySuccess (PolicySuccess((Vlong (Int64.repr (base + header_size)), def_tag), PCT', m''))))
-              | MemoryFail msg failure => Some (w, E0, (MemoryFail msg failure))
-              end
-          | PolicyFail msg failure params =>
-              Some (w, E0, (MemorySuccess (PolicyFail msg failure params)))
-          end
-      | _ => None
-      end. *)
-
   Definition heapfree (m: mem) (addr: Z) (rule : tag -> PolicyResult (tag*tag*tag*tag))
     : MemoryResult (PolicyResult (tag * mem)) :=
     let (m, sp) := m in
@@ -279,9 +256,10 @@ End ConcreteAllocator.
 Module FLAllocator (P : Policy) : Allocator P.
   Module Mem := Mem P.
   Import Mem.
+  Import MD.
   Import P.
   
-  Definition freelist : Type := list (Z*Z).
+  Definition freelist : Type := list (Z*Z*tag (* "header" val tag *)).
 
   Record heap_state : Type := mkheap {
     regions : ZMap.t (option (Z*tag));
@@ -289,7 +267,7 @@ Module FLAllocator (P : Policy) : Allocator P.
   }.
 
   Definition empty_heap : heap_state :=
-    mkheap (ZMap.init None) [(1000,2000)].
+    mkheap (ZMap.init None) [(1000,2000,def_tag)].
   
   Definition t : Type := (Z*heap_state).   
   Definition init : t := (3000,empty_heap).  
@@ -310,26 +288,32 @@ Module FLAllocator (P : Policy) : Allocator P.
     let '(m,(sp,heap)) := m in
     MemorySuccess (m,(base,heap)).
   
-  Fixpoint fl_alloc (fl : freelist) (size : Z) : option (Z*Z*freelist) :=
+  Fixpoint fl_alloc (fl : freelist) (size : Z) (vt : tag) : option (Z*Z*freelist) :=
     match fl with
     | [] => None
-    | (base, bound) :: fl' =>
+    | (base, bound, vt') :: fl' =>
         if bound - base =? size
         then Some (base,bound,fl')
         else if size <? bound - base
-             then Some (base,base+size,(base+size+1,bound)::fl')
-             else match fl_alloc fl' size with
-                  | Some (base',bound',fl'') => Some (base', bound', (base, bound) :: fl'')
+             then Some (base,base+size,(base+size+1,bound,vt)::fl')
+             else match fl_alloc fl' size vt with
+                  | Some (base',bound',fl'') => Some (base', bound', (base, bound, vt') :: fl'')
                   | None => None
                   end
     end.
   
   Definition heapalloc (m : mem) (size : Z) (vt_head vt_body lt : tag) : MemoryResult (mem*Z*Z) :=
     let '(m, (sp,heap)) := m in
-    match fl_alloc heap.(fl) size with
+    match fl_alloc heap.(fl) size vt_head with
     | Some (base, bound, fl') =>
-        let regions' := ZMap.set base (Some (bound,vt_head)) heap.(regions) in
-        MemorySuccess ((m, (sp, mkheap regions' fl')), base, bound)
+        match storebytes m base
+                         (repeat (Byte Byte.zero vt_body) (Z.to_nat size))
+                         (repeat lt (Z.to_nat size)) with
+        | MemorySuccess m' =>
+            let regions' := ZMap.set base (Some (bound,vt_head)) heap.(regions) in
+            MemorySuccess ((m', (sp, mkheap regions' fl')), base, bound)
+        | MemoryFail msg failure => MemoryFail msg failure
+        end
     | None => MemoryFail "Out of memory" OtherFailure
     end.
 
@@ -341,7 +325,7 @@ Module FLAllocator (P : Policy) : Allocator P.
         match rule vt with
         | PolicySuccess (pct',vt_head,vt_body,lt) =>
             let heap' := (mkheap (ZMap.set base None heap.(regions))
-                                 ((base,bound)::heap.(fl))) in
+                                 ((base,bound,vt_head)::heap.(fl))) in
             MemorySuccess (PolicySuccess (pct', (m, (sp,heap'))))
         | PolicyFail msg params =>
             MemorySuccess (PolicyFail msg params)
