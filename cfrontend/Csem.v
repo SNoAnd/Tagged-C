@@ -922,23 +922,23 @@ Proof.
   destruct b; auto.
 Qed.*)
 
-Lemma ctx_selection_1:
+(*Lemma ctx_selection_1:
   forall k C r2 r3 ty, context k RV C -> context k RV (fun x => Eselection (C x) r2 r3 ty).
 Proof.
   intros. apply ctx_builtin. constructor; auto.
-Qed.
+Qed.*)
 
-Lemma ctx_selection_2:
+(*Lemma ctx_selection_2:
   forall k r1 C r3 ty, context k RV C -> context k RV (fun x => Eselection r1 (C x) r3 ty).
 Proof.
   intros. apply ctx_builtin. constructor; constructor; auto.
-Qed.
+Qed.*)
 
-Lemma ctx_selection_3:
+(*Lemma ctx_selection_3:
   forall k r1 r2 C ty, context k RV C -> context k RV (fun x => Eselection r1 r2 (C x) ty).
 Proof.
   intros. apply ctx_builtin. constructor; constructor; constructor; auto.
-Qed.
+Qed.*)
 
 End EXPR.
 

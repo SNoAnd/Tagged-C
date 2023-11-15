@@ -1043,13 +1043,21 @@ Definition bitfield_normalize (sz: intsize) (sg: signedness) (width: Z) (n: int)
   then Int.zero_ext width n
   else Int.sign_ext width n.
 
-Inductive load_bitfield: type -> intsize -> signedness -> Z -> Z -> mem -> Z -> atom -> list tag -> Prop :=
+Inductive load_bitfield: type -> intsize -> signedness -> Z -> Z -> mem -> Z ->
+                         MemoryResult (atom * list tag) -> Prop :=
   | load_bitfield_intro: forall sz sg1 attr sg pos width m addr c vt lts,
       0 <= pos -> 0 < width <= bitsize_intsize sz -> pos + width <= bitsize_carrier sz ->
       sg1 = (if zlt width (bitsize_intsize sz) then Signed else sg) ->
       load_all (chunk_for_carrier sz) m addr = MemorySuccess (Vint c, vt, lts) ->
       load_bitfield (Tint sz sg1 attr) sz sg pos width m addr
-                    (Vint (bitfield_extract sz sg pos width c), vt) lts.
+                    (MemorySuccess ((Vint (bitfield_extract sz sg pos width c), vt), lts))
+  | load_bitfield_fail: forall sz sg1 attr sg pos width m addr c vt lts,
+      0 <= pos -> 0 < width <= bitsize_intsize sz -> pos + width <= bitsize_carrier sz ->
+      sg1 = (if zlt width (bitsize_intsize sz) then Signed else sg) ->
+      load_all (chunk_for_carrier sz) m addr = MemorySuccess (Vint c, vt, lts) ->
+      load_bitfield (Tint sz sg1 attr) sz sg pos width m addr
+                    (MemoryFail msg failure).
+
 
 Inductive store_bitfield: type -> intsize -> signedness -> Z -> Z -> mem -> Z -> tag -> atom -> list tag -> mem -> atom -> Prop :=
   | store_bitfield_intro: forall sz sg1 attr sg pos width m addr pt c n vt ovt lts m',

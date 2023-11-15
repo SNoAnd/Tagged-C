@@ -331,7 +331,8 @@ Module Cexec (P:Policy) (A:Allocator P).
         InvBooleans. subst i. destruct v; mydestr; try congruence.
         split.
         + eapply deref_loc_bitfield; eauto. econstructor; eauto.
-          admit. (* add axiom, load_all <-> load and load_ltags *)
+          eapply load_all_compose.
+        (* add axiom, load_all <-> load and load_ltags *)
         + constructor.
     Admitted.
 
