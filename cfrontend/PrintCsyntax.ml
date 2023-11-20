@@ -452,8 +452,8 @@ let print_fundef p id fd =
   | Ctypes.External((AST.EF_external _ (*| AST.EF_runtime _*) | AST.EF_malloc | AST.EF_free), args, res, cconv) ->
       fprintf p "extern %s;@ @ "
                 (name_cdecl (extern_atom id) (Tfunction(args, res, cconv)))
-  | Ctypes.External(_, _, _, _) ->
-      ()
+  (*| Ctypes.External(_, _, _, _) ->*)
+      (*()*)
   | Ctypes.Internal f ->
       print_function p id f
 

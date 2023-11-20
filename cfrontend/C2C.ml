@@ -957,9 +957,9 @@ let rec convertExpr env e =
                Csyntax.Econs(va_list_ptr dst, Csyntax.Econs(va_list_ptr src, Csyntax.Enil)),
                Tvoid)*)
 
-  | C.ECall({edesc = C.EVar {name = "__builtin_sel"}}, [arg1; arg2; arg3]) ->
+(*  | C.ECall({edesc = C.EVar {name = "__builtin_sel"}}, [arg1; arg2; arg3]) ->
       ewrap (Ctyping.eselection (convertExpr env arg1)
-                                (convertExpr env arg2) (convertExpr env arg3))
+                                (convertExpr env arg2) (convertExpr env arg3))*)
 
   | C.ECall({edesc = C.EVar {name = "__builtin_expect"}}, [arg1; arg2]) ->
       convertExpr env arg1
@@ -1272,10 +1272,10 @@ let convertFundecl env (sto, id, ty, optinit) =
   let ef =
     if id.name = "malloc" then AST.EF_malloc else
     if id.name = "free" then AST.EF_free else
-    if Str.string_match re_builtin id.name 0
+    (*if Str.string_match re_builtin id.name 0
     && List.mem_assoc id.name builtins.builtin_functions
     then AST.EF_builtin(id'', sg)
-    else AST.EF_external(id'', sg) in
+    else*) AST.EF_external(id'', sg) in
   (id',  AST.Gfun(Ctypes.External(ef, args, res, cconv)))
 
 (** Initializers *)

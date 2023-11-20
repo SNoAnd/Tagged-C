@@ -1001,198 +1001,60 @@ Proof.
   split. constructor. intuition congruence.
 Qed.*)
 
+Definition alloc_size (v: val) (z:Z) : Prop :=
+  match v with
+  | Vint n => Int.unsigned n = z
+  | Vlong n => Int64.unsigned n = z
+  | _ => False
+  end.
+
 (** ** Semantics of dynamic memory allocation (malloc) *)
 Inductive extcall_malloc_sem (ge: Genv.t F V):
   list atom -> tag -> tag -> mem -> trace ->
   (MemoryResult (PolicyResult (atom * tag * mem))) -> Prop :=
-| extcall_malloc_sem_intro_int: forall sz st pct fpt m m' lo hi vt_body vt_head lt pt pct',
+| extcall_malloc_sem_intro: forall v sz st pct fpt m m' lo hi vt_body vt_head lt pt pct',
+    alloc_size v sz ->
     MallocT pct fpt st = PolicySuccess (pct', pt, vt_body, vt_head, lt) ->
     heapalloc m sz vt_head vt_body lt = MemorySuccess (m', lo, hi) ->
-    extcall_malloc_sem ge ((Vint (Int.repr sz),st) :: nil) pct fpt m E0
+    extcall_malloc_sem ge ((v,st) :: nil) pct fpt m E0
                        (MemorySuccess (PolicySuccess ((Vlong (Int64.repr lo), pt), pct', m')))
-| extcall_malloc_sem_intro_long: forall sz st pct fpt m m' lo hi vt_body vt_head lt pt pct',
+| extcall_malloc_sem_fail_0: forall v sz st pct fpt m msg params,
+    alloc_size v sz ->
+    MallocT pct fpt st = PolicyFail msg params ->
+    extcall_malloc_sem ge ((v,st) :: nil) pct fpt m E0
+                       (MemorySuccess (PolicyFail msg params))
+| extcall_malloc_sem_fail_1: forall v sz st pct fpt m vt_body vt_head lt pt pct' msg failure,
+    alloc_size v sz ->
     MallocT pct fpt st = PolicySuccess (pct', pt, vt_body, vt_head, lt) ->
-    heapalloc m sz vt_head vt_body lt = MemorySuccess (m', lo, hi) ->
-    extcall_malloc_sem ge ((Vlong (Int64.repr sz),st) :: nil) pct fpt m E0
-                       (MemorySuccess (PolicySuccess ((Vlong (Int64.repr lo), pt), pct', m'))).
-(* TODO: fail cases *)
-
-(*Lemma extcall_malloc_ok:
-  extcall_properties extcall_malloc_sem
-                     (mksignature (Tptr :: nil) Tptr cc_default).
-Proof.
-  assert (UNCHANGED:
-    forall (P: block -> Z -> Prop) m lo hi v m' b m'',
-    Mem.alloc m lo hi = (m', b) ->
-    Mem.store Mptr m' b lo v = Some m'' ->
-    Mem.unchanged_on P m m'').
-  {
-    intros.
-    apply Mem.unchanged_on_implies with (fun b1 ofs1 => b1 <> b).
-    apply Mem.unchanged_on_trans with m'.
-    eapply Mem.alloc_unchanged_on; eauto.
-    eapply Mem.store_unchanged_on; eauto.
-    intros. eapply Mem.valid_not_valid_diff; eauto with mem.
-  }
-  constructor; intros.
-(* well typed *)
-- inv H. simpl. unfold Tptr; destruct Archi.ptr64; auto.
-(* symbols preserved *)
-- inv H0; econstructor; eauto.
-(* valid block *)
-- inv H. eauto with mem.
-(* perms *)
-- inv H. exploit Mem.perm_alloc_inv. eauto. eapply Mem.perm_store_2; eauto.
-  rewrite dec_eq_false. auto.
-  apply Mem.valid_not_valid_diff with m1; eauto with mem.
-(* readonly *)
-- inv H. eapply unchanged_on_readonly; eauto. 
-(* mem extends *)
-- inv H. inv H1. inv H7.
-  assert (SZ: v2 = Vptrofs sz).
-  { unfold Vptrofs in *. destruct Archi.ptr64; inv H5; auto. }
-  subst v2.
-  exploit Mem.alloc_extends; eauto. apply Z.le_refl. apply Z.le_refl.
-  intros [m3' [A B]].
-  exploit Mem.store_within_extends. eexact B. eauto. eauto.
-  intros [m2' [C D]].
-  exists (Vptr b Ptrofs.zero); exists m2'; intuition.
-  econstructor; eauto.
-  eapply UNCHANGED; eauto.
-(* mem injects *)
-- inv H0. inv H2. inv H8.
-  assert (SZ: v' = Vptrofs sz).
-  { unfold Vptrofs in *. destruct Archi.ptr64; inv H6; auto. }
-  subst v'.
-  exploit Mem.alloc_parallel_inject; eauto. apply Z.le_refl. apply Z.le_refl.
-  intros [f' [m3' [b' [ALLOC [A [B [C D]]]]]]].
-  exploit Mem.store_mapped_inject. eexact A. eauto. eauto.
-  instantiate (1 := Vptrofs sz). unfold Vptrofs; destruct Archi.ptr64; constructor.
-  rewrite Z.add_0_r. intros [m2' [E G]].
-  exists f'; exists (Vptr b' Ptrofs.zero); exists m2'; intuition auto.
-  econstructor; eauto.
-  econstructor. eauto. auto.
-  eapply UNCHANGED; eauto.
-  eapply UNCHANGED; eauto.
-  red; intros. destruct (eq_block b1 b).
-  subst b1. rewrite C in H2. inv H2. eauto with mem.
-  rewrite D in H2 by auto. congruence.
-(* trace length *)
-- inv H; simpl; lia.
-(* receptive *)
-- assert (t1 = t2). inv H; inv H0; auto. subst t2.
-  exists vres1; exists m1; auto.
-(* determ *)
-- inv H. simple inversion H0.
-  assert (EQ2: sz0 = sz).
-  { unfold Vptrofs in H4; destruct Archi.ptr64 eqn:SF.
-    rewrite <- (Ptrofs.of_int64_to_int64 SF sz0), <- (Ptrofs.of_int64_to_int64 SF sz). congruence.
-    rewrite <- (Ptrofs.of_int_to_int SF sz0), <- (Ptrofs.of_int_to_int SF sz). congruence.
-  }
-  subst.
-  split. constructor. intuition congruence.
-Qed.
-*)
-(** ** Semantics of dynamic memory deallocation (free) *)
+    heapalloc m sz vt_head vt_body lt = MemoryFail msg failure ->
+    extcall_malloc_sem ge ((v,st) :: nil) pct fpt m E0
+                       (MemoryFail msg failure).
 
 Inductive extcall_free_sem (ge: Genv.t F V) :
   list atom -> tag -> tag -> mem -> trace ->
   (MemoryResult (PolicyResult (atom * tag * mem))) -> Prop :=
 | extcall_free_sem_ptr: forall addr fpt pt pct pct' m m',
-    heapfree m addr (fun vt => FreeT pct fpt pt vt) = MemorySuccess (PolicySuccess (pct', m')) ->
-    extcall_free_sem ge ((Vlong (Int64.repr addr),pt) :: nil) pct fpt m E0
+    addr <> Int64.zero ->
+    heapfree m (Int64.unsigned addr) (fun vt => FreeT pct fpt pt vt) = MemorySuccess (PolicySuccess (pct', m')) ->
+    extcall_free_sem ge ((Vlong addr,pt) :: nil) pct fpt m E0
                      (MemorySuccess (PolicySuccess ((Vundef,def_tag), pct', m')))
+| extcall_free_sem_ptr_fail_0: forall addr fpt pt pct m msg failure,
+    addr <> Int64.zero ->
+    heapfree m (Int64.unsigned addr) (fun vt => FreeT pct fpt pt vt) = MemoryFail msg failure ->
+    extcall_free_sem ge ((Vlong addr,pt) :: nil) pct fpt m E0
+                     (MemoryFail msg failure)
+| extcall_free_sem_ptr_fail_1: forall addr fpt pt pct m msg params,
+    addr <> Int64.zero ->
+    heapfree m (Int64.unsigned addr) (fun vt => FreeT pct fpt pt vt) = MemorySuccess (PolicyFail msg params) ->
+    extcall_free_sem ge ((Vlong addr,pt) :: nil) pct fpt m E0
+                     (MemorySuccess (PolicyFail msg params))
 | extcall_free_sem_null: forall pct fpt m pt,
-    extcall_free_sem ge ((Vnullptr,pt) :: nil) pct fpt m E0
+    extcall_free_sem ge ((Vlong Int64.zero,pt) :: nil) pct fpt m E0
                      (MemorySuccess (PolicySuccess ((Vundef,def_tag), pct, m))).
-
-(*Lemma extcall_free_ok:
-  extcall_properties extcall_free_sem
-                     (mksignature (Tptr :: nil) Tvoid cc_default).
-Proof.
-  constructor; intros.
-(* well typed *)
-- inv H; simpl; auto.
-(* symbols preserved *)
-- inv H0; econstructor; eauto.
-(* valid block *)
-- inv H; eauto with mem.
-(* mem extends *)
-(*- inv H.
-+ inv H1. inv H8. inv H6.
-  exploit Mem.load_extends; eauto. intros [v' [A B]].
-  assert (v' = Vptrofs sz).
-  { unfold Vptrofs in *; destruct Archi.ptr64; inv B; auto. }
-  subst v'.
-  exploit Mem.free_parallel_extends; eauto. intros [m2' [C D]].
-  exists Vundef; exists m2'; intuition auto.
-  econstructor; eauto.
-  eapply Mem.free_unchanged_on; eauto.
-  unfold loc_out_of_bounds; intros.
-  assert (Mem.perm m1 b i Max Nonempty).
-  { apply Mem.perm_cur_max. apply Mem.perm_implies with Freeable; auto with mem.
-    eapply Mem.free_range_perm. eexact H4. eauto. }
-  tauto.
-+ inv H1. inv H5. replace v2 with Vnullptr.
-  exists Vundef; exists m1'; intuition auto.
-  constructor.
-  apply Mem.unchanged_on_refl.
-  unfold Vnullptr in *; destruct Archi.ptr64; inv H3; auto.
-(* mem inject *)
-- inv H0.
-+ inv H2. inv H7. inv H9.
-  exploit Mem.load_inject; eauto. intros [v' [A B]].
-  assert (v' = Vptrofs sz).
-  { unfold Vptrofs in *; destruct Archi.ptr64; inv B; auto. }
-  subst v'.
-  assert (P: Mem.range_perm m1 b (Ptrofs.unsigned lo - size_chunk Mptr) (Ptrofs.unsigned lo + Ptrofs.unsigned sz) Cur Freeable).
-    eapply Mem.free_range_perm; eauto.
-  exploit Mem.address_inject; eauto.
-    apply Mem.perm_implies with Freeable; auto with mem.
-    apply P. instantiate (1 := lo).
-    generalize (size_chunk_pos Mptr); lia.
-  intro EQ.
-  exploit Mem.free_parallel_inject; eauto. intros (m2' & C & D).
-  exists f, Vundef, m2'; split.
-  apply extcall_free_sem_ptr with (sz := sz) (m' := m2').
-    rewrite EQ. rewrite <- A. f_equal. lia.
-    auto. auto.
-    rewrite ! EQ. rewrite <- C. f_equal; lia.
-  split. auto.
-  split. auto.
-  split. eapply Mem.free_unchanged_on; eauto. unfold loc_unmapped. intros; congruence.
-  split. eapply Mem.free_unchanged_on; eauto. unfold loc_out_of_reach.
-    intros. red; intros. eelim H2; eauto.
-    apply Mem.perm_cur_max. apply Mem.perm_implies with Freeable; auto with mem.
-    apply P. lia.
-  split. auto.
-  red; intros. congruence.
-+ inv H2. inv H6. replace v' with Vnullptr.
-  exists f, Vundef, m1'; intuition auto using Mem.unchanged_on_refl.
-  constructor.
-  red; intros; congruence.
-  unfold Vnullptr in *; destruct Archi.ptr64; inv H4; auto.*)
-(* trace length *)
-- inv H; simpl; lia.
-(* receptive *)
-- assert (t1 = t2) by (inv H; inv H0; auto). subst t2.
-  exists vres1; exists m1; auto.
-(* determ *)
-- inv H; inv H0; try (unfold Vnullptr in *; destruct Archi.ptr64; discriminate).
-+ assert (EQ1: Vptrofs sz0 = Vptrofs sz) by congruence.
-  assert (EQ2: sz0 = sz).
-  { unfold Vptrofs in EQ1; destruct Archi.ptr64 eqn:SF.
-    rewrite <- (Ptrofs.of_int64_to_int64 SF sz0), <- (Ptrofs.of_int64_to_int64 SF sz). congruence.
-    rewrite <- (Ptrofs.of_int_to_int SF sz0), <- (Ptrofs.of_int_to_int SF sz). congruence.
-  }
-  subst sz0.
-  split. constructor. intuition congruence.
-+ split. constructor. intuition auto.
-Qed.*)
 
 (** ** Semantics of [memcpy] operations. *)
 
-(*nductive extcall_memcpy_sem (sz al: Z) (ge: Genv.t F V):
+(*Inductive extcall_memcpy_sem (sz al: Z) (ge: Genv.t F V):
                         list atom -> tag -> mem -> trace -> atom -> tag -> mem -> Prop :=
   | extcall_memcpy_sem_intro: forall odst osrc pt1 pt2 pct m bytes lts m',
       al = 1 \/ al = 2 \/ al = 4 \/ al = 8 -> sz >= 0 -> (al | sz) ->
@@ -1526,10 +1388,9 @@ This predicate is used in the semantics of all CompCert languages. *)
 Definition external_call (ef: external_function): extcall_sem :=
   match ef with
   | EF_external name sg  => external_functions_sem name sg
-  | EF_builtin name sg   => builtin_or_external_sem name sg
-(*  | EF_runtime name sg   => builtin_or_external_sem name sg *)
+(*  | EF_builtin name sg   => builtin_or_external_sem name sg
   | EF_vload chunk       => volatile_load_sem chunk
-  | EF_vstore chunk      => volatile_store_sem chunk
+  | EF_vstore chunk      => volatile_store_sem chunk*)
   | EF_malloc            => extcall_malloc_sem
   | EF_free              => extcall_free_sem
 (*  | EF_memcpy sz al      => extcall_memcpy_sem sz al

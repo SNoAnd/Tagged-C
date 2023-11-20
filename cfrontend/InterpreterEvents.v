@@ -10,6 +10,7 @@ Require Import Cstrategy Ctypes.
 
 Local Open Scope string_scope.
 Local Open Scope list_scope.
+Local Open Scope Z_scope.
 
 Notation "'do' X <- A ; B" := (match A with Some X => B | None => None end)
   (at level 200, X name, A at level 100, B at level 200)
@@ -398,23 +399,8 @@ Module InterpreterEvents (P:Policy) (A:Allocator P).
         possible_trace w t w' ->
         do_external_function id sg ge w vargs pct fpt m = Some(w', t, res).
 
-
-(*Variable do_inline_assembly:
-  string -> signature -> Senv.t -> world -> list val -> mem -> option (world * trace * val * mem).
-
-Hypothesis do_inline_assembly_sound:
-  forall txt sg ge vargs m t vres m' w w',
-  do_inline_assembly txt sg ge w vargs m = Some(w', t, vres, m') ->
-  inline_assembly_sem txt sg ge vargs m t vres m' /\ possible_trace w t w'.
-
-Hypothesis do_inline_assembly_complete:
-  forall txt sg ge vargs m t vres m' w w',
-  inline_assembly_sem txt sg ge vargs m t vres m' ->
-  possible_trace w t w' ->
-  do_inline_assembly txt sg ge w vargs m = Some(w', t, vres, m').*)
-
-    Definition do_ef_volatile_load (chunk: memory_chunk)
-               (w: world) (vargs: list val) (m: mem) : option (world * trace * MemoryResult (atom * mem)) :=
+(*    Definition do_ef_volatile_load (chunk: memory_chunk) (w: world) (vargs: list val) (m: mem) :
+      option (world * trace * MemoryResult (atom * mem)) :=
       match vargs with
       | [Vint ofs] =>
           match do_volatile_load w chunk m (cast_int_long Unsigned ofs) with
@@ -431,33 +417,27 @@ Hypothesis do_inline_assembly_complete:
       | _ => None
       end.
 
-(*Definition do_ef_volatile_store (chunk: memory_chunk)
-       (w: world) (vargs: list val) (m: mem) : option (world * trace * atom * mem) :=
-  match vargs with
-  | Vptr b ofs :: v :: nil => do w',t,m',v' <- do_volatile_store w chunk m b ofs v; Some(w',t,Vundef,m')
-  | _ => None
-  end.
-
-Definition do_ef_volatile_load_global (chunk: memory_chunk) (id: ident) (ofs: ptrofs)
-       (w: world) (vargs: list val) (m: mem) : option (world * trace * val * mem) :=
-  do b <- Genv.find_symbol ge id; do_ef_volatile_load chunk w (Vptr b ofs :: vargs) m.
-
-Definition do_ef_volatile_store_global (chunk: memory_chunk) (id: ident) (ofs: ptrofs)
-       (w: world) (vargs: list val) (m: mem) : option (world * trace * val * mem) :=
-  do b <- Genv.find_symbol ge id; do_ef_volatile_store chunk w (Vptr b ofs :: vargs) m.*)
-
-    Definition do_alloc_size (v: val) : option ptrofs :=
+    Definition do_ef_volatile_store (chunk: memory_chunk) (w: world) (vargs: list val) (m: mem) :
+      option (world * trace * MemoryResult mem) := *)
+    
+    Definition do_alloc_size (v: val) : option Z :=
       match v with
-      | Vint n => Some (Ptrofs.of_int n)
-      | Vlong n => Some (Ptrofs.of_int64 n)
+      | Vint n => Some (Int.unsigned n)
+      | Vlong n => Some (Int64.unsigned n)
       | _ => None
-      end.
+      end.        
 
+    Lemma do_alloc_size_correct :
+      forall v z, do_alloc_size v = Some z <-> alloc_size v z.
+    Proof.
+      unfold alloc_size. unfold do_alloc_size. split; intros; destruct v; inv H; auto.
+    Qed.
+    
     Definition do_ef_malloc (w: world) (vargs: list atom) (PCT fpt: tag) (m: mem)
       : option (world * trace * (MemoryResult (PolicyResult (atom * tag * mem)))) :=
       match vargs with
       | [(v,st)] =>
-          match option_map Ptrofs.unsigned (do_alloc_size v) with
+          match do_alloc_size v with
           | Some sz =>
               match MallocT PCT fpt st with
               | PolicySuccess (PCT',pt',vt_body,vt_head,lt) =>
@@ -473,12 +453,42 @@ Definition do_ef_volatile_store_global (chunk: memory_chunk) (id: ident) (ofs: p
           end
       | _ => None
       end.
+
+    Lemma do_ef_malloc_complete :
+      forall vargs pct fpt m tr res w w',
+        extcall_malloc_sem ge vargs pct fpt m tr res ->
+        possible_trace w tr w' ->
+        do_ef_malloc w vargs pct fpt m = Some (w', tr, res).
+    Proof.
+      intros. unfold do_ef_malloc. inv H; apply do_alloc_size_correct in H1; rewrite H1; inv H0.
+      - rewrite H2. rewrite H3. auto.
+      - rewrite H2. auto.
+      - rewrite H2. rewrite H3. auto.
+    Qed.
+    
+    Lemma do_ef_malloc_sound :
+      forall vargs pct fpt m tr res w w',
+        do_ef_malloc w vargs pct fpt m = Some (w', tr, res) ->
+        extcall_malloc_sem ge vargs pct fpt m tr res /\ possible_trace w tr w'.
+    Proof.
+      unfold do_ef_malloc. intros.
+      destruct vargs as [| [v vt]]; try congruence.
+      destruct vargs; try congruence.
+      destruct (do_alloc_size v) eqn:?.
+      - apply do_alloc_size_correct in Heqo.
+        destruct (MallocT pct fpt vt) as [[[[[PCT' pt'] vt_body] vt_head] lt]|] eqn:?.
+        + destruct (heapalloc m z vt_head vt_body lt) as [[[m' base] bound]|] eqn:?; inv H.
+          * split; econstructor; eauto. 
+          * split; econstructor; eauto. 
+        + inv H. split; econstructor; eauto.
+      - inv H.
+    Qed.
     
     Definition do_ef_free (w: world) (vargs: list atom) (PCT fpt: tag) (m: mem)
       : option (world * trace * (MemoryResult (PolicyResult (atom * tag * mem)))) :=
       match vargs with
       | [(Vlong addr,pt)] =>
-          if (Int64.unsigned addr =? 0)%Z then
+          if Int64.eq addr Int64.zero then
             Some (w, E0, (MemorySuccess (PolicySuccess ((Vundef,def_tag),PCT,m))))
           else
           match heapfree m (Int64.unsigned addr) (fun vt => FreeT PCT fpt pt vt) with
@@ -491,53 +501,41 @@ Definition do_ef_volatile_store_global (chunk: memory_chunk) (id: ident) (ofs: p
       | _ => None
       end.
 
-(*Definition memcpy_args_ok
-  (sz al: Z) (bdst: block) (odst: Z) (bsrc: block) (osrc: Z) : Prop :=
-      (al = 1 \/ al = 2 \/ al = 4 \/ al = 8)
-   /\ sz >= 0 /\ (al | sz)
-   /\ (sz > 0 -> (al | osrc))
-   /\ (sz > 0 -> (al | odst))
-   /\ (bsrc <> bdst \/ osrc = odst \/ osrc + sz <= odst \/ odst + sz <= osrc).
+    Lemma do_ef_free_complete :
+      forall vargs pct fpt m tr res w w',
+        extcall_free_sem ge vargs pct fpt m tr res ->
+        possible_trace w tr w' ->
+        do_ef_free w vargs pct fpt m = Some (w', tr, res).
+    Proof.
+      intros. unfold do_ef_free. inv H.
+      - rewrite (Int64.eq_false _ _ H1).
+        rewrite H2. inv H0. auto. 
+      - rewrite (Int64.eq_false _ _ H1).
+        rewrite H2. inv H0. auto.
+      - rewrite (Int64.eq_false _ _ H1).
+        rewrite H2. inv H0. auto.
+      - rewrite Int64.eq_true. inv H0. auto.
+    Qed.
 
-Definition do_ef_memcpy (sz al: Z)
-       (w: world) (vargs: list val) (m: mem) : option (world * trace * val * mem) :=
-  match vargs with
-  | Vptr bdst odst :: Vptr bsrc osrc :: nil =>
-      if decide (memcpy_args_ok sz al bdst (Ptrofs.unsigned odst) bsrc (Ptrofs.unsigned osrc)) then
-        do bytes <- Mem.loadbytes m bsrc (Ptrofs.unsigned osrc) sz;
-        do m' <- Mem.storebytes m bdst (Ptrofs.unsigned odst) bytes;
-        Some(w, E0, Vundef, m')
-      else None
-  | _ => None
-  end.
-
-Definition do_ef_annot (text: string) (targs: list typ)
-       (w: world) (vargs: list val) (m: mem) : option (world * trace * val * mem) :=
-  do args <- list_eventval_of_val vargs targs;
-  Some(w, Event_annot text args :: E0, Vundef, m).
-
-Definition do_ef_annot_val (text: string) (targ: typ)
-       (w: world) (vargs: list val) (m: mem) : option (world * trace * val * mem) :=
-  match vargs with
-  | varg :: nil =>
-      do arg <- eventval_of_val varg targ;
-      Some(w, Event_annot text (arg :: nil) :: E0, varg, m)
-  | _ => None
-  end.
-
-Definition do_ef_debug (kind: positive) (text: ident) (targs: list typ)
-       (w: world) (vargs: list val) (m: mem) : option (world * trace * val * mem) :=
-  Some(w, E0, Vundef, m).
-
-Definition do_builtin_or_external (name: string) (sg: signature)
-       (w: world) (vargs: list atom) (m: mem) : option (world * trace * atom * mem) :=
-  match lookup_builtin_function name sg with
-  | Some bf => match builtin_function_sem bf vargs with
-               | Some v => Some(w, E0, v, m)
-               | None => None
-               end
-  | None    => do_external_function name sg ge w vargs m
-  end.*)
+    Lemma do_ef_free_sound :
+      forall vargs pct fpt m tr res w w',
+        do_ef_free w vargs pct fpt m = Some (w', tr, res) ->
+        extcall_free_sem ge vargs pct fpt m tr res /\ possible_trace w tr w'.
+    Proof.
+      unfold do_ef_free. intros.
+      destruct vargs as [| [v vt]]; try congruence.
+      destruct v; try congruence.
+      destruct vargs; try congruence.
+      destruct (Int64.eq i Int64.zero) eqn:?.
+      - apply Int64.same_if_eq in Heqb. rewrite Heqb.
+        inv H. split.
+        + eapply extcall_free_sem_null.
+        + constructor.
+      - destruct (heapfree m (Int64.unsigned i) (fun vt0 : tag => FreeT pct fpt vt vt0))
+          as [[[pct' m']|]|] eqn:?;
+                             inv H; split; constructor; auto; intro;
+          rewrite H in Heqb; rewrite Int64.eq_true in Heqb; discriminate.
+    Qed.
 
     Definition do_external (ef: external_function) :
       world -> list atom -> tag -> tag -> mem -> option (world * trace * (MemoryResult (PolicyResult (atom * tag * mem)))) :=
@@ -546,144 +544,39 @@ Definition do_builtin_or_external (name: string) (sg: signature)
           fun w vargs pct fpt m =>
             do_external_function name sg ge w vargs pct fpt m
   (*| EF_builtin name sg => do_builtin_or_external name sg
-  | EF_runtime name sg => do_builtin_or_external name sg
-  | EF_vload chunk => do_ef_volatile_load chunk
-  | EF_vstore chunk => do_ef_volatile_store chunk*)
+    | EF_vload chunk => do_ef_volatile_load chunk
+    | EF_vstore chunk => do_ef_volatile_store chunk*)
       | EF_malloc => do_ef_malloc
       | EF_free => do_ef_free
-  (*| EF_memcpy sz al => do_ef_memcpy sz al
-  | EF_annot kind text targs => do_ef_annot text targs
-  | EF_annot_val kind text targ => do_ef_annot_val text targ
-  | EF_debug kind text targs => do_ef_debug kind text targs*)
-      | _ => fun _ _ _ _ _ => None
       end.
 
     Lemma do_ef_external_sound:
       forall ef w vargs pct fpt m w' t res,
         do_external ef w vargs pct fpt m = Some (w', t, res) ->
         external_call ef ge vargs pct fpt m t res /\ possible_trace w t w'.
-    Admitted.
-(*Proof with try congruence.
-  intros until m'.
-(*  assert (BF_EX: forall name sg,
-    do_builtin_or_external name sg w vargs m = Some (w', t, vres, m') ->
-    builtin_or_external_sem name sg ge vargs m t vres m' /\ possible_trace w t w').
-  { unfold do_builtin_or_external, builtin_or_external_sem; intros. 
-    destruct (lookup_builtin_function name sg ) as [bf|].
-  - destruct (builtin_function_sem bf vargs) as [vres1|] eqn:BF; inv H.
-    split. constructor; auto. constructor.
-  - eapply do_external_function_sound; eauto.
-  }*)
-  destruct ef; simpl...
-- (* EF_external *)
-  eapply do_external_function_sound; eauto.
-(*- (* EF_builtin *)
-  eapply BF_EX; eauto.
-- (* EF_runtime *)
-  eapply BF_EX; eauto.
-- (* EF_vload *)
-  unfold do_ef_volatile_load. destruct vargs... destruct v... destruct vargs...
-  mydestr. destruct p as [[w'' t''] v]; mydestr.
-  exploit do_volatile_load_sound; eauto. intuition. econstructor; eauto.
-- (* EF_vstore *)
-  unfold do_ef_volatile_store. destruct vargs... destruct v... destruct vargs... destruct vargs...
-  mydestr. destruct p as [[[w'' t''] m''] v'']. mydestr.
-  exploit do_volatile_store_sound; eauto. intuition. econstructor; eauto.*)
-- (* EF_malloc *)
-  unfold do_ef_malloc. destruct vargs... destruct vargs... mydestr.
-  destruct (MallocT pct def_tag t1) as [[[[PCT' pt'] vt'] lt'] | msg params]...
-  destruct (store Mptr m0 (z1 - size_chunk Mptr) (v,vt') (repeat def_tag (Z.to_nat (size_chunk Mptr))))...
-  destruct (storebytes m1 z1 (repeat (Byte Byte.zero vt') (Z.to_nat z)) (repeat lt' (Z.to_nat z)))...
-  intro. inv H. split.
-  + destruct v; simpl in *...
-    * replace i with (Ptrofs.to_int (Ptrofs.of_int i)).      
-      eapply extcall_malloc_sem_intro_int.
-      simpl. inv Heqo. apply Heqo0.
-      admit.
-(*- (* EF_free *)
-  unfold do_ef_free. destruct vargs... destruct v... 
-+ destruct vargs... mydestr; InvBooleans; subst i.
-  replace (Vint Int.zero) with Vnullptr. split; constructor.
-  apply negb_true_iff in H0. unfold Vnullptr; rewrite H0; auto.
-+ destruct vargs... mydestr; InvBooleans; subst i.
-  replace (Vlong Int64.zero) with Vnullptr. split; constructor.
-  unfold Vnullptr; rewrite H0; auto.
-+ destruct vargs... mydestr.
-  split. apply SIZE in Heqo0. econstructor; eauto. congruence. lia.
-  constructor.
-- (* EF_memcpy *)
-  unfold do_ef_memcpy. destruct vargs... destruct v... destruct vargs...
-  destruct v... destruct vargs... mydestr. 
-  apply Decidable_sound in Heqb1. red in Heqb1.
-  split. econstructor; eauto; tauto. constructor.
-- (* EF_annot *)
-  unfold do_ef_annot. mydestr.
-  split. constructor. apply list_eventval_of_val_sound; auto.
-  econstructor. constructor; eauto. constructor.
-- (* EF_annot_val *)
-  unfold do_ef_annot_val. destruct vargs... destruct vargs... mydestr.
-  split. constructor. apply eventval_of_val_sound; auto.
-  econstructor. constructor; eauto. constructor.
-- (* EF_inline_asm *)
-  eapply do_inline_assembly_sound; eauto.
-- (* EF_debug *)
-  unfold do_ef_debug. mydestr. split; constructor.
-Qed.*)
-*)
+    Proof with try congruence.
+      intros until res.
+      destruct ef; simpl...
+      - (* EF_external *)
+        eapply do_external_function_sound; eauto.
+      - (* EF_malloc *)
+        eapply do_ef_malloc_sound; eauto.
+      - (* EF_free *)
+        eapply do_ef_free_sound; eauto.
+    Qed.
 
     Lemma do_ef_external_complete:
       forall ef w vargs pct fpt m w' t res,
         external_call ef ge vargs pct fpt m t res -> possible_trace w t w' ->
         do_external ef w vargs pct fpt m = Some (w', t, res).
-    Admitted.
-(*Proof.
-  intros.
-  assert (SIZE: forall n, do_alloc_size (Vptrofs n) = Some n).
-  { unfold Vptrofs, do_alloc_size; intros; destruct Archi.ptr64 eqn:SF. 
-    rewrite Ptrofs.of_int64_to_int64; auto.
-    rewrite Ptrofs.of_int_to_int; auto. }
-  assert (BF_EX: forall name sg,
-    builtin_or_external_sem name sg ge vargs m t vres m' ->
-    do_builtin_or_external name sg w vargs m = Some (w', t, vres, m')).
-  { unfold do_builtin_or_external, builtin_or_external_sem; intros.
-    destruct (lookup_builtin_function name sg) as [bf|].
-  - inv H1. inv H0. rewrite H2. auto.
-  - eapply do_external_function_complete; eauto.
-  }
-  destruct ef; simpl in *.
-- (* EF_external *)
-  eapply do_external_function_complete; eauto.
-- (* EF_builtin *)
-  eapply BF_EX; eauto.
-- (* EF_runtime *)
-  eapply BF_EX; eauto.
-- (* EF_vload *)
-  inv H; unfold do_ef_volatile_load.
-  exploit do_volatile_load_complete; eauto. intros EQ; rewrite EQ; auto.
-- (* EF_vstore *)
-  inv H; unfold do_ef_volatile_store.
-  exploit do_volatile_store_complete; eauto. intros EQ; rewrite EQ; auto.
-- (* EF_malloc *)
-  inv H; unfold do_ef_malloc.
-  inv H0. erewrite SIZE by eauto. rewrite H1, H2. auto.
-- (* EF_free *)
-  inv H; unfold do_ef_free.
-+ inv H0. rewrite H1. erewrite SIZE by eauto. rewrite zlt_true. rewrite H3. auto. lia.
-+ inv H0. unfold Vnullptr; destruct Archi.ptr64; auto.
-- (* EF_memcpy *)
-  inv H; unfold do_ef_memcpy.
-  inv H0. rewrite Decidable_complete. rewrite H7; rewrite H8; auto.
-  red. tauto.
-- (* EF_annot *)
-  inv H; unfold do_ef_annot. inv H0. inv H6. inv H4.
-  rewrite (list_eventval_of_val_complete _ _ _ H1). auto.
-- (* EF_annot_val *)
-  inv H; unfold do_ef_annot_val. inv H0. inv H6. inv H4.
-  rewrite (eventval_of_val_complete _ _ _ H1). auto.
-- (* EF_inline_asm *)
-  eapply do_inline_assembly_complete; eauto.
-- (* EF_debug *)
-  inv H. inv H0. reflexivity.
-Qed.*)
+    Proof.
+      intros. destruct ef eqn:?; simpl in *.
+      - (* EF_external *)
+        eapply do_external_function_complete; eauto.
+      - (* EF_malloc *)
+        eapply do_ef_malloc_complete; eauto.
+      - (* EF_free *)
+        eapply do_ef_free_complete; eauto.
+    Qed.
   End EXEC.
 End InterpreterEvents.

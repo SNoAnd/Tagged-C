@@ -420,10 +420,10 @@ Inductive wt_rvalue : expr -> Prop :=
     (* This typing rule is specialized to the builtin invocations generated
        by C2C, which are either __builtin_sel or builtins returning void. *)
     (ty = Tvoid /\ sig_res (ef_sig ef) = AST.Tvoid)
-    \/ (tyargs = Tcons type_bool (Tcons ty (Tcons ty Tnil))
+    (*\/ (tyargs = Tcons type_bool (Tcons ty (Tcons ty Tnil))
         /\ let t := typ_of_type ty in
            let sg := mksignature (AST.Tint :: t :: t :: nil) t cc_default in
-           ef = EF_builtin "__builtin_sel"%string sg) ->
+           ef = EF_builtin "__builtin_sel"%string sg)*) ->
     wt_rvalue (Ebuiltin ef tyargs rargs ty)
 | wt_Eparen: forall r tycast ty,
     wt_rvalue r ->
@@ -785,11 +785,11 @@ Definition ebuiltin (ef: external_function) (tyargs: typelist) (args: exprlist) 
   then OK (Ebuiltin ef tyargs args tyres)
   else Error (msg "builtin: wrong type decoration").
 
-Definition eselection (r1 r2 r3: expr) : res expr :=
+(*Definition eselection (r1 r2 r3: expr) : res expr :=
   do x1 <- check_rval r1; do x2 <- check_rval r2; do x3 <- check_rval r3;
   do y1 <- check_bool (typeof r1);
   do ty <- type_conditional (typeof r2) (typeof r3);
-  OK (Eselection r1 r2 r3 ty).
+  OK (Eselection r1 r2 r3 ty).*)
 
 Definition sdo (a: expr) (loc: Cabs.loc) : res statement :=
   do x <- check_rval a; OK (Sdo a loc).
@@ -1288,7 +1288,7 @@ Proof.
   econstructor; eauto. eapply check_arguments_sound; eauto.
 Qed.
 
-Lemma eselection_sound:
+(*Lemma eselection_sound:
   forall r1 r2 r3 a, eselection r1 r2 r3 = OK a ->
   wt_expr ce e r1 -> wt_expr ce e r2 -> wt_expr ce e r3 -> wt_expr ce e a.
 Proof.
@@ -1297,7 +1297,7 @@ Proof.
   repeat (constructor; eauto with ty).
   repeat (constructor; eauto with ty). apply wt_bool_cast; eauto with ty.
   right; auto.
-Qed.
+Qed.*)
 
 Lemma sdo_sound:
   forall a s loc, sdo a loc = OK s -> wt_expr ce e a -> wt_stmt ce e rt s.
@@ -1895,7 +1895,7 @@ Proof.
   - (* assignop_fun *) admit.
   - (* comma *) auto.
   - (* paren *) inv H4. constructor. apply H6. eapply pres_sem_cast; inv H; eauto.
-  - (* builtin *) subst. destruct H7 as [(A & B) | (A & B)].
+  - (* builtin *) admit. (*subst. destruct H7 as [(A & B) | (A & B)].
     + subst ty. destruct vres; simpl. auto with ty. 
     + simpl in B. set (T := typ_of_type ty) in *. 
       set (sg := mksignature (AST.Tint :: T :: T :: nil) T cc_default) in *.
@@ -1919,7 +1919,7 @@ Proof.
       { unfold v'; destruct (Int.eq n Int.zero); eapply cast_val_is_casted; eauto. }
       assert (EQ: Val.normalize v' T = v').
       { apply Val.normalize_idem. apply val_casted_has_type; auto. }
-      unfold v' in EQ. (*rewrite EQ. apply wt_val_casted; auto.*)
+      unfold v' in EQ. (*rewrite EQ. apply wt_val_casted; auto.*)*)
 Admitted.
 
 Lemma wt_lred:
