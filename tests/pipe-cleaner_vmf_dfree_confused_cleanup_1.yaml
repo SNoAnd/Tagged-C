@@ -4,9 +4,9 @@
 # Such as SUT args and input directory path
 
 vmfVariables:
-  - &SUT_ARGV ["/home/amn/fuzzer/tagged-c/tests/double_free_confused_cleanup_1_handlabelled.c", "@@"]
+  - &SUT_ARGV ["/home/amn/fuzzer/tagged-c/tests/double_free_confused_cleanup_1_handlabelled.c"]
   - &INTERP_PATH /home/amn/fuzzer/tagged-c/ccomp
-  - &INPUT_DIR /home/amn/fuzzer/test-input/
+  - &INPUT_DIR /home/amn/fuzzer/test_inputs/
 
 # VMF Framework parameters
 # Such as logging path, logging level, plugin path
@@ -16,11 +16,11 @@ vmfFramework:
   logLevel : 0 #0=DEBUG, 1=INFO, 2=WARNING, 3=ERROR
 
 # Modules and their specific parameters
-PIPECliInterpreterInitialization:
+PipeCliInterpreterInitialization:
   sutArgv: *SUT_ARGV
   interp:  *INTERP_PATH
 
-PIPECliInterpreterExecutor:
+PipeCliInterpreterExecutor:
   sutArgv: *SUT_ARGV
   interp:  *INTERP_PATH
 
