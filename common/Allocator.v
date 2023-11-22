@@ -373,3 +373,438 @@ Module FLAllocator (P : Policy) : Allocator P.
     end.
   
 End FLAllocator.
+  
+(*Section ALLOC.
+
+Variable m1: mem.
+Variables lo1 lo2 hi1 hi2: Z.
+Variable m2: mem.
+Hypothesis ALLOC: alloc m1 lo1 hi1 = MemorySuccess (m2, lo2, hi2).
+
+Ltac alloc_inv :=
+  let p := fresh "p" in
+  unfold alloc in ALLOC;
+  destruct (al.(stkalloc) m1.(al_state) (hi1 - lo1)) as [p |];
+  repeat destruct p;
+  inv ALLOC.
+
+Theorem valid_block_alloc:
+  forall ofs, valid_addr m1 ofs -> valid_addr m2 ofs.
+Proof.
+  unfold valid_addr; intros. destruct H as [lo [hi H]]. exists lo. exists hi.
+  unfold alloc in *.
+  destruct (stkalloc al (al_state m1) (hi1-lo1)) as [res |]; [|inv ALLOC].
+  destruct res as [[al_state' lo'] hi']. inv ALLOC.
+  simpl. destruct H. split;[right|]; auto.
+Qed.
+
+Theorem valid_new_block:
+  forall ofs, lo2 <= ofs -> ofs < hi2 -> valid_addr m2 ofs.
+Admitted.
+
+Local Hint Resolve valid_block_alloc valid_new_block : mem.
+
+Theorem valid_block_alloc_inv:
+  forall addr, valid_addr m2 addr -> (lo2 <= addr /\ addr < hi2) \/ valid_addr m1 addr.
+Admitted.
+(*Proof.
+  unfold valid_addr; intros.
+  destruct (lo2 <=? addr); [right | destruct (addr <? hi2); [left | right]].
+  - destruct H as [lo [hi H]]. exists lo. exists hi.
+    unfold alloc in *.
+    destruct (stkalloc al (al_state m1) (hi1-lo1)) as [res|]; [|inv ALLOC].
+    destruct res as [[al_state' lo'] hi']. inv ALLOC.
+    simpl in *. auto.
+Qed.*)
+
+(*Theorem perm_alloc_1:
+  forall ofs k p, perm m1 ofs k p -> perm m2 ofs k p.
+Proof.
+  unfold perm; intros. alloc_inv. simpl.
+  rewrite PMap.gsspec. destruct (peq b); auto.
+  destruct (zle lo2 ofs && zlt ofs hi); eauto.
+  rewrite nextblock_noaccess in H. contradiction. apply Plt_strict.
+Qed.
+
+Theorem perm_alloc_2:
+  forall ofs k, lo2 <= ofs < hi2 -> perm m2 ofs k Freeable.
+Proof.
+  unfold perm; intros. injection ALLOC; intros. rewrite <- H1; simpl.
+  subst b. rewrite PMap.gss. unfold proj_sumbool. rewrite zle_true.
+  rewrite zlt_true. simpl. auto with mem. lia. lia.
+Qed.
+
+Theorem perm_alloc_inv:
+  forall ofs k p,
+  perm m2 ofs k p ->
+  if eq_block then lo2 <= ofs < hi2 else perm m1 ofs k p.
+Proof.
+  intros until p; unfold perm. inv ALLOC. simpl.
+  rewrite PMap.gsspec. unfold eq_block. destruct (peq (nextblock m1)); intros.
+  destruct (zle lo2 ofs); try contradiction. destruct (zlt ofs hi); try contradiction.
+  split; auto.
+  auto.
+Qed.
+
+Theorem perm_alloc_3:
+  forall ofs k p, perm m2 ofs k p -> lo2 <= ofs < hi.
+Proof.
+  intros. exploit perm_alloc_inv; eauto. rewrite dec_eq_true; auto.
+Qed.
+
+Theorem perm_alloc_4:
+  forall ofs k p, perm m2 ofs k p -> <> -> perm m1 ofs k p.
+Proof.
+  intros. exploit perm_alloc_inv; eauto. rewrite dec_eq_false; auto.
+Qed.
+
+Local Hint Resolve perm_alloc_1 perm_alloc_2 perm_alloc_3 perm_alloc_4: mem.
+*)
+
+(*Theorem valid_access_alloc_other:
+  forall chunk ofs p,
+  valid_access m1 chunk ofs p ->
+  valid_access m2 chunk ofs p.
+Proof.
+  intros. inv H. constructor; auto with mem.
+  red; auto with mem.
+Qed.
+
+Theorem valid_access_alloc_same:
+  forall chunk ofs,
+  lo2 <= ofs -> ofs + size_chunk chunk <= hi2 -> (align_chunk chunk | ofs) ->
+  valid_access m2 chunk ofs Freeable.
+Proof.
+  intros. constructor; auto with mem.
+  red; intros. apply perm_alloc_2. lia.
+Qed.
+
+Local Hint Resolve valid_access_alloc_other valid_access_alloc_same: mem.
+
+Theorem valid_access_alloc_inv:
+  forall chunk ofs p,
+  valid_access m2 chunk ofs p ->
+  if eq_block b
+  then lo2 <= ofs /\ ofs + size_chunk chunk <= hi2 /\ (align_chunk chunk | ofs)
+  else valid_access m1 chunk ofs p.
+Proof.
+  intros. inv H.
+  generalize (size_chunk_pos chunk); intro.
+  destruct (eq_block b). subst b'.
+  assert (perm m2 ofs Cur p). apply H0. lia.
+  assert (perm m2 (ofs + size_chunk chunk - 1) Cur p). apply H0. lia.
+  exploit perm_alloc_inv. eexact H2. rewrite dec_eq_true. intro.
+  exploit perm_alloc_inv. eexact H3. rewrite dec_eq_true. intro.
+  intuition lia.
+  split; auto. red; intros.
+  exploit perm_alloc_inv. apply H0. eauto. rewrite dec_eq_false; auto.
+Qed.
+ 
+
+Theorem load_alloc_unchanged:
+  forall chunk ofs,
+  valid_block m1 ->
+  load chunk m2 ofs = load chunk m1 ofs.
+Proof.
+  intros. unfold load.
+  destruct (valid_access_dec m2 chunk ofs Readable).
+  exploit valid_access_alloc_inv; eauto. destruct (eq_block b); intros.
+  subst b'. elimtype False. eauto with mem.
+  rewrite pred_dec_true; auto.
+  injection ALLOC; intros. rewrite <- H2; simpl.
+  rewrite PMap.gso. auto. rewrite H1. apply not_eq_sym; eauto with mem.
+  rewrite pred_dec_false. auto.
+  eauto with mem.
+Qed.
+
+Theorem load_alloc_other:
+  forall chunk ofs v,
+  load chunk m1 ofs = Some v ->
+  load chunk m2 ofs = Some v.
+Proof.
+  intros. rewrite <- H. apply load_alloc_unchanged. eauto with mem.
+Qed.
+
+Theorem load_alloc_same:
+  forall chunk ofs v,
+  load chunk m2 ofs = Some v ->
+  v = Vundef.
+Proof.
+  intros. exploit load_result; eauto. intro. rewrite H0.
+  injection ALLOC; intros. rewrite <- H2; simpl. rewrite <- H1.
+  rewrite PMap.gss. destruct (size_chunk_nat_pos chunk) as [n E]. rewrite E. simpl.
+  rewrite ZMap.gi. apply decode_val_undef.
+Qed.
+
+Theorem load_alloc_same':
+  forall chunk ofs,
+  lo2 <= ofs -> ofs + size_chunk chunk <= hi2 -> (align_chunk chunk | ofs) ->
+  load chunk m2 ofs = Some Vundef.
+Proof.
+  intros. assert (exists v, load chunk m2 ofs = Some v).
+    apply valid_access_load. constructor; auto.
+    red; intros. eapply perm_implies. apply perm_alloc_2. lia. auto with mem.
+  destruct H2 as [v LOAD]. rewrite LOAD. decEq.
+  eapply load_alloc_same; eauto.
+Qed.
+
+Theorem loadbytes_alloc_unchanged:
+  forall ofs n,
+  valid_block m1 ->
+  loadbytes m2 ofs n = loadbytes m1 ofs n.
+Proof.
+  intros. unfold loadbytes.
+  destruct (range_perm_dec m1 ofs (ofs + n) Cur Readable).
+  rewrite pred_dec_true.
+  injection ALLOC; intros A B. rewrite <- B; simpl.
+  rewrite PMap.gso. auto. rewrite A. eauto with mem.
+  red; intros. eapply perm_alloc_1; eauto.
+  rewrite pred_dec_false; auto.
+  red; intros; elim n0. red; intros. eapply perm_alloc_4; eauto. eauto with mem.
+Qed.
+
+Theorem loadbytes_alloc_same:
+  forall n ofs bytes byte,
+  loadbytes m2 ofs n = Some bytes ->
+  In byte bytes -> byte = Undef.
+Proof.
+  unfold loadbytes; intros. destruct (range_perm_dec m2 ofs (ofs + n) Cur Readable); inv H.
+  revert H0.
+  injection ALLOC; intros A B. rewrite <- A; rewrite <- B; simpl. rewrite PMap.gss.
+  generalize (Z.to_nat n) ofs. induction n0; simpl; intros.
+  contradiction.
+  rewrite ZMap.gi in H0. destruct H0; eauto.
+Qed.
+*)
+End ALLOC.
+
+Local Hint Resolve valid_block_alloc : mem.
+(*Local Hint Resolve valid_access_alloc_other valid_access_alloc_same: mem.*)
+
+(** ** Properties related to [free]. *)
+
+Theorem range_perm_free:
+  forall m1 lo hi,
+  range_perm m1 lo hi Live ->
+  { m2: mem | free m1 lo hi = MemorySuccess m2 }.
+Proof.
+  intros; unfold free. rewrite pred_dec_true; auto. econstructor; eauto.
+Defined.
+
+Section FREE.
+
+Variable m1: mem.
+Variables lo hi: Z.
+Variable m2: mem.
+Hypothesis FREE: free m1 lo hi = MemorySuccess m2.
+
+Theorem free_range_perm:
+  range_perm m1 lo hi Live.
+Proof.
+  unfold free in FREE. destruct (range_perm_dec m1 lo hi Live); auto.
+  congruence.
+Qed.
+
+Lemma free_result:
+  m2 = unchecked_free m1 lo hi.
+Proof.
+  unfold free in FREE. destruct (range_perm_dec m1 lo hi Live).
+  congruence. congruence.
+Qed.
+
+Theorem valid_block_free_1:
+  forall ofs,
+    (lo > ofs \/ hi <= ofs) ->
+    valid_addr m1 ofs ->
+    valid_addr m2 ofs.
+Admitted.
+(*Proof.
+  intros. rewrite free_result.
+  unfold unchecked_free.
+  assumption.
+Qed.*)
+
+Theorem valid_block_free_2:
+  forall ofs, valid_addr m2 ofs -> valid_addr m1 ofs.
+Admitted.
+(*Proof.
+  intros. rewrite free_result in H. assumption.
+Qed.*)
+
+Local Hint Resolve valid_block_free_1 valid_block_free_2: mem.
+
+(*Theorem perm_free_1:
+  forall ofs k p,
+  <> \/ ofs < lo \/ hi <= ofs ->
+  perm m1 ofs k p ->
+  perm m2 ofs k p.
+Proof.
+  intros. rewrite free_result. unfold perm, unchecked_free; simpl.
+  rewrite PMap.gsspec. destruct (peq bf). subst b.
+  destruct (zle lo ofs); simpl.
+  destruct (zlt ofs hi); simpl.
+  elimtype False; intuition.
+  auto. auto.
+  auto.
+Qed.
+
+Theorem perm_free_2:
+  forall ofs k p, lo <= ofs < hi -> ~ perm m2 ofs k p.
+Proof.
+  intros. rewrite free_result. unfold perm, unchecked_free; simpl.
+  rewrite PMap.gss. unfold proj_sumbool. rewrite zle_true. rewrite zlt_true.
+  simpl. tauto. lia. lia.
+Qed.
+
+Theorem perm_free_3:
+  forall ofs k p,
+  perm m2 ofs k p -> perm m1 ofs k p.
+Proof.
+  intros until p. rewrite free_result. unfold perm, unchecked_free; simpl.
+  rewrite PMap.gsspec. destruct (peq bf). subst b.
+  destruct (zle lo ofs); simpl.
+  destruct (zlt ofs hi); simpl. tauto.
+  auto. auto. auto.
+Qed.
+
+Theorem perm_free_inv:
+  forall ofs k p,
+  perm m1 ofs k p ->
+  (= /\ lo <= ofs < hi) \/ perm m2 ofs k p.
+Proof.
+  intros. rewrite free_result. unfold perm, unchecked_free; simpl.
+  rewrite PMap.gsspec. destruct (peq bf); auto. subst b.
+  destruct (zle lo ofs); simpl; auto.
+  destruct (zlt ofs hi); simpl; auto.
+Qed.
+
+Theorem valid_access_free_1:
+  forall chunk ofs p,
+  valid_access m1 chunk ofs p ->
+  <> \/ lo >= hi \/ ofs + size_chunk chunk <= lo \/ hi <= ofs ->
+  valid_access m2 chunk ofs p.
+Proof.
+  intros. inv H. constructor; auto with mem.
+  red; intros. eapply perm_free_1; eauto.
+  destruct (zlt lo hi). intuition. right. lia.
+Qed.
+
+Theorem valid_access_free_2:
+  forall chunk ofs p,
+  lo < hi -> ofs + size_chunk chunk > lo -> ofs < hi ->
+  ~(valid_access m2 chunk ofs p).
+Proof.
+  intros; red; intros. inv H2.
+  generalize (size_chunk_pos chunk); intros.
+  destruct (zlt ofs lo).
+  elim (perm_free_2 lo Cur p).
+  lia. apply H3. lia.
+  elim (perm_free_2 ofs Cur p).
+  lia. apply H3. lia.
+Qed.
+
+Theorem valid_access_free_inv_1:
+  forall chunk ofs p,
+  valid_access m2 chunk ofs p ->
+  valid_access m1 chunk ofs p.
+Proof.
+  intros. destruct H. split; auto.
+  red; intros. generalize (H ofs0 H1).
+  rewrite free_result. unfold perm, unchecked_free; simpl.
+  rewrite PMap.gsspec. destruct (peq bf). subst b.
+  destruct (zle lo ofs0); simpl.
+  destruct (zlt ofs0 hi); simpl.
+  tauto. auto. auto. auto.
+Qed.
+
+Theorem valid_access_free_inv_2:
+  forall chunk ofs p,
+  valid_access m2 chunk ofs p ->
+  lo >= hi \/ ofs + size_chunk chunk <= lo \/ hi <= ofs.
+Proof.
+  intros.
+  destruct (zlt lo hi); auto.
+  destruct (zle (ofs + size_chunk chunk) lo); auto.
+  destruct (zle hi ofs); auto.
+  elim (valid_access_free_2 chunk ofs p); auto. lia.
+Qed.
+
+Theorem load_free:
+  forall chunk ofs,
+  <> \/ lo >= hi \/ ofs + size_chunk chunk <= lo \/ hi <= ofs ->
+  load chunk m2 ofs = load chunk m1 ofs.
+Proof.
+  intros. unfold load.
+  destruct (valid_access_dec m2 chunk ofs Readable).
+  rewrite pred_dec_true.
+  rewrite free_result; auto.
+  eapply valid_access_free_inv_1; eauto.
+  rewrite pred_dec_false; auto.
+  red; intro; elim n. eapply valid_access_free_1; eauto.
+Qed.
+
+Theorem load_free_2:
+  forall chunk ofs v,
+  load chunk m2 ofs = Some v -> load chunk m1 ofs = Some v.
+Proof.
+  intros. unfold load. rewrite pred_dec_true.
+  rewrite (load_result _ _ _ _ _ H). rewrite free_result; auto.
+  apply valid_access_free_inv_1. eauto with mem.
+Qed.
+
+Theorem loadbytes_free:
+  forall ofs n,
+  <> \/ lo >= hi \/ ofs + n <= lo \/ hi <= ofs ->
+  loadbytes m2 ofs n = loadbytes m1 ofs n.
+Proof.
+  intros. unfold loadbytes.
+  destruct (range_perm_dec m2 ofs (ofs + n) Cur Readable).
+  rewrite pred_dec_true.
+  rewrite free_result; auto.
+  red; intros. eapply perm_free_3; eauto.
+  rewrite pred_dec_false; auto.
+  red; intros. elim n0; red; intros.
+  eapply perm_free_1; eauto. destruct H; auto. right; lia.
+Qed.
+
+Theorem loadbytes_free_2:
+  forall ofs n bytes,
+  loadbytes m2 ofs n = Some bytes -> loadbytes m1 ofs n = Some bytes.
+Proof.
+  intros. unfold loadbytes in *.
+  destruct (range_perm_dec m2 ofs (ofs + n) Cur Readable); inv H.
+  rewrite pred_dec_true. rewrite free_result; auto.
+  red; intros. apply perm_free_3; auto.
+Qed.
+*)
+End FREE.
+
+Global Opaque Mem.alloc Mem.free.
+
+Global Hint Resolve
+  (*Mem.alloc_result*)
+  Mem.valid_block_alloc
+  Mem.valid_new_block
+  (*Mem.perm_alloc_1
+  Mem.perm_alloc_2
+  Mem.perm_alloc_3
+  Mem.perm_alloc_4
+  Mem.perm_alloc_inv*)
+  (*Mem.valid_access_alloc_other
+  Mem.valid_access_alloc_same
+  Mem.valid_access_alloc_inv*)
+  Mem.range_perm_free
+  Mem.free_range_perm
+  Mem.valid_block_free_1
+  Mem.valid_block_free_2
+  (*Mem.perm_free_1
+  Mem.perm_free_2
+  Mem.perm_free_3
+  Mem.valid_access_free_1
+  Mem.valid_access_free_2
+  Mem.valid_access_free_inv_1
+  Mem.valid_access_free_inv_2
+  Mem.unchanged_on_refl*)
+  : al.
+*)
+

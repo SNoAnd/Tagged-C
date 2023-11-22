@@ -627,9 +627,10 @@ let diagnose_stuck_expr p ge ce w f a kont pct e te m =
     | Csem.RV, Csyntax.Ecomma(r1, r2, ty) -> diagnose Csem.RV r1
     | Csem.RV, Csyntax.Eparen(r1, tycast, ty) -> diagnose Csem.RV r1
     | Csem.RV, Csyntax.Ecall(r1, rargs, ty) -> diagnose Csem.RV r1 ||| diagnose_list rargs
+    | Csem.RV, Csyntax.Ebuiltin(ef, tyargs, rargs, ty) -> diagnose_list rargs
     | _, _ -> false in
   if found then true else begin
-    let l = Cexec.step_expr ge ce (*do_inline_assembly*) e w k pct a te m in
+    let l = Cexec.step_expr ge ce do_external_function (*do_inline_assembly*) e w k pct a te m in
     if List.exists (fun (ctx,red) -> is_stuck red) l then begin
       Printing.print_pointer_hook := print_pointer ge e;
       fprintf p "@[<hov 2>Stuck subexpression:@ %a@]@."

@@ -291,8 +291,8 @@ let rec expr p (prec, e) =
   | Csyntax.Ebuiltin(Csyntax.EF_builtin(name, _), _, args, _) ->
       fprintf p "%s@[<hov 1>(%a)@]"
                 (camlstring_of_coqstring name) exprlist (true, args)*)
-  | Csyntax.Ebuiltin(_, _) ->
-      fprintf p "<unknown builtin>"
+  | Csyntax.Ebuiltin(_, _, args, _) ->
+      fprintf p "<unknown builtin>@[<hov 1>(%a)@]" exprlist (true, args)
   | Csyntax.Eparen(a1, tycast, ty) ->
       fprintf p "(%s) %a" (name_type tycast) expr (prec', a1)
   end;

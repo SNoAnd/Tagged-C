@@ -91,7 +91,7 @@ Module Cstrategy (P: Policy) (A: Allocator P).
       | Epostincr _ _ _ => false
       | Ecomma _ _ _ => false
       | Ecall _ _ _ => false
-      | Ebuiltin _ _ => false
+      | Ebuiltin _ _ _ _ => false
       | Eparen _ _ _ => false
       end.
 
@@ -247,6 +247,9 @@ Inductive leftcontext: kind -> kind -> (expr -> expr) -> Prop :=
   | lctx_call_right: forall k C e1 ty,
       simple e1 = true -> leftcontextlist k C ->
       leftcontext k RV (fun x => Ecall e1 (C x) ty)
+  | lctx_builtin: forall k C ef tyargs ty,
+      leftcontextlist k C ->
+      leftcontext k RV (fun x => Ebuiltin ef tyargs (C x) ty)
   | lctx_comma: forall k C e2 ty,
       leftcontext k RV C -> leftcontext k RV (fun x => Ecomma (C x) e2 ty)
   | lctx_paren: forall k C tycast ty,
@@ -375,29 +378,21 @@ Inductive estep: Csem.state -> trace -> Csem.state -> Prop :=
       estep (ExprState f PCT (C (Eparen r tycast ty)) k e te m)
          E0 (ExprState f PCT' (C (Eval (v,vt) ty)) k e te m)
 
-  | step_call_internal: forall f C rf rargs ty k e te m PCT PCT' targs tres cconv vf vft vargs fd,
+  | step_call: forall f C rf rargs ty k e te m PCT PCT' targs tres cconv vf vft vargs fd,
       leftcontext RV RV C ->
       classify_fun (typeof rf) = fun_case_f targs tres cconv ->
       eval_simple_rvalue e te m PCT PCT' rf (vf,vft) ->
       eval_simple_list e te m PCT rargs targs vargs ->
-      Genv.find_funct ge vf = Some (Internal fd) ->
+      Genv.find_funct ge vf = Some fd ->
       type_of_fundef fd = Tfunction targs tres cconv ->
       estep (ExprState f PCT (C (Ecall rf rargs ty)) k e te m)
          E0 (Callstate fd PCT' vft vargs (Kcall f e te PCT C ty k) m)
 
-  | step_call_external: forall f C rf rargs ty k e te m PCT PCT' targs tres cconv vf vft vargs ef,
+  | step_builtin: forall f C ef tyargs rargs ty k e te m PCT PCT' vargs t vres m',
       leftcontext RV RV C ->
-      classify_fun (typeof rf) = fun_case_f targs tres cconv ->
-      eval_simple_rvalue e te m PCT PCT' rf (vf,vft) ->
-      eval_simple_list e te m PCT rargs targs vargs ->
-      Genv.find_funct ge vf = Some (External ef targs tres cconv) ->
-      estep (ExprState f PCT (C (Ecall rf rargs ty)) k e te m)
-         E0 (Callstate (External ef targs tres cconv) PCT' vft vargs (Kcall f e te PCT C ty k) m)
-         
-  | step_builtin: forall f C ef ty k e te m PCT PCT' vargs t vres m',
-      leftcontext RV RV C ->
+      eval_simple_list e te m PCT rargs tyargs vargs ->
       external_call ef ge vargs PCT def_tag m t (MemorySuccess (PolicySuccess (vres, PCT', m'))) ->
-      estep (ExprState f PCT (C (Ebuiltin ef ty)) k e te m)
+      estep (ExprState f PCT (C (Ebuiltin ef tyargs rargs ty)) k e te m)
           t (ExprState f PCT' (C (Eval vres ty)) k e te m').
 
 Definition step (S: Csem.state) (t: trace) (S': Csem.state) : Prop :=
@@ -485,7 +480,7 @@ Proof.
 Qed.
 
 Lemma lfailred_kind:
-  forall a PCT tr msg failure params, lfailred ce a PCT tr msg failure params -> expr_kind a = LV.
+  forall a PCT msg failure params, lfailred ce a PCT msg failure params -> expr_kind a = LV.
 Proof.
   induction 1; auto.
 Qed.

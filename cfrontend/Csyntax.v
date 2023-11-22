@@ -73,7 +73,7 @@ Module Csyntax (P:Policy) (A:Allocator P).
                                           (**r post-increment [l++] and post-decrement [l--] *)
   | Ecomma (r1 r2: expr) (ty: type)                        (**r sequence expression [r1, r2] *)
   | Ecall (r1: expr) (rargs: exprlist) (ty: type)             (**r function call [r1(rargs)] *)
-  | Ebuiltin (ef: external_function) (ty: type)
+  | Ebuiltin (ef: external_function) (tyargs: typelist) (rargs: exprlist) (ty: type)
                                                                   (**r builtin function call *)
   | Eloc (l:loc_kind) (ty: type)               (**r location, result of evaluating a l-value *)
   | Eparen (r: expr) (tycast: type) (ty: type)                     (**r marked subexpression *)
@@ -156,7 +156,7 @@ Definition typeof (a: expr) : type :=
   | Epostincr _ _ ty => ty
   | Ecomma _ _ ty => ty
   | Ecall _ _ ty => ty
-  | Ebuiltin _ ty => ty
+  | Ebuiltin _ _ _ ty => ty
   | Eparen _ _ ty => ty
   end.
 

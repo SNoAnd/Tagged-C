@@ -37,8 +37,7 @@ Module Csem (P: Policy) (A: Allocator P).
   Import A.
 
   Import P.
-  
-  
+
   (** * Operational semantics *)
 
   (** The semantics uses two environments.  The global environment
@@ -219,8 +218,8 @@ Module Csem (P: Policy) (A: Allocator P).
     MemoryResult (PolicyResult (tag * env * mem)) :=
     fold_left (fun res '(id,ty) =>
                  match res with
-                 | MemorySuccess (PolicySuccess (pct', e', m')) =>
-                     do_alloc_variable pct' e' m' id ty
+                 | MemorySuccess (PolicySuccess (pct, e, m)) =>
+                     do_alloc_variable pct e m id ty
                  | MemorySuccess (PolicyFail msg params) =>
                      MemorySuccess (PolicyFail msg params)
                  | MemoryFail msg failure =>
@@ -250,8 +249,8 @@ Module Csem (P: Policy) (A: Allocator P).
     : MemoryResult (PolicyResult (tag * env * mem)) :=
     fold_left (fun res '(id,ty,init) =>
                  match res with
-                 | MemorySuccess (PolicySuccess (pct', e', m')) =>
-                     do_init_param pct' e' m' id ty init
+                 | MemorySuccess (PolicySuccess (pct, e, m)) =>
+                     do_init_param pct e m id ty init
                  | MemorySuccess (PolicyFail msg params) =>
                      MemorySuccess (PolicyFail msg params)
                  | MemoryFail msg failure =>
@@ -373,18 +372,18 @@ Module Csem (P: Policy) (A: Allocator P).
         lred (Efield (Eval (Vlong ofs, pt) (Tunion id a)) f ty) pct te m
              (Eloc (Lmem (Int64.add ofs (Int64.repr delta)) pt' bf) ty) te m.
 
-    Inductive lfailred: expr -> tag -> trace -> string -> FailureClass -> list tag -> Prop :=
+    Inductive lfailred: expr -> tag -> string -> FailureClass -> list tag -> Prop :=
     | failred_field_struct: forall ofs pt id co a f ty pct delta bf msg params,
         ce!id = Some co ->
         field_offset ce f (co_members co) = OK (delta, bf) ->
         FieldT ce pct pt ty id = PolicyFail msg params ->
-        lfailred (Efield (Eval (Vlong ofs, pt) (Tstruct id a)) f ty) pct E0
+        lfailred (Efield (Eval (Vlong ofs, pt) (Tstruct id a)) f ty) pct
                  msg OtherFailure params
     | failred_field_union: forall ofs pt id co a f ty pct delta bf msg params,
         ce!id = Some co ->
         union_field_offset ce f (co_members co) = OK (delta, bf) ->
         FieldT ce pct pt ty id = PolicyFail msg params ->
-        lfailred (Efield (Eval (Vlong ofs, pt) (Tunion id a)) f ty) pct E0
+        lfailred (Efield (Eval (Vlong ofs, pt) (Tunion id a)) f ty) pct
                  msg OtherFailure params
     .
 
@@ -568,10 +567,11 @@ Module Csem (P: Policy) (A: Allocator P).
         ExprJoinT PCT vt1 = PolicySuccess (PCT', vt') ->
         rred PCT (Eparen (Eval (v1,vt1) ty1) ty2 ty) te m E0
              PCT' (Eval (v,vt') ty) te m
-    | red_builtin: forall ef tyargs tyres cc ty te m t b,
-        find_ef_ptr ge b = Some (ef,tyargs,tyres,cc) ->
-        rred PCT (Ebuiltin ef ty) te m t
-             PCT (Eval (Vfptr b,def_tag) ty) te m.
+    | red_builtin: forall ef tyargs el ty te m vargs t vres PCT' m',
+        cast_arguments m el tyargs vargs ->
+        external_call ef ge vargs PCT def_tag m t (MemorySuccess (PolicySuccess (vres, PCT', m'))) ->
+        rred PCT (Ebuiltin ef tyargs el ty) te m t
+             PCT' (Eval vres ty) te m'.
 
     (** Failstops for r-values *)
     Inductive rfailred (PCT:tag) : expr -> tenv -> mem -> trace -> string -> FailureClass -> list tag -> Prop :=
@@ -710,17 +710,10 @@ Module Csem (P: Policy) (A: Allocator P).
         ExprJoinT PCT vt1 = PolicyFail msg params ->
         rfailred PCT (Eparen (Eval (v1,vt1) ty1) ty2 ty) te m E0
                  msg OtherFailure params
-    | failred_call_internal: forall vf vft tyf te m tyargs tyres cconv el ty fd vargs msg params,
-        Genv.find_funct ge vf = Some (Internal fd) ->
+    | failred_call: forall vf vft tyf te m tyargs tyres cconv el ty fd vargs msg params,
+        Genv.find_funct ge vf = Some fd ->
         cast_arguments m el tyargs vargs ->
         type_of_fundef fd = Tfunction tyargs tyres cconv ->
-        classify_fun tyf = fun_case_f tyargs tyres cconv ->
-        CallT PCT vft = PolicyFail msg params ->
-        rfailred PCT (Ecall (Eval (vf, vft) tyf) el ty) te m E0
-                 msg OtherFailure params
-    | failred_call_external: forall vf vft tyf te m tyargs tyres cconv el ty fd vargs msg params,
-        Genv.find_funct ge vf = Some (External fd tyargs tyres cconv) ->
-        cast_arguments m el tyargs vargs ->
         classify_fun tyf = fun_case_f tyargs tyres cconv ->
         CallT PCT vft = PolicyFail msg params ->
         rfailred PCT (Ecall (Eval (vf, vft) tyf) el ty) te m E0
@@ -762,23 +755,17 @@ Module Csem (P: Policy) (A: Allocator P).
         rfailred PCT (Ecast (Eval (v1,vt1) ty1) ty) te m (tr1 ++ tr)
              msg OtherFailure params
     .
-
+    
     (** Head reduction for function calls.
         (More exactly, identification of function calls that can reduce.) *)
     Inductive callred: tag -> expr -> mem -> fundef -> tag -> list atom -> type -> Prop :=
-    | red_call_internal: forall PCT vf vft tyf m tyargs tyres cconv el ty fd vargs,
-        Genv.find_funct ge vf = Some (Internal fd) ->
+    | red_call: forall PCT vf vft tyf m tyargs tyres cconv el ty fd vargs,
+        Genv.find_funct ge vf = Some fd ->
         cast_arguments m el tyargs vargs ->
         type_of_fundef fd = Tfunction tyargs tyres cconv ->
         classify_fun tyf = fun_case_f tyargs tyres cconv ->
         callred PCT (Ecall (Eval (vf,vft) tyf) el ty) m
-                fd vft vargs ty
-    | red_call_external: forall PCT vf vft tyf m tyargs tyres cconv el ty ef vargs,
-        Genv.find_funct ge vf = Some (External ef tyargs tyres cconv) ->
-        cast_arguments m el tyargs vargs ->
-        classify_fun tyf = fun_case_f tyargs tyres cconv ->
-        callred PCT (Ecall (Eval (vf,vft) tyf) el ty) m
-                (External ef tyargs tyres cconv) vft vargs ty.
+                fd vft vargs ty.
 
     (** Reduction contexts.  In accordance with C's nondeterministic semantics,
         we allow reduction both to the left and to the right of a binary operator.
@@ -837,6 +824,8 @@ Module Csem (P: Policy) (A: Allocator P).
         context k RV C -> context k RV (fun x => Ecall (C x) el ty)
     | ctx_call_right: forall k C e1 ty,
         contextlist k C -> context k RV (fun x => Ecall e1 (C x) ty)
+    | ctx_builtin: forall k C ef tyargs ty,
+        contextlist k C -> context k RV (fun x => Ebuiltin ef tyargs (C x) ty)
     | ctx_comma: forall k C e2 ty,
         context k RV C -> context k RV (fun x => Ecomma (C x) e2 ty)
     | ctx_paren: forall k C tycast ty,
@@ -877,8 +866,8 @@ Module Csem (P: Policy) (A: Allocator P).
         lred e PCT te m e' te' m' ->
         context LV to C ->
         imm_safe to (C e) PCT te m
-    | imm_safe_lfailred: forall PCT to C e te m tr msg failure params,
-        lfailred e PCT tr msg failure params ->
+    | imm_safe_lfailred: forall PCT to C e te m msg failure params,
+        lfailred e PCT msg failure params ->
         context LV to C ->
         imm_safe to (C e) PCT te m                 
     | imm_safe_rred: forall PCT PCT' to C e te m t e' te' m',
@@ -1126,8 +1115,8 @@ Inductive estep: state -> trace -> state -> Prop :=
     context K RV C -> ~(imm_safe e K a PCT te m) ->
     estep (ExprState f PCT (C a) k e te m)
           E0 Stuckstate
-| step_lfail: forall C f PCT a k e te m tr msg failure params,
-    lfailred a PCT tr msg failure params ->
+| step_lfail: forall C f PCT a k e te m msg failure params,
+    lfailred a PCT msg failure params ->
     context LV RV C ->
     estep (ExprState f PCT (C a) k e te m)
           E0 (Failstop msg failure params)
@@ -1187,11 +1176,9 @@ Inductive sstep: state -> trace -> state -> Prop :=
     SplitT PCT vt olbl = PolicySuccess PCT' ->
     sstep (ExprState f PCT (Eval (v,vt) ty) (Kwhile1 x s olbl loc k) e te m)
           E0 (State f PCT' s (Kwhile2 x s olbl loc k) e te m)
-| step_skip_while: forall f PCT loc x s olbl k e te m,
-    sstep (State f PCT Sskip (Kwhile2 x s olbl loc k) e te m)
-          E0 (State f PCT (Swhile x s olbl loc) k e te m)
-| step_continue_while: forall f PCT loc loc' x s olbl k e te m,
-    sstep (State f PCT (Scontinue loc) (Kwhile2 x s olbl loc' k) e te m)
+| step_skip_or_continue_while: forall f PCT s0 loc loc' x s olbl k e te m,
+    s0 = Sskip \/ s0 = (Scontinue loc) ->
+    sstep (State f PCT s0 (Kwhile2 x s olbl loc' k) e te m)
           E0 (State f PCT (Swhile x s olbl loc') k e te m)
 | step_break_while: forall f PCT x s loc loc' olbl k e te m,
     sstep (State f PCT (Sbreak loc) (Kwhile2 x s olbl loc' k) e te m)
@@ -1200,11 +1187,9 @@ Inductive sstep: state -> trace -> state -> Prop :=
 | step_dowhile: forall f PCT a s loc olbl k e te m,
     sstep (State f PCT (Sdowhile a s olbl loc) k e te m)
           E0 (State f PCT s (Kdowhile1 a s olbl loc k) e te m)
-| step_skip_dowhile: forall f PCT loc x s olbl k e te m,
-    sstep (State f PCT Sskip (Kdowhile1 x s olbl loc k) e te m)
-          E0 (ExprState f PCT x (Kdowhile2 x s olbl loc k) e te m)
-| step_continue_dowhile: forall f PCT loc loc' x s olbl k e te m,
-    sstep (State f PCT (Scontinue loc) (Kdowhile1 x s olbl loc' k) e te m)
+| step_skip_or_continue_dowhile: forall f PCT s0 loc loc' x s olbl k e te m,
+    s0 = Sskip \/ s0 = (Scontinue loc) ->
+    sstep (State f PCT s0 (Kdowhile1 x s olbl loc' k) e te m)
           E0 (ExprState f PCT x (Kdowhile2 x s olbl loc' k) e te m)
 | step_dowhile_false: forall f PCT PCT' v vt ty x s loc olbl k e te m,
     bool_val v ty m = Some false ->
@@ -1216,8 +1201,8 @@ Inductive sstep: state -> trace -> state -> Prop :=
     SplitT PCT vt olbl = PolicySuccess PCT' ->
     sstep (ExprState f PCT (Eval (v,vt) ty) (Kdowhile2 x s olbl loc k) e te m)
           E0 (State f PCT' (Sdowhile x s olbl loc) k e te m)
-| step_break_dowhile: forall f PCT a s loc loc' olbl k e te m,
-    sstep (State f PCT (Sbreak loc) (Kdowhile1 a s olbl loc' k) e te m)
+| step_break_dowhile: forall f PCT a s loc olbl k e te m,
+    sstep (State f PCT (Sbreak loc) (Kdowhile1 a s olbl loc k) e te m)
           E0 (State f PCT Sskip k e te m)
 
 | step_for_start: forall f PCT a1 a2 a3 s loc olbl k e te m,
@@ -1237,12 +1222,10 @@ Inductive sstep: state -> trace -> state -> Prop :=
     SplitT PCT vt olbl = PolicySuccess PCT' ->
     sstep (ExprState f PCT (Eval (v,vt) ty) (Kfor2 a2 a3 s olbl loc k) e te m)
           E0 (State f PCT' s (Kfor3 a2 a3 s olbl loc k) e te m)
-| step_skip_for3: forall f PCT a2 a3 s loc olbl k e te m,
-    sstep (State f PCT Sskip (Kfor3 a2 a3 s olbl loc k) e te m)
+| step_skip_or_continue_for3: forall f PCT x a2 a3 s loc olbl k e te m,
+    x = Sskip \/ x = (Scontinue loc) ->
+    sstep (State f PCT x (Kfor3 a2 a3 s olbl loc k) e te m)
           E0 (State f PCT a3 (Kfor4 a2 a3 s olbl loc k) e te m)
-| step_continue_for3: forall f PCT a2 a3 s loc loc' olbl k e te m,
-    sstep (State f PCT (Scontinue loc) (Kfor3 a2 a3 s olbl loc' k) e te m)
-          E0 (State f PCT a3 (Kfor4 a2 a3 s olbl loc' k) e te m)
 | step_break_for3: forall f PCT a2 a3 s loc loc' olbl k e te m,
     sstep (State f PCT (Sbreak loc) (Kfor3 a2 a3 s olbl loc' k) e te m)
           E0 (State f PCT Sskip k e te m)
@@ -1271,18 +1254,14 @@ Inductive sstep: state -> trace -> state -> Prop :=
     sstep (ExprState f PCT (Eval (v,vt) ty) (Kfor2 a2 a3 s olbl loc k) e te m)
           E0 (Failstop msg OtherFailure params)
           
-| step_return_none: forall f PCT PCT' loc k e te m m',
+| step_return_0: forall f PCT PCT' loc k e te m m',
     do_free_variables PCT m (variables_of_env e) = MemorySuccess (PolicySuccess (PCT', m')) ->
     sstep (State f PCT (Sreturn None loc) k e te m)
-          E0 (Returnstate (Internal f) PCT' (Vundef, def_tag) (call_cont k) m')
-| step_return_none_fail0: forall f PCT loc k e te m msg failure,
+          E0 (Returnstate (Internal f) PCT (Vundef, def_tag) (call_cont k) m')
+| step_return_fail_0: forall f PCT loc k e te m msg failure,
     do_free_variables PCT m (variables_of_env e) = MemoryFail msg failure ->
     sstep (State f PCT (Sreturn None loc) k e te m)
-          E0 (Failstop ("Baseline Policy Failure when freeing variables: " ++ msg) failure [])
-| step_return_none_fail1: forall f PCT loc k e te m msg params,
-    do_free_variables PCT m (variables_of_env e) = MemorySuccess (PolicyFail msg params) ->
-    sstep (State f PCT (Sreturn None loc) k e te m)
-          E0 (Failstop msg OtherFailure params)
+          E0 (Failstop ("Baseline Policy Failure in free_list: " ++ msg) failure [])
 | step_return_1: forall f PCT loc x k e te m,
     sstep (State f PCT (Sreturn (Some x) loc) k e te m)
           E0 (ExprState f PCT x (Kreturn k) e te m)
@@ -1290,21 +1269,22 @@ Inductive sstep: state -> trace -> state -> Prop :=
     sem_cast v ty f.(fn_return) m = Some v' ->
     do_free_variables PCT m (variables_of_env e) = MemorySuccess (PolicySuccess (PCT', m')) ->
     sstep (ExprState f PCT (Eval (v,vt) ty) (Kreturn k) e te m)
-          E0 (Returnstate (Internal f) PCT' (v',vt) (call_cont k) m')
-| step_return_fail0:  forall f PCT v vt ty k e te m v' msg failure,
+          E0 (Returnstate (Internal f) PCT (v',vt) (call_cont k) m')
+| step_return_fail_2:  forall f PCT v vt ty k e te m v' msg failure,
     sem_cast v ty f.(fn_return) m = Some v' ->
     do_free_variables PCT m (variables_of_env e) = MemoryFail msg failure ->
     sstep (ExprState f PCT (Eval (v,vt) ty) (Kreturn k) e te m)
           E0 (Failstop ("Baseline Policy Failure in free_list: " ++ msg) failure [])
-| step_return_fail1:  forall f PCT v vt ty k e te m v' msg params,
-    sem_cast v ty f.(fn_return) m = Some v' ->
-    do_free_variables PCT m (variables_of_env e) = MemorySuccess (PolicyFail msg params) ->
-    sstep (ExprState f PCT (Eval (v,vt) ty) (Kreturn k) e te m)
-          E0 (Failstop msg OtherFailure params)
-| step_skip_call: forall f PCT k e te m,
+| step_skip_call: forall f PCT PCT' k e te m m',
     is_call_cont k ->
+    do_free_variables PCT m (variables_of_env e) = MemorySuccess (PolicySuccess (PCT', m')) ->
     sstep (State f PCT Sskip k e te m)
-          E0 (State f PCT (Sreturn None Cabs.no_loc) k e te m)
+          E0 (Returnstate (Internal f) PCT (Vundef, def_tag) k m')
+| step_skip_call_fail: forall f PCT k e te m msg failure,
+    is_call_cont k ->
+    do_free_variables PCT m (variables_of_env e) = MemoryFail msg failure ->
+    sstep (State f PCT Sskip k e te m)
+          E0 (Failstop ("Baseline Policy Failure in free_list: " ++ msg) failure [])
           
 | step_switch: forall f PCT x sl loc k e te m,
     sstep (State f PCT (Sswitch x sl loc) k e te m)
@@ -1313,24 +1293,17 @@ Inductive sstep: state -> trace -> state -> Prop :=
     sem_switch_arg v ty = Some n ->
     sstep (ExprState f PCT (Eval (v,vt) ty) (Kswitch1 sl k) e te m)
           E0 (State f PCT (seq_of_labeled_statement (select_switch n sl)) (Kswitch2 k) e te m)
-| step_skip_switch: forall f PCT k e te m,
-    sstep (State f PCT Sskip (Kswitch2 k) e te m)
-          E0 (State f PCT Sskip k e te m)
-| step_break_switch: forall f PCT loc k e te m,
-    sstep (State f PCT (Sbreak loc) (Kswitch2 k) e te m)
+| step_skip_break_switch: forall f PCT loc x k e te m,
+    x = Sskip \/ x = (Sbreak loc) ->
+    sstep (State f PCT x (Kswitch2 k) e te m)
           E0 (State f PCT Sskip k e te m)
 | step_continue_switch: forall f PCT loc k e te m,
     sstep (State f PCT (Scontinue loc) (Kswitch2 k) e te m)
           E0 (State f PCT (Scontinue loc) k e te m)
 
-| step_label: forall f PCT PCT' lbl s k e te m,
-    LabelT PCT lbl = PolicySuccess PCT' ->
+| step_label: forall f PCT lbl s k e te m,
     sstep (State f PCT (Slabel lbl s) k e te m)
-          E0 (State f PCT' s k e te m)
-| step_label_fail: forall f PCT lbl msg params s k e te m,
-    LabelT PCT lbl = PolicyFail msg params ->
-    sstep (State f PCT (Slabel lbl s) k e te m)
-          E0 (Failstop msg OtherFailure params)
+          E0 (State f PCT s k e te m)
 
 | step_goto: forall f PCT lbl loc k e te m s' k',
     find_label lbl f.(fn_body) (call_cont k) = Some (s', k') ->
@@ -1344,58 +1317,38 @@ Inductive sstep: state -> trace -> state -> Prop :=
     do_init_params PCT'' e m' (option_zip f.(fn_params) vargs) = MemorySuccess (PolicySuccess (PCT''', e', m'')) ->
     sstep (Callstate (Internal f) PCT vft vargs k m)
           E0 (State f PCT''' f.(fn_body) k e' empty_tenv m'')
-| step_internal_function_fail0: forall f PCT vft vargs k m msg params,
+(*| step_internal_function_fail0: forall f PCT vft PCT' vargs k m msg failure,
+    list_norepet (var_names (fn_params f) ++ var_names (fn_vars f)) ->
+    CallT PCT vft = PolicySuccess PCT' ->
+    do_alloc_variables PCT empty_env m (option_zip (f.(fn_params) ++ f.(fn_vars)) vargs) =
+      MemoryFail msg failure ->
+    sstep (Callstate (Internal f) PCT vft vargs k m)
+          E0 (Failstop ("Baseline Policy Failure in do_alloc_variables" ++ msg) failure [])
+| step_internal_function_fail1: forall f PCT vft vargs k m msg params,
     list_norepet (var_names (fn_params f) ++ var_names (fn_vars f)) ->
     CallT PCT vft = PolicyFail msg params ->
     sstep (Callstate (Internal f) PCT vft vargs k m)
           E0 (Failstop msg OtherFailure params)
-| step_internal_function_fail1: forall f PCT PCT' vft vargs k m msg failure,
+| step_internal_function_fail2: forall f PCT vft PCT' vargs k m msg params,
     list_norepet (var_names (fn_params f) ++ var_names (fn_vars f)) ->
-    CallT PCT vft = PolicySuccess PCT' ->
-    do_alloc_variables PCT' empty_env m f.(fn_vars) = MemoryFail msg failure ->
+    CallT PCT vft = PCT' ->
+    do_alloc_variables PCT empty_env m (option_zip (f.(fn_params) ++ f.(fn_vars)) vargs) =
+      MemorySuccess (PolicyFail msg params) ->
     sstep (Callstate (Internal f) PCT vft vargs k m)
-          E0 (Failstop msg failure [])
-| step_internal_function_fail2: forall f PCT PCT' vft vargs k m msg params,
-    list_norepet (var_names (fn_params f) ++ var_names (fn_vars f)) ->
-    CallT PCT vft = PolicySuccess PCT' ->
-    do_alloc_variables PCT' empty_env m f.(fn_vars) = MemorySuccess (PolicyFail msg params) ->
-    sstep (Callstate (Internal f) PCT vft vargs k m)
-          E0 (Failstop msg OtherFailure params)
-| step_internal_function_fail3: forall f PCT PCT' PCT'' vft vargs k m e m' msg failure,
-    list_norepet (var_names (fn_params f) ++ var_names (fn_vars f)) ->
-    CallT PCT vft = PolicySuccess PCT' ->
-    do_alloc_variables PCT' empty_env m f.(fn_vars) = MemorySuccess (PolicySuccess (PCT'', e, m')) ->
-    do_init_params PCT'' e m' (option_zip f.(fn_params) vargs) = MemoryFail msg failure ->
-    sstep (Callstate (Internal f) PCT vft vargs k m)
-          E0 (Failstop msg failure [])
-| step_internal_function_fail4: forall f PCT PCT' PCT'' vft vargs k m e m' msg params,
-    list_norepet (var_names (fn_params f) ++ var_names (fn_vars f)) ->
-    CallT PCT vft = PolicySuccess PCT' ->
-    do_alloc_variables PCT' empty_env m f.(fn_vars) = MemorySuccess (PolicySuccess (PCT'', e, m')) ->
-    do_init_params PCT'' e m' (option_zip f.(fn_params) vargs) = MemorySuccess (PolicyFail msg params) ->
-    sstep (Callstate (Internal f) PCT vft vargs k m)
-          E0 (Failstop msg OtherFailure params)
+          E0 (Failstop msg OtherFailure params)*)
           
 | step_external_function: forall ef PCT vft PCT' targs tres cc vargs k m vres t m',
-    external_call ef ge vargs PCT vft m t (MemorySuccess (PolicySuccess (vres, PCT', m'))) ->
+    external_call ef ge vargs PCT def_tag m t (MemorySuccess (PolicySuccess (vres, PCT', m'))) ->
     sstep (Callstate (External ef targs tres cc) PCT vft vargs k m)
           t (Returnstate (External ef targs tres cc) PCT' vres k m')
-| step_external_function_fail0: forall ef PCT vft targs tres cc vargs k m t msg failure,
-    external_call ef ge vargs PCT vft m t (MemoryFail msg failure) ->
-    sstep (Callstate (External ef targs tres cc) PCT vft vargs k m)
-          t (Failstop msg failure [])
-| step_external_function_fail1: forall ef PCT vft targs tres cc vargs k m t msg params,
-    external_call ef ge vargs PCT vft m t (MemorySuccess (PolicyFail msg params)) ->
-    sstep (Callstate (External ef targs tres cc) PCT vft vargs k m)
-          t (Failstop msg OtherFailure params)
 
-| step_returnstate: forall v vt vt' f fd PCT oldpct PCT' e C ty k te m,
+| step_returnstate: forall v vt vt' f f' PCT oldpct PCT' e C ty k te m,
     RetT PCT oldpct vt = PolicySuccess (PCT', vt') ->
-    sstep (Returnstate fd PCT (v,vt) (Kcall f e te oldpct C ty k) m)
+    sstep (Returnstate (Internal f') PCT (v,vt) (Kcall f e te oldpct C ty k) m)
           E0 (ExprState f PCT' (C (Eval (v,vt') ty)) k e te m)
-| step_returnstate_fail: forall v vt f fd PCT oldpct e C ty k te m msg params,
+| step_returnstate_fail: forall v vt f f' PCT oldpct e C ty k te m msg params,
     RetT PCT oldpct vt = PolicyFail msg params ->
-    sstep (Returnstate fd PCT (v,vt) (Kcall f e te oldpct C ty k) m)
+    sstep (Returnstate (Internal f') PCT (v,vt) (Kcall f e te oldpct C ty k) m)
           E0 (Failstop msg OtherFailure params)
 .
 
