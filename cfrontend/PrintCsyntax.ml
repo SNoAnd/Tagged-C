@@ -202,6 +202,8 @@ let print_typed_value p vty =
       fprintf p "%LdLL" (camlint64_of_coqint n)
   | (Vfptr b, _) ->
       fprintf p "<ptr%a>" !print_pointer_hook (b,coqint_of_camlint 0l)
+  | (Vefptr b, _) ->
+      fprintf p "<builtin>"
   | (Vundef, _) ->
       fprintf p "<undef>"
 

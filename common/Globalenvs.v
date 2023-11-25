@@ -55,6 +55,8 @@ Set Implicit Arguments.
 Local Unset Elimination Schemes.
 Local Unset Case Analysis Schemes.
 
+Parameter el: list (external_function*typelist*type*calling_convention).
+
 Module Genv (P:Policy) (A:Allocator P).
   Module TLib := TagLib P.
   Import TLib.
@@ -82,7 +84,7 @@ Module Genv (P:Policy) (A:Allocator P).
                                                                   block (functions) or
                                                                   base, bound, tag *)
       genv_fun_defs: PTree.t (globdef F V);                    (**r mapping block -> definition *)
-      genv_ef_defs: PTree.t (external_function * typelist * type * calling_convention);
+      genv_ef_defs: list (external_function * typelist * type * calling_convention);
       genv_next_block: block;                                  (**r next block for functions *)
     }.
 
@@ -134,9 +136,12 @@ Module Genv (P:Policy) (A:Allocator P).
     Definition find_funct_ptr (ge: t) (b: block) : option F :=
       match PTree.get b ge.(genv_fun_defs) with Some (Gfun f) => Some f | _ => None end.
 
-    Definition find_ef_ptr (ge: t) (b: block) :
-      option (external_function * typelist * type * calling_convention) :=
-      PTree.get b ge.(genv_ef_defs).
+    Definition find_ef_ptr (ge: t) (ef: external_function) :
+      option (fundef F) :=
+      List.fold_right (fun '(ef',tyargs,tyres,cconv) res =>
+                         if external_function_eq ef ef'
+                         then Some (External ef tyargs tyres cconv)
+                         else res) None ge.(genv_ef_defs).
     
     (** [find_funct] is similar to [find_funct_ptr], but the function address
         is given as a value. *)
@@ -145,19 +150,12 @@ Module Genv (P:Policy) (A:Allocator P).
       | Vfptr b =>
           match find_funct_ptr ge b with
           | Some fd => Some (Internal fd)
-          | None => match find_ef_ptr ge b with
-                    | Some (ef,tyargs,tyres,cc) => Some (External ef tyargs tyres cc)
-                    | None => None
-                    end
+          | None => None
           end
+      | Vefptr ef =>
+          find_ef_ptr ge ef
       | _ => None
       end.
-
-    Definition invert_ef (ge: t) (ef: external_function) : option ident :=
-      PTree.fold
-        (fun res id '(ef',tyargs,tyres,cc) =>
-           if external_function_eq ef ef' then Some id else res)
-        ge.(genv_ef_defs) None.      
     
     (** ** Constructing the global environment *)
 
@@ -253,20 +251,9 @@ Module Genv (P:Policy) (A:Allocator P).
             let '(ge', m') := add_globals ge m tree gl' in
             add_global ge' m' tree g
         end.
-
-      Fixpoint add_builtins (ge: t)
-               (el: list (ident*external_function*typelist*type*calling_convention)) : t :=
-        match el with
-        | [] => ge
-        | (id, ef, tyargs, tyres, cc) :: el' =>
-            let ge' := @mkgenv ge.(genv_public) ge.(genv_symb) ge.(genv_fun_defs)
-                               (PTree.set id (ef,tyargs,tyres,cc) ge.(genv_ef_defs))
-                               ge.(genv_next_block) in
-            add_builtins ge el'
-        end.
       
-      Program Definition empty_genv (pub: list ident): t :=
-        @mkgenv pub (PTree.empty _) (PTree.empty _) (PTree.empty _) 2%positive.
+      Program Definition empty_genv (pub: list ident) : t :=
+        @mkgenv pub (PTree.empty _) (PTree.empty _) el 2%positive.
 
       Definition init_record (m: A.mem) (base: Z) (sz: Z) : MemoryResult A.mem :=
         let szv := Vlong (Int64.neg (Int64.repr sz)) in
@@ -333,13 +320,27 @@ Module Genv (P:Policy) (A:Allocator P).
       discriminate.
     Qed.
 
-    Theorem find_funct_inv:
-      forall ge v f,
-        find_funct ge v = Some f -> exists b, v = Vfptr b.
+    Lemma find_ef_not_internal:
+      forall ge ef fd,
+        find_ef_ptr ge ef <> Some (Internal fd).
     Proof.
-      intros until f; unfold find_funct.
+      intro ge. unfold find_ef_ptr. induction (genv_ef_defs ge).
+      - intros. intro. inv H.
+      - intros.
+        destruct a as [[[ef' tyargs] tyres] cconv]. simpl.
+        destruct (external_function_eq ef ef').
+        + intro. inv H.
+        + apply IHl.
+    Qed.
+    
+    Theorem find_funct_inv:
+      forall ge v fd,
+        find_funct ge v = Some (Internal fd) -> exists b, v = Vfptr b.
+    Proof.
+      intros until fd; unfold find_funct.
       destruct v; try congruence.
-      intros. exists b; congruence.
+      - intros. exists b; congruence.
+      - intros. apply find_ef_not_internal in H. contradiction.
     Qed.
 
     Corollary find_funct_ptr_inversion:

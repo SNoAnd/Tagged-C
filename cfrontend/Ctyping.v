@@ -302,12 +302,16 @@ Inductive wt_val : val -> type -> Prop :=
       wt_val (Vlong n) (Tlong sg a)
   | wt_val_ptr_long: forall b sg a,
       wt_val (Vfptr b) (Tlong sg a)
+  | wt_val_ef_ptr_long: forall ef sg a,
+      wt_val (Vefptr ef) (Tlong sg a)
   | wt_val_float: forall f a,
       wt_val (Vfloat f) (Tfloat F64 a)
   | wt_val_single: forall f a,
       wt_val (Vsingle f) (Tfloat F32 a)
   | wt_val_pointer: forall b ty a,
       wt_val (Vfptr b) (Tpointer ty a)
+  | wt_val_ef_pointer: forall ef ty a,
+      wt_val (Vefptr ef) (Tpointer ty a)
   | wt_val_long_pointer: forall n ty a,
       wt_val (Vlong n) (Tpointer ty a)
   | wt_val_array: forall n ty sz a,

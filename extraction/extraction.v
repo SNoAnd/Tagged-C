@@ -93,8 +93,12 @@ End Extracted.
   Extract Inlined Constant Cabs.string => "String.t".
   Extract Constant Cabs.char_code => "int64".
  
-  Extract Inlined Constant Tags.extern_atom => "(fun a -> Camlcoq.coqstring_of_camlstring (Camlcoq.extern_atom a))".
+  Extract Inlined Constant Tags.extern_atom =>
+            "(fun a -> Camlcoq.coqstring_of_camlstring (Camlcoq.extern_atom a))".
 
+  Extract Inlined Constant Globalenvs.el =>
+            "EF.extern_functions".
+  
   (* Processor-specific extraction directives *)
 
   (* Avoid name clashes *)

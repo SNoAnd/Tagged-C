@@ -568,10 +568,9 @@ Module Csem (P: Policy) (A: Allocator P).
         ExprJoinT PCT vt1 = PolicySuccess (PCT', vt') ->
         rred PCT (Eparen (Eval (v1,vt1) ty1) ty2 ty) te m E0
              PCT' (Eval (v,vt') ty) te m
-    | red_builtin: forall ef tyargs tyres cc ty te m t b,
-        find_ef_ptr ge b = Some (ef,tyargs,tyres,cc) ->
+    | red_builtin: forall ef ty te m t b,
         rred PCT (Ebuiltin ef ty) te m t
-             PCT (Eval (Vfptr b,def_tag) ty) te m.
+             PCT (Eval (Vefptr b,def_tag) ty) te m.
 
     (** Failstops for r-values *)
     Inductive rfailred (PCT:tag) : expr -> tenv -> mem -> trace -> string -> FailureClass -> list tag -> Prop :=
@@ -709,21 +708,6 @@ Module Csem (P: Policy) (A: Allocator P).
         sem_cast v1 ty1 ty2 m = Some v ->
         ExprJoinT PCT vt1 = PolicyFail msg params ->
         rfailred PCT (Eparen (Eval (v1,vt1) ty1) ty2 ty) te m E0
-                 msg OtherFailure params
-    | failred_call_internal: forall vf vft tyf te m tyargs tyres cconv el ty fd vargs msg params,
-        Genv.find_funct ge vf = Some (Internal fd) ->
-        cast_arguments m el tyargs vargs ->
-        type_of_fundef fd = Tfunction tyargs tyres cconv ->
-        classify_fun tyf = fun_case_f tyargs tyres cconv ->
-        CallT PCT vft = PolicyFail msg params ->
-        rfailred PCT (Ecall (Eval (vf, vft) tyf) el ty) te m E0
-                 msg OtherFailure params
-    | failred_call_external: forall vf vft tyf te m tyargs tyres cconv el ty fd vargs msg params,
-        Genv.find_funct ge vf = Some (External fd tyargs tyres cconv) ->
-        cast_arguments m el tyargs vargs ->
-        classify_fun tyf = fun_case_f tyargs tyres cconv ->
-        CallT PCT vft = PolicyFail msg params ->
-        rfailred PCT (Ecall (Eval (vf, vft) tyf) el ty) te m E0
                  msg OtherFailure params
     | failred_cast_int_int: forall ty v1 vt1 ty1 te m v msg params,
         (forall ty' attr, ty1 <> Tpointer ty' attr) ->

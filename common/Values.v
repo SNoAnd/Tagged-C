@@ -40,7 +40,9 @@ Inductive val: Type :=
 | Vlong: int64 -> val
 | Vfloat: float -> val
 | Vsingle: float32 -> val
-| Vfptr: block -> val.
+| Vfptr: block -> val
+| Vefptr: external_function -> val
+.
 
 Definition Vzero: val := Vint Int.zero.
 Definition Vone: val := Vint Int.one.
@@ -68,6 +70,7 @@ Proof.
   apply Float.eq_dec.
   apply Float32.eq_dec.
   apply eq_block.
+  apply external_function_eq.
 Defined.
 Global Opaque eq.
 
@@ -79,6 +82,7 @@ Definition has_type (v: val) (t: typ) : Prop :=
   | Vfloat _, Tfloat => True
   | Vsingle _, Tsingle => True
   | Vfptr _, Tlong => True
+  | Vefptr _, Tlong => True
   | (Vint _ | Vsingle _), Tany32 => True
   | _, Tany64 => True
   | _, _ => False
@@ -123,6 +127,13 @@ Proof.
 - destruct t; auto.
 - destruct t; auto.
 - destruct t; auto.
+- destruct t.
+  right; auto.
+  right; auto.
+  left; auto.
+  right; auto.
+  right; auto.
+  left; auto.
 - destruct t.
   right; auto.
   right; auto.
@@ -883,6 +894,7 @@ Definition normalize (v: val) (ty: typ) : val :=
   | Vfloat _, Tfloat => v
   | Vsingle _, Tsingle => v
   | Vfptr _, Tlong => v
+  | Vefptr _, Tlong => v
   | (Vint _ | Vsingle _), Tany32 => v
   | _, Tany64 => v
   | _, _ => Vundef
@@ -898,6 +910,7 @@ Proof.
 - destruct ty; exact I.
 - destruct ty; exact I.
 - unfold has_type; destruct ty; auto.
+- destruct ty; exact I.
 Qed.
 
 Lemma normalize_idem:
@@ -910,6 +923,7 @@ Proof.
 - destruct ty; intuition auto.
 - destruct ty; intuition auto.
 - destruct ty, Archi.ptr64; intuition congruence.
+- destruct ty; intuition auto.
 Qed.
 
 (** Select between two values based on the result of a comparison. *)
@@ -938,6 +952,7 @@ Definition load_result (chunk: memory_chunk) (v: val) :=
   | Mint32, Vint n => Vint n
   | Mint64, Vlong n => Vlong n
   | Mint64, Vfptr b => Vfptr b
+  | Mint64, Vefptr b => Vefptr b
   | Mfloat32, Vsingle f => Vsingle f
   | Mfloat64, Vfloat f => Vfloat f
   | Many32, (Vint _ | Vsingle _) => v
@@ -2020,6 +2035,7 @@ Proof.
   - destruct ty; auto.
   - destruct ty; auto.
   - destruct ty, Archi.ptr64; auto.
+  - destruct ty; auto.
 Qed.
 
 Lemma normalize_lessdef:
