@@ -764,17 +764,6 @@ Definition external_call (ef: external_function): extcall_sem :=
   | EF_debug kind txt targs => extcall_debug_sem *)
   end.
 
-(** Corollary of [external_call_well_typed_gen]. *)
-
-Lemma external_call_well_typed:
-  forall ef ge vargs pct1 fpt m1 t vres pct2 m2,
-    external_call ef ge vargs pct1 fpt m1 t (MemorySuccess (PolicySuccess (vres, pct2, m2))) ->
-    Val.has_type (fst vres) (proj_sig_res (ef_sig ef)).
-Admitted.
-(*Proof.
-  intros. apply Val.has_proj_rettype. eapply external_call_well_typed_gen; eauto.
-Qed.*)
-
 End OUTPUT_EVENTS.
 
 (** * Evaluation of builtin arguments *)

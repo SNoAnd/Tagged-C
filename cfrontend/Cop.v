@@ -1258,55 +1258,7 @@ Ltac DestructCases :=
   | _ => idtac
   end.
 
-Lemma cast_val_is_casted:
-  forall v ty ty' v' m, sem_cast v ty ty' m = Some v' -> val_casted v' ty'.
-Admitted.
-(*Proof.
-  unfold sem_cast; intros.
-  destruct ty, ty'; simpl in H; DestructCases; constructor; auto.
-Qed.*)
-
 End VAL_CASTED.
-
-(** As a consequence, casting twice is equivalent to casting once. *)
-
-Lemma cast_val_casted:
-  forall v ty m, val_casted v ty -> sem_cast v ty ty m = Some v.
-Proof.
-  intros. unfold sem_cast; inversion H; clear H; subst v ty; simpl; auto.
-- destruct Archi.ptr64; [ | destruct (intsize_eq sz I32)].
-+ destruct sz; f_equal; f_equal; assumption.
-+ subst sz; auto.
-+ destruct sz; f_equal; f_equal; assumption.
-- rewrite dec_eq_true; auto.
-- rewrite dec_eq_true; auto.
-Qed.
-
-Lemma cast_idempotent:
-  forall v ty ty' v' m, sem_cast v ty ty' m = Some v' -> sem_cast v' ty' ty' m = Some v'.
-Proof.
-  intros. apply cast_val_casted. eapply cast_val_is_casted; eauto.
-Qed.
-
-(** Moreover, casted values belong to the machine type corresponding to the
-    C type. *)
-
-Lemma val_casted_has_type:
-  forall v ty, val_casted v ty -> ty <> Tvoid -> Val.has_type v (typ_of_type ty).
-Admitted.
-(*Proof.
-  intros. inv H; simpl typ_of_type.
-- exact I.
-- exact I.
-- exact I.
-- exact I.
-- apply Val.Vptr_has_type.
-- red; unfold Tptr; rewrite H1; auto.
-- red; unfold Tptr; rewrite H1; auto.
-- apply Val.Vptr_has_type.
-- apply Val.Vptr_has_type.
-- congruence.
-Qed.*)
 
 (** Relation with the arithmetic conversions of ISO C99, section 6.3.1 *)
 

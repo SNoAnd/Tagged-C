@@ -2181,8 +2181,7 @@ Proof.
     repeat cronch; eauto.
   - destruct id; eapply do_deref_loc_complete in H; eauto;
       repeat cronch; subst; auto.
-  - admit.
-Admitted.
+Qed.
     
 Lemma rfailred_topred:
   forall w' pct r1 tr msg failure params te m,

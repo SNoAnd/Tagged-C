@@ -208,7 +208,7 @@ Module InterpreterEvents (P:Policy) (A:Allocator P).
         rewrite H1 in Heqo0. inv Heqo0. destruct H2.
         rewrite Int64.unsigned_repr in *; eauto.
         eapply ev_match_global; eauto. *)
-      - apply (invert_find_symbol_block ce) in Heqo. destruct Heqo. rewrite H in Heqo0.
+      - eapply (invert_find_symbol_block ge) in Heqo. destruct Heqo. rewrite H in Heqo0.
         inv Heqo0. auto.
       Qed.
 
@@ -216,7 +216,7 @@ Module InterpreterEvents (P:Policy) (A:Allocator P).
       forall ev t v, eventval_match ge ev t v -> eventval_of_atom v t = Some ev.
     Proof.
       induction 1; simpl; repeat (rewrite dec_eq_true); auto.
-      rewrite (Genv.find_invert_symbol_block ce _ _ H0). rewrite H0.
+      rewrite (Genv.find_invert_symbol_block _ _ H0). rewrite H0.
       simpl in H; rewrite H.
       rewrite dec_eq_true. auto.
     Qed.

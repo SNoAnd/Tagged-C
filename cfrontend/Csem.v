@@ -568,9 +568,9 @@ Module Csem (P: Policy) (A: Allocator P).
         ExprJoinT PCT vt1 = PolicySuccess (PCT', vt') ->
         rred PCT (Eparen (Eval (v1,vt1) ty1) ty2 ty) te m E0
              PCT' (Eval (v,vt') ty) te m
-    | red_builtin: forall ef ty te m t b,
-        rred PCT (Ebuiltin ef ty) te m t
-             PCT (Eval (Vefptr b,def_tag) ty) te m.
+    | red_builtin: forall ef ty te m,
+        rred PCT (Ebuiltin ef ty) te m E0
+             PCT (Eval (Vefptr ef,def_tag) ty) te m.
 
     (** Failstops for r-values *)
     Inductive rfailred (PCT:tag) : expr -> tenv -> mem -> trace -> string -> FailureClass -> list tag -> Prop :=
@@ -1415,23 +1415,5 @@ End SEM.
         MemorySuccess (Semantics_gen (fun ge => step ge ce) (initial_state p) final_state ge)
     | MemoryFail msg failure => MemoryFail msg failure
     end.
-
-  (** This semantics has the single-event property. *)
-
-  Lemma semantics_single_events:
-    forall sem p, semantics p = MemorySuccess sem -> single_events sem.
-  Admitted.
-(*Proof.
-  unfold semantics; intros; red; simpl; intros.
-  set (ge := globalenv p) in *.
-  assert (DEREF: forall chunk m b ofs pt bf t v lts, deref_loc ge chunk m b ofs pt bf t v lts -> (length t <= 1)%nat).
-  { intros. inv H0; simpl; try lia. inv H3; simpl; try lia. }
-  assert (ASSIGN: forall chunk m b ofs pt bf t v m' v' lts, assign_loc ge chunk m b ofs pt bf v t m' v' lts -> (length t <= 1)%nat).
-  { intros. inv H0; simpl; try lia. inv H3; simpl; try lia. }
-  destruct H.
-  inv H; simpl; try lia. inv H0; eauto; simpl; try lia.
-  eapply external_call_trace_length; eauto.
-  inv H; simpl; try lia. eapply external_call_trace_length; eauto.
-Qed.*)
 
 End Csem.

@@ -2018,13 +2018,6 @@ Proof.
     + unfold Ptrofs.max_unsigned. unfold Ptrofs.modulus. unfold two_power_nat. lia.
 Qed.
 
-Lemma offset_ptr_assoc:
-  forall v d1 d2, offset_ptr (offset_ptr v d1) d2 = offset_ptr v (Ptrofs.add d1 d2).
-(*Proof.
-  intros. destruct v; simpl; auto. f_equal. apply Ptrofs.add_assoc.
-Qed.*)
-Admitted.
-
 Lemma lessdef_normalize:
   forall v ty, lessdef (normalize v ty) v.
 Proof.
