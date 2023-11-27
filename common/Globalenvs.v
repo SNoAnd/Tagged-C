@@ -294,7 +294,7 @@ Module Genv (P:Policy) (A:Allocator P).
       Definition init_record (m: A.mem) (base: Z) (sz: Z) : MemoryResult A.mem :=
         let szv := Vlong (Int64.neg (Int64.repr sz)) in
         A.store Mint64 m base (szv, def_tag) [def_tag].
-
+      
       Fixpoint filter_var_sizes (idgs:list (ident*globdef F V)) :=
         match idgs with
         | [] => []

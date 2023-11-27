@@ -1,4 +1,5 @@
 open Ctypes
+open Camlcoq
 
 let extern_functions = [
         (((AST.EF_malloc,
@@ -20,11 +21,13 @@ let extern_functions = [
         AST.cc_default);
 
         (((AST.EF_external(Camlcoq.coqstring_of_camlstring "fgets",
-                                {AST.sig_args = [AST.Tlong; AST.Tint];
+                                {AST.sig_args = [AST.Tlong; AST.Tint; AST.Tlong];
                                  AST.sig_res = AST.Tret(AST.Tlong);
                                  AST.sig_cc = AST.cc_default;}),
-        Tcons(Tlong(Signed,noattr),Tcons(Tint(I8,Signed,noattr),Tnil))),
-        Tlong(Signed,noattr)),
+        Tcons(Tpointer(Tint(I8,Signed,noattr),noattr),
+                Tcons(Tint(I32,Signed,noattr),
+                        Tcons(Tpointer(Tstruct(intern_string "_IO_FILE",noattr),noattr),Tnil)))),
+        Tpointer(Tint(I8,Signed,noattr),noattr)),
         AST.cc_default);
 ]
 
