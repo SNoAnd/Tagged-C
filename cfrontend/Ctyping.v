@@ -294,6 +294,7 @@ Definition wt_int (n: int) (sz: intsize) (sg: signedness) : Prop :=
   | I32, _ => True
   end.
 
+(* TODO: type the sg? *)
 Inductive wt_val : val -> type -> Prop :=
   | wt_val_int: forall n sz sg a,
       wt_int n sz sg ->
@@ -302,16 +303,16 @@ Inductive wt_val : val -> type -> Prop :=
       wt_val (Vlong n) (Tlong sg a)
   | wt_val_ptr_long: forall b sg a,
       wt_val (Vfptr b) (Tlong sg a)
-  | wt_val_ef_ptr_long: forall ef sg a,
-      wt_val (Vefptr ef) (Tlong sg a)
+  | wt_val_ef_ptr_long: forall ef tyargs tyres cc sg a,
+      wt_val (Vefptr ef tyargs tyres cc) (Tlong sg a)
   | wt_val_float: forall f a,
       wt_val (Vfloat f) (Tfloat F64 a)
   | wt_val_single: forall f a,
       wt_val (Vsingle f) (Tfloat F32 a)
   | wt_val_pointer: forall b ty a,
       wt_val (Vfptr b) (Tpointer ty a)
-  | wt_val_ef_pointer: forall ef ty a,
-      wt_val (Vefptr ef) (Tpointer ty a)
+  | wt_val_ef_pointer: forall ef tyargs tyres cc ty a,
+      wt_val (Vefptr ef tyargs tyres cc) (Tpointer ty a)
   | wt_val_long_pointer: forall n ty a,
       wt_val (Vlong n) (Tpointer ty a)
   | wt_val_array: forall n ty sz a,
@@ -418,15 +419,8 @@ Inductive wt_rvalue : expr -> Prop :=
     classify_fun (typeof r1) = fun_case_f tyargs tyres cconv ->
     wt_arguments rargs tyargs ->
     wt_rvalue (Ecall r1 rargs tyres)
-| wt_Ebuiltin: forall ef ty,
-    (* This typing rule is specialized to the builtin invocations generated
-       by C2C, which are either __builtin_sel or builtins returning void. *)
-    (ty = Tvoid /\ sig_res (ef_sig ef) = AST.Tvoid)
-    (*\/ (tyargs = Tcons type_bool (Tcons ty (Tcons ty Tnil))
-        /\ let t := typ_of_type ty in
-           let sg := mksignature (AST.Tint :: t :: t :: nil) t cc_default in
-           ef = EF_builtin "__builtin_sel"%string sg)*) ->
-    wt_rvalue (Ebuiltin ef ty)
+| wt_Ebuiltin: forall ef tyargs ty cc,
+    wt_rvalue (Ebuiltin ef tyargs ty cc)
 | wt_Eparen: forall r tycast ty,
     wt_rvalue r ->
     wt_cast (typeof r) tycast -> subtype tycast ty ->
@@ -438,8 +432,10 @@ with wt_lvalue : expr -> Prop :=
 | wt_Eloc_tmp: forall b ty,
     e!b = Some ty ->
     wt_lvalue (Eloc (Ltmp b) ty)
-| wt_Eloc_fun: forall b pt tyargs tyres cconv,
-    wt_lvalue (Eloc (Lfun b pt) (Tfunction tyargs tyres cconv))
+| wt_Eloc_ifun: forall b pt tyargs tyres cconv,
+    wt_lvalue (Eloc (Lifun b pt) (Tfunction tyargs tyres cconv))
+| wt_Eloc_efun: forall ef pt tyargs tyres cconv ty,
+    wt_lvalue (Eloc (Lefun ef tyargs tyres cconv pt) (Tfunction tyargs ty cconv))
 | wt_Evar: forall x ty,
     e!x = Some ty ->
     wt_lvalue (Evar x ty)
@@ -779,11 +775,8 @@ Definition ecall (fn: expr) (args: exprlist) : res expr :=
       Error (msg "call: not a function")
   end.
 
-Definition ebuiltin (ef: external_function) (tyres: type) : res expr :=
-  if type_eq tyres Tvoid
-  && AST.rettype_eq (sig_res (ef_sig ef)) AST.Tvoid
-  then OK (Ebuiltin ef tyres)
-  else Error (msg "builtin: wrong type decoration").
+Definition ebuiltin (ef: external_function) (tyargs: typelist) (cc: calling_convention) (ty: type): res expr :=
+  OK (Ebuiltin ef tyargs cc ty).
 
 (*Definition eselection (r1 r2 r3: expr) : res expr :=
   do x1 <- check_rval r1; do x2 <- check_rval r2; do x3 <- check_rval r3;
@@ -876,8 +869,8 @@ Fixpoint retype_expr (ce: composite_env) (e: typenv) (a: expr) : res expr :=
       do r1' <- retype_expr ce e r1; do r2' <- retype_expr ce e r2; ecomma r1' r2'
   | Ecall r1 rl _ =>
       do r1' <- retype_expr ce e r1; do rl' <- retype_exprlist ce e rl; ecall r1' rl'
-  | Ebuiltin ef tyres =>
-      ebuiltin ef tyres
+  | Ebuiltin r1 tyargs rl tyres =>
+      ebuiltin r1 tyargs rl tyres
   | Eloc _ _ =>
       Error (msg "Eloc in source")
   | Eparen _ _ _ =>

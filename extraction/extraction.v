@@ -44,7 +44,7 @@ Module Extracted (P : Policy) (A : Allocator P).
   Import Genv.
   Import Mem.
   Import A.
-
+  
 End Extracted.
   
   (* Standard lib *)
@@ -89,15 +89,15 @@ End Extracted.
                byteno = -1;
                ident = -1;
              }".
-
+  
   Extract Inlined Constant Cabs.string => "String.t".
   Extract Constant Cabs.char_code => "int64".
  
   Extract Inlined Constant Tags.extern_atom =>
             "(fun a -> Camlcoq.coqstring_of_camlstring (Camlcoq.extern_atom a))".
 
-  Extract Inlined Constant Globalenvs.el =>
-            "EF.extern_functions".
+  Extract Inlined Constant Globalenvs.ext =>
+            "EF.check_ef".
   
   (* Processor-specific extraction directives *)
 

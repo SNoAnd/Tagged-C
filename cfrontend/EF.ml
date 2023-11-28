@@ -1,25 +1,30 @@
 open Ctypes
 open Camlcoq
 
-let extern_functions = [
+let malloc_tuple =
         (((AST.EF_malloc,
         Tcons(Tlong(Unsigned, noattr),Tnil)),
         Tpointer(Tvoid,noattr)),
-        AST.cc_default);
+        AST.cc_default)
         
+let free_tuple =
         (((AST.EF_free,
         Tcons(Tpointer(Tvoid, noattr),Tnil)),
         Tvoid),
-        AST.cc_default);
+        AST.cc_default)
 
+let printf_tuple =
         (((AST.EF_external(Camlcoq.coqstring_of_camlstring "printf",
                                 {AST.sig_args = [AST.Tlong];
                                  AST.sig_res = AST.Tret(AST.Tint);
-                                 AST.sig_cc = AST.cc_default;}),
-        Tcons(Tint(I8,Signed,noattr),Tnil)),
+                                 AST.sig_cc = { AST.cc_vararg = Some(coqint_of_camlint 1l);
+                                                AST.cc_unproto = false;
+                                                AST.cc_structret = false }}),
+        Tcons(Tpointer(Tint(I8,Signed,noattr),noattr),Tnil)),
         Tint(I32,Signed,noattr)),
-        AST.cc_default);
+        AST.cc_default)
 
+let fgets_tuple =
         (((AST.EF_external(Camlcoq.coqstring_of_camlstring "fgets",
                                 {AST.sig_args = [AST.Tlong; AST.Tint; AST.Tlong];
                                  AST.sig_res = AST.Tret(AST.Tlong);
@@ -28,8 +33,14 @@ let extern_functions = [
                 Tcons(Tint(I32,Signed,noattr),
                         Tcons(Tpointer(Tstruct(intern_string "_IO_FILE",noattr),noattr),Tnil)))),
         Tpointer(Tint(I8,Signed,noattr),noattr)),
-        AST.cc_default);
-]
+        AST.cc_default)
+
+let check_ef id = None
+        (*if intern_string "malloc" = id then Some(malloc_tuple) else
+        if intern_string "free" = id then Some(free_tuple) else
+        if intern_string "printf" = id then Some(printf_tuple) else
+        if intern_string "fgets" = id then Some(fgets_tuple) else
+        None*)
 
 (** Add declarations for the helper functions
     (for varargs and for int64 arithmetic) *)

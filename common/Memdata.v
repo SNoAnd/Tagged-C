@@ -459,10 +459,10 @@ Definition decode_encode_val (v1: val) (chunk1 chunk2: memory_chunk) (v2: val) :
   | Vfptr b, Many64, Many64 => v2 = Vfptr b 
   | Vfptr b, Many64, Mint64 => v2 = Vfptr b
   | Vfptr b, _, _ => v2 = Vundef
-  | Vefptr ef, Mint64, (Mint64 | Many64) => v2 = Vefptr ef
-  | Vefptr ef, Many64, Many64 => v2 = Vefptr ef
-  | Vefptr ef, Many64, Mint64 => v2 = Vefptr ef
-  | Vefptr ef, _, _ => v2 = Vundef
+  | Vefptr _ _ _ _, Mint64, (Mint64 | Many64)
+  | Vefptr _ _ _ _, Many64, Many64
+  | Vefptr _ _ _ _, Many64, Mint64 => v2 = v1
+  | Vefptr _ _ _ _, _, _ => v2 = Vundef
   | Vlong n, Mint64, Mint64 => v2 = Vlong n
   | Vlong n, Mint64, Mfloat64 => v2 = Vfloat(Float.of_bits n)
   | Vlong n, Many64, Many64 => v2 = Vlong n

@@ -91,7 +91,7 @@ Module Cstrategy (P: Policy) (A: Allocator P).
       | Epostincr _ _ _ => false
       | Ecomma _ _ _ => false
       | Ecall _ _ _ => false
-      | Ebuiltin _ _ => false
+      | Ebuiltin _ _ _ _ => false
       | Eparen _ _ _ => false
       end.
 
@@ -118,7 +118,7 @@ Module Cstrategy (P: Policy) (A: Allocator P).
           eval_simple_lvalue (Evar x ty) (Lmem (Int64.repr base) pt Full)
       | esl_var_global: forall x ty base bound pt gv,
           e!x = None ->
-          Genv.find_symbol ge x = Some (inr (base, bound, pt, gv)) ->
+          Genv.find_symbol ge x = Some (SymGlob base bound pt gv) ->
           eval_simple_lvalue (Evar x ty) (Lmem (Int64.repr base) pt Full)
       | esl_deref_short: forall r ty ofs pt,
           eval_simple_rvalue PCT r (Vint ofs, pt) ->
@@ -166,9 +166,12 @@ Module Cstrategy (P: Policy) (A: Allocator P).
       | esr_addrof_mem: forall ofs pt l ty,
           eval_simple_lvalue l (Lmem ofs pt Full) ->
           eval_simple_rvalue PCT (Eaddrof l ty) (Vofptrsize (Int64.signed ofs), pt)
-      | esr_addrof_fun: forall b pt l ty,
-          eval_simple_lvalue l (Lfun b pt) ->
+      | esr_addrof_ifun: forall b pt l ty,
+          eval_simple_lvalue l (Lifun b pt) ->
           eval_simple_rvalue PCT (Eaddrof l ty) (Vfptr b, pt)
+      | esr_addrof_efun: forall ef tyargs tyres cc pt l ty,
+          eval_simple_lvalue l (Lefun ef tyargs tyres cc pt) ->
+          eval_simple_rvalue PCT (Eaddrof l ty) (Vefptr ef tyargs tyres cc, pt)
       | esr_unop: forall op r1 ty v1 vt v,
           eval_simple_rvalue PCT r1 (v1,vt) ->
           sem_unary_operation op v1 (typeof r1) m = Some v ->
@@ -269,139 +272,6 @@ Proof.
 Qed.
 
 Local Hint Resolve leftcontext_context : core.
-
-(** Strategy for reducing expressions. We reduce the leftmost innermost
-  non-simple subexpression, evaluating its arguments (which are necessarily
-  simple expressions) with the big-step semantics.
-  If there are none, the whole expression is simple and is evaluated in
-  one big step. *)
-
-Inductive estep: Csem.state -> trace -> Csem.state -> Prop :=
-
-  | step_expr: forall f r k e te m PCT PCT' v ty,
-      eval_simple_rvalue e te m PCT PCT' r v ->
-      match r with Eval _ _ => False | _ => True end ->
-      ty = typeof r ->
-      estep (ExprState f PCT r k e te m)
-         E0 (ExprState f PCT' (Eval v ty) k e te m)
-
-  | step_rvalof_volatile: forall f C l ty k e te m PCT ofs pt bf t v lts,
-      leftcontext RV RV C ->
-      eval_simple_lvalue e te m PCT l (Lmem ofs pt bf) ->
-      deref_loc ge ty m ofs pt bf t (MemorySuccess (v, lts)) ->
-      ty = typeof l -> type_is_volatile ty = true ->
-      estep (ExprState f PCT (C (Evalof l ty)) k e te m)
-          t (ExprState f PCT (C (Eval v ty)) k e te m)
-
-  | step_seqand_true: forall f C r1 r2 ty k e te m PCT PCT' v vt,
-      leftcontext RV RV C ->
-      eval_simple_rvalue e te m PCT PCT' r1 (v,vt) ->
-      bool_val v (typeof r1) m = Some true ->
-      estep (ExprState f PCT (C (Eseqand r1 r2 ty)) k e te m)
-         E0 (ExprState f PCT' (C (Eparen r2 type_bool ty)) k e te m)
-  | step_seqand_false: forall f C r1 r2 ty k e te m PCT PCT' v vt,
-      leftcontext RV RV C ->
-      eval_simple_rvalue e te m PCT PCT' r1 (v,vt) ->
-      bool_val v (typeof r1) m = Some false ->
-      estep (ExprState f PCT (C (Eseqand r1 r2 ty)) k e te m)
-         E0 (ExprState f PCT (C (Eval (Vint Int.zero, vt) ty)) k e te m)
-
-  | step_seqor_true: forall f C r1 r2 ty k e te m PCT PCT' v vt,
-      leftcontext RV RV C ->
-      eval_simple_rvalue e te m PCT PCT' r1 (v,vt) ->
-      bool_val v (typeof r1) m = Some true ->
-      estep (ExprState f PCT (C (Eseqor r1 r2 ty)) k e te m)
-         E0 (ExprState f PCT' (C (Eval (Vint Int.one, vt) ty)) k e te m)
-  | step_seqor_false: forall f C r1 r2 ty k e te m PCT PCT' v vt,
-      leftcontext RV RV C ->
-      eval_simple_rvalue e te m PCT PCT' r1 (v,vt) ->
-      bool_val v (typeof r1) m = Some false ->
-      estep (ExprState f PCT (C (Eseqor r1 r2 ty)) k e te m)
-         E0 (ExprState f PCT' (C (Eparen r2 type_bool ty)) k e te m)
-
-  | step_condition: forall f C r1 r2 r3 ty k e te m PCT PCT' v vt b,
-      leftcontext RV RV C ->
-      eval_simple_rvalue e te m PCT PCT' r1 (v,vt) ->
-      bool_val v (typeof r1) m = Some b ->
-      estep (ExprState f PCT (C (Econdition r1 r2 r3 ty)) k e te m)
-         E0 (ExprState f PCT' (C (Eparen (if b then r2 else r3) ty ty)) k e te m)
-
-  | step_assign: forall f C l r ty k e te m PCT PCT' ofs pt bf v vt v1 t m' v' lts,
-      leftcontext RV RV C ->
-      eval_simple_lvalue e te m PCT l (Lmem ofs pt bf) ->
-      eval_simple_rvalue e te m PCT PCT' r (v,vt) ->
-      sem_cast v (typeof r) (typeof l) m = Some v1 ->
-      assign_loc ge ce (typeof l) m ofs pt bf (v1,vt) t (MemorySuccess (m', (v',vt))) lts ->
-      ty = typeof l ->
-      estep (ExprState f PCT (C (Eassign l r ty)) k e te m)
-          t (ExprState f PCT' (C (Eval (v',vt) ty)) k e te m')
-
-  | step_assignop: forall f C op l r tyres ty k e te m PCT PCT' ofs pt bf v1 v2 v3 v4 vt t1 t2 m' v' t lts,
-      leftcontext RV RV C ->
-      eval_simple_lvalue e te m PCT l (Lmem ofs pt bf) ->
-      deref_loc ge (typeof l) m ofs pt bf t1 (MemorySuccess ((v1,vt), lts)) ->
-      eval_simple_rvalue e te m PCT PCT' r (v2,vt) ->
-      sem_binary_operation ce op v1 (typeof l) v2 (typeof r) m = Some v3 ->
-      sem_cast v3 tyres (typeof l) m = Some v4 ->
-      assign_loc ge ce (typeof l) m ofs pt bf (v4,vt) t2 (MemorySuccess (m', v')) lts ->
-      ty = typeof l ->
-      t = t1 ** t2 ->
-      estep (ExprState f PCT (C (Eassignop op l r tyres ty)) k e te m)
-          t (ExprState f PCT' (C (Eval v' ty)) k e te m')
-
-  | step_postincr: forall f C id l ty k e te m PCT PCT' ofs pt bf v1 v2 v3 vt t1 t2 m' v' t lts,
-      leftcontext RV RV C ->
-      eval_simple_lvalue e te m PCT l (Lmem ofs pt bf) ->
-      deref_loc ge ty m ofs pt bf t1 (MemorySuccess ((v1,vt), lts)) ->
-      sem_incrdecr ce id v1 ty m = Some v2 ->
-      sem_cast v2 (incrdecr_type ty) ty m = Some v3 ->
-      assign_loc ge ce ty m ofs pt bf (v3,vt) t2 (MemorySuccess (m', v')) lts ->
-      ty = typeof l ->
-      t = t1 ** t2 ->
-      estep (ExprState f PCT (C (Epostincr id l ty)) k e te m)
-          t (ExprState f PCT' (C (Eval (v1,vt) ty)) k e te m')
-
-  | step_comma: forall f C r1 r2 ty k e te m PCT PCT' v vt,
-      leftcontext RV RV C ->
-      eval_simple_rvalue e te m PCT PCT' r1 (v,vt) ->
-      ty = typeof r2 ->
-      estep (ExprState f PCT (C (Ecomma r1 r2 ty)) k e te m)
-         E0 (ExprState f PCT' (C r2) k e te m)
-
-  | step_paren: forall f C r tycast ty k e te m PCT PCT' v1 v vt,
-      leftcontext RV RV C ->
-      eval_simple_rvalue e te m PCT PCT' r (v1,vt) ->
-      sem_cast v1 (typeof r) tycast m = Some v ->
-      estep (ExprState f PCT (C (Eparen r tycast ty)) k e te m)
-         E0 (ExprState f PCT' (C (Eval (v,vt) ty)) k e te m)
-
-  | step_call_internal: forall f C rf rargs ty k e te m PCT PCT' targs tres cconv vf vft vargs fd,
-      leftcontext RV RV C ->
-      classify_fun (typeof rf) = fun_case_f targs tres cconv ->
-      eval_simple_rvalue e te m PCT PCT' rf (vf,vft) ->
-      eval_simple_list e te m PCT rargs targs vargs ->
-      Genv.find_funct ge vf = Some (Internal fd) ->
-      type_of_fundef fd = Tfunction targs tres cconv ->
-      estep (ExprState f PCT (C (Ecall rf rargs ty)) k e te m)
-         E0 (Callstate fd PCT' vft vargs (Kcall f e te PCT C ty k) m)
-
-  | step_call_external: forall f C rf rargs ty k e te m PCT PCT' targs tres cconv vf vft vargs ef,
-      leftcontext RV RV C ->
-      classify_fun (typeof rf) = fun_case_f targs tres cconv ->
-      eval_simple_rvalue e te m PCT PCT' rf (vf,vft) ->
-      eval_simple_list e te m PCT rargs targs vargs ->
-      Genv.find_funct ge vf = Some (External ef targs tres cconv) ->
-      estep (ExprState f PCT (C (Ecall rf rargs ty)) k e te m)
-         E0 (Callstate (External ef targs tres cconv) PCT' vft vargs (Kcall f e te PCT C ty k) m)
-         
-  | step_builtin: forall f C ef ty k e te m PCT PCT' vargs t vres m',
-      leftcontext RV RV C ->
-      external_call ef ge vargs PCT def_tag m t (MemorySuccess (PolicySuccess (vres, PCT', m'))) ->
-      estep (ExprState f PCT (C (Ebuiltin ef ty)) k e te m)
-          t (ExprState f PCT' (C (Eval vres ty)) k e te m').
-
-Definition step (S: Csem.state) (t: trace) (S': Csem.state) : Prop :=
-  estep S t S' \/ sstep ge ce S t S'.
 
 (** Properties of contexts *)
 

@@ -115,12 +115,19 @@ Module TagLib (P:Policy).
     forall (a1 a2:atom),
       {a1 = a2} + {a1 <> a2}.
   Proof.
-    repeat decide equality.
+    decide equality.
     apply tag_eq_dec.
+    decide equality.
     apply Int.eq_dec.
     apply Int64.eq_dec.
     apply Float.eq_dec.
     apply Float32.eq_dec.
+    decide equality.
+    repeat decide equality.
+    repeat decide equality.
+    decide equality.
+    apply type_eq.
+    repeat decide equality.        
   Qed.  
 End TagLib.
 
