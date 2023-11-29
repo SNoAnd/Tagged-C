@@ -14,6 +14,7 @@
 open Printf
 open Clflags
 open Diagnostics
+open Cabs
 
 (* Safe removal of files *)
 let safe_remove file =

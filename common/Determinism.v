@@ -21,20 +21,17 @@ Require Import String.
 Require Import Coqlib.
 Require Import AST.
 Require Import Integers.
+Require Import Allocator.
 Require Import Events.
 Require Import Globalenvs.
 Require Import Smallstep.
 Require Import Behaviors.
 Require Import Tags.
 
-Module Deterministic (P:Policy).
-  Module Behaviors := Behaviors P.
-  Import Behaviors.
-  Import Smallstep.
-  Import Events.
-  Import Genv.
-  Import Mem.
-
+Module Deterministic (P:Policy) (A:Allocator P).
+  Module Behaviors := Behaviors P A.
+  Export Behaviors.
+  
 (** * Deterministic worlds *)
 
 (** One source of possible nondeterminism is that our semantics leave
@@ -52,18 +49,18 @@ Module Deterministic (P:Policy).
 
 CoInductive world: Type :=
   World (io: string -> list eventval -> option (eventval * world))
-        (vload: memory_chunk -> ident -> ptrofs -> option (eventval * world))
-        (vstore: memory_chunk -> ident -> ptrofs -> eventval -> option world).
+        (vload: memory_chunk -> ident -> int64 -> option (eventval * world))
+        (vstore: memory_chunk -> ident -> int64 -> eventval -> option world).
 
 Definition nextworld_io (w: world) (evname: string) (evargs: list eventval) :
                      option (eventval * world) :=
   match w with World io vl vs => io evname evargs end.
 
-Definition nextworld_vload (w: world) (chunk: memory_chunk) (id: ident) (ofs: ptrofs) :
+Definition nextworld_vload (w: world) (chunk: memory_chunk) (id: ident) (ofs: int64) :
                      option (eventval * world) :=
   match w with World io vl vs => vl chunk id ofs end.
 
-Definition nextworld_vstore (w: world) (chunk: memory_chunk) (id: ident) (ofs: ptrofs) (v: eventval):
+Definition nextworld_vstore (w: world) (chunk: memory_chunk) (id: ident) (ofs: int64) (v: eventval):
                      option world :=
   match w with World io vl vs => vs chunk id ofs v end.
 

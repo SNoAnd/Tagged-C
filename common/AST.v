@@ -93,12 +93,12 @@ Fixpoint subtype_list (tyl1 tyl2: list typ) : bool :=
     types below. *)
 
 Inductive rettype : Type :=
-  | Tret (t: typ)                       (**r like type [t] *)
-  | Tint8signed                         (**r 8-bit signed integer *)
-  | Tint8unsigned                       (**r 8-bit unsigned integer *)
-  | Tint16signed                        (**r 16-bit signed integer *)
-  | Tint16unsigned                      (**r 16-bit unsigned integer *)
-  | Tvoid.                              (**r no value returned *)
+| Tret (t: typ)                       (**r like type [t] *)
+| Tint8signed                         (**r 8-bit signed integer *)
+| Tint8unsigned                       (**r 8-bit unsigned integer *)
+| Tint16signed                        (**r 16-bit signed integer *)
+| Tint16unsigned                      (**r 16-bit unsigned integer *)
+| Tvoid.                              (**r no value returned *)
 
 Coercion Tret: typ >-> rettype.
 
@@ -159,16 +159,16 @@ Definition signature_main :=
   chunk of memory being accessed. *)
 
 Inductive memory_chunk : Type :=
-  | Mint8signed     (**r 8-bit signed integer *)
-  | Mint8unsigned   (**r 8-bit unsigned integer *)
-  | Mint16signed    (**r 16-bit signed integer *)
-  | Mint16unsigned  (**r 16-bit unsigned integer *)
-  | Mint32          (**r 32-bit integer, or pointer *)
-  | Mint64          (**r 64-bit integer *)
-  | Mfloat32        (**r 32-bit single-precision float *)
-  | Mfloat64        (**r 64-bit double-precision float *)
-  | Many32          (**r any value that fits in 32 bits *)
-  | Many64.         (**r any value *)
+| Mint8signed     (**r 8-bit signed integer *)
+| Mint8unsigned   (**r 8-bit unsigned integer *)
+| Mint16signed    (**r 16-bit signed integer *)
+| Mint16unsigned  (**r 16-bit unsigned integer *)
+| Mint32          (**r 32-bit integer, or pointer *)
+| Mint64          (**r 64-bit integer *)
+| Mfloat32        (**r 32-bit single-precision float *)
+| Mfloat64        (**r 64-bit double-precision float *)
+| Many32          (**r any value that fits in 32 bits *)
+| Many64.         (**r any value *)
 
 Definition chunk_eq: forall (c1 c2: memory_chunk), {c1=c2} + {c1<>c2}.
 Proof. decide equality. Defined.
@@ -466,18 +466,15 @@ Inductive external_function : Type :=
   | EF_external (name: string) (sg: signature)
      (** A system call or library function.  Produces an event
          in the trace. *)
-  | EF_builtin (name: string) (sg: signature)
+(*  | EF_builtin (name: string) (sg: signature) *)
      (** A compiler built-in function.  Behaves like an external, but
          can be inlined by the compiler. *)
-  | EF_runtime (name: string) (sg: signature)
-     (** A function from the run-time library.  Behaves like an
-         external, but must not be redefined. *)
-  | EF_vload (chunk: memory_chunk)
+(*  | EF_vload (chunk: memory_chunk) *)
      (** A volatile read operation.  If the address given as first argument
          points within a volatile global variable, generate an
          event and return the value found in this event.  Otherwise,
          produce no event and behave like a regular memory load. *)
-  | EF_vstore (chunk: memory_chunk)
+(*  | EF_vstore (chunk: memory_chunk) *)
      (** A volatile store operation.   If the address given as first argument
          points within a volatile global variable, generate an event.
          Otherwise, produce no event and behave like a regular memory store. *)
@@ -490,43 +487,18 @@ Inductive external_function : Type :=
          allocated by an [EF_malloc] external call and frees the
          corresponding block.
          Produces no observable event. *)
-  | EF_memcpy (sz: Z) (al: Z)
-     (** Block copy, of [sz] bytes, between addresses that are [al]-aligned. *)
-  | EF_annot (kind: positive) (text: string) (targs: list typ)
-     (** A programmer-supplied annotation.  Takes zero, one or several arguments,
-         produces an event carrying the text and the values of these arguments,
-         and returns no value. *)
-  | EF_annot_val (kind: positive) (text: string) (targ: typ)
-     (** Another form of annotation that takes one argument, produces
-         an event carrying the text and the value of this argument,
-         and returns the value of the argument. *)
-  | EF_inline_asm (text: string) (sg: signature) (clobbers: list string)
-     (** Inline [asm] statements.  Semantically, treated like an
-         annotation with no parameters ([EF_annot text nil]).  To be
-         used with caution, as it can invalidate the semantic
-         preservation theorem.  Generated only if [-finline-asm] is
-         given. *)
-  | EF_debug (kind: positive) (text: ident) (targs: list typ).
-     (** Transport debugging information from the front-end to the generated
-         assembly.  Takes zero, one or several arguments like [EF_annot].
-         Unlike [EF_annot], produces no observable event. *)
-
+.
+              
 (** The type signature of an external function. *)
 
 Definition ef_sig (ef: external_function): signature :=
   match ef with
   | EF_external name sg => sg
-  | EF_builtin name sg => sg
-  | EF_runtime name sg => sg
+(*  | EF_builtin name sg => sg
   | EF_vload chunk => mksignature (Tptr :: nil) (rettype_of_chunk chunk) cc_default
-  | EF_vstore chunk => mksignature (Tptr :: type_of_chunk chunk :: nil) Tvoid cc_default
+  | EF_vstore chunk => mksignature (Tptr :: type_of_chunk chunk :: nil) Tvoid cc_default *)
   | EF_malloc => mksignature (Tptr :: nil) Tptr cc_default
   | EF_free => mksignature (Tptr :: nil) Tvoid cc_default
-  | EF_memcpy sz al => mksignature (Tptr :: Tptr :: nil) Tvoid cc_default
-  | EF_annot kind text targs => mksignature targs Tvoid cc_default
-  | EF_annot_val kind text targ => mksignature (targ :: nil) targ cc_default
-  | EF_inline_asm text sg clob => sg
-  | EF_debug kind text targs => mksignature targs Tvoid cc_default
   end.
 
 (** Whether an external function should be inlined by the compiler. *)
@@ -534,25 +506,19 @@ Definition ef_sig (ef: external_function): signature :=
 Definition ef_inline (ef: external_function) : bool :=
   match ef with
   | EF_external name sg => false
-  | EF_builtin name sg => true
-  | EF_runtime name sg => false
+(*  | EF_builtin name sg => true
   | EF_vload chunk => true
-  | EF_vstore chunk => true
+  | EF_vstore chunk => true *)
   | EF_malloc => false
   | EF_free => false
-  | EF_memcpy sz al => true
-  | EF_annot kind text targs => true
-  | EF_annot_val kind Text rg => true
-  | EF_inline_asm text sg clob => true
-  | EF_debug kind text targs => true
   end.
 
 (** Whether an external function must reload its arguments. *)
 
 Definition ef_reloads (ef: external_function) : bool :=
   match ef with
-  | EF_annot kind text targs => false
-  | EF_debug kind text targs => false
+(*  | EF_annot kind text targs => false
+  | EF_debug kind text targs => false *)
   | _ => true
   end.
 

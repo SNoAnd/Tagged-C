@@ -16,6 +16,8 @@
 
 (* Entry point for the library: parse, elaborate, and transform *)
 
+open Cabs
+
 module CharSet = Set.Make(struct type t = char let compare = compare end)
 
 let transform_program t p =
@@ -63,7 +65,7 @@ let parse_string name text =
             Fail_pr{,_full} means that there's an inconsistency
             between the pre-parser and the parser.
             Timeout_pr means that we ran for 2^50 steps. *)
-      Diagnostics.fatal_error Diagnostics.no_loc "internal error while parsing"
+      Diagnostics.fatal_error no_loc "internal error while parsing"
 
 let preprocessed_file transfs name sourcefile =
   Diagnostics.reset();

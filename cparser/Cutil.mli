@@ -300,8 +300,6 @@ val sassign : location -> exp -> exp -> stmt
 
 (* Locations *)
 
-val no_loc: location
-  (* Denotes an unknown location. *)
 val printloc: out_channel -> location -> unit
   (* Printer for locations (for Printf) *)
 val formatloc: Format.formatter -> location -> unit

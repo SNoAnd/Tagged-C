@@ -25,7 +25,7 @@ let lexicon : (string, Cabs.loc -> token) Hashtbl.t = Hashtbl.create 17
 let ignored_keywords : SSet.t ref = ref SSet.empty
 
 let reserved_keyword loc id =
-  Diagnostics.fatal_error (loc.Cabs.filename, loc.Cabs.lineno)
+  Diagnostics.fatal_error loc
     "illegal use of reserved keyword `%s'" id
 
 let () =
@@ -138,15 +138,27 @@ let currentLoc =
 
 let fatal_error lb fmt =
   Diagnostics.fatal_error
-    (lb.lex_curr_p.pos_fname,lb.lex_curr_p.pos_lnum) fmt
+        (let p = lb.Lexing.lex_curr_p in  
+        Cabs.({ filename = p.Lexing.pos_fname;
+                lineno   = p.Lexing.pos_lnum;
+                byteno   = p.Lexing.pos_cnum;
+                ident    = (-1); })) fmt
 
 let error lb fmt =
   Diagnostics.error
-    (lb.lex_curr_p.pos_fname,lb.lex_curr_p.pos_lnum) fmt
+        (let p = lb.Lexing.lex_curr_p in  
+        Cabs.({ filename = p.Lexing.pos_fname;
+                lineno   = p.Lexing.pos_lnum;
+                byteno   = p.Lexing.pos_cnum;
+                ident    = (-1); })) fmt
 
 let warning lb fmt =
   Diagnostics.warning
-      (lb.lex_curr_p.pos_fname,lb.lex_curr_p.pos_lnum) Diagnostics.Unnamed fmt
+        (let p = lb.Lexing.lex_curr_p in  
+        Cabs.({ filename = p.Lexing.pos_fname;
+                lineno   = p.Lexing.pos_lnum;
+                byteno   = p.Lexing.pos_cnum;
+                ident    = (-1); })) Diagnostics.Unnamed fmt
 
 (* Simple character escapes *)
 

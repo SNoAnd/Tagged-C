@@ -18,6 +18,7 @@
 
 open Format
 open C
+open Cabs
 
 let print_idents_in_full = ref false
 
@@ -414,7 +415,7 @@ let rec exp_of_stmt s =
       raise Not_expr
 
 let rec stmt pp s =
-  location pp s.sloc;
+  location pp (s.sloc.filename, s.sloc.lineno);
   match s.sdesc with
   | Sskip ->
       fprintf pp "/*skip*/;"
@@ -522,7 +523,7 @@ let field pp f =
   | Some n -> fprintf pp " : %d" n
 
 let globdecl pp g =
-  location pp g.gloc;
+  location pp (g.gloc.filename, g.gloc.lineno);
   match g.gdesc with
   | Gdecl d ->
       fprintf pp "%a@ @ " full_decl d

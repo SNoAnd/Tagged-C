@@ -18,9 +18,10 @@
   semantics of all our intermediate languages. *)
 
 Require Import Coqlib.
-Require Import AST.
 Require Import Integers.
 Require Import Floats.
+Require Import Ctypes.
+Require Import AST.
 
 Definition block : Type := positive.
 Definition eq_block := peq.
@@ -40,7 +41,9 @@ Inductive val: Type :=
 | Vlong: int64 -> val
 | Vfloat: float -> val
 | Vsingle: float32 -> val
-| Vfptr: block -> val.
+| Vfptr: block -> val
+| Vefptr: external_function -> typelist -> rettype -> calling_convention -> val
+.
 
 Definition Vzero: val := Vint Int.zero.
 Definition Vone: val := Vint Int.one.
@@ -68,7 +71,13 @@ Proof.
   apply Float.eq_dec.
   apply Float32.eq_dec.
   apply eq_block.
+  repeat decide equality.
+  repeat decide equality.
+  decide equality.
+  apply type_eq.
+  apply external_function_eq.
 Defined.
+
 Global Opaque eq.
 
 Definition has_type (v: val) (t: typ) : Prop :=
@@ -79,6 +88,7 @@ Definition has_type (v: val) (t: typ) : Prop :=
   | Vfloat _, Tfloat => True
   | Vsingle _, Tsingle => True
   | Vfptr _, Tlong => True
+  | Vefptr _ _ _ _, Tlong => True
   | (Vint _ | Vsingle _), Tany32 => True
   | _, Tany64 => True
   | _, _ => False
@@ -123,6 +133,13 @@ Proof.
 - destruct t; auto.
 - destruct t; auto.
 - destruct t; auto.
+- destruct t.
+  right; auto.
+  right; auto.
+  left; auto.
+  right; auto.
+  right; auto.
+  left; auto.
 - destruct t.
   right; auto.
   right; auto.
@@ -883,6 +900,7 @@ Definition normalize (v: val) (ty: typ) : val :=
   | Vfloat _, Tfloat => v
   | Vsingle _, Tsingle => v
   | Vfptr _, Tlong => v
+  | Vefptr _ _ _ _, Tlong => v
   | (Vint _ | Vsingle _), Tany32 => v
   | _, Tany64 => v
   | _, _ => Vundef
@@ -898,6 +916,7 @@ Proof.
 - destruct ty; exact I.
 - destruct ty; exact I.
 - unfold has_type; destruct ty; auto.
+- destruct ty; exact I.
 Qed.
 
 Lemma normalize_idem:
@@ -910,6 +929,7 @@ Proof.
 - destruct ty; intuition auto.
 - destruct ty; intuition auto.
 - destruct ty, Archi.ptr64; intuition congruence.
+- destruct ty; intuition auto.
 Qed.
 
 (** Select between two values based on the result of a comparison. *)
@@ -936,8 +956,9 @@ Definition load_result (chunk: memory_chunk) (v: val) :=
   | Mint16signed, Vint n => Vint (Int.sign_ext 16 n)
   | Mint16unsigned, Vint n => Vint (Int.zero_ext 16 n)
   | Mint32, Vint n => Vint n
-  | Mint64, Vlong n => Vlong n
-  | Mint64, Vfptr b => Vfptr b
+  | Mint64, Vlong _
+  | Mint64, Vfptr _
+  | Mint64, Vefptr _ _ _ _ => v 
   | Mfloat32, Vsingle f => Vsingle f
   | Mfloat64, Vfloat f => Vfloat f
   | Many32, (Vint _ | Vsingle _) => v
@@ -2003,13 +2024,6 @@ Proof.
     + unfold Ptrofs.max_unsigned. unfold Ptrofs.modulus. unfold two_power_nat. lia.
 Qed.
 
-Lemma offset_ptr_assoc:
-  forall v d1 d2, offset_ptr (offset_ptr v d1) d2 = offset_ptr v (Ptrofs.add d1 d2).
-(*Proof.
-  intros. destruct v; simpl; auto. f_equal. apply Ptrofs.add_assoc.
-Qed.*)
-Admitted.
-
 Lemma lessdef_normalize:
   forall v ty, lessdef (normalize v ty) v.
 Proof.
@@ -2020,6 +2034,7 @@ Proof.
   - destruct ty; auto.
   - destruct ty; auto.
   - destruct ty, Archi.ptr64; auto.
+  - destruct ty; auto.
 Qed.
 
 Lemma normalize_lessdef:

@@ -104,14 +104,14 @@ VLIB=Axioms.v Coqlib.v Intv.v Maps.v Heaps.v Lattice.v Ordered.v \
 # Parts common to the front-ends and the back-end (in common/)
 
 COMMON=Errors.v AST.v Linking.v \
-  Events.v Globalenvs.v Memdata.v Memory.v \
+  Events.v Globalenvs.v Memdata.v Memory.v Allocator.v \
   Values.v Tags.v Smallstep.v Behaviors.v Switch.v Determinism.v Unityping.v \
   Builtins0.v Builtins1.v Builtins.v
 
 # C front-end modules (in cfrontend/)
 
 CFRONTEND=Ctypes.v Cop.v Csyntax.v Csem.v Ctyping.v Cstrategy.v Cexec.v \
-  Initializers.v \
+  Initializers.v InterpreterEvents.v \
 
 # Parser
 

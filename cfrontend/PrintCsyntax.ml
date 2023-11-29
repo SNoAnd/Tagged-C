@@ -23,12 +23,13 @@ open AST
 open! Ctypes
 open Tags
 open C2C
+open Allocator
 
 module PrintCsyntaxP =
-        functor (Pol: Policy) ->
+        functor (Pol: Policy) (Alloc: Allocator) ->
                 struct
 
-module C2CPInst = C2CP (Pol)
+module C2CPInst = C2CP (Pol) (Alloc)
 module Init = C2CPInst.Init
 module Ctyping = Init.Cexec.InterpreterEvents.Cstrategy.Ctyping
 module Csyntax = Ctyping.Csem.Csyntax
@@ -185,26 +186,28 @@ let print_pointer_hook
    : (formatter -> Values.block * Integers.Int.int -> unit) ref
    = ref (fun p (b, ofs) -> ())
 
-let print_typed_value p v ty =
-  match v, ty with
-  | Vint n, Ctypes.Tint(I32, Unsigned, _) ->
+let print_typed_value p vty =
+  match vty with
+  | (Vint n, Ctypes.Tint(I32, Unsigned, _)) ->
       fprintf p "%luU" (camlint_of_coqint n)
-  | Vint n, _ ->
+  | (Vint n, _) ->
       fprintf p "%ld" (camlint_of_coqint n)
-  | Vfloat f, _ ->
+  | (Vfloat f, _) ->
       fprintf p "%.15F" (camlfloat_of_coqfloat f)
-  | Vsingle f, _ ->
+  | (Vsingle f, _) ->
       fprintf p "%.15Ff" (camlfloat_of_coqfloat32 f)
-  | Vlong n, Ctypes.Tlong(Unsigned, _) ->
+  | (Vlong n, Ctypes.Tlong(Unsigned, _)) ->
       fprintf p "%LuLLU" (camlint64_of_coqint n)
-  | Vlong n, _ ->
+  | (Vlong n, _) ->
       fprintf p "%LdLL" (camlint64_of_coqint n)
-  | Vfptr b, _ ->
+  | (Vfptr b, _) ->
       fprintf p "<ptr%a>" !print_pointer_hook (b,coqint_of_camlint 0l)
-  | Vundef, _ ->
+  | (Vefptr(_, _, _, _),_) ->
+      fprintf p "<builtin>"
+  | (Vundef, _) ->
       fprintf p "<undef>"
 
-let print_value p v = print_typed_value p v Tvoid
+let print_value p v = print_typed_value p (v,Tvoid)
 
 let rec expr p (prec, e) =
   let (prec', assoc) = precedence e in
@@ -220,8 +223,10 @@ let rec expr p (prec, e) =
       fprintf p "<loc%a>" !print_pointer_hook (P.one, ofs)
   | Csyntax.Eloc(Csyntax.Ltmp b, _) ->
       fprintf p "<loc%a>" !print_pointer_hook (b, BinNums.Z0)
-  | Csyntax.Eloc(Csyntax.Lfun (b, _), _) ->
+  | Csyntax.Eloc(Csyntax.Lifun (b, _), _) ->
       fprintf p "<loc%a>" !print_pointer_hook (b, BinNums.Z0)
+  | Csyntax.Eloc(Csyntax.Lefun (ef, _, _, _, _), _) ->
+      fprintf p "<builtin>"
   | Csyntax.Evar(id, _) ->
       fprintf p "%s" (extern_atom id)
   | Csyntax.Ederef(a1, _) ->
@@ -230,10 +235,12 @@ let rec expr p (prec, e) =
       fprintf p "%a.%s" expr (prec', a1) (extern_atom f)
   | Csyntax.Evalof(l, _) ->
       expr p (prec, l)
-  | Csyntax.Eval((v, _), ty) ->
-      print_typed_value p v ty
+  | Csyntax.Eval((v, vt), ty) ->
+      fprintf p "%a %@ %s"
+        print_typed_value (v,ty)
+        (String.of_seq (List.to_seq (Pol.print_tag vt)))
   | Csyntax.Econst(v, ty) ->
-      print_typed_value p v ty
+      print_typed_value p (v,ty)
   | Csyntax.Esizeof(ty, _) ->
       fprintf p "sizeof(%s)" (name_type ty)
   | Csyntax.Ealignof(ty, _) ->
@@ -288,8 +295,8 @@ let rec expr p (prec, e) =
   | Csyntax.Ebuiltin(Csyntax.EF_builtin(name, _), _, args, _) ->
       fprintf p "%s@[<hov 1>(%a)@]"
                 (camlstring_of_coqstring name) exprlist (true, args)*)
-  | Csyntax.Ebuiltin(_, _, args, _) ->
-      fprintf p "<unknown builtin>@[<hov 1>(%a)@]" exprlist (true, args)
+  | Csyntax.Ebuiltin(_, _, _, _) ->
+      fprintf p "<unknown builtin>"
   | Csyntax.Eparen(a1, tycast, ty) ->
       fprintf p "(%s) %a" (name_type tycast) expr (prec', a1)
   end;
@@ -338,48 +345,48 @@ let rec print_stmt p s =
   match s with
   | Csyntax.Sskip ->
       fprintf p "/*skip*/;"
-  | Csyntax.Sdo e ->
+  | Csyntax.Sdo (e, _) ->
       fprintf p "%a;" print_expr e
   | Csyntax.Ssequence(s1, s2) ->
       fprintf p "%a@ %a" print_stmt s1 print_stmt s2
-  | Csyntax.Sifthenelse(e, s1, Csyntax.Sskip, _) ->
+  | Csyntax.Sifthenelse(e, s1, Csyntax.Sskip, _, _) ->
       fprintf p "@[<v 2>if (%a) {@ %a@;<0 -2>}@]"
               print_expr e
               print_stmt s1
-  | Csyntax.Sifthenelse(e, s1, s2, _) ->
+  | Csyntax.Sifthenelse(e, s1, s2, _, _) ->
       fprintf p "@[<v 2>if (%a) {@ %a@;<0 -2>} else {@ %a@;<0 -2>}@]"
               print_expr e
               print_stmt s1
               print_stmt s2
-  | Csyntax.Swhile(e, s, _) ->
+  | Csyntax.Swhile(e, s, _, _) ->
       fprintf p "@[<v 2>while (%a) {@ %a@;<0 -2>}@]"
               print_expr e
               print_stmt s
-  | Csyntax.Sdowhile(e, s, _) ->
+  | Csyntax.Sdowhile(e, s, _, _) ->
       fprintf p "@[<v 2>do {@ %a@;<0 -2>} while(%a);@]"
               print_stmt s
               print_expr e
-  | Csyntax.Sfor(s_init, e, s_iter, s_body, _) ->
+  | Csyntax.Sfor(s_init, e, s_iter, s_body, _, _) ->
       fprintf p "@[<v 2>for (@[<hv 0>%a;@ %a;@ %a) {@]@ %a@;<0 -2>}@]"
               print_stmt_for s_init
               print_expr e
               print_stmt_for s_iter
               print_stmt s_body
-  | Csyntax.Sbreak ->
+  | Csyntax.Sbreak _ ->
       fprintf p "break;"
-  | Csyntax.Scontinue ->
+  | Csyntax.Scontinue _ ->
       fprintf p "continue;"
-  | Csyntax.Sswitch(e, cases) ->
+  | Csyntax.Sswitch(e, cases, _) ->
       fprintf p "@[<v 2>switch (%a) {@ %a@;<0 -2>}@]"
               print_expr e
               print_cases cases
-  | Csyntax.Sreturn None ->
+  | Csyntax.Sreturn (None, _)->
       fprintf p "return;"
-  | Csyntax.Sreturn (Some e) ->
+  | Csyntax.Sreturn (Some e, _) ->
       fprintf p "return %a;" print_expr e
   | Csyntax.Slabel(lbl, s1) ->
       fprintf p "%s:@ %a" (extern_atom lbl) print_stmt s1
-  | Csyntax.Sgoto lbl ->
+  | Csyntax.Sgoto (lbl, _) ->
       fprintf p "goto %s;" (extern_atom lbl)
 
 and print_cases p cases =
@@ -404,7 +411,7 @@ and print_stmt_for p s =
   match s with
   | Csyntax.Sskip ->
       fprintf p "/*nothing*/"
-  | Csyntax.Sdo e ->
+  | Csyntax.Sdo(e,_) ->
       print_expr p e
   | Csyntax.Ssequence(s1, s2) ->
       fprintf p "%a, %a" print_stmt_for s1 print_stmt_for s2
@@ -446,11 +453,11 @@ let print_function p id f =
 
 let print_fundef p id fd =
   match fd with
-  | Ctypes.External((AST.EF_external _ | AST.EF_runtime _| AST.EF_malloc | AST.EF_free), args, res, cconv) ->
+  | Ctypes.External((AST.EF_external _ (*| AST.EF_runtime _*) | AST.EF_malloc | AST.EF_free), args, res, cconv) ->
       fprintf p "extern %s;@ @ "
                 (name_cdecl (extern_atom id) (Tfunction(args, res, cconv)))
-  | Ctypes.External(_, _, _, _) ->
-      ()
+  (*| Ctypes.External(_, _, _, _) ->*)
+      (*()*)
   | Ctypes.Internal f ->
       print_function p id f
 

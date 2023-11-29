@@ -58,17 +58,17 @@ type warning_type =
   | Reduced_alignment              (** alignment reduction *)
   | Non_linear_cond_expr           (** condition that cannot be linearized *)
 
-val warning  : (string * int) -> warning_type -> ('a, Format.formatter, unit, unit, unit, unit) format6 -> 'a
+val warning  : C.location -> warning_type -> ('a, Format.formatter, unit, unit, unit, unit) format6 -> 'a
 (** [warning (f,c) w fmt arg1 ... argN] formats the arguments [arg1] to [argN] as warining according to
     the format string [fmt] and outputs the result on [stderr] with additional file [f] and column [c]
     and warning key for [w] *)
 
-val error : (string * int) -> ('a, Format.formatter, unit, unit, unit, unit) format6 -> 'a
+val error : C.location -> ('a, Format.formatter, unit, unit, unit, unit) format6 -> 'a
 (** [error (f,c) w fmt arg1 ... argN] formats the arguments [arg1] to [argN] as error according to
     the format string [fmt] and outputs the result on [stderr] with additional file [f] and column [c]
     and warning key for [w]. *)
 
-val fatal_error : (string * int) -> ('a, Format.formatter, unit, unit, unit, 'b) format6 -> 'a
+val fatal_error : C.location -> ('a, Format.formatter, unit, unit, unit, 'b) format6 -> 'a
 (** [fatal_error (f,c) w fmt arg1 ... argN] formats the arguments [arg1] to [argN] as error according to
     the format string [fmt] and outputs the result on [stderr] with additional file [f] and column [c]
     and warning key for [w]. Additionally raises the excpetion [Abort] after printing the error message *)
@@ -88,9 +88,6 @@ val raise_on_errors : unit -> unit
 
 val crash: exn -> unit
 (** Report the backtrace of the last exception and exit *)
-
-val no_loc : string * int
-(** Location used for unknown locations *)
 
 val file_loc : string -> string * int
 (** [file_loc f] generates a location for file [f] *)

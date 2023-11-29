@@ -24,11 +24,11 @@ Require Ctypes.
 Require Csyntax.
 Require Parser.
 Require Initializers.
-Require Import Tags Initializers Csem.
+Require Import Tags Allocator Initializers Csem.
 
-Module Extracted (P : Policy).
+Module Extracted (P : Policy) (A : Allocator P).
 
-  Module I := Initializers P.
+  Module I := Initializers P A.
   Import I.
   Import Cexec.
   Import InterpreterEvents.
@@ -43,10 +43,8 @@ Module Extracted (P : Policy).
   Import Events.
   Import Genv.
   Import Mem.
-
-  (* Memory - work around an extraction bug. *)
-  Extraction NoInline valid_pointer.
-
+  Import A.
+  
 End Extracted.
   
   (* Standard lib *)
@@ -80,13 +78,27 @@ End Extracted.
   (* Cabs *)
   Extract Constant Cabs.loc =>
             "{ lineno : int;
-            filename: string;
-            byteno: int;
-            ident : int;
-            }".
+               filename: string;
+               byteno: int;
+               ident : int;
+             }".
+
+  Extract Constant Cabs.no_loc =>
+            "{ lineno = -1;
+               filename = """";
+               byteno = -1;
+               ident = -1;
+             }".
+  
   Extract Inlined Constant Cabs.string => "String.t".
   Extract Constant Cabs.char_code => "int64".
+ 
+  Extract Inlined Constant Tags.extern_atom =>
+            "(fun a -> Camlcoq.coqstring_of_camlstring (Camlcoq.extern_atom a))".
 
+  Extract Inlined Constant Globalenvs.ext =>
+            "EF.check_ef".
+  
   (* Processor-specific extraction directives *)
 
   (* Avoid name clashes *)
@@ -101,9 +113,11 @@ End Extracted.
 
   Separate Extraction
            Tags
+           Allocator
            Extracted
            Ctypes.merge_attributes Ctypes.remove_attributes
            Ctypes.build_composite_env Ctypes.signature_of_type Ctypes.typlist_of_typelist
+           Cabs
            (*transl_init constval
            Csyntax.Eindex Csyntax.Epreincr Csyntax.Eselection
            Ctyping.typecheck_program
@@ -111,6 +125,7 @@ End Extracted.
            Ctyping.eselection
            Ctypes.make_program*)
            AST
-           Floats.Float32.from_parsed Floats.Float.from_parsed
+           Floats
            (*invert_symbol*)
-           Parser.translation_unit_file.
+           Parser.translation_unit_file
+           Values.Vnullptr.

@@ -23,6 +23,8 @@ Parameter char_code : Type.
 (* Context information. *)
 Parameter loc : Type.
 
+Parameter no_loc : loc.
+
 Record floatInfo := {
   isHex_FI:bool;
   integer_FI:option string;

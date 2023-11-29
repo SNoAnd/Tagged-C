@@ -19,6 +19,7 @@
 Require Import Classical.
 Require Import ClassicalEpsilon.
 Require Import Coqlib.
+Require Import Allocator.
 Require Import Events.
 Require Import Globalenvs.
 Require Import Integers.
@@ -43,12 +44,9 @@ Set Asymmetric Patterns.
   performed before the program gets stuck.
 *)
 
-Module Behaviors (P:Policy).
-  Module Smallstep := Smallstep P.
-  Import Smallstep.
-  Import Events.
-  Import Genv.
-  Import Mem.
+Module Behaviors (P:Policy) (A:Allocator P).
+  Module Smallstep := Smallstep P A.
+  Export Smallstep.
   
 Inductive program_behavior: Type :=
   | Terminates: trace -> int -> program_behavior

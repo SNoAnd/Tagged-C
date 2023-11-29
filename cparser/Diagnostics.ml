@@ -18,6 +18,7 @@
 
 open Format
 open Commandline
+open Cabs
 
 (* Ensure that the error formatter is flushed at exit *)
 let _ =
@@ -296,14 +297,14 @@ let parse_loc_format s =
   diagnostics_format := loc_fmt
 
 (* Print the location or ccomp for the case of unknown loc *)
-let pp_loc fmt (filename,lineno) =
-  let lineno = if lineno = -10 then "" else
+let pp_loc fmt loc =
+    let lineno = if loc.lineno = -1 then "" else
     match !diagnostics_format with
-      | Default -> sprintf ":%d" lineno
-      | MSVC -> sprintf "(%d)" lineno
-      | Vi -> sprintf " +%d" lineno in
-  if filename <> "" && filename <> "cabs loc unknown" then
-    fprintf fmt "%t%s%s:%t " bc filename lineno rsc
+      | Default -> sprintf ":%d" loc.lineno
+      | MSVC -> sprintf "(%d)" loc.lineno
+      | Vi -> sprintf " +%d" loc.lineno in
+  if loc.filename <> "" && loc.filename <> "cabs loc unknown" then
+    fprintf fmt "%t%s%s:%t " bc loc.filename lineno rsc
   else
     fprintf fmt "%tccomp:%t " bc rsc
 
@@ -418,8 +419,6 @@ let crash exn =
     eprintf "Fatal error: uncaught exception %s\n%s" exc backtrace;
     exit 2
   end
-
-let no_loc = ("", -1)
 
 let file_loc file = (file,-10)
 

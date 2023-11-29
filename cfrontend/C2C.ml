@@ -21,12 +21,14 @@ open! Floats
 open Values
 open Ctypes
 open Tags
+open Allocator
 
 module C2CP =
-        functor (Pol: Policy) ->
+        functor (Pol: Policy) (Alloc: Allocator) ->
                 struct
 
-module Init = Initializers.Initializers (Pol)
+module A = Alloc (Pol)
+module Init = Initializers.Initializers (Pol) (A)
 module Ctyping = Init.Cexec.InterpreterEvents.Cstrategy.Ctyping
 module Csyntax = Ctyping.Csem.Csyntax
 module Cop = Csyntax.Cop
@@ -46,7 +48,7 @@ type atom_info =
     a_size: int64 option;              (* size in bytes *)
     a_alignment: int option;           (* alignment *)
     a_sections: Sections.section_name list; (* in which section to put it *)
-      (* 1 section for data, 3 sections (code/lit/jumptbl) for functions *)
+    (* 1 section for data, 3 sections (code/lit/jumptbl) for functions *)
     a_access: Sections.access_mode;    (* access mode, e.g. small data area *)
     a_inline: inline_status;           (* function declared inline? *)
     a_loc: location                    (* source location *)
@@ -90,7 +92,8 @@ let atom_is_small_data a ofs  =
     && (match info.a_size with
         | None -> false
         | Some sz ->
-            let ofs = camlint64_of_ptrofs ofs in 0L <= ofs && ofs < sz)
+                        (*let ofs = camlint64_of_ptrofs ofs in*) 
+            0L <= ofs && ofs < sz)
   with Not_found ->
     false
 
@@ -124,7 +127,7 @@ let atom_location a =
   try
     (Hashtbl.find decl_atom a).a_loc
   with Not_found ->
-    Cutil.no_loc
+    Cabs.no_loc
 
 (** The current environment of composite definitions *)
 
@@ -136,7 +139,7 @@ let process_pragma_hook = ref (fun (_: string) -> false)
 
 (** ** Error handling *)
 
-let currentLocation = ref Cutil.no_loc
+let currentLocation = ref Cabs.no_loc
 
 let updateLoc l = currentLocation := l
 
@@ -316,7 +319,7 @@ let name_for_string_literal s =
         a_sections = [Sections.for_stringlit()];
         a_access = Sections.Access_default;
         a_inline = No_specifier;
-        a_loc = Cutil.no_loc };
+        a_loc = Cabs.no_loc };
     Hashtbl.add stringTable s id;
     id
 
@@ -330,7 +333,7 @@ let global_for_string s id =
     init := AST.Init_int8(Z.of_uint(Char.code c)) :: !init in
   add_char '\000';
   for i = String.length s - 1 downto 0 do add_char s.[i] done;
-  (id, AST.Gvar { AST.gvar_info = typeStringLiteral s; AST.gvar_size = P.of_int (String.length s); AST.gvar_init = !init;
+  (id, AST.Gvar { AST.gvar_info = typeStringLiteral s; AST.gvar_size = P.of_int (String.length s + 1); AST.gvar_init = !init;
               AST.gvar_readonly = true;  AST.gvar_volatile = false})
 
 let name_for_wide_string_literal s =
@@ -349,7 +352,7 @@ let name_for_wide_string_literal s =
         a_sections = [Sections.for_stringlit()];
         a_access = Sections.Access_default;
         a_inline = No_specifier;
-        a_loc = Cutil.no_loc };
+        a_loc = Cabs.no_loc };
     Hashtbl.add wstringTable s id;
     id
 
@@ -390,7 +393,7 @@ let globals_for_strings globs =
 
 (** ** Handling of inlined memcpy functions *)
 
-let constant_size_t a =
+(*let constant_size_t a =
   match Init.constval_cast !comp_env a Ctyping.size_t with
   | Errors.OK(Vint n) -> Some(Integers.Int.unsigned n)
   | Errors.OK(Vlong n) -> Some(Integers.Int64.unsigned n)
@@ -417,7 +420,7 @@ let make_builtin_memcpy args =
                      Tcons(typeconv(Csyntax.typeof src), Tnil)),
                Csyntax.Econs(dst, Csyntax.Econs(src, Csyntax.Enil)), Tvoid)
   | _ ->
-    assert false
+    assert false*)
 
 (** ** Translation of [va_arg] for variadic functions. *)
 
@@ -866,10 +869,8 @@ let rec convertExpr env e =
   | C.ECompound(ty1, ie) ->
       unsupported "compound literals"; ezero
 
-  | C.ECall({edesc = C.EVar {name = "__builtin_debug"}}, args) when List.length args < 2 ->
-      error "too few arguments to function call, expected at least 2, have 0";
-      ezero
-  | C.ECall({edesc = C.EVar {name = "__builtin_debug"}}, args) ->
+      (* **** Not currently supported ***** *)
+(*  | C.ECall({edesc = C.EVar {name = "__builtin_debug"}}, args) ->
       let (kind, args1) =
         match args with
         | {edesc = C.EConst(CInt(n,_,_))} :: args1 when n <> 0L-> (n, args1)
@@ -912,7 +913,7 @@ let rec convertExpr env e =
           ezero
       end
 
-(*  | C.ECall({edesc = C.EVar {name = "__builtin_ais_annot"}}, args) when Configuration.elf_target ->
+  | C.ECall({edesc = C.EVar {name = "__builtin_ais_annot"}}, args) when Configuration.elf_target ->
       begin match args with
       | {edesc = C.EConst(CStr txt)} :: args1 ->
         let file,line = !currentLocation in
@@ -926,24 +927,15 @@ let rec convertExpr env e =
       | _ ->
           error "argument 1 of '__builtin_ais_annot' must be a string literal";
           ezero
-      end*)
+      end
 
  | C.ECall({edesc = C.EVar {name = "__builtin_memcpy_aligned"}}, args) ->
       make_builtin_memcpy (convertExprList env args)
 
-  | C.ECall({edesc = C.EVar {name = "__builtin_fabs"}}, [arg]) ->
-      ewrap (Ctyping.eunop Values.Oabsfloat (convertExpr env arg))
-
-  | C.ECall({edesc = C.EVar {name = "__builtin_va_start"}} as fn, [arg]) ->
-      Csyntax.Ecall(convertExpr env fn,
-            Csyntax.Econs(va_list_ptr(convertExpr env arg), Csyntax.Enil),
-            convertTyp env e.etyp)
 
   | C.ECall({edesc = C.EVar {name = "__builtin_va_arg"}}, [arg1; arg2]) ->
       make_builtin_va_arg env (convertTyp env e.etyp) (convertExpr env arg1)
 
-  | C.ECall({edesc = C.EVar {name = "__builtin_va_end"}}, _) ->
-      Csyntax.Ecast (ezero, Tvoid)
 
   | C.ECall({edesc = C.EVar {name = "__builtin_va_copy"}}, [arg1; arg2]) ->
       let dst = convertExpr env arg1 in
@@ -956,20 +948,51 @@ let rec convertExpr env e =
 
   | C.ECall({edesc = C.EVar {name = "__builtin_sel"}}, [arg1; arg2; arg3]) ->
       ewrap (Ctyping.eselection (convertExpr env arg1)
-                                (convertExpr env arg2) (convertExpr env arg3))
+                                (convertExpr env arg2) (convertExpr env arg3))*)
 
+  (* ***** Supported but treated as normal functions ***** *)
+
+  (*| C.ECall({edesc = C.EVar {name = "__builtin_debug"}}, args) when List.length args < 2 ->
+      error "too few arguments to function call, expected at least 2, have 0";
+      ezero
+  
   | C.ECall({edesc = C.EVar {name = "__builtin_expect"}}, [arg1; arg2]) ->
       convertExpr env arg1
 
+  | C.ECall({edesc = C.EVar {name = "__builtin_va_end"}}, _) ->
+      Csyntax.Ecast (ezero, Tvoid)
+  
+  | C.ECall({edesc = C.EVar {name = "__builtin_fabs"}}, [arg]) ->
+      ewrap (Ctyping.eunop Values.Oabsfloat (convertExpr env arg))
+
+  | C.ECall({edesc = C.EVar {name = "__builtin_va_start"}} as fn, [arg]) ->
+      Csyntax.Ecall(convertExpr env fn,
+            Csyntax.Econs(va_list_ptr(convertExpr env arg), Csyntax.Enil),
+            convertTyp env e.etyp)
+ *) 
   | C.ECall({edesc = C.EVar {name = "printf"}}, args)
     when !Clflags.option_interp ->
       let targs = convertTypArgs env [] args
       and tres = convertTyp env e.etyp in
-      let sg =
-        Ctypes.signature_of_type targs tres
-           { AST.cc_vararg = Some (coqint_of_camlint 1l); cc_unproto = false; cc_structret = false} in
-      Csyntax.Ebuiltin( AST.EF_external(coqstring_of_camlstring "printf", sg),
-               targs, convertExprList env args, tres)
+      let cc = { AST.cc_vararg = Some (coqint_of_camlint 1l);
+                 cc_unproto = false;
+                 cc_structret = false} in
+      let sg = Ctypes.signature_of_type targs tres cc in
+      let r1 = Csyntax.Ebuiltin(AST.EF_external(coqstring_of_camlstring "printf", sg),
+                targs, cc, Tfunction(targs,tres,cc)) in
+      let rargs = convertExprList env args in
+      Csyntax.Ecall(Csyntax.Evalof(r1,Tfunction(targs,tres,cc)), rargs, tres)
+
+  | C.ECall({edesc = C.EVar {name = "fgets"}}, [arg1; arg2; arg3]) 
+    when !Clflags.option_interp ->
+      (* drop third argument *)
+      let targs = convertTypArgs env [] [arg1; arg2]
+      and tres = convertTyp env e.etyp in
+      let sg = signature_of_type targs tres AST.cc_default in
+      let r1 = Csyntax.Ebuiltin(AST.EF_external(coqstring_of_camlstring "fgets", sg),
+                targs, AST.cc_default, Tfunction(targs,tres,AST.cc_default)) in
+      let rargs = convertExprList env [arg1; arg2] in
+      Csyntax.Ecall(Csyntax.Evalof(r1,Tfunction(targs,tres,AST.cc_default)), rargs, tres)
 
   | C.ECall(fn, args) ->
       begin match projFunType env fn.etyp with
@@ -1018,7 +1041,7 @@ and convertExprList env el =
 
 (* Extended assembly *)
 
-let convertAsm loc env txt outputs inputs clobber =
+(*let convertAsm loc env txt outputs inputs clobber =
   let (txt', output', inputs') =
     ExtendedAsm.transf_asm loc env txt outputs inputs clobber in
   let clobber' =
@@ -1038,7 +1061,7 @@ let convertAsm loc env txt outputs inputs clobber =
   (* Add an assignment to the output, if any *)
   match output' with
   | None -> e
-  | Some lhs -> Csyntax.Eassign (convertLvalue env lhs, e, Csyntax.typeof e)
+  | Some lhs -> Csyntax.Eassign (convertLvalue env lhs, e, Csyntax.typeof e)*)
 
 (* Separate the cases of a switch statement body *)
 
@@ -1110,29 +1133,29 @@ let rec convertStmt env s =
   | C.Sskip ->
       Csyntax.Sskip
   | C.Sdo e ->
-      swrap (Ctyping.sdo (convertExpr env e))
+      swrap (Ctyping.sdo (convertExpr env e) s.sloc)
   | C.Sseq(s1, s2) ->
       let s1' = convertStmt env s1 in
       let s2' = convertStmt env s2 in
       Csyntax.Ssequence(s1', s2')
   | C.Sif(e, s1, s2) ->
       let te = convertExpr env e in
-      swrap (Ctyping.sifthenelse te (convertStmt env s1) (convertStmt env s2) None)
+      swrap (Ctyping.sifthenelse te (convertStmt env s1) (convertStmt env s2) None s.sloc)
   | C.Swhile(e, s1) ->
       let te = convertExpr env e in
-      swrap (Ctyping.swhile te (convertStmt env s1) None)
+      swrap (Ctyping.swhile te (convertStmt env s1) None s.sloc)
   | C.Sdowhile(s1, e) ->
       let te = convertExpr env e in
-      swrap (Ctyping.sdowhile te (convertStmt env s1) None)
+      swrap (Ctyping.sdowhile te (convertStmt env s1) None s.sloc)
   | C.Sfor(s1, e, s2, s3) ->
       let te = convertExpr env e in
       swrap (Ctyping.sfor
                   (convertStmt env s1) te
-                  (convertStmt env s2) (convertStmt env s3) None)
+                  (convertStmt env s2) (convertStmt env s3) None s.sloc)
   | C.Sbreak ->
-      Csyntax.Sbreak
+      Csyntax.Sbreak s.sloc
   | C.Scontinue ->
-      Csyntax.Scontinue
+      Csyntax.Scontinue s.sloc
   | C.Sswitch(e, s1) ->
       let (init, cases) = groupSwitch (flattenSwitch s1) in
       let rec init_debug s =
@@ -1147,7 +1170,7 @@ let rec convertStmt env s =
         end;
       let te = convertExpr env e in
       swrap (Ctyping.sswitch te
-               (convertSwitch env (is_int64 env e.etyp) cases))
+               (convertSwitch env (is_int64 env e.etyp) cases) s.sloc)
   | C.Slabeled(C.Slabel lbl, s1) ->
       Csyntax.Slabel(intern_string lbl, convertStmt env s1)
   | C.Slabeled(C.Scase _, _) ->
@@ -1155,19 +1178,21 @@ let rec convertStmt env s =
   | C.Slabeled(C.Sdefault, _) ->
       unsupported "'default' statement not in 'switch' statement"; Csyntax.Sskip
   | C.Sgoto lbl ->
-      Csyntax.Sgoto(intern_string lbl)
+      Csyntax.Sgoto(intern_string lbl, s.sloc)
   | C.Sreturn None ->
-      Csyntax.Sreturn None
+      Csyntax.Sreturn(None, s.sloc)
   | C.Sreturn(Some e) ->
-      Csyntax.Sreturn(Some(convertExpr env e))
+      Csyntax.Sreturn(Some(convertExpr env e), s.sloc)
   | C.Sblock _ ->
       unsupported "nested blocks"; Csyntax.Sskip
   | C.Sdecl _ ->
       unsupported "inner declarations"; Csyntax.Sskip
-  | C.Sasm(attrs, txt, outputs, inputs, clobber) ->
+  | C.Sasm _ ->
+      unsupported "ASM"; Csyntax.Sskip
+  (*(attrs, txt, outputs, inputs, clobber) ->
       if not !Clflags.option_finline_asm then
         unsupported "inline 'asm' statement (consider adding option [-finline-asm])";
-      Csyntax.Sdo (convertAsm s.sloc env txt outputs inputs clobber)
+      Csyntax.Sdo (convertAsm s.sloc env txt outputs inputs clobber, s.sloc)*)
 
 and convertSwitch env is_64 = function
   | [] ->
@@ -1256,10 +1281,11 @@ let convertFundecl env (sto, id, ty, optinit) =
   let ef =
     if id.name = "malloc" then AST.EF_malloc else
     if id.name = "free" then AST.EF_free else
-    if Str.string_match re_builtin id.name 0
+    (*if Str.string_match re_builtin id.name 0
     && List.mem_assoc id.name builtins.builtin_functions
     then AST.EF_builtin(id'', sg)
-    else AST.EF_external(id'', sg) in
+    else*)
+    AST.EF_external(id'', sg) in
   (id',  AST.Gfun(Ctypes.External(ef, args, res, cconv)))
 
 (** Initializers *)
@@ -1377,81 +1403,6 @@ let rec convertCompositedefs env res gl =
       | _ ->
           convertCompositedefs env res gl'
 
-(** Add declarations for the helper functions
-    (for varargs and for int64 arithmetic) *)
-
-let helper_functions () = [
-    "__compcert_va_int32",
-        Tint(I32, Unsigned, noattr),
-        [Tpointer(Tvoid, noattr)];
-    "__compcert_va_int64",
-        Tlong(Unsigned, noattr),
-        [Tpointer(Tvoid, noattr)];
-    "__compcert_va_float64",
-        Tfloat(F64, noattr),
-        [Tpointer(Tvoid, noattr)];
-    "__compcert_va_composite",
-        Tpointer(Tvoid, noattr),
-        [Tpointer(Tvoid, noattr); convertIkind (Cutil.size_t_ikind()) noattr];
-    "__compcert_i64_dtos",
-        Tlong(Signed, noattr),
-        [Tfloat(F64, noattr)];
-    "__compcert_i64_dtou",
-        Tlong(Unsigned, noattr),
-        [Tfloat(F64, noattr)];
-    "__compcert_i64_stod",
-        Tfloat(F64, noattr),
-        [Tlong(Signed, noattr)];
-    "__compcert_i64_utod",
-        Tfloat(F64, noattr),
-        [Tlong(Unsigned, noattr)];
-    "__compcert_i64_stof",
-        Tfloat(F32, noattr),
-        [Tlong(Signed, noattr)];
-    "__compcert_i64_utof",
-        Tfloat(F32, noattr),
-        [Tlong(Unsigned, noattr)];
-    "__compcert_i64_sdiv",
-        Tlong(Signed, noattr),
-        [Tlong(Signed, noattr); Tlong(Signed, noattr)];
-    "__compcert_i64_udiv",
-        Tlong(Unsigned, noattr),
-        [Tlong(Unsigned, noattr); Tlong(Unsigned, noattr)];
-    "__compcert_i64_smod",
-        Tlong(Signed, noattr),
-        [Tlong(Signed, noattr); Tlong(Signed, noattr)];
-    "__compcert_i64_umod",
-        Tlong(Unsigned, noattr),
-        [Tlong(Unsigned, noattr); Tlong(Unsigned, noattr)];
-    "__compcert_i64_shl",
-        Tlong(Signed, noattr),
-        [Tlong(Signed, noattr); Tint(I32, Signed, noattr)];
-    "__compcert_i64_shr",
-        Tlong(Unsigned, noattr),
-        [Tlong(Unsigned, noattr); Tint(I32, Signed, noattr)];
-    "__compcert_i64_sar",
-        Tlong(Signed, noattr),
-        [Tlong(Signed, noattr); Tint(I32, Signed, noattr)];
-    "__compcert_i64_smulh",
-        Tlong(Signed, noattr),
-        [Tlong(Signed, noattr); Tlong(Signed, noattr)];
-    "__compcert_i64_umulh",
-        Tlong(Unsigned, noattr),
-        [Tlong(Unsigned, noattr); Tlong(Unsigned, noattr)]
-]
-
-let helper_function_declaration (name, tyres, tyargs) =
-  let tyargs =
-    List.fold_right (fun t tl -> Tcons(t, tl)) tyargs Tnil in
-  let ef =
-    AST.EF_runtime(coqstring_of_camlstring name,
-                   Ctypes.signature_of_type tyargs tyres AST.cc_default) in
-  (intern_string name,
-   AST.Gfun (Ctypes.External(ef, tyargs, tyres, AST.cc_default)))
-
-let add_helper_functions globs =
-  List.map helper_function_declaration (helper_functions()) @ globs
-
 (** Build environment of typedefs, structs, unions and enums *)
 
 let rec translEnv env = function
@@ -1548,8 +1499,8 @@ let convertProgram p =
     | Errors.OK ce ->
         comp_env := ce;
         let gl1 = convertGlobdecls env [] p in
-        let gl2 = globals_for_strings gl1 in
-        let gl3 = add_helper_functions gl2 in
+        let gl3 = globals_for_strings gl1 in
+        (*let gl3 = add_helper_functions gl2 in*)
         comp_env := Maps.PTree.empty;
         let p' =
           { prog_defs = gl3;

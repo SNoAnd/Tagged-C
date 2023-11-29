@@ -17,27 +17,27 @@
 (** Abstract syntax for the Tagged C language *)
 
 Require Import Coqlib Maps Integers Floats Errors.
-Require Import AST Linking Values Tags.
-Require Import Ctypes Cop.
+Require Import AST Linking Values Tags Allocator.
+Require Import Cabs Ctypes Cop.
 
-Module Csyntax (P:Policy).
+Module Csyntax (P:Policy) (A:Allocator P).
   Module TLib := TagLib P.
   Import TLib.
-  Module Cop := Cop P.
+  Module Cop := Cop P A.
   Import Cop.
   Import Deterministic.
   Import Behaviors.
   Import Smallstep.
   Import Events.
   Import Genv.
-  Import Mem.
 
   (** ** Location Kinds *)
 
   Inductive loc_kind : Type :=
-  | Lmem (ofs: ptrofs) (pt: tag) (bf: bitfield)
+  | Lmem (ofs: int64) (pt: tag) (bf: bitfield)
   | Ltmp (b: block)
-  | Lfun (b: block) (pt: tag)
+  | Lifun (b: block) (pt: tag)
+  | Lefun (ef: external_function) (tyargs: typelist) (tyres:rettype) (cconv: calling_convention) (pt: tag)
   .
   
   (** ** Expressions *)
@@ -71,8 +71,8 @@ Module Csyntax (P:Policy).
                                           (**r post-increment [l++] and post-decrement [l--] *)
   | Ecomma (r1 r2: expr) (ty: type)                        (**r sequence expression [r1, r2] *)
   | Ecall (r1: expr) (rargs: exprlist) (ty: type)             (**r function call [r1(rargs)] *)
-  | Ebuiltin (ef: external_function) (tyargs: typelist) (rargs: exprlist) (ty: type)
-                                                                  (**r builtin function call *)
+  | Ebuiltin (ef: external_function) (tyargs: typelist) (cc: calling_convention) (ty: type)
+                                                                  (**r builtin function name *)
   | Eloc (l:loc_kind) (ty: type)               (**r location, result of evaluating a l-value *)
   | Eparen (r: expr) (tycast: type) (ty: type)                     (**r marked subexpression *)
          
@@ -122,13 +122,13 @@ Definition Epreincr (id: incr_or_decr) (l: expr) (ty: type) :=
   and can be implemented by "conditional move" instructions.
   It is expressed as an invocation of a builtin function. *)
 
-Definition Eselection (r1 r2 r3: expr) (ty: type) :=
+(*Definition Eselection (r1 r2 r3: expr) (ty: type) :=
   let t := typ_of_type ty in
   let sg := mksignature (AST.Tint :: t :: t :: nil) t cc_default in
   Ebuiltin (EF_builtin "__builtin_sel"%string sg)
            (Tcons type_bool (Tcons ty (Tcons ty Tnil)))
            (Econs r1 (Econs r2 (Econs r3 Enil)))
-           ty.
+           ty.*)
 
 (** Extract the type part of a type-annotated expression. *)
 
@@ -181,19 +181,19 @@ Definition label := ident.
 
 Inductive statement : Type :=
   | Sskip : statement                   (**r do nothing *)
-  | Sdo : expr -> statement            (**r evaluate expression for side effects *)
+  | Sdo : expr -> Cabs.loc -> statement            (**r evaluate expression for side effects *)
   | Ssequence : statement -> statement -> statement  (**r sequence *)
-  | Sifthenelse : expr  -> statement -> statement -> option label -> statement (**r conditional *)
-  | Swhile : expr -> statement -> option label -> statement   (**r [while] loop *)
-  | Sdowhile : expr -> statement -> option label -> statement (**r [do] loop *)
-  | Sfor: statement -> expr -> statement -> statement -> option label -> statement (**r [for] loop *)
-  | Sbreak : statement                      (**r [break] statement *)
-  | Scontinue : statement                   (**r [continue] statement *)
-  | Sreturn : option expr -> statement     (**r [return] statement *)
-  | Sswitch : expr -> labeled_statements -> statement  (**r [switch] statement *)
+  | Sifthenelse : expr  -> statement -> statement -> option label -> Cabs.loc -> statement (**r conditional *)
+  | Swhile : expr -> statement -> option label -> Cabs.loc -> statement   (**r [while] loop *)
+  | Sdowhile : expr -> statement -> option label -> Cabs.loc -> statement (**r [do] loop *)
+  | Sfor: statement -> expr -> statement -> statement -> option label -> Cabs.loc -> statement (**r [for] loop *)
+  | Sbreak : Cabs.loc -> statement                      (**r [break] statement *)
+  | Scontinue : Cabs.loc -> statement                   (**r [continue] statement *)
+  | Sreturn : option expr -> Cabs.loc -> statement     (**r [return] statement *)
+  | Sswitch : expr -> labeled_statements -> Cabs.loc -> statement  (**r [switch] statement *)
   | Slabel : label -> statement -> statement
-  | Sgoto : label -> statement
-                       
+  | Sgoto : label -> Cabs.loc -> statement
+
 with labeled_statements : Type :=            (**r cases of a [switch] *)
   | LSnil: labeled_statements
   | LScons: option Z -> statement -> labeled_statements -> labeled_statements.
