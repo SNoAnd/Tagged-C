@@ -673,8 +673,11 @@ let do_step p prog ge ce time s w =
         end
       | Csem.Failstop(msg,failure,params) ->
         if !trace >= 1 then
-        (* AMN This is the version without -trace, easier to consume (by fuzzer)*)
-        fprintf p "@[<hov 2>Failstop on policy @ %s %s@]@."
+        (* AMN This is the version without -trace, easier to consume (by fuzzer)
+            goes to stderr, which also goes to stdout? *)
+        (*fprintf p "@[<hov 2>Failstop on policy @ %s %s@]@."
+        (String.of_seq (List.to_seq msg)) (String.concat ", " (List.map print_tag params));*)
+        eprintf "@[<hov 2>Failstop on policy @ %s %s@]@."
         (String.of_seq (List.to_seq msg)) (String.concat ", " (List.map print_tag params));
         exit 42 (* error*)
       | _ ->

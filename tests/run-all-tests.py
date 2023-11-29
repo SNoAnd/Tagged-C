@@ -24,18 +24,19 @@ def runACFileWithoutInput (filename, policy, expectedoutput):
                                    capture_output=True )
 
     # this is not fancy, but it should keep me from checking in dumb mistakes
-    if (expectedoutput in completed_run.stdout):
+    if (expectedoutput in completed_run.stdout or expectedoutput in completed_run.stderr):
         print(f"{passmsg}")
     else:
-        print(f"{failmsg}\n\t\tret code:{completed_run.returncode}\n\t\toutput:\n\t\t{completed_run.stdout}")
+        print(f"{failmsg}\n\t\tret code:{completed_run.returncode}\n\t\tstdoutput:\n\t\t{completed_run.stdout}\n\t\tstderr:\n{completed_run.stderr}")
         global testsfailed
         testsfailed+=1
 
 def runACFileWithInput (filename, policy, testinput, expectedoutput):
-    print(f"\ttesting {filename} with {policy} policy on input {testinput}")
+    print(f"\n\ttesting {filename} with {policy} policy on input {testinput}")
     with subprocess.Popen(["bash", "-c", f"../ccomp -interp -p {policy} {filename}"],
                           stdout=subprocess.PIPE,
-                          stdin=subprocess.PIPE,) as process:
+                          stdin=subprocess.PIPE,
+                          stderr=subprocess.PIPE) as process:
         # no garbage in buffer
         process.stdin.flush()
         # i still love this feature (in py or go)
@@ -43,11 +44,10 @@ def runACFileWithInput (filename, policy, testinput, expectedoutput):
             input=f"{testinput}\n".encode("utf-8"), timeout=10
         )
         #print(stdout.decode("utf-8"))
-        if ( expectedoutput in stdout):
+        if ( expectedoutput in stdout or expectedoutput in stderr):
             print(passmsg)
         else:
-            #print(stderr) always None
-            print(f"{failmsg}\n\t\tret code:{process.returncode}\n\t\toutput:\n\t\t{stdout}")
+            print(f"{failmsg}\n\t\tret code:{process.returncode}\n\t\toutput:\n\t\t{stdout}\n\t\tstderr:\n\t\t{stderr}")
             global testsfailed
             testsfailed+=1
 
