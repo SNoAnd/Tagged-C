@@ -345,6 +345,7 @@ Definition expr_kind (a: expr) : kind :=
   | Evar _ _ => LV
   | Ederef _ _ => LV
   | Efield _ _ _ => LV
+  | Ebuiltin _ _ _ _ => LV
   | _ => RV
   end.
 

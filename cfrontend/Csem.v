@@ -358,6 +358,9 @@ Module Csem (P: Policy) (A: Allocator P).
         Genv.find_symbol ge x = Some (SymEFun _ ef tyargs tyres cc pt) ->
         lred (Evar x ty) pct te m
              (Eloc (Lefun ef tyargs tyres cc pt) ty) te m
+    | red_builtin: forall ef tyargs cc ty pct te m,
+        lred (Ebuiltin ef tyargs cc ty) pct te m
+             (Eloc (Lefun ef tyargs Tany64 cc def_tag) ty) te m
     | red_deref_short: forall ofs vt ty1 ty pct te m,
         lred (Ederef (Eval (Vint ofs,vt) ty1) ty) pct te m
              (Eloc (Lmem (cast_int_long Unsigned ofs) vt Full) ty) te m
@@ -522,7 +525,6 @@ Module Csem (P: Policy) (A: Allocator P).
         deref_loc ty1 m ofs pt bf t (MemorySuccess ((v1,vt1), lts)) ->
         LoadT PCT pt vt1 lts = PolicySuccess vt1' ->
         AccessT PCT vt1' = PolicySuccess vt1'' ->
-        (* Do we want to do this in this order? *)
         rred PCT (Eassignop op (Eloc (Lmem ofs pt bf) ty1) (Eval (v2,vt2) ty2) tyres ty1) te m t
              PCT (Eassign (Eloc (Lmem ofs pt bf) ty1)
                           (Ebinop op (Eval (v1,vt1'') ty1) (Eval (v2,vt2) ty2) tyres) ty1) te m
@@ -770,18 +772,18 @@ Module Csem (P: Policy) (A: Allocator P).
     (** Head reduction for function calls.
         (More exactly, identification of function calls that can reduce.) *)
     Inductive callred: tag -> expr -> mem -> fundef -> tag -> list atom -> type -> Prop :=
-    | red_call_internal: forall PCT vf vft tyf m tyargs tyres cconv el ty fd vargs,
-        Genv.find_funct ge vf = Some fd ->
+    | red_call_internal: forall PCT b vft tyf m tyargs tyres cconv el ty fd vargs,
+        Genv.find_funct ge (Vfptr b) = Some fd ->
         cast_arguments m el tyargs vargs ->
         type_of_fundef fd = Tfunction tyargs tyres cconv ->
         classify_fun tyf = fun_case_f tyargs tyres cconv ->
-        callred PCT (Ecall (Eval (vf,vft) tyf) el ty) m
+        callred PCT (Ecall (Eval (Vfptr b,vft) tyf) el ty) m
                 fd vft vargs ty
     | red_call_external: forall PCT vft tyf m tyargs tyres cconv el ty ef vargs,
         cast_arguments m el tyargs vargs ->
         callred PCT (Ecall (Eval (Vefptr ef tyargs tyres cconv,vft) tyf) el ty) m
                 (External ef tyargs ty cconv) vft vargs ty.
-
+    
     (** Reduction contexts.  In accordance with C's nondeterministic semantics,
         we allow reduction both to the left and to the right of a binary operator.
         To enforce C's notion of sequence point, reductions within a conditional
