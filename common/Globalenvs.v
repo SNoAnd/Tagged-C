@@ -55,6 +55,8 @@ Set Implicit Arguments.
 Local Unset Elimination Schemes.
 Local Unset Case Analysis Schemes.
 
+Parameter ext : ident -> option (external_function * typelist * rettype * calling_convention)%type.
+
 Module Genv (P:Policy) (A:Allocator P).
   Module TLib := TagLib P.
   Import TLib.
@@ -70,20 +72,34 @@ Module Genv (P:Policy) (A:Allocator P).
   
   (** * Global environments *)
   Section GENV.
-  
+
     Variable F: Type.  (**r The type of function descriptions *)
     Variable V: Type.  (**r The type of information attached to variables *)
     Variable ce: composite_env.
     
+    Inductive symb_kind : Type :=
+    | SymIFun (b:block) (pt:tag)
+    | SymEFun (ef:external_function) (tyargs:typelist) (tyres:rettype) (cc:calling_convention) (pt:tag)
+    | SymGlob (base bound:Z) (pt:tag) (gv:globvar V)
+    .
+      
     (** The type of global environments. *)
     Record t: Type := mkgenv {
       genv_public: list ident;                                 (**r which symbol names are public *)
-      genv_symb: PTree.t ((block*tag) + (Z*Z*tag*globvar V));  (**r mapping symbol ->
+      genv_symb: PTree.t symb_kind;                            (**r mapping symbol ->
                                                                   block (functions) or
                                                                   base, bound, tag *)
       genv_fun_defs: PTree.t (globdef F V);                    (**r mapping block -> definition *)
-      genv_ef_defs: PTree.t (external_function * typelist * type * calling_convention);
+      genv_ef_defs: list (external_function * typelist * rettype * calling_convention);
       genv_next_block: block;                                  (**r next block for functions *)
+
+      genv_next_block_fresh: forall id b pt,
+                           PTree.get id genv_symb = Some (SymIFun b pt) ->
+                           (b < genv_next_block)%positive;
+      genv_funs_inj: forall id1 id2 b pt1 pt2,
+                           PTree.get id1 genv_symb = Some (SymIFun b pt1) ->
+                           PTree.get id2 genv_symb = Some (SymIFun b pt2) ->
+                           id1 = id2
     }.
 
     (** ** Lookup functions *)
@@ -97,8 +113,11 @@ Module Genv (P:Policy) (A:Allocator P).
         to [id]. *)
     Definition symbol_address (ge: t) (id: ident) (ofs: int64) : atom :=
       match find_symbol ge id with
-      | Some (inl (b,pt)) => if Int64.eq ofs Int64.zero then (Vfptr b, pt) else (Vundef, def_tag)
-      | Some (inr (base,block,pt,gv)) => (Vlong (Int64.add (Int64.repr base) ofs), pt)
+      | Some (SymIFun b pt) => if Int64.eq ofs Int64.zero then (Vfptr b, pt) else (Vundef, def_tag)
+      | Some (SymEFun ef tyargs tyres cc pt) => if Int64.eq ofs Int64.zero
+                                                then (Vefptr ef tyargs tyres cc, pt)
+                                                else (Vundef, def_tag)
+      | Some (SymGlob base block pt gv) => (Vlong (Int64.add (Int64.repr base) ofs), pt)
       | None => (Vundef, def_tag)
       end.
 
@@ -114,8 +133,9 @@ Module Genv (P:Policy) (A:Allocator P).
       PTree.fold
         (fun res id stuff =>
            match stuff with
-           | inr (base,bound,pt) => res
-           | inl (b',t) => if (b =? b')%positive then Some id else res
+           | SymGlob _ _ _ _ => res
+           | SymIFun b' _ => if (b =? b')%positive then Some id else res
+           | SymEFun _ _ _ _ _ => res
            end) ge.(genv_symb) None.
 
     Definition invert_symbol_ofs (ge: t) (ofs: int64) : option (ident * globvar V) :=
@@ -123,9 +143,10 @@ Module Genv (P:Policy) (A:Allocator P).
       PTree.fold
         (fun res id stuff =>
            match stuff with
-           | inr (base,bound,pt,gv) =>
+           | SymGlob base bound _ gv =>
                if (base <=? z) && (z <? bound) then Some (id, gv) else res
-           | inl (b,t) => res
+           | SymIFun b' _ => res
+           | SymEFun _ _ _ _ _ => res
            end)
         ge.(genv_symb) None.
     
@@ -134,30 +155,22 @@ Module Genv (P:Policy) (A:Allocator P).
     Definition find_funct_ptr (ge: t) (b: block) : option F :=
       match PTree.get b ge.(genv_fun_defs) with Some (Gfun f) => Some f | _ => None end.
 
-    Definition find_ef_ptr (ge: t) (b: block) :
-      option (external_function * typelist * type * calling_convention) :=
-      PTree.get b ge.(genv_ef_defs).
-    
     (** [find_funct] is similar to [find_funct_ptr], but the function address
         is given as a value. *)
-    Definition find_funct (ge: t) (v: val) : option (fundef F) :=
+    Definition find_funct (ge: t) (v: val) : option F :=
       match v with
-      | Vfptr b =>
-          match find_funct_ptr ge b with
-          | Some fd => Some (Internal fd)
-          | None => match find_ef_ptr ge b with
-                    | Some (ef,tyargs,tyres,cc) => Some (External ef tyargs tyres cc)
-                    | None => None
-                    end
-          end
+      | Vfptr b => find_funct_ptr ge b 
       | _ => None
       end.
 
-    Definition invert_ef (ge: t) (ef: external_function) : option ident :=
-      PTree.fold
-        (fun res id '(ef',tyargs,tyres,cc) =>
-           if external_function_eq ef ef' then Some id else res)
-        ge.(genv_ef_defs) None.      
+    (** [find_efunct ge ef] returns the information associated with
+        the given external function identifier. *)
+    Definition find_efunct (ge: t) (ef:external_function) : option (typelist*rettype*calling_convention) :=
+      List.fold_right (fun '(ef',tyargs,tyres,cconv) res =>
+                         if external_function_eq ef ef'
+                         then Some (tyargs, tyres, cconv)
+                         else res) None ge.(genv_ef_defs).
+        
     
     (** ** Constructing the global environment *)
 
@@ -175,9 +188,10 @@ Module Genv (P:Policy) (A:Allocator P).
         | Init_addrof symb ofs =>
             match find_symbol ge symb with
             | None => MemoryFail "Symbol not found" OtherFailure
-            | Some (inr (base,bound,pt,gv)) =>
+            | Some (SymGlob base bound pt gv) =>
                 store Mptr m p (Vint (Int.repr base), vt) [lt;lt;lt;lt;lt;lt;lt;lt]
-            | Some (inl (b,pt)) => MemorySuccess m
+            | Some (SymIFun b pt) => MemorySuccess m
+            | Some (SymEFun ef tyargs tyres cc pt) => MemorySuccess m
             end
         | Init_space n => MemorySuccess m
         end.
@@ -214,7 +228,7 @@ Module Genv (P:Policy) (A:Allocator P).
         | None => MemoryFail "Globals weren't allocated correctly" OtherFailure
         end.
 
-      Definition add_global (ge: t) (m: mem) (tree: PTree.t (Z*Z)) (idg: ident * globdef F V)
+      Program Definition add_global (ge: t) (m: mem) (tree: PTree.t (Z*Z)) (idg: ident * globdef F V)
         : (t*mem) :=
         match idg#2 with
         | Gvar gv =>
@@ -223,28 +237,91 @@ Module Genv (P:Policy) (A:Allocator P).
             | MemorySuccess (base', m') =>
                 let size := Zpos gv.(gvar_size) in
                 let bound := base' + size in
-                let genv_symb' := PTree.set idg#1 (inr (base', bound, pt, gv)) ge.(genv_symb) in
+                let genv_symb' := PTree.set idg#1 (SymGlob base' bound pt gv) ge.(genv_symb) in
                 let ge' := @mkgenv
                              ge.(genv_public)
-                                  genv_symb'
-                                  ge.(genv_fun_defs)
-                                  ge.(genv_ef_defs)
-                                  ge.(genv_next_block)
+                             genv_symb'
+                             ge.(genv_fun_defs)
+                             ge.(genv_ef_defs)
+                             ge.(genv_next_block)
+                             _ _
                 in
                 (ge', m')
             | MemoryFail msg failure => (ge, m)
             end
         | Gfun _ =>
-            let ge' := @mkgenv
-                         ge.(genv_public)
-                              (PTree.set idg#1 (inl (ge.(genv_next_block), def_tag)) ge.(genv_symb))
-                                   (PTree.set ge.(genv_next_block) idg#2 ge.(genv_fun_defs))
-                                   ge.(genv_ef_defs)
-                                   (Pos.succ ge.(genv_next_block))
-            in
-            (ge', m)
+            match ext (idg#1) with
+            | Some (ef,tyargs,tyres,cconv) =>
+                let genv_symb' := PTree.set idg#1 (SymEFun ef tyargs tyres cconv def_tag)
+                                            ge.(genv_symb) in
+                let ge' := @mkgenv
+                             ge.(genv_public)
+                             genv_symb'
+                             ge.(genv_fun_defs)
+                             ((ef,tyargs,tyres,cconv)::ge.(genv_ef_defs))
+                             ge.(genv_next_block)
+                             _ _
+                in
+                (ge', m)
+            | None =>
+                let genv_symb' := PTree.set idg#1 (SymIFun ge.(genv_next_block) def_tag)
+                                            ge.(genv_symb) in
+                let genv_fun_defs' := PTree.set ge.(genv_next_block) idg#2 ge.(genv_fun_defs) in
+                let genv_next_block' := Pos.succ ge.(genv_next_block) in
+                let ge' := @mkgenv
+                             ge.(genv_public)
+                             genv_symb'
+                             genv_fun_defs'
+                             ge.(genv_ef_defs)
+                             genv_next_block'
+                             _ _
+                in
+                (ge', m)
+            end
         end.
-
+      Next Obligation.
+        simpl in *.
+        rewrite PTree.gsspec in H. destruct (peq id i); inv H.
+        eapply ge.(genv_next_block_fresh); eauto.
+      Defined.
+      Next Obligation.
+        simpl in *.
+        rewrite PTree.gsspec in H. destruct (peq id1 i); inv H.
+        rewrite PTree.gsspec in H0. destruct (peq id2 i); inv H0.
+        eapply ge.(genv_funs_inj); eauto.
+      Defined.
+      Next Obligation.
+        simpl in *.
+        rewrite PTree.gsspec in H. destruct (peq id i); inv H.
+        eapply ge.(genv_next_block_fresh); eauto.        
+      Defined.
+      Next Obligation.
+        simpl in *.
+        rewrite PTree.gsspec in H.
+        rewrite PTree.gsspec in H0.
+        destruct (peq id1 i); destruct (peq id2 i); subst; auto.
+        - inv H.
+        - inv H0.
+        - eapply ge.(genv_funs_inj); eauto.
+      Defined.
+      Next Obligation.
+        simpl in *.
+        rewrite PTree.gsspec in H. destruct (peq id i); inv H; try lia.
+        eapply ge.(genv_next_block_fresh) in H1; lia.
+      Defined.
+      Next Obligation.
+        simpl in *.
+        rewrite PTree.gsspec in H.
+        rewrite PTree.gsspec in H0.
+        destruct (peq id1 i); destruct (peq id2 i).
+        - congruence.
+        - pose proof ge.(genv_next_block_fresh).
+          apply H1 in H0. inv H. lia.
+        - pose proof ge.(genv_next_block_fresh).
+          apply H1 in H. inv H0. lia.
+        - eapply ge.(genv_funs_inj); eauto.        
+      Defined.
+      
       Fixpoint add_globals (ge: t) (m: mem) (tree: PTree.t (Z*Z)) (gl: list (ident * globdef F V))
         : (t*mem) :=
         match gl with
@@ -253,21 +330,10 @@ Module Genv (P:Policy) (A:Allocator P).
             let '(ge', m') := add_globals ge m tree gl' in
             add_global ge' m' tree g
         end.
-
-      Fixpoint add_builtins (ge: t)
-               (el: list (ident*external_function*typelist*type*calling_convention)) : t :=
-        match el with
-        | [] => ge
-        | (id, ef, tyargs, tyres, cc) :: el' =>
-            let ge' := @mkgenv ge.(genv_public) ge.(genv_symb) ge.(genv_fun_defs)
-                               (PTree.set id (ef,tyargs,tyres,cc) ge.(genv_ef_defs))
-                               ge.(genv_next_block) in
-            add_builtins ge el'
-        end.
       
-      Program Definition empty_genv (pub: list ident): t :=
-        @mkgenv pub (PTree.empty _) (PTree.empty _) (PTree.empty _) 2%positive.
-
+      Program Definition empty_genv (pub: list ident) : t :=
+        @mkgenv pub (PTree.empty _) (PTree.empty _) [] 2%positive _ _.
+      
       Definition init_record (m: A.mem) (base: Z) (sz: Z) : MemoryResult A.mem :=
         let szv := Vlong (Int64.neg (Int64.repr sz)) in
         A.store Mint64 m base (szv, def_tag) [def_tag].
@@ -302,8 +368,9 @@ Module Genv (P:Policy) (A:Allocator P).
           | Init_space n => List.repeat (Byte Byte.zero t) (Z.to_nat n)
           | Init_addrof id ofs =>
               match find_symbol ge id with
-              | Some (inl (b,pt)) => inj_value Q64 (Vfptr b, pt)
-              | Some (inr (base,bound,pt,gv)) => inj_value Q64 (Vint (Int.repr base), t)
+              | Some (SymIFun b pt) => inj_value Q64 (Vfptr b, pt)
+              | Some (SymEFun ef tyargs tyres cc pt) => inj_value Q64 (Vefptr ef tyargs tyres cc, pt)
+              | Some (SymGlob base bound pt gv) => inj_value Q64 (Vint (Int.repr base), t)
               | None   => List.repeat Undef 8%nat
               end
           end.
@@ -332,112 +399,110 @@ Module Genv (P:Policy) (A:Allocator P).
       exists b; auto.
       discriminate.
     Qed.
-
+    
     Theorem find_funct_inv:
-      forall ge v f,
-        find_funct ge v = Some f -> exists b, v = Vfptr b.
+      forall ge v fd,
+        find_funct ge v = Some fd -> exists b, v = Vfptr b.
     Proof.
-      intros until f; unfold find_funct.
+      intros until fd; unfold find_funct.
       destruct v; try congruence.
       intros. exists b; congruence.
     Qed.
-
-    Corollary find_funct_ptr_inversion:
-      forall p b f ge m,
-        globalenv p = MemorySuccess (ge,m) ->
-        find_funct_ptr ge b = Some f ->
-        In (b, Gfun f) (AST.prog_defs p).
-(*    Proof.
-      destruct p. induction prog_defs; intros.
-      - unfold globalenv in *. destruct (init_record Genv.empty 1000 1000); inv H.
-        destruct (globalalloc a []); inv H2.
-        inv H0.
-      - destruct a. destruct g.
-        + destruct (Pos.eq_dec b i); destruct (F_eq_dec f f0).
-          * left. subst. auto.
-          * simpl in *. right. unfold find_funct_ptr in H0.
-            unfold genv_fun_defs in H0. destruct ge.
-            
-            unfold globalenv in *. unfold filter_var_sizes in *.
-            simpl in *.
-            destruct (init_record Genv.empty 1000 1000); inv H.
-            unfold empty_genv in *. 
-            destruct (globalalloc a (filter_var_sizes prog_defs)); inv H2.
-            destruct (add_globals (empty_genv prog_public) a t0 prog_defs).
-            destruct (add_global t1 m1 t0 (i, Gfun f0)).
-            eapply IHprog_defs. reflexivity.
-        destruct (Pos.eq_dec b i).
-        + destruct (globdef_eq_dec (Gfun f) g).
-          * subst. left. auto.
-          * right. apply IHprog_defs. rewrite <- H1.
-            simpl. unfold add_global.
-        + right.
-    Qed.*)
-    Admitted.
     
-(*    Corollary find_funct_inversion:
-      forall p v f ge m,
-        globalenv p = MemorySuccess (ge,m) ->
-        find_funct ge v = Some f ->
-        exists id, In (id, Gfun f) (AST.prog_defs p).
+    Theorem invert_find_symbol_block:
+      forall ge id b,
+        invert_symbol_block ge b = Some id ->
+        exists pt, find_symbol ge id = Some (SymIFun b pt).
     Proof.
-      intros. exploit find_funct_inv; eauto. intros [b EQ]. subst v.
-      exists b. rewrite find_funct_find_funct_ptr in H0.
-      eapply find_funct_ptr_inversion; eauto.
-    Qed. *)
-        
-      Theorem invert_find_symbol_block:
-        forall ge id b,
-          invert_symbol_block ge b = Some id ->
-          exists t, find_symbol ge id = Some (inl (b,t)).
-      Admitted.
-
-      Theorem invert_find_symbol_ofs:
-        forall ge id gv ofs,
-          invert_symbol_ofs ge ofs = Some (id, gv) ->
-          exists base bound pt gv, find_symbol ge id = Some (inr (base,bound,pt,gv)) /\
-                                  base <= (Int64.unsigned ofs) /\ (Int64.unsigned ofs) < bound.
-      Admitted.
-(*Proof.
-  intros until b; unfold find_symbol, invert_symbol.
-  apply PTree_Properties.fold_rec.
-  intros. rewrite H in H0; auto.
-  congruence.
-  intros. destruct v. exists t0. destruct (eq_block b p). inv H2. apply PTree.gss.
-  rewrite PTree.gsspec. destruct (peq id k).
-  subst. assert (m!k = Some (b,t0)) by auto. congruence.
-  auto.
-Qed.*)
-
-      Theorem find_invert_symbol_ofs:
-        forall ge id base bound pt gv ofs,
-          find_symbol ge id = Some (inr (base,bound,pt,gv)) ->
-          base <= (Int64.signed ofs) ->
-          (Int64.signed ofs) < bound ->
-          invert_symbol_ofs ge ofs = Some (id,gv).
-      Admitted.
-(*Proof.
-  intros until t0.
-  assert (find_symbol ge id = Some (b,t0) -> exists id', invert_symbol ge b = Some id').
-  unfold find_symbol, invert_symbol.
-  apply PTree_Properties.fold_rec.
-  intros. rewrite H in H0; auto.
-  rewrite PTree.gempty; congruence.
-  intros. destruct v. destruct (eq_block b p). exists k; auto.
-  rewrite PTree.gsspec in H2. destruct (peq id k).
-  inv H2. congruence. auto.
-
-  intros; exploit H; eauto. intros [id' A].
-  assert (id = id'). eapply genv_vars_inj; eauto.
-  apply invert_find_symbol; auto.
-  congruence.
-Qed.*)
-
+      intros until b; unfold find_symbol, invert_symbol_block.
+      apply PTree_Properties.fold_rec.
+      - intros. specialize H with id. subst. intuition.
+        destruct H1. exists x. inv H0. auto.
+      - congruence.
+      - intros. rewrite PTree.gsspec.
+        destruct (peq id k);
+          destruct v; auto.
+        + subst. destruct (peq b b0).
+          * subst. rewrite Pos.eqb_refl in H2. inv H2. exists pt. auto.
+          * exfalso. apply Pos.eqb_neq in n. rewrite n in H2. apply H1 in H2. destruct H2.
+            unfold block in *.
+            congruence.
+        + subst. intuition. destruct H2. 
+          unfold block in *. congruence.
+        + subst. intuition. destruct H2. rewrite H1 in H. inv H.
+        + destruct (peq b b0).
+          * subst. rewrite Pos.eqb_refl in H2. congruence.
+          * apply Pos.eqb_neq in n0. rewrite n0 in H2. apply H1 in H2.
+            destruct H2. exists x. auto.
+    Qed.
+              
+    Theorem invert_find_symbol_ofs:
+      forall ge id gv ofs,
+        invert_symbol_ofs ge ofs = Some (id, gv) ->
+        exists base bound pt gv, find_symbol ge id = Some (SymGlob base bound pt gv) /\
+                                   base <= (Int64.unsigned ofs) /\ (Int64.unsigned ofs) < bound.
+    Proof.
+      intros until ofs; unfold find_symbol, invert_symbol_ofs.
+      apply PTree_Properties.fold_rec.
+      - intros. rewrite H in H0; auto.
+      - congruence.
+        - intros. rewrite PTree.gsspec.
+          destruct (m!id) eqn:?;
+          destruct (peq id k) eqn:?.
+          + subst.
+            destruct v; try congruence.
+          + destruct v.
+            * apply H1. apply H2.
+            * apply H1. apply H2.
+            * destruct ((base <=? (Int64.unsigned ofs))
+                        && ((Int64.unsigned ofs) <? bound)) eqn:?; try congruence.
+              apply H1. apply H2.
+          + destruct v.
+            * apply H1 in H2. destruct H2 as [base [bound [pt' [gv' [A B]]]]]. inv A.
+            * apply H1 in H2. destruct H2 as [base [bound [pt' [gv' [A B]]]]]. inv A.
+            * destruct ((base <=? (Int64.unsigned ofs))
+                        && ((Int64.unsigned ofs) <? bound)) eqn:?.
+              -- exists base, bound, pt, gv0. intuition.
+              -- apply H1 in H2. destruct H2 as [base' [bound' [pt' [gv' [A B]]]]]. inv A.
+          + destruct v; auto. apply H1.
+            destruct ((base <=? (Int64.unsigned ofs)) && ((Int64.unsigned ofs) <? bound));
+              congruence.
+      Qed.
+      
       Theorem find_invert_symbol_block:
-        forall ge id t b,
-          find_symbol ge id = Some (inl (b,t)) ->
+        forall ge id pt b,
+          find_symbol ge id = Some (SymIFun b pt) ->
           invert_symbol_block ge b = Some id.
-      Admitted.
+      Proof.
+        intros until b.
+        assert (find_symbol ge id = Some (SymIFun b pt) ->
+                exists id', invert_symbol_block ge b = Some id').
+        { unfold find_symbol, invert_symbol_block.
+          apply PTree_Properties.fold_rec.
+          - intros. rewrite H in H0; auto.
+          - rewrite PTree.gempty; congruence.
+          - intros. destruct v.
+            + destruct (eq_block b b0); subst.
+              * exists k. rewrite Pos.eqb_refl. auto.
+              * rewrite PTree.gsspec in H2. destruct (peq id k).
+                -- inv H2. congruence.
+                -- apply H1 in H2. destruct H2. exists x.
+                   apply Pos.eqb_neq in n. rewrite n. auto.
+            + rewrite PTree.gsspec in H2. destruct (peq id k).
+              * inv H2.
+              * apply H1 in H2. destruct H2. exists x. auto.
+            + rewrite PTree.gsspec in H2. destruct (peq id k).
+              * inv H2.
+              * apply H1 in H2. auto. }
+        intros; exploit H; eauto. intros [id' A].
+        assert (id = id').
+        { apply invert_find_symbol_block in A.
+          destruct A. unfold find_symbol in *.
+          pose proof genv_funs_inj.
+          specialize H2 with ge id id' b pt x.
+          apply H2; auto. }
+        congruence.
+      Qed.
       
       (** Alignment properties *)
 

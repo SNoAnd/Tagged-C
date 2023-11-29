@@ -24,7 +24,6 @@ open! Ctypes
 open Maps
 open Tags
 open PrintCsyntax
-open Datatypes
 open Allocator
 
 (* Configuration *)
@@ -562,7 +561,7 @@ and world_vload ge m chunk id ofs =
   Genv.find_symbol ge id >>=
           fun res ->
                 match res with
-                | Coq_inr((base,bound),t) ->
+                | Genv.SymGlob(base,bound,t,gv) ->
                         (match A.load chunk m ofs with
                          | Memory.MemorySuccess v ->
                            Cexec.InterpreterEvents.eventval_of_atom ge v (type_of_chunk chunk) >>= fun ev ->
@@ -574,7 +573,7 @@ and world_vstore ge m chunk id ofs ev =
   Genv.find_symbol ge id >>=
           fun res ->
                 match res with
-                | Coq_inr((base,bound),t) ->
+                | Genv.SymGlob(base,bound,t,gv) ->
                         Cexec.InterpreterEvents.atom_of_eventval ge ev (type_of_chunk chunk) >>= fun v ->
                         (match A.store chunk m ofs v [] with
                          | Memory.MemorySuccess m' -> Some(world ge m')

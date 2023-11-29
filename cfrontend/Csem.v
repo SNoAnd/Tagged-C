@@ -38,7 +38,6 @@ Module Csem (P: Policy) (A: Allocator P).
 
   Import P.
   
-  
   (** * Operational semantics *)
 
   (** The semantics uses two environments.  The global environment
@@ -344,16 +343,24 @@ Module Csem (P: Policy) (A: Allocator P).
         e!x = Some (PUB base bound pt ty) ->
         lred (Evar x ty) pct te m
              (Eloc (Lmem (Int64.repr base) pt Full) ty) te m
-    | red_var_global: forall x ty pct lo hi pt gv te m,
+    | red_var_global: forall x ty pct base bound pt gv te m,
         e!x = None ->
-        Genv.find_symbol ge x = Some (inr (lo, hi, pt, gv)) ->
+        Genv.find_symbol ge x = Some (SymGlob base bound pt gv) ->
         lred (Evar x ty) pct te m
-             (Eloc (Lmem (Int64.repr lo) pt Full) ty) te m
+             (Eloc (Lmem (Int64.repr base) pt Full) ty) te m
     | red_func: forall x pct b pt ty te m,
         e!x = None ->
-        Genv.find_symbol ge x = Some (inl (b, pt)) ->
+        Genv.find_symbol ge x = Some (SymIFun _ b pt) ->
         lred (Evar x ty) pct te m
-             (Eloc (Lfun b pt) ty) te m
+             (Eloc (Lifun b pt) ty) te m
+    | red_ext_func: forall x pct ef tyargs tyres cc pt ty te m,
+        e!x = None ->
+        Genv.find_symbol ge x = Some (SymEFun _ ef tyargs tyres cc pt) ->
+        lred (Evar x ty) pct te m
+             (Eloc (Lefun ef tyargs tyres cc pt) ty) te m
+    | red_builtin: forall ef tyargs cc ty pct te m,
+        lred (Ebuiltin ef tyargs cc ty) pct te m
+             (Eloc (Lefun ef tyargs Tany64 cc def_tag) ty) te m
     | red_deref_short: forall ofs vt ty1 ty pct te m,
         lred (Ederef (Eval (Vint ofs,vt) ty1) ty) pct te m
              (Eloc (Lmem (cast_int_long Unsigned ofs) vt Full) ty) te m
@@ -400,9 +407,12 @@ Module Csem (P: Policy) (A: Allocator P).
         AccessT PCT vt' = PolicySuccess vt'' ->
         rred PCT (Evalof (Eloc (Lmem ofs pt bf) ty) ty) te m tr
              PCT (Eval (v,vt'') ty) te m
-    | red_rvalof_fun: forall b pt ty te m,
-        rred PCT (Evalof (Eloc (Lfun b pt) ty) ty) te m E0
+    | red_rvalof_ifun: forall b pt ty te m,
+        rred PCT (Evalof (Eloc (Lifun b pt) ty) ty) te m E0
              PCT (Eval (Vfptr b, pt) ty) te m
+    | red_rvalof_efun: forall ef tyargs tyres cc pt ty te m,
+        rred PCT (Evalof (Eloc (Lefun ef tyargs tyres cc pt) ty) ty) te m E0
+             PCT (Eval (Vefptr ef tyargs tyres cc, pt) ty) te m
     | red_rvalof_tmp: forall b ty te m v vt vt',
         te!b = Some (v,vt) ->
         AccessT PCT vt = PolicySuccess vt' ->
@@ -412,8 +422,11 @@ Module Csem (P: Policy) (A: Allocator P).
         rred PCT (Eaddrof (Eloc (Lmem ofs pt Full) ty1) ty) te m E0
              PCT (Eval (Vlong ofs, pt) ty) te m
     | red_addrof_fptr: forall b pt ty te m,
-        rred PCT (Eaddrof (Eloc (Lfun b pt) ty) ty) te m E0
+        rred PCT (Eaddrof (Eloc (Lifun b pt) ty) ty) te m E0
              PCT (Eval (Vfptr b, pt) ty) te m
+    | red_addrof_efptr: forall ef tyargs tyres cc pt ty te m,
+        rred PCT (Eaddrof (Eloc (Lefun ef tyargs tyres cc pt) ty) ty) te m E0
+             PCT (Eval (Vefptr ef tyargs tyres cc, pt) ty) te m
     | red_unop: forall op v1 vt1 ty1 ty te m v PCT' vt,
         sem_unary_operation op v1 ty1 m = Some v ->
         UnopT op PCT vt1 = PolicySuccess (PCT', vt) ->
@@ -512,7 +525,6 @@ Module Csem (P: Policy) (A: Allocator P).
         deref_loc ty1 m ofs pt bf t (MemorySuccess ((v1,vt1), lts)) ->
         LoadT PCT pt vt1 lts = PolicySuccess vt1' ->
         AccessT PCT vt1' = PolicySuccess vt1'' ->
-        (* Do we want to do this in this order? *)
         rred PCT (Eassignop op (Eloc (Lmem ofs pt bf) ty1) (Eval (v2,vt2) ty2) tyres ty1) te m t
              PCT (Eassign (Eloc (Lmem ofs pt bf) ty1)
                           (Ebinop op (Eval (v1,vt1'') ty1) (Eval (v2,vt2) ty2) tyres) ty1) te m
@@ -523,10 +535,14 @@ Module Csem (P: Policy) (A: Allocator P).
         rred PCT (Eassignop op (Eloc (Ltmp b) ty1) (Eval (v2,vt2) ty2) tyres ty1) te m E0
              PCT (Eassign (Eloc (Ltmp b) ty1)
                           (Ebinop op (Eval (v1,vt1') ty1) (Eval (v2,vt2) ty2) tyres) ty1) te m
-    | red_assignop_fun: forall op b pt ty1 v2 vt2 ty2 tyres te m,
-        rred PCT (Eassignop op (Eloc (Lfun b pt) ty1) (Eval (v2,vt2) ty2) tyres ty1) te m E0
-             PCT (Eassign (Eloc (Lfun b pt) ty1)
+    | red_assignop_ifun: forall op b pt ty1 v2 vt2 ty2 tyres te m,
+        rred PCT (Eassignop op (Eloc (Lifun b pt) ty1) (Eval (v2,vt2) ty2) tyres ty1) te m E0
+             PCT (Eassign (Eloc (Lifun b pt) ty1)
                           (Ebinop op (Eval (Vfptr b,pt) ty1) (Eval (v2,vt2) ty2) tyres) ty1) te m
+    | red_assignop_efun: forall op ef tyargs tyres cc pt ty1 v2 vt2 ty2 ty te m,
+        rred PCT (Eassignop op (Eloc (Lefun ef tyargs tyres cc pt) ty1) (Eval (v2,vt2) ty2) ty ty1) te m E0
+             PCT (Eassign (Eloc (Lefun ef tyargs tyres cc pt) ty1)
+                          (Ebinop op (Eval (Vefptr ef tyargs tyres cc,pt) ty1) (Eval (v2,vt2) ty2) ty) ty1) te m
     | red_postincr_mem: forall id ofs pt ty bf te m t v vt vt' vt'' lts op,
         deref_loc ty m ofs pt bf t (MemorySuccess ((v,vt), lts)) ->
         LoadT PCT pt vt lts = PolicySuccess vt' ->
@@ -550,15 +566,24 @@ Module Csem (P: Policy) (A: Allocator P).
                                           (incrdecr_type ty))
                                   ty)
                          (Eval (v,vt') ty) ty) te m
-    | red_postincr_fun: forall id b pt ty te m op,
+    | red_postincr_ifun: forall id b pt ty te m op,
         op = match id with Incr => Oadd | Decr => Osub end ->
-        rred PCT (Epostincr id (Eloc (Lfun b pt) ty) ty) te m E0
-             PCT (Ecomma (Eassign (Eloc (Lfun b pt) ty)
+        rred PCT (Epostincr id (Eloc (Lifun b pt) ty) ty) te m E0
+             PCT (Ecomma (Eassign (Eloc (Lifun b pt) ty)
                                   (Ebinop op (Eval (Vfptr b, pt) ty)
                                           (Econst (Vint Int.one) type_int32s)
                                           (incrdecr_type ty))
                                   ty)
                          (Eval (Vfptr b,pt) ty) ty) te m
+    | red_postincr_efun: forall id ef tyargs tyres cc pt ty te m op,
+        op = match id with Incr => Oadd | Decr => Osub end ->
+        rred PCT (Epostincr id (Eloc (Lefun ef tyargs tyres cc pt) ty) ty) te m E0
+             PCT (Ecomma (Eassign (Eloc (Lefun ef tyargs tyres cc pt) ty)
+                                  (Ebinop op (Eval (Vefptr ef tyargs tyres cc, pt) ty)
+                                          (Econst (Vint Int.one) type_int32s)
+                                          (incrdecr_type ty))
+                                  ty)
+                         (Eval (Vefptr ef tyargs tyres cc,pt) ty) ty) te m
     | red_comma: forall v ty1 r2 ty te m,
         typeof r2 = ty ->
         rred PCT (Ecomma (Eval v ty1) r2 ty) te m E0
@@ -567,12 +592,8 @@ Module Csem (P: Policy) (A: Allocator P).
         sem_cast v1 ty1 ty2 m = Some v ->
         ExprJoinT PCT vt1 = PolicySuccess (PCT', vt') ->
         rred PCT (Eparen (Eval (v1,vt1) ty1) ty2 ty) te m E0
-             PCT' (Eval (v,vt') ty) te m
-    | red_builtin: forall ef tyargs tyres cc ty te m t b,
-        find_ef_ptr ge b = Some (ef,tyargs,tyres,cc) ->
-        rred PCT (Ebuiltin ef ty) te m t
-             PCT (Eval (Vfptr b,def_tag) ty) te m.
-
+             PCT' (Eval (v,vt') ty) te m.
+    
     (** Failstops for r-values *)
     Inductive rfailred (PCT:tag) : expr -> tenv -> mem -> trace -> string -> FailureClass -> list tag -> Prop :=
     | failred_const: forall v ty te m msg params,
@@ -710,21 +731,6 @@ Module Csem (P: Policy) (A: Allocator P).
         ExprJoinT PCT vt1 = PolicyFail msg params ->
         rfailred PCT (Eparen (Eval (v1,vt1) ty1) ty2 ty) te m E0
                  msg OtherFailure params
-    | failred_call_internal: forall vf vft tyf te m tyargs tyres cconv el ty fd vargs msg params,
-        Genv.find_funct ge vf = Some (Internal fd) ->
-        cast_arguments m el tyargs vargs ->
-        type_of_fundef fd = Tfunction tyargs tyres cconv ->
-        classify_fun tyf = fun_case_f tyargs tyres cconv ->
-        CallT PCT vft = PolicyFail msg params ->
-        rfailred PCT (Ecall (Eval (vf, vft) tyf) el ty) te m E0
-                 msg OtherFailure params
-    | failred_call_external: forall vf vft tyf te m tyargs tyres cconv el ty fd vargs msg params,
-        Genv.find_funct ge vf = Some (External fd tyargs tyres cconv) ->
-        cast_arguments m el tyargs vargs ->
-        classify_fun tyf = fun_case_f tyargs tyres cconv ->
-        CallT PCT vft = PolicyFail msg params ->
-        rfailred PCT (Ecall (Eval (vf, vft) tyf) el ty) te m E0
-                 msg OtherFailure params
     | failred_cast_int_int: forall ty v1 vt1 ty1 te m v msg params,
         (forall ty' attr, ty1 <> Tpointer ty' attr) ->
         (forall ty' attr, ty <> Tpointer ty' attr) ->
@@ -766,20 +772,18 @@ Module Csem (P: Policy) (A: Allocator P).
     (** Head reduction for function calls.
         (More exactly, identification of function calls that can reduce.) *)
     Inductive callred: tag -> expr -> mem -> fundef -> tag -> list atom -> type -> Prop :=
-    | red_call_internal: forall PCT vf vft tyf m tyargs tyres cconv el ty fd vargs,
-        Genv.find_funct ge vf = Some (Internal fd) ->
+    | red_call_internal: forall PCT b vft tyf m tyargs tyres cconv el ty fd vargs,
+        Genv.find_funct ge (Vfptr b) = Some fd ->
         cast_arguments m el tyargs vargs ->
         type_of_fundef fd = Tfunction tyargs tyres cconv ->
         classify_fun tyf = fun_case_f tyargs tyres cconv ->
-        callred PCT (Ecall (Eval (vf,vft) tyf) el ty) m
+        callred PCT (Ecall (Eval (Vfptr b,vft) tyf) el ty) m
                 fd vft vargs ty
-    | red_call_external: forall PCT vf vft tyf m tyargs tyres cconv el ty ef vargs,
-        Genv.find_funct ge vf = Some (External ef tyargs tyres cconv) ->
+    | red_call_external: forall PCT vft tyf m tyargs tyres cconv el ty ef vargs,
         cast_arguments m el tyargs vargs ->
-        classify_fun tyf = fun_case_f tyargs tyres cconv ->
-        callred PCT (Ecall (Eval (vf,vft) tyf) el ty) m
-                (External ef tyargs tyres cconv) vft vargs ty.
-
+        callred PCT (Ecall (Eval (Vefptr ef tyargs tyres cconv,vft) tyf) el ty) m
+                (External ef tyargs ty cconv) vft vargs ty.
+    
     (** Reduction contexts.  In accordance with C's nondeterministic semantics,
         we allow reduction both to the left and to the right of a binary operator.
         To enforce C's notion of sequence point, reductions within a conditional
@@ -1414,7 +1418,7 @@ End SEM.
   Inductive initial_state (p: program): state -> Prop :=
   | initial_state_intro: forall b pt f ge ce m0,
       globalenv p = MemorySuccess (ge,ce,m0) ->
-      Genv.find_symbol ge p.(prog_main) = Some (inl (b,pt)) ->
+      Genv.find_symbol ge p.(prog_main) = Some (SymIFun _ b pt) ->
       Genv.find_funct_ptr ge b = Some f ->
       type_of_fundef f = Tfunction Tnil type_int32s cc_default ->
       initial_state p (Callstate f InitPCT def_tag nil Kstop m0).
@@ -1431,23 +1435,5 @@ End SEM.
         MemorySuccess (Semantics_gen (fun ge => step ge ce) (initial_state p) final_state ge)
     | MemoryFail msg failure => MemoryFail msg failure
     end.
-
-  (** This semantics has the single-event property. *)
-
-  Lemma semantics_single_events:
-    forall sem p, semantics p = MemorySuccess sem -> single_events sem.
-  Admitted.
-(*Proof.
-  unfold semantics; intros; red; simpl; intros.
-  set (ge := globalenv p) in *.
-  assert (DEREF: forall chunk m b ofs pt bf t v lts, deref_loc ge chunk m b ofs pt bf t v lts -> (length t <= 1)%nat).
-  { intros. inv H0; simpl; try lia. inv H3; simpl; try lia. }
-  assert (ASSIGN: forall chunk m b ofs pt bf t v m' v' lts, assign_loc ge chunk m b ofs pt bf v t m' v' lts -> (length t <= 1)%nat).
-  { intros. inv H0; simpl; try lia. inv H3; simpl; try lia. }
-  destruct H.
-  inv H; simpl; try lia. inv H0; eauto; simpl; try lia.
-  eapply external_call_trace_length; eauto.
-  inv H; simpl; try lia. eapply external_call_trace_length; eauto.
-Qed.*)
 
 End Csem.

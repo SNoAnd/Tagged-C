@@ -8,6 +8,7 @@ Require Import AST.
 Require Import Integers.
 Require Import Floats.
 Require Import Values.
+Require Import Ctypes.
 Require Import Tags.
 Require Export Memdata.
 Require Import Memory.
@@ -98,7 +99,7 @@ Module ConcreteAllocator (P : Policy) : Allocator P.
   Import Mem.
   Import MD.
   Import P.
-
+  
   Definition t : Type := (* stack pointer *) Z.
   Definition init : t := 3000.
   Definition mem : Type := (Mem.mem * t).
@@ -216,10 +217,11 @@ Module ConcreteAllocator (P : Policy) : Allocator P.
     match gs with
     | [] => (m, PTree.empty (Z*Z))
     | (id,sz)::gs' =>
-        let (m',tree) := globals m gs' (next+sz) in
+        let next_aligned := align next 8 in
+        let (m',tree) := globals m gs' (next_aligned+sz) in
         (set_perm_range m next (next+sz-1) Live, PTree.set id (next,next+sz-1) tree)
     end.
-              
+  
   Definition globalalloc (m : mem) (gs : list (ident*Z)) : (mem * PTree.t (Z*Z)) :=
     let (m, sp) := m in
     let (m', tree) := globals m gs 4 in
@@ -337,7 +339,8 @@ Module FLAllocator (P : Policy) : Allocator P.
     match gs with
     | [] => (m, PTree.empty (Z*Z))
     | (id,sz)::gs' =>
-        let (m',tree) := globals m gs' (next+sz) in
+        let next_aligned := align next 8 in
+        let (m',tree) := globals m gs' (next_aligned+sz) in
         (set_perm_range m next (next+sz-1) Live, PTree.set id (next,next+sz-1) tree)
     end.
               

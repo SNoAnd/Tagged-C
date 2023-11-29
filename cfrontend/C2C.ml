@@ -48,7 +48,7 @@ type atom_info =
     a_size: int64 option;              (* size in bytes *)
     a_alignment: int option;           (* alignment *)
     a_sections: Sections.section_name list; (* in which section to put it *)
-      (* 1 section for data, 3 sections (code/lit/jumptbl) for functions *)
+    (* 1 section for data, 3 sections (code/lit/jumptbl) for functions *)
     a_access: Sections.access_mode;    (* access mode, e.g. small data area *)
     a_inline: inline_status;           (* function declared inline? *)
     a_loc: location                    (* source location *)
@@ -969,26 +969,30 @@ let rec convertExpr env e =
       Csyntax.Ecall(convertExpr env fn,
             Csyntax.Econs(va_list_ptr(convertExpr env arg), Csyntax.Enil),
             convertTyp env e.etyp)
-  
+ *) 
   | C.ECall({edesc = C.EVar {name = "printf"}}, args)
     when !Clflags.option_interp ->
       let targs = convertTypArgs env [] args
       and tres = convertTyp env e.etyp in
-      let sg =
-        Ctypes.signature_of_type targs tres
-           { AST.cc_vararg = Some (coqint_of_camlint 1l); cc_unproto = false; cc_structret = false} in
-      Csyntax.Ebuiltin( AST.EF_external(coqstring_of_camlstring "printf", sg),
-               targs, convertExprList env args, tres)
+      let cc = { AST.cc_vararg = Some (coqint_of_camlint 1l);
+                 cc_unproto = false;
+                 cc_structret = false} in
+      let sg = Ctypes.signature_of_type targs tres cc in
+      let r1 = Csyntax.Ebuiltin(AST.EF_external(coqstring_of_camlstring "printf", sg),
+                targs, cc, Tfunction(targs,tres,cc)) in
+      let rargs = convertExprList env args in
+      Csyntax.Ecall(Csyntax.Evalof(r1,Tfunction(targs,tres,cc)), rargs, tres)
 
-       
   | C.ECall({edesc = C.EVar {name = "fgets"}}, [arg1; arg2; arg3]) 
     when !Clflags.option_interp ->
       (* drop third argument *)
       let targs = convertTypArgs env [] [arg1; arg2]
       and tres = convertTyp env e.etyp in
       let sg = signature_of_type targs tres AST.cc_default in
-      Csyntax.Ebuiltin( AST.EF_external(coqstring_of_camlstring "fgets", sg),
-               targs, convertExprList env [arg1;arg2], tres)*)   
+      let r1 = Csyntax.Ebuiltin(AST.EF_external(coqstring_of_camlstring "fgets", sg),
+                targs, AST.cc_default, Tfunction(targs,tres,AST.cc_default)) in
+      let rargs = convertExprList env [arg1; arg2] in
+      Csyntax.Ecall(Csyntax.Evalof(r1,Tfunction(targs,tres,AST.cc_default)), rargs, tres)
 
   | C.ECall(fn, args) ->
       begin match projFunType env fn.etyp with
@@ -1280,7 +1284,8 @@ let convertFundecl env (sto, id, ty, optinit) =
     (*if Str.string_match re_builtin id.name 0
     && List.mem_assoc id.name builtins.builtin_functions
     then AST.EF_builtin(id'', sg)
-    else*) AST.EF_external(id'', sg) in
+    else*)
+    AST.EF_external(id'', sg) in
   (id',  AST.Gfun(Ctypes.External(ef, args, res, cconv)))
 
 (** Initializers *)
@@ -1398,81 +1403,6 @@ let rec convertCompositedefs env res gl =
       | _ ->
           convertCompositedefs env res gl'
 
-(** Add declarations for the helper functions
-    (for varargs and for int64 arithmetic) *)
-
-let helper_functions () = [
-    "__compcert_va_int32",
-        Tint(I32, Unsigned, noattr),
-        [Tpointer(Tvoid, noattr)];
-    "__compcert_va_int64",
-        Tlong(Unsigned, noattr),
-        [Tpointer(Tvoid, noattr)];
-    "__compcert_va_float64",
-        Tfloat(F64, noattr),
-        [Tpointer(Tvoid, noattr)];
-    "__compcert_va_composite",
-        Tpointer(Tvoid, noattr),
-        [Tpointer(Tvoid, noattr); convertIkind (Cutil.size_t_ikind()) noattr];
-    "__compcert_i64_dtos",
-        Tlong(Signed, noattr),
-        [Tfloat(F64, noattr)];
-    "__compcert_i64_dtou",
-        Tlong(Unsigned, noattr),
-        [Tfloat(F64, noattr)];
-    "__compcert_i64_stod",
-        Tfloat(F64, noattr),
-        [Tlong(Signed, noattr)];
-    "__compcert_i64_utod",
-        Tfloat(F64, noattr),
-        [Tlong(Unsigned, noattr)];
-    "__compcert_i64_stof",
-        Tfloat(F32, noattr),
-        [Tlong(Signed, noattr)];
-    "__compcert_i64_utof",
-        Tfloat(F32, noattr),
-        [Tlong(Unsigned, noattr)];
-    "__compcert_i64_sdiv",
-        Tlong(Signed, noattr),
-        [Tlong(Signed, noattr); Tlong(Signed, noattr)];
-    "__compcert_i64_udiv",
-        Tlong(Unsigned, noattr),
-        [Tlong(Unsigned, noattr); Tlong(Unsigned, noattr)];
-    "__compcert_i64_smod",
-        Tlong(Signed, noattr),
-        [Tlong(Signed, noattr); Tlong(Signed, noattr)];
-    "__compcert_i64_umod",
-        Tlong(Unsigned, noattr),
-        [Tlong(Unsigned, noattr); Tlong(Unsigned, noattr)];
-    "__compcert_i64_shl",
-        Tlong(Signed, noattr),
-        [Tlong(Signed, noattr); Tint(I32, Signed, noattr)];
-    "__compcert_i64_shr",
-        Tlong(Unsigned, noattr),
-        [Tlong(Unsigned, noattr); Tint(I32, Signed, noattr)];
-    "__compcert_i64_sar",
-        Tlong(Signed, noattr),
-        [Tlong(Signed, noattr); Tint(I32, Signed, noattr)];
-    "__compcert_i64_smulh",
-        Tlong(Signed, noattr),
-        [Tlong(Signed, noattr); Tlong(Signed, noattr)];
-    "__compcert_i64_umulh",
-        Tlong(Unsigned, noattr),
-        [Tlong(Unsigned, noattr); Tlong(Unsigned, noattr)]
-]
-
-(*let helper_function_declaration (name, tyres, tyargs) =
-  let tyargs =
-    List.fold_right (fun t tl -> Tcons(t, tl)) tyargs Tnil in
-  let ef =
-    AST.EF_runtime(coqstring_of_camlstring name,
-                   Ctypes.signature_of_type tyargs tyres AST.cc_default) in
-  (intern_string name,
-   AST.Gfun (Ctypes.External(ef, tyargs, tyres, AST.cc_default)))*)
-
-(*let add_helper_functions globs =
-  List.map helper_function_declaration (helper_functions()) @ globs*)
-
 (** Build environment of typedefs, structs, unions and enums *)
 
 let rec translEnv env = function
@@ -1569,12 +1499,12 @@ let convertProgram p =
     | Errors.OK ce ->
         comp_env := ce;
         let gl1 = convertGlobdecls env [] p in
-        let gl2 = globals_for_strings gl1 in
+        let gl3 = globals_for_strings gl1 in
         (*let gl3 = add_helper_functions gl2 in*)
         comp_env := Maps.PTree.empty;
         let p' =
-          { prog_defs = (*gl3*) gl2;
-            prog_public = public_globals (*gl3*) gl2;
+          { prog_defs = gl3;
+            prog_public = public_globals gl3;
             prog_main = intern_string !Clflags.main_function_name;
             prog_types = typs;
             prog_comp_env = ce } in

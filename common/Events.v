@@ -278,7 +278,7 @@ Section EVENTVAL.
   Variable ge: Genv.t F V.
 
 (** Translation between values and event values. *)
-
+  
   Inductive eventval_match: eventval -> typ -> atom -> Prop :=
 (*  | ev_match_global: forall id i base bound pt,
       public_symbol ge id = true ->
@@ -296,7 +296,7 @@ Section EVENTVAL.
       eventval_match (EVsingle f) Tsingle (Vsingle f, def_tag)
   | ev_match_ptr: forall id b pt,
       public_symbol ge id = true ->
-      find_symbol ge id = Some (inl (b,pt)) ->
+      find_symbol ge id = Some (SymIFun _ b pt) ->
       eventval_match (EVptr_fun id) Tptr (Vfptr b, pt).
 
 Inductive eventval_list_match: list eventval -> list typ -> list atom -> Prop :=
@@ -764,17 +764,6 @@ Definition external_call (ef: external_function): extcall_sem :=
   | EF_debug kind txt targs => extcall_debug_sem *)
   end.
 
-(** Corollary of [external_call_well_typed_gen]. *)
-
-Lemma external_call_well_typed:
-  forall ef ge vargs pct1 fpt m1 t vres pct2 m2,
-    external_call ef ge vargs pct1 fpt m1 t (MemorySuccess (PolicySuccess (vres, pct2, m2))) ->
-    Val.has_type (fst vres) (proj_sig_res (ef_sig ef)).
-Admitted.
-(*Proof.
-  intros. apply Val.has_proj_rettype. eapply external_call_well_typed_gen; eauto.
-Qed.*)
-
 End OUTPUT_EVENTS.
 
 (** * Evaluation of builtin arguments *)
@@ -804,11 +793,11 @@ Inductive eval_builtin_arg: builtin_arg A -> val -> Prop :=
 | eval_BA_addrstack: forall ofs,
     eval_builtin_arg (BA_addrstack ofs) (Vofptrsize (sp + Ptrofs.signed ofs))
 | eval_BA_loadglobal: forall chunk id base bound v vt pt gv,
-    find_symbol ge id = Some (inr (base,bound,pt,gv)) ->
+    find_symbol ge id = Some (SymGlob base bound pt gv) ->
     load chunk m base = MemorySuccess (v,vt) ->
     eval_builtin_arg (BA_loadglobal chunk id (Ptrofs.repr base)) v
 | eval_BA_addrglobal: forall id base bound pt gv,
-    find_symbol ge id = Some (inr (base,bound,pt,gv)) ->
+    find_symbol ge id = Some (SymGlob base bound pt gv) ->
     eval_builtin_arg (BA_addrglobal id (Ptrofs.repr base)) (Vofptrsize base)
 | eval_BA_splitlong: forall hi lo vhi vlo,
     eval_builtin_arg hi vhi -> eval_builtin_arg lo vlo ->

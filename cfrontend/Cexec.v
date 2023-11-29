@@ -74,7 +74,7 @@ Module Cexec (P:Policy) (A:Allocator P).
   Import A.
   Import P.
   Import Csem.TLib.
-
+  
   (* Policy-agnostic Tactics *)
   Ltac mydestr :=
     match goal with
@@ -90,7 +90,7 @@ Module Cexec (P:Policy) (A:Allocator P).
     | [ |- (let (_, _) := ?x in _) = _ -> _ ] => destruct x eqn:?; mydestr
     | _ => idtac
     end.
-
+  
   Ltac dodestr :=
   match goal with
   | [ |- context [match ?e with
@@ -138,7 +138,8 @@ Module Cexec (P:Policy) (A:Allocator P).
   | [ |- context [match ?l with
                   | Lmem _ _ _ => _
                   | Ltmp _ => _
-                  | Lfun _ _ => _
+                  | Lifun _ _ => _
+                  | Lefun _ _ _ _ _ => _
                   end] ] => destruct l
   | [ |- context [match ?e with
                   | fun_case_f _ _ _ => _
@@ -610,7 +611,7 @@ Section EXPRS.
     [((fun (x: expr) => x), Stuckred "")].
 
   Definition stuckm (msg:string) : reducts expr :=
-    [((fun (x: expr) => x), Stuckred "")].
+    [((fun (x: expr) => x), Stuckred msg)].
   
   Definition incontext {A B: Type} (ctx: A -> B) (ll: reducts A) : reducts B :=
     map (fun z => ((fun (x: expr) => ctx(fst z x)), snd z)) ll.
@@ -710,6 +711,9 @@ Section EXPRS.
 
   Local Open Scope tag_monad_scope.
 
+  Opaque do_deref_loc.
+  Opaque do_assign_loc.
+  
   Fixpoint step_expr (k: kind) (pct: tag) (a: expr) (te: tenv) (m: mem): reducts expr :=
     match k, a with
     | LV, Eloc l ty => []
@@ -723,13 +727,17 @@ Section EXPRS.
             topred (Lred "red_var_tmp" (Eloc (Ltmp x) ty) te m)
         | None =>
             match Genv.find_symbol ge x with
-            | Some (inr (base, bound, pt, gv)) =>
+            | Some (SymGlob base bound pt gv) =>
                 topred (Lred "red_var_global" (Eloc (Lmem (Int64.repr base) pt Full) ty) te m)
-            | Some (inl (b, t)) =>
-                topred (Lred "red_func" (Eloc (Lfun b t) ty) te m)
+            | Some (SymIFun _ b pt) =>
+                topred (Lred "red_func" (Eloc (Lifun b pt) ty) te m)
+            | Some (SymEFun _ ef tyargs tyres cc pt) =>
+                topred (Lred "red_ext_func" (Eloc (Lefun ef tyargs tyres cc pt) ty) te m)
             | None => stuck
             end
         end
+    | LV, Ebuiltin ef tyargs cc ty =>
+        topred (Lred "red_builtin" (Eloc (Lefun ef tyargs (Tret Tany64) cc def_tag) ty) te m)
     | LV, Ederef r ty =>
         match is_val r with
         | Some (Vint ofs, t, ty') =>
@@ -797,9 +805,12 @@ Section EXPRS.
             do v,vt <- te!b;
             at "failred_rvalof_tmp" trule vt' <- AccessT pct vt;
             topred (Rred "red_rvalof_tmp" pct (Eval (v,vt') ty) te m E0)
-        | Some (Lfun b pt, ty') =>
+        | Some (Lifun b pt, ty') =>
             check type_eq ty ty';
-            topred (Rred "red_rvalof_fun" pct (Eval (Vfptr b, pt) ty) te m E0)
+            topred (Rred "red_rvalof_ifun" pct (Eval (Vfptr b, pt) ty) te m E0)
+        | Some (Lefun ef tyargs tyres cc pt, ty') =>
+            check type_eq ty ty';
+            topred (Rred "red_rvalof_efun" pct (Eval (Vefptr ef tyargs tyres cc, pt) ty) te m E0)
         | None => incontext (fun x => Evalof x ty) (step_expr LV pct l te m)
         end
     | RV, Eaddrof l ty =>
@@ -810,9 +821,12 @@ Section EXPRS.
                      | Bits _ _ _ _ => stuck
             end
         | Some (Ltmp _, _) => stuck
-        | Some (Lfun b pt, ty') =>
+        | Some (Lifun b pt, ty') =>
             check type_eq ty ty';
             topred (Rred "red_addrof_fptr" pct (Eval (Vfptr b, pt) ty) te m E0)
+        | Some (Lefun ef tyargs tyres cc pt, ty') =>
+            check type_eq ty ty';
+            topred (Rred "red_addrof_efptr" pct (Eval (Vefptr ef tyargs tyres cc, pt) ty) te m E0)
         | None =>
             incontext (fun x => Eaddrof x ty) (step_expr LV pct l te m)
         end
@@ -956,12 +970,13 @@ Section EXPRS.
             at "failred_assign_tmp" trule pct',vt' <- AssignT pct vt1 vt2;
             let te' := PTree.set b (v,vt') te in
             topred (Rred "red_assign_tmp" pct' (Eval (v,vt') ty) te' m E0)
-        | Some (Lfun _ _, _), Some (v2, vt2, ty2) => stuck
+        | Some (Lifun _ _, _), Some (v2, vt2, ty2) => stuck
+        | Some (Lefun _ _ _ _ _, _), Some (v2, vt2, ty2) => stuck
         | _, _ =>
             incontext2 (fun x => Eassign x r2 ty) (step_expr LV pct l1 te m)
                        (fun x => Eassign l1 x ty) (step_expr RV pct r2 te m)
         end
-    | RV, Eassignop op l1 r2 tyres ty =>
+    | RV, Eassignop op l1 r2 tyopres ty =>
         match is_loc l1, is_val r2 with
         | Some (Lmem ofs pt1 bf, ty1), Some(v2, vt2, ty2) =>
             check type_eq ty1 ty;
@@ -971,7 +986,7 @@ Section EXPRS.
                 at "failred_assignop_mem1" truletr tr, vt' <- LoadT pct pt1 vt1 lts;
                 at "failred_assignop_mem2" truletr tr, vt'' <- AccessT pct vt';
                 let r' := Eassign (Eloc (Lmem ofs pt1 bf) ty1)
-                                  (Ebinop op (Eval (v1,vt'') ty1) (Eval (v2,vt2) ty2) tyres) ty1 in
+                                  (Ebinop op (Eval (v1,vt'') ty1) (Eval (v2,vt2) ty2) tyopres) ty1 in
                 topred (Rred "red_assignop_mem" pct r' te m tr)
             | Some (w', tr, MemoryFail msg failure) =>
                 failred "failred_assignop_mem0" ("Baseline Policy Failure in deref_loc: " ++ msg)
@@ -983,16 +998,21 @@ Section EXPRS.
             do v1,vt1 <- te!b;
             at "failred_assignop_tmp" trule vt' <- AccessT pct vt1;
             let r' := Eassign (Eloc (Ltmp b) ty1)
-                              (Ebinop op (Eval (v1,vt') ty1) (Eval (v2,vt2) ty2) tyres) ty1 in
+                              (Ebinop op (Eval (v1,vt') ty1) (Eval (v2,vt2) ty2) tyopres) ty1 in
             topred (Rred "red_assignop_tmp" pct r' te m E0)
-        | Some (Lfun b pt, ty1), Some(v2, vt2, ty2) =>
+        | Some (Lifun b pt, ty1), Some(v2, vt2, ty2) =>
             check type_eq ty1 ty;
-            let r' := Eassign (Eloc (Lfun b pt) ty1)
-                              (Ebinop op (Eval (Vfptr b,pt) ty1) (Eval (v2,vt2) ty2) tyres) ty1 in
-            topred (Rred "red_assignop_fun" pct r' te m E0)
+            let r' := Eassign (Eloc (Lifun b pt) ty1)
+                              (Ebinop op (Eval (Vfptr b,pt) ty1) (Eval (v2,vt2) ty2) tyopres) ty1 in
+            topred (Rred "red_assignop_ifun" pct r' te m E0)
+        | Some (Lefun ef tyargs tyres cc pt, ty1), Some(v2, vt2, ty2) =>
+            check type_eq ty1 ty;
+            let r' := Eassign (Eloc (Lefun ef tyargs tyres cc pt) ty1)
+                              (Ebinop op (Eval (Vefptr ef tyargs tyres cc,pt) ty1) (Eval (v2,vt2) ty2) tyopres) ty1 in
+            topred (Rred "red_assignop_efun" pct r' te m E0)
         | _, _ =>
-            incontext2 (fun x => Eassignop op x r2 tyres ty) (step_expr LV pct l1 te m)
-                       (fun x => Eassignop op l1 x tyres ty) (step_expr RV pct r2 te m)
+            incontext2 (fun x => Eassignop op x r2 tyopres ty) (step_expr LV pct l1 te m)
+                       (fun x => Eassignop op l1 x tyopres ty) (step_expr RV pct r2 te m)
         end
     | RV, Epostincr id l ty =>
         match is_loc l with
@@ -1026,15 +1046,24 @@ Section EXPRS.
                                               (incrdecr_type ty)) ty)
                              (Eval (v,vt') ty) ty in
             topred (Rred "red_postincr_tmp" pct r' te m E0)
-        | Some (Lfun b pt, ty1) =>
+        | Some (Lifun b pt, ty1) =>
             check type_eq ty1 ty;
             let op := match id with Incr => Oadd | Decr => Osub end in
-            let r' := Ecomma (Eassign (Eloc (Lfun b pt) ty1)
+            let r' := Ecomma (Eassign (Eloc (Lifun b pt) ty1)
                                       (Ebinop op (Eval (Vfptr b,pt) ty)
                                               (Econst (Vint Int.one) type_int32s)
                                               (incrdecr_type ty)) ty)
                              (Eval (Vfptr b,pt) ty) ty in
-            topred (Rred "red_postincr_fun" pct r' te m E0)
+            topred (Rred "red_postincr_ifun" pct r' te m E0)
+        | Some (Lefun ef tyargs tyres cc pt, ty1) =>
+            check type_eq ty1 ty;
+            let op := match id with Incr => Oadd | Decr => Osub end in
+            let r' := Ecomma (Eassign (Eloc (Lefun ef tyargs tyres cc pt) ty1)
+                                      (Ebinop op (Eval (Vefptr ef tyargs tyres cc,pt) ty)
+                                              (Econst (Vint Int.one) type_int32s)
+                                              (incrdecr_type ty)) ty)
+                             (Eval (Vefptr ef tyargs tyres cc,pt) ty) ty in
+            topred (Rred "red_postincr_efun" pct r' te m E0)
         | not_loc =>
             incontext (fun x => Epostincr id x ty) (step_expr LV pct l te m)
         end
@@ -1057,29 +1086,25 @@ Section EXPRS.
         end
     | RV, Ecall r1 rargs ty =>
         match is_val r1, is_val_list rargs with
-        | Some(vf, fpt, tyf), Some vtl =>
+        | Some(Vfptr b, fpt, tyf), Some vtl =>
             match classify_fun tyf with
             | fun_case_f tyargs tyres cconv =>
-                do fd <- Genv.find_funct ge vf;
+                do fd <- Genv.find_funct ge (Vfptr b);
                 do vargs <- sem_cast_arguments vtl tyargs m;
-                match fd with
-                | Internal fd' =>
-                    check type_eq (type_of_fundef fd') (Tfunction tyargs tyres cconv);
-                    topred (Callred "red_call_internal" fd' fpt vargs ty te m)
-                | External ef tyargs' tyres' cconv' =>
-                    check type_eq (Tfunction tyargs' tyres' cconv') (Tfunction tyargs tyres cconv);
-                    topred (Callred "red_call_external"
-                           (External ef tyargs' tyres' cconv') fpt vargs ty te m)
-                end
+                check type_eq (type_of_fundef fd) (Tfunction tyargs tyres cconv);
+                topred (Callred "red_call_internal" fd fpt vargs ty te m)
             | _ => stuck
             end
+        | Some(Vefptr ef tyargs tyres cconv, fpt, tyf), Some vtl =>
+            do vargs <- sem_cast_arguments vtl tyargs m;
+            topred (Callred "red_call_external"
+                            (External ef tyargs ty cconv) fpt vargs ty te m)
+        | Some(_,_,_), Some vtl =>
+            stuck
         | _, _ =>
             incontext2 (fun x => Ecall x rargs ty) (step_expr RV pct r1 te m)
                        (fun x => Ecall r1 x ty) (step_exprlist pct rargs te m)
         end
-    | RV, Ebuiltin ef ty =>
-        do b <- invert_ef ge ef;
-        topred (Rred "red_builtin" pct (Eval (Vfptr b,def_tag) ty) te m E0)
     | _, _ => stuck
     end
 
@@ -1145,15 +1170,20 @@ Definition invert_expr_prop (a: expr) (pct: tag) (te: tenv) (m: mem) : Prop :=
   | Evar x ty =>
       e!x = Some (PRIV ty)
       \/ (exists base bound pt, e!x = Some (PUB base bound pt ty))
-      \/ (e!x = None /\ exists base bound pt gv, Genv.find_symbol ge x = Some (inr (base,bound,pt,gv)))
-      \/ (e!x = None /\ exists b pt, Genv.find_symbol ge x = Some (inl (b,pt)))
+      \/ (e!x = None /\ exists base bound pt gv,
+             Genv.find_symbol ge x = Some (SymGlob base bound pt gv))
+      \/ (e!x = None /\ exists b pt, Genv.find_symbol ge x = Some (SymIFun _ b pt))
+      \/ (e!x = None /\ exists ef tyargs tyres cc pt,
+             Genv.find_symbol ge x = Some (SymEFun _ ef tyargs tyres cc pt))
   | Ederef (Eval v ty1) ty =>
       (exists ofs pt, v = (Vint ofs,pt)) \/ (exists ofs pt, v = (Vlong ofs,pt))
   | Eaddrof (Eloc (Lmem ofs pt bf) ty1) ty =>
       bf = Full
   | Eaddrof (Eloc (Ltmp b) ty1) ty =>
       False
-  | Eaddrof (Eloc (Lfun b pt) ty1) ty =>
+  | Eaddrof (Eloc (Lifun b pt) ty1) ty =>
+      ty = ty1
+  | Eaddrof (Eloc (Lefun _ _ _ _ pt) ty1) ty =>
       ty = ty1
   | Efield (Eval v ty1) f ty =>
       match v,ty1 with
@@ -1173,9 +1203,13 @@ Definition invert_expr_prop (a: expr) (pct: tag) (te: tenv) (m: mem) : Prop :=
   | Eassignop _ (Eloc (Ltmp b) ty1) (Eval _ _) _ ty
   | Epostincr _ (Eloc (Ltmp b) ty1) ty =>
       exists v vt, ty = ty1 /\ te!b = Some (v,vt)
-  | Evalof (Eloc (Lfun b pt) ty1) ty
-  | Eassignop _ (Eloc (Lfun b pt) ty1) (Eval _ _) _ ty
-  | Epostincr _ (Eloc (Lfun b pt) ty1) ty =>
+  | Evalof (Eloc (Lifun _ _) ty1) ty
+  | Evalof (Eloc (Lefun _ _ _ _ _) ty1) ty
+  | Eassignop _ (Eloc (Lifun _ _) ty1) (Eval _ _) _ ty
+  | Eassignop _ (Eloc (Lefun _ _ _ _ _) ty1) (Eval _ _) _ ty
+  | Epostincr _ (Eloc (Lifun _ _) ty1) ty =>
+      ty = ty1
+  | Epostincr _ (Eloc (Lefun _ _ _ _ _) ty1) ty =>
       ty = ty1
   | Eunop op (Eval (v1,vt1) ty1) ty =>
       exists v, sem_unary_operation op v1 ty1 m = Some v
@@ -1223,20 +1257,24 @@ Definition invert_expr_prop (a: expr) (pct: tag) (te: tenv) (m: mem) : Prop :=
   | Eassign (Eloc (Ltmp b) ty1) (Eval (v2,vt2) ty2) ty =>
       exists v1 v2' vt1,
       ty = ty1 /\ te!b = Some (v1,vt1) /\ sem_cast v2 ty2 ty1 m = Some v2'
-  | Eassign (Eloc (Lfun _ _) _) (Eval _ _) ty => False
+  | Eassign (Eloc (Lifun _ _) _) (Eval _ _) ty => False
+  | Eassign (Eloc (Lefun _ _ _ _ _) _) (Eval _ _) ty => False
   | Ecomma (Eval v ty1) r2 ty =>
       typeof r2 = ty
   | Eparen (Eval (v1,vt1) ty1) tycast ty =>
       exists v, sem_cast v1 ty1 tycast m = Some v
-  | Ecall (Eval (vf,vft) tyf) rargs ty =>
+  | Ecall (Eval (Vfptr b,vft) tyf) rargs ty =>
       exprlist_all_values rargs ->
       exists tyargs tyres cconv fd vl,
          classify_fun tyf = fun_case_f tyargs tyres cconv
-      /\ Genv.find_funct ge vf = Some fd
+      /\ Genv.find_funct ge (Vfptr b) = Some fd
       /\ cast_arguments m rargs tyargs vl
-      /\ forall fd', fd = Internal fd' -> type_of_fundef fd' = Tfunction tyargs tyres cconv
-  | Ebuiltin ef ty =>
-      exists b, Genv.invert_ef ge ef = Some b
+      /\ type_of_fundef fd = Tfunction tyargs tyres cconv
+  | Ecall (Eval (Vefptr ef tyargs tyres cc,vft) tyf) rargs ty =>
+      exprlist_all_values rargs ->
+      exists vl, cast_arguments m rargs tyargs vl
+  | Ecall (Eval (_,_) _) rargs ty =>
+      ~ exprlist_all_values rargs
   | _ => True
   end.
 
@@ -1245,8 +1283,9 @@ Lemma lred_invert:
 Proof.
   induction 1; red; auto.
   - right; left; exists base, bound, pt; auto.
-  - right; right; left; split; auto; exists lo, hi, pt, gv; auto.
-  - right; right; right; split; auto; exists b, pt; auto.
+  - right; right; left; split; auto; exists base, bound, pt, gv; auto.
+  - right; right; right; left; split; auto; exists b, pt; auto.
+  - right; right; right; right; split; auto; exists ef, tyargs, tyres, cc, pt; auto.
   - left; exists ofs, vt; auto.
   - right; exists ofs, vt; auto.
   - exists co, delta, bf. split;auto.
@@ -1295,9 +1334,8 @@ Proof.
   - destruct ty1; destruct ty; try congruence.
     eapply possible_trace_app_inv in H7 as [w0 [P Q]].
     repeat (eexists; eauto). 
-  - admit.
-Admitted.
-
+Qed.
+    
 Lemma rfailred_invert:
   forall w' pct r te m tr msg failure params, rfailred ge ce pct r te m tr msg failure params -> possible_trace w tr w' -> invert_expr_prop r pct te m.
 Proof.
@@ -1316,8 +1354,9 @@ Lemma callred_invert:
     invert_expr_prop r pct te m.
 Proof.
   intros. inv H; simpl.
-  - intros. exists tyargs, tyres, cconv, (Internal fd), args; intuition congruence.
-  - intros. exists tyargs, tyres, cconv, (External ef tyargs tyres cconv), args; intuition congruence.
+  - unfold find_funct in H0. inv H0. intros.
+    exists tyargs, tyres, cconv, fd, args; intuition congruence.
+  - intros. exists args; intuition congruence.
 Qed.
     
 Scheme context_ind2 := Minimality for context Sort Prop
@@ -1335,15 +1374,17 @@ Lemma invert_expr_context:
                       ~exprlist_all_values (C a)).
 Proof.
   apply context_contextlist_ind; intros; try (exploit H0; [eauto|intros]); simpl; auto;
-    try (destruct (C a); auto; contradiction).
+    try (destruct (C a); unfold invert_expr_prop in *; auto; contradiction).
   - destruct e1; auto; destruct (C a); destruct v; auto. destruct v0; auto; contradiction.
   - destruct e1; auto.
     destruct l; auto; destruct (C a); auto; destruct v; auto; inv H2.
   - destruct e1; auto; destruct (C a); auto; destruct l; auto; contradiction.
-  - destruct e1; auto. destruct v. intros. elim (H0 a pct te m); auto.
+  - destruct e1; auto. repeat dodestr; auto; try eapply H0; eauto.
+    + intros. elim (H0 a pct te m); auto. 
+    + intros. elim (H0 a pct te m); auto.
   - destruct e1; auto. eapply H0. eauto.
 Qed.
-
+    
 Lemma imm_safe_t_inv:
   forall k a pct te m,
     imm_safe_t k a pct te m ->
@@ -1392,6 +1433,8 @@ Qed.
 Local Hint Constructors context contextlist : core.
 Local Hint Resolve context_compose contextlist_compose : core.
 
+Section REDUCTION_OK.
+  
 Definition reduction_ok (k: kind) (pct: tag) (a: expr) (te: tenv) (m: mem) (rd: reduction) : Prop :=
   match k, rd with
   | LV, Lred _ l' te' m' => lred ge ce e a pct te m l' te' m'
@@ -1672,10 +1715,50 @@ Ltac dodiscrim :=
 Ltac solve_trace :=
   match goal with
   | [ |- exists w', possible_trace ?w E0 w' ] => exists w; constructor
+  | [ H: possible_trace ?w1 ?tr ?w2 |- exists w3, possible_trace ?w1 ?tr w3 ] =>
+      exists w2; auto
   | [ H1: possible_trace ?w1 ?tr1 ?w2, H2: possible_trace ?w2 ?tr2 ?w3
       |- exists w', possible_trace ?w1 (?tr1 ++ ?tr2) w' ] =>
       exists w3; eapply possible_trace_app; eauto
   end.
+
+Ltac inv_deref_assign :=
+  match goal with
+  | [ H: do_deref_loc _ _ _ _ _ _ = Some _ |- _ ] =>
+      eapply do_deref_loc_sound in H; intuition
+  | [ H: do_assign_loc _ _ _ _ _ _ _ _ = Some _ |- _ ] =>
+      eapply do_assign_loc_sound in H; intuition
+  end.
+
+Ltac match_deref_assign :=
+  match goal with
+  | [ H1: do_deref_loc ?w ?ty ?m ?ofs ?pt ?bf = Some _,
+        H2: do_deref_loc ?w ?ty ?m ?ofs ?pt ?bf = Some _
+      |- _ ] =>
+      rewrite H1 in H2; inv H2; clear H1
+  | [ H1: do_deref_loc ?w ?ty ?m ?ofs ?pt ?bf = Some _,
+        H2: do_deref_loc ?w ?ty ?m ?ofs ?pt ?bf = None
+      |- _ ] =>
+      rewrite H1 in H2; inv H2; clear H1
+  | [ H1: deref_loc _ ?ty ?m ?ofs ?pt ?bf ?tr ?res,
+        H2: possible_trace ?w ?tr ?w'
+      |- _ ] =>
+      eapply do_deref_loc_complete in H1; eauto; match_deref_assign
+  | [ H1: do_assign_loc ?w ?ty ?m ?ofs ?pt ?bf ?a ?lts = Some _,
+        H2: do_assign_loc ?w ?ty ?m ?ofs ?pt ?bf ?a ?lts = Some _
+      |- _ ] =>
+      rewrite H1 in H2; inv H2; clear H1
+  | [ H1: do_assign_loc ?w ?ty ?m ?ofs ?pt ?bf ?a ?lts = Some _,
+        H2: do_assign_loc ?w ?ty ?m ?ofs ?pt ?bf ?a ?lts = None
+      |- _ ] =>
+      rewrite H1 in H2; inv H2; clear H1
+  | [ H1: assign_loc _ _ ?ty ?m ?ofs ?pt ?bf ?a ?tr ?res ?lts,
+        H2: possible_trace ?w ?tr ?w'
+      |- _ ] =>
+      eapply do_assign_loc_complete in H1; eauto; match_deref_assign
+  end.
+
+Ltac solve_rred red := eapply topred_ok; auto; split; [eapply red|solve_trace]; eauto.
 
 Ltac solve_red :=
   match goal with
@@ -1688,6 +1771,10 @@ Ltac solve_red :=
       eapply topred_ok; auto; eapply red_var_local; eauto
   | [ |- reducts_ok _ _ _ _ _ (topred (Lred "red_func" _ _ _)) ] => 
       eapply topred_ok; auto; eapply red_func; eauto
+  | [ |- reducts_ok _ _ _ _ _ (topred (Lred "red_ext_func" _ _ _)) ] => 
+      eapply topred_ok; auto; eapply red_ext_func; eauto
+  | [ |- reducts_ok _ _ _ _ _ (topred (Lred "red_builtin" _ _ _)) ] => 
+      eapply topred_ok; auto; eapply red_builtin; eauto
   | [ |- reducts_ok _ _ _ _ _ (topred (Lred "red_var_global" _ _ _)) ] => 
       eapply topred_ok; auto; eapply red_var_global; eauto
   | [ |- reducts_ok _ _ _ _ _ (topred (Lred "red_field_struct" _ _ _)) ] => 
@@ -1707,297 +1794,323 @@ Ltac solve_red :=
       eapply topred_ok; auto; eapply failred_field_union; eauto
 
   (* Rred *)
-                                                       
+                       
   | [ |- reducts_ok _ _ _ _ _ (topred (Rred "red_const" _ _ _ _ _)) ] =>
-      eapply topred_ok; auto; split; [eapply red_const|]; eauto
+      solve_rred red_const
   | [ |- reducts_ok _ _ _ _ _ (topred (Rred "red_rvalof_mem" _ _ _ _ _)) ] =>
-      eapply topred_ok; auto; split; [eapply red_rvalof_mem|]; eauto
+      repeat inv_deref_assign; solve_rred red_rvalof_mem
   | [ |- reducts_ok _ _ _ _ _ (topred (Rred "red_rvalof_tmp" _ _ _ _ _)) ] =>
-      eapply topred_ok; auto; split; [eapply red_rvalof_tmp|]; eauto
-  | [ |- reducts_ok _ _ _ _ _ (topred (Rred "red_rvalof_fun" _ _ _ _ _)) ] =>
-      eapply topred_ok; auto; split; [eapply red_rvalof_fun|]; eauto
+      solve_rred red_rvalof_tmp
+  | [ |- reducts_ok _ _ _ _ _ (topred (Rred "red_rvalof_ifun" _ _ _ _ _)) ] =>
+      solve_rred red_rvalof_ifun
+  | [ |- reducts_ok _ _ _ _ _ (topred (Rred "red_rvalof_efun" _ _ _ _ _)) ] =>
+      solve_rred red_rvalof_efun
   | [ |- reducts_ok _ _ _ _ _ (topred (Rred "red_addrof_loc" _ _ _ _ _)) ] =>
-      eapply topred_ok; auto; split; [eapply red_addrof_loc|]; eauto
+      solve_rred red_addrof_loc
   | [ |- reducts_ok _ _ _ _ _ (topred (Rred "red_addrof_fptr" _ _ _ _ _)) ] =>
-      eapply topred_ok; auto; split; [eapply red_addrof_fptr|]; eauto
+      solve_rred red_addrof_fptr
+  | [ |- reducts_ok _ _ _ _ _ (topred (Rred "red_addrof_efptr" _ _ _ _ _)) ] =>
+      solve_rred red_addrof_efptr
   | [ |- reducts_ok _ _ _ _ _ (topred (Rred "red_unop" _ _ _ _ _)) ] =>
-      eapply topred_ok; auto; split; [eapply red_unop|]; eauto
+      solve_rred red_unop
   | [ |- reducts_ok _ _ _ _ _ (topred (Rred "red_binop" _ _ _ _ _)) ] =>
-      eapply topred_ok; auto; split; [eapply red_binop|]; eauto
+      solve_rred red_binop
   | [ |- reducts_ok _ _ _ _ _ (topred (Rred "red_seqand_true" _ _ _ _ _)) ] =>
-      eapply topred_ok; auto; split; [eapply red_seqand_true|]; eauto
+      solve_rred red_seqand_true
   | [ |- reducts_ok _ _ _ _ _ (topred (Rred "red_seqand_false" _ _ _ _ _)) ] =>
-      eapply topred_ok; auto; split; [eapply red_seqand_false|]; eauto
+      solve_rred red_seqand_false
   | [ |- reducts_ok _ _ _ _ _ (topred (Rred "red_seqor_true" _ _ _ _ _)) ] =>
-      eapply topred_ok; auto; split; [eapply red_seqor_true|]; eauto
+      solve_rred red_seqor_true
   | [ |- reducts_ok _ _ _ _ _ (topred (Rred "red_seqor_false" _ _ _ _ _)) ] =>
-      eapply topred_ok; auto; split; [eapply red_seqor_false|]; eauto
+      solve_rred red_seqor_false
   | [ |- reducts_ok _ _ _ _ _ (topred (Rred "red_condition" _ _ _ _ _)) ] =>
-      eapply topred_ok; auto; split; [eapply red_condition|]; eauto
+      solve_rred red_condition
   | [ |- reducts_ok _ _ _ _ _ (topred (Rred "red_sizeof" _ _ _ _ _)) ] =>
-      eapply topred_ok; auto; split; [eapply red_sizeof|]; eauto
+      solve_rred red_sizeof
   | [ |- reducts_ok _ _ _ _ _ (topred (Rred "red_assign_mem" _ _ _ _ _)) ] =>
-      eapply topred_ok; auto; split; [eapply red_assign_mem|]; eauto
+      repeat inv_deref_assign; solve_rred red_assign_mem
   | [ |- reducts_ok _ _ _ _ _ (topred (Rred "red_assign_tmp" _ _ _ _ _)) ] =>
-      eapply topred_ok; auto; split; [eapply red_assign_tmp|]; eauto
+      solve_rred red_assign_tmp
   | [ |- reducts_ok _ _ _ _ _ (topred (Rred "red_assignop_mem" _ _ _ _ _)) ] =>
-      eapply topred_ok; auto; split; [eapply red_assignop_mem|]; eauto
+      repeat inv_deref_assign; solve_rred red_assignop_mem
   | [ |- reducts_ok _ _ _ _ _ (topred (Rred "red_assignop_tmp" _ _ _ _ _)) ] =>
-      eapply topred_ok; auto; split; [eapply red_assignop_tmp|]; eauto
-  | [ |- reducts_ok _ _ _ _ _ (topred (Rred "red_assignop_fun" _ _ _ _ _)) ] =>
-      eapply topred_ok; auto; split; [eapply red_assignop_fun|]; eauto
+      solve_rred red_assignop_tmp
+  | [ |- reducts_ok _ _ _ _ _ (topred (Rred "red_assignop_ifun" _ _ _ _ _)) ] =>
+      solve_rred red_assignop_ifun
+  | [ |- reducts_ok _ _ _ _ _ (topred (Rred "red_assignop_efun" _ _ _ _ _)) ] =>
+      solve_rred red_assignop_efun
   | [ |- reducts_ok _ _ _ _ _ (topred (Rred "red_postincr_mem" _ _ _ _ _)) ] =>
-      eapply topred_ok; auto; split; [eapply red_postincr_mem|]; eauto
+      repeat inv_deref_assign; solve_rred red_postincr_mem
   | [ |- reducts_ok _ _ _ _ _ (topred (Rred "red_postincr_tmp" _ _ _ _ _)) ] =>
-      eapply topred_ok; auto; split; [eapply red_postincr_tmp|]; eauto
-  | [ |- reducts_ok _ _ _ _ _ (topred (Rred "red_postincr_fun" _ _ _ _ _)) ] =>
-      eapply topred_ok; auto; split; [eapply red_postincr_fun|]; eauto
+      solve_rred red_postincr_tmp
+  | [ |- reducts_ok _ _ _ _ _ (topred (Rred "red_postincr_ifun" _ _ _ _ _)) ] =>
+      solve_rred red_postincr_ifun
+  | [ |- reducts_ok _ _ _ _ _ (topred (Rred "red_postincr_efun" _ _ _ _ _)) ] =>
+      solve_rred red_postincr_efun
   | [ |- reducts_ok _ _ _ _ _ (topred (Rred "red_alignof" _ _ _ _ _)) ] =>
-      eapply topred_ok; auto; split; [eapply red_alignof|]; eauto
+      solve_rred red_alignof
   | [ |- reducts_ok _ _ _ _ _ (topred (Rred "red_comma" _ _ _ _ _)) ] =>
-      eapply topred_ok; auto; split; [eapply red_comma|]; eauto
-  | [ |- reducts_ok _ _ _ _ _ (topred (Rred "red_builtin" _ _ _ _ _)) ] =>
-      eapply topred_ok; auto; split; [eapply red_builtin|]; eauto
+      solve_rred red_comma
   | [ |- reducts_ok _ _ _ _ _ (topred (Rred "red_paren" _ _ _ _ _)) ] =>
-      eapply topred_ok; auto; split; [eapply red_paren|]; eauto
+      solve_rred red_paren
   | [ |- reducts_ok _ _ _ _ _ (topred (Rred "red_cast_int_int" _ _ _ _ _)) ] =>
-      eapply topred_ok; auto; split; [eapply red_cast_int_int|]; eauto
+      solve_rred red_cast_int_int
   | [ |- reducts_ok _ _ _ _ _ (topred (Rred "red_cast_ptr_int" _ _ _ _ _)) ] =>
-      eapply topred_ok; auto; split; [eapply red_cast_ptr_int|]; eauto
+      repeat inv_deref_assign; solve_rred red_cast_ptr_int
   | [ |- reducts_ok _ _ _ _ _ (topred (Rred "red_cast_int_ptr" _ _ _ _ _)) ] =>
-      eapply topred_ok; auto; split; [eapply red_cast_int_ptr|]; eauto
+      repeat inv_deref_assign; solve_rred red_cast_int_ptr
   | [ |- reducts_ok _ _ _ _ _ (topred (Rred "red_cast_ptr_ptr" _ _ _ _ _)) ] =>
-      eapply topred_ok; auto; split; [eapply red_cast_ptr_ptr|]; eauto
+      repeat inv_deref_assign; solve_rred red_cast_ptr_ptr
                                                                    
   (* Rfailred *)
 
   | [ |- reducts_ok _ _ _ _ _ (failred "failred_const" _ _ _ _) ] =>
-      eapply topred_ok; auto; split; [eapply failred_const|]; eauto
+      solve_rred failred_const
   | [ |- reducts_ok _ _ _ _ _ (failred "failred_rvalof_mem0" _ _ _ _) ] =>
-      eapply topred_ok; auto; split; [eapply failred_rvalof_mem0|]; eauto
+      repeat inv_deref_assign; solve_rred failred_rvalof_mem0
   | [ |- reducts_ok _ _ _ _ _ (failred "failred_rvalof_mem1" _ _ _ _) ] =>
-      eapply topred_ok; auto; split; [eapply failred_rvalof_mem1|]; eauto
+      repeat inv_deref_assign; solve_rred failred_rvalof_mem1
   | [ |- reducts_ok _ _ _ _ _ (failred "failred_rvalof_mem2" _ _ _ _) ] =>
-      eapply topred_ok; auto; split; [eapply failred_rvalof_mem2|]; eauto
+      repeat inv_deref_assign; solve_rred failred_rvalof_mem2
   | [ |- reducts_ok _ _ _ _ _ (failred "failred_rvalof_tmp" _ _ _ _) ] =>
-      eapply topred_ok; auto; split; [eapply failred_rvalof_tmp|]; eauto
+      solve_rred failred_rvalof_tmp
   | [ |- reducts_ok _ _ _ _ _ (failred "failred_unop" _ _ _ _) ] =>
-      eapply topred_ok; auto; split; [eapply failred_unop|]; eauto
+      solve_rred failred_unop
   | [ |- reducts_ok _ _ _ _ _ (failred "failred_binop" _ _ _ _) ] =>
-      eapply topred_ok; auto; split; [eapply failred_binop|]; eauto
+      solve_rred failred_binop
   | [ |- reducts_ok _ _ _ _ _ (failred "failred_seqand" _ _ _ _) ] =>
-      eapply topred_ok; auto; split; [eapply failred_seqand|]; eauto
+      solve_rred failred_seqand
   | [ |- reducts_ok _ _ _ _ _ (failred "failred_seqor" _ _ _ _) ] =>
-      eapply topred_ok; auto; split; [eapply failred_seqor|]; eauto
+      solve_rred failred_seqor
   | [ |- reducts_ok _ _ _ _ _ (failred "failred_condition" _ _ _ _) ] =>
-      eapply topred_ok; auto; split; [eapply failred_condition|]; eauto
+      solve_rred failred_condition
   | [ |- reducts_ok _ _ _ _ _ (failred "failred_sizeof" _ _ _ _) ] =>
-      eapply topred_ok; auto; split; [eapply failred_sizeof|]; eauto
+      solve_rred failred_sizeof
   | [ |- reducts_ok _ _ _ _ _ (failred "failred_alignof" _ _ _ _) ] =>
-      eapply topred_ok; auto; split; [eapply failred_alignof|]; eauto
+      solve_rred failred_alignof
   | [ |- reducts_ok _ _ _ _ _ (failred "failred_assign_mem0" _ _ _ _) ] =>
-      eapply topred_ok; auto; split; [eapply failred_assign_mem0|]; eauto
+      repeat inv_deref_assign; solve_rred failred_assign_mem0
   | [ |- reducts_ok _ _ _ _ _ (failred "failred_assign_mem1" _ _ _ _) ] =>
-      eapply topred_ok; auto; split; [eapply failred_assign_mem1|]; eauto
+      repeat inv_deref_assign; solve_rred failred_assign_mem1
   | [ |- reducts_ok _ _ _ _ _ (failred "failred_assign_mem2" _ _ _ _) ] =>
-      eapply topred_ok; auto; split; [eapply failred_assign_mem2|]; eauto
+      repeat inv_deref_assign; solve_rred failred_assign_mem2
   | [ |- reducts_ok _ _ _ _ _ (failred "failred_assign_mem3" _ _ _ _) ] =>
-      eapply topred_ok; auto; split; [eapply failred_assign_mem3|]; eauto
+      repeat inv_deref_assign; solve_rred failred_assign_mem3
   | [ |- reducts_ok _ _ _ _ _ (failred "failred_assign_tmp" _ _ _ _) ] =>
-      eapply topred_ok; auto; split; [eapply failred_assign_tmp|]; eauto
+      solve_rred failred_assign_tmp
   | [ |- reducts_ok _ _ _ _ _ (failred "failred_assignop_mem0" _ _ _ _) ] =>
-      eapply topred_ok; auto; split; [eapply failred_assignop_mem0|]; eauto
+      repeat inv_deref_assign; solve_rred failred_assignop_mem0
   | [ |- reducts_ok _ _ _ _ _ (failred "failred_assignop_mem1" _ _ _ _) ] =>
-      eapply topred_ok; auto; split; [eapply failred_assignop_mem1|]; eauto
+      repeat inv_deref_assign; solve_rred failred_assignop_mem1
   | [ |- reducts_ok _ _ _ _ _ (failred "failred_assignop_mem2" _ _ _ _) ] =>
-      eapply topred_ok; auto; split; [eapply failred_assignop_mem2|]; eauto
+      repeat inv_deref_assign; solve_rred failred_assignop_mem2
   | [ |- reducts_ok _ _ _ _ _ (failred "failred_assignop_tmp" _ _ _ _) ] =>
-      eapply topred_ok; auto; split; [eapply failred_assignop_tmp|]; eauto
+      solve_rred failred_assignop_tmp
   | [ |- reducts_ok _ _ _ _ _ (failred "failred_postincr_mem0" _ _ _ _) ] =>
-      eapply topred_ok; auto; split; [eapply failred_postincr_mem0|]; eauto
+      repeat inv_deref_assign; solve_rred failred_postincr_mem0
   | [ |- reducts_ok _ _ _ _ _ (failred "failred_postincr_mem1" _ _ _ _) ] =>
-      eapply topred_ok; auto; split; [eapply failred_postincr_mem1|]; eauto
+      repeat inv_deref_assign; solve_rred failred_postincr_mem1
   | [ |- reducts_ok _ _ _ _ _ (failred "failred_postincr_mem2" _ _ _ _) ] =>
-      eapply topred_ok; auto; split; [eapply failred_postincr_mem2|]; eauto
+      repeat inv_deref_assign; solve_rred failred_postincr_mem2
   | [ |- reducts_ok _ _ _ _ _ (failred "failred_postincr_tmp" _ _ _ _) ] =>
-      eapply topred_ok; auto; split; [eapply failred_postincr_tmp|]; eauto
+      solve_rred failred_postincr_tmp
   | [ |- reducts_ok _ _ _ _ _ (failred "failred_paren" _ _ _ _) ] =>
-      eapply topred_ok; auto; split; [eapply failred_paren|]; eauto
+      solve_rred failred_paren
   | [ |- reducts_ok _ _ _ _ _ (failred "failred_cast_int_int" _ _ _ _) ] =>
-      eapply topred_ok; auto; split; [eapply failred_cast_int_int|]; eauto
+      solve_rred failred_cast_int_int
   | [ |- reducts_ok _ _ _ _ _ (failred "failred_cast_ptr_int" _ _ _ _) ] =>
-      eapply topred_ok; auto; split; [eapply failred_cast_ptr_int|]; eauto
+      repeat inv_deref_assign; solve_rred failred_cast_ptr_int
   | [ |- reducts_ok _ _ _ _ _ (failred "failred_cast_int_ptr" _ _ _ _) ] =>
-      eapply topred_ok; auto; split; [eapply failred_cast_int_ptr|]; eauto
+      repeat inv_deref_assign; solve_rred failred_cast_int_ptr
   | [ |- reducts_ok _ _ _ _ _ (failred "failred_cast_ptr_ptr" _ _ _ _) ] =>
-      eapply topred_ok; auto; split; [eapply failred_cast_ptr_ptr|]; eauto
+      repeat inv_deref_assign; solve_rred failred_cast_ptr_ptr
 
   (* Callred *)
   | [ |- reducts_ok _ _ _ _ _ (topred (Callred "red_call_internal" _ _ _ _ _ _)) ] =>
-      eapply topred_ok; auto; split; [eapply red_call_internal|]; eauto
+      eapply topred_ok; auto; split; eauto; eapply red_call_internal; eauto
   | [ |- reducts_ok _ _ _ _ _ (topred (Callred "red_call_external" _ _ _ _ _ _)) ] =>
-      eapply topred_ok; auto; split; [eapply red_call_external|]; eauto
-                                                                       
+      eapply topred_ok; auto; split; [eapply red_call_external|auto]
+                
   | [ |- reducts_ok _ _ _ _ _ (incontext _ _) ] =>
       eapply incontext_ok; eauto
-  | [ |- reducts_ok _ _ _ _ _ (incontext2 _ _ _ _) ] =>
+  | [ |- reducts_ok _ _ _ _ _ (incontext2 _ _ _ (step_expr _ _ _ _ _)) ] =>
       eapply incontext2_ok; eauto
+  | [ |- reducts_ok _ _ _ _ _ (incontext2 _ _ _ (step_exprlist _ _ _ _)) ] =>
+      eapply incontext2_list_ok; eauto
   end.
+
+Lemma step_cast_sound_ptr_ptr:
+  forall pct ofs vt ty ty1 attr attr1 te m,
+    reducts_ok RV pct (Ecast (Eval (Vlong ofs,vt) (Tpointer ty attr)) (Tpointer ty1 attr1)) te m
+               (step_expr RV pct (Ecast (Eval (Vlong ofs,vt) (Tpointer ty attr)) (Tpointer ty1 attr1)) te m).
+Proof.
+  intros. unfold step_expr; simpl.
+  repeat dodestr; repeat doinv.
+  - solve_red.
+  - solve_red; reflexivity.
+  - apply not_invert_ok; simpl; intros; repeat doinv.
+    inv H0. match_deref_assign. inv H. match_deref_assign.
+  - apply not_invert_ok; simpl; intros; repeat doinv.    
+    inv H0. match_deref_assign. inv H. match_deref_assign.
+  - apply not_invert_ok; simpl; intros; repeat doinv.    
+    inv H0. match_deref_assign.
+  - apply not_invert_ok; simpl; intros; repeat doinv.
+    inv H0. match_deref_assign.
+Qed.
+
+Lemma step_cast_sound_ptr_to:
+  forall pct v vt ty ty1 attr te m,
+    reducts_ok RV pct (Ecast (Eval (v,vt) (Tpointer ty attr)) ty1) te m
+               (step_expr RV pct (Ecast (Eval (v,vt) (Tpointer ty attr)) ty1) te m).
+Proof.
+  intros. destruct ty1.
+  5: {
+    destruct v.
+    3: apply step_cast_sound_ptr_ptr.
+    all: unfold step_expr; simpl.
+    all: try apply not_invert_ok; simpl; intros; repeat doinv.
+    all: discriminate.
+  }
+  all: unfold step_expr; simpl.
+  all: repeat dodestr; repeat doinv.
+  all: try solve_red; try congruence; try reflexivity.
+  all: try apply not_invert_ok; simpl; intros; repeat doinv.
+  all: try discriminate.
+  all: try inv H; try inv H0; try match_deref_assign.
+  all: congruence.
+Qed.
+
+Lemma step_cast_sound_to_ptr:
+  forall pct v vt ty ty1 attr te m,
+    reducts_ok RV pct (Ecast (Eval (v,vt) ty) (Tpointer ty1 attr)) te m
+               (step_expr RV pct (Ecast (Eval (v,vt) ty) (Tpointer ty1 attr)) te m).
+Proof.
+  intros. destruct ty.
+  5: {
+    destruct v.
+    3: apply step_cast_sound_ptr_ptr.
+    all: unfold step_expr; simpl.
+    all: try apply not_invert_ok; simpl; intros; repeat doinv.
+    all: discriminate.    
+  }
+  all: unfold step_expr; simpl.
+  all: repeat dodestr; repeat doinv.
+  all: try solve_red; try congruence; try reflexivity.
+  all: try apply not_invert_ok; simpl; intros; repeat doinv.
+  all: try (inv H; fail).
+  all: try congruence.
+  all: rewrite H in Heqo; inv Heqo; inv H4; try match_deref_assign.
+Qed.
+
+Lemma step_cast_sound:
+  forall pct v vt ty ty1 te m,
+    reducts_ok RV pct (Ecast (Eval (v,vt) ty) ty1) te m
+               (step_expr RV pct (Ecast (Eval (v,vt) ty) ty1) te m).
+Proof.
+  intros. destruct ty.
+  5: apply step_cast_sound_ptr_to.
+  all: destruct ty1; try apply step_cast_sound_to_ptr.
+  all: unfold step_expr; simpl.
+  all: repeat dodestr; repeat doinv.
+  all: try solve_red; try congruence; try reflexivity.
+  all: try apply not_invert_ok; simpl; intros; repeat doinv.
+  all: try congruence.
+  all: inv H.
+Qed.
 
 Theorem step_expr_sound:
   forall pct a k te m, reducts_ok k pct a te m (step_expr k pct a te m)
 with step_exprlist_sound:
   forall pct al te m, list_reducts_ok pct al te m (step_exprlist pct al te m).
 Proof with
-  (try (apply not_invert_ok; simpl; intros; repeat doinv; dodiscrim; intuition congruence; fail);
-  try (repeat dodestr; repeat doinv; subst; solve_red; solve_trace)).
-  Opaque do_deref_loc. Opaque do_assign_loc.
+  (try (apply not_invert_ok; simpl; intros; repeat doinv;
+        try match_deref_assign; intuition congruence; fail)).
+  Local Opaque incontext.
   - clear step_expr_sound.
-    induction a; intros; simpl; destruct k; try (apply wrong_kind_ok; simpl; congruence)...
+    induction a; intros; simpl; destruct k; try (apply wrong_kind_ok; simpl; congruence).
     + (* Eval *)
       split; intros. tauto. simpl; congruence.
     + (* Evar *)
-      repeat dodestr; subst...
+      repeat dodestr; repeat doinv; subst; try solve_red...
+      destruct s; repeat dodestr; repeat doinv; subst; try solve_red...  
+    + (* Econst *)
+      repeat dodestr; repeat doinv; subst; try solve_red...
     + (* Efield *)
-      repeat (dodestr; simpl in *)...
+      repeat dodestr; repeat doinv; subst; try solve_red...
     + (* Evalof *)
-      repeat dodestr; repeat doinv; subst...
-      all: try eapply do_deref_loc_sound in Heqo0...
-      apply not_invert_ok; simpl; intros; repeat doinv.
-      eapply do_deref_loc_complete in H0; eauto. congruence.
+      repeat dodestr; repeat doinv; subst; try solve_red...
     + (* Ederef *)
-      repeat (dodestr; doinv); subst... 
+      repeat dodestr; repeat doinv; subst; try solve_red...
     + (* Eaddrof *)
-      repeat (dodestr; doinv); subst...
+      repeat dodestr; repeat doinv; subst; try solve_red...
     + (* Eunop *)
-      repeat (dodestr; doinv); subst...
+      repeat dodestr; repeat doinv; subst; try solve_red...
     + (* Ebinop *)
-      repeat (dodestr; doinv); subst; tagdestr...
+      repeat dodestr; repeat doinv; subst; try solve_red...
     + (* Ecast *)
-      do 6 dodestr; repeat doinv.
-      all: try (apply not_invert_ok; simpl; intros; repeat doinv;
-                dodiscrim; intuition congruence; fail).
-      all: try (tagdestr; solve_red; try solve_trace;
-                intros; intro; discriminate).
-      all: repeat dodestr; repeat doinv; subst.
-      all: try (apply not_invert_ok; simpl; intros; repeat doinv).
-      all: try discriminate.
-      all: try (exploit do_deref_loc_complete; eauto; intros; congruence).
-      all: try (tagdestr; solve_red; try solve_trace).
-      all: try (intros; intro; discriminate).
-      all: try (exploit do_deref_loc_sound; eauto; intros; intuition; eauto).
-      all: try (eapply do_deref_loc_sound in Heqo1; intuition; eauto; solve_trace).
-      all: inv H0.
-      all: rewrite Heqo0 in H; inv H.
-      all: eapply do_deref_loc_complete in H2; eauto.
-      all: rewrite Heqo1 in H2; inv H2.
-      all: eapply do_deref_loc_complete in H4; eauto.
-      all: eapply do_deref_loc_complete in H7; eauto.
-      all: congruence.
+      destruct a.
+      { destruct v as [v vt]. eapply step_cast_sound. }
+      all: simpl; solve_red; [apply IHa|reflexivity].
     + (* Eseqand *)
-      repeat (dodestr; doinv); subst...
+      repeat dodestr; repeat doinv; subst; try solve_red...
     + (* Eseqor *)
-      repeat (dodestr; doinv); subst...
+      repeat dodestr; repeat doinv; subst; try solve_red...
     + (* Econdition *)
-      repeat (dodestr; doinv); subst...
+      repeat dodestr; repeat doinv; subst; try solve_red...
       * pose (b := true).
         replace a2 with (if b then a2 else a3) at 2 by auto.
-        solve_red; solve_trace.
+        solve_red.
       * pose (b := false).
         replace a3 with (if b then a2 else a3) at 2 by auto.
-        solve_red; solve_trace; auto.
+        solve_red.
+    + (* Esizeof *)
+      repeat dodestr; repeat doinv; subst; try solve_red...          
+    + (* Ealignof *)
+      repeat dodestr; repeat doinv; subst; try solve_red...
     + (* Eassign *)
-      repeat dodestr; tagdestr; try tagdestr; repeat doinv; subst...
-      * repeat dodestr; repeat doinv; subst.
-        try (exploit do_deref_loc_sound; eauto; intuition);
-          try (exploit do_assign_loc_sound; eauto; intuition).
-        solve_red; solve_trace.
-      * exploit do_deref_loc_sound; eauto; intuition.
-        exploit do_assign_loc_sound; eauto; intuition. solve_red. solve_trace.
-      * apply not_invert_ok; simpl; intros; repeat doinv.
-        exploit do_deref_loc_complete; eauto; intuition.
-        rewrite H4 in Heqo1. inv Heqo1.
-        edestruct H3; eauto. repeat doinv.
-        exploit do_assign_loc_complete; eauto.
-        congruence.
-      * exploit do_deref_loc_sound; eauto; intuition.
-        solve_red.
-      * exploit do_deref_loc_sound; eauto; intuition.
-        solve_red.
-      * exploit do_deref_loc_sound; eauto; intuition.
-        solve_red.
-      * apply not_invert_ok; simpl; intros; repeat doinv.
-        exploit do_deref_loc_complete; eauto; intuition.
-        rewrite H4 in Heqo1. inv Heqo1.
+      repeat dodestr; repeat doinv; subst; try solve_red...
+      repeat dodestr; repeat doinv; subst; try solve_red...
+      apply not_invert_ok; simpl; intros; repeat doinv; match_deref_assign.
+      edestruct H3; eauto; repeat doinv. rewrite H0 in Heqo2. inv Heqo2.
+      eapply do_assign_loc_complete in H1; eauto; match_deref_assign.
     + (* Eassignop *)
-      repeat dodestr; repeat doinv; subst...
-      * exploit do_deref_loc_sound; eauto; intuition. solve_red.
-      * exploit do_deref_loc_sound; eauto; intuition. solve_red.
-      * exploit do_deref_loc_sound; eauto; intuition. solve_red.
-      * exploit do_deref_loc_sound; eauto; intuition. solve_red.
-      * apply not_invert_ok; simpl; intros; repeat doinv.
-        exploit do_deref_loc_complete; eauto; intuition.
-        congruence.
+      repeat dodestr; repeat doinv; subst; try solve_red...
     + (* Epostincr *)
-      repeat dodestr; repeat doinv; subst...
-      * exploit do_deref_loc_sound; eauto; intuition. solve_red.
-      * exploit do_deref_loc_sound; eauto; intuition. solve_red.
-      * exploit do_deref_loc_sound; eauto; intuition. solve_red.
-      * exploit do_deref_loc_sound; eauto; intuition. solve_red.
-      * apply not_invert_ok; simpl; intros; repeat doinv.
-        exploit do_deref_loc_complete; eauto; intuition.
-        congruence.
-      * exploit do_deref_loc_sound; eauto; intuition. solve_red.
-      * exploit do_deref_loc_sound; eauto; intuition. solve_red.
-      * exploit do_deref_loc_sound; eauto; intuition. solve_red.
-      * exploit do_deref_loc_sound; eauto; intuition. solve_red.
-      * apply not_invert_ok; simpl; intros; repeat doinv.
-        exploit do_deref_loc_complete; eauto; intuition.
-        congruence.
+      repeat dodestr; repeat doinv; subst; try solve_red...
     + (* Ecomma *)
-      repeat dodestr; repeat doinv; subst...
+      repeat dodestr; repeat doinv; subst; try solve_red; subst...
     + (* Ecall *)
-      (*repeat dodestr; repeat doinv; try destruct f; repeat dodestr.
-      -- solve_red.
-         eapply sem_cast_arguments_sound; eauto.
-      -- exploit is_val_list_all_values; eauto; intros.
-         apply not_invert_ok; simpl; intros; doinv. destruct H0; auto.
-         repeat doinv. specialize H3 with f. rewrite H3 in n. congruence.
-      -- exploit is_val_list_all_values; eauto; intros.
-         apply not_invert_ok; simpl; intros; doinv. destruct H0; auto.
-         repeat doinv. congruence.
-      -- exploit is_val_list_all_values; eauto; intros.
-         apply not_invert_ok; simpl; intros; doinv. destruct H0; auto.
-         repeat doinv. exploit sem_cast_arguments_complete; eauto.
-         intros. repeat doinv. congruence.
-      -- exploit is_val_list_all_values; eauto; intros.
-         apply not_invert_ok; simpl; intros; doinv. destruct H0; auto.
-         repeat doinv. congruence.
-      -- exploit is_val_list_all_values; eauto; intros.
-         apply not_invert_ok; simpl; intros; doinv. destruct H0; auto.
-         repeat doinv. congruence.
-      --  eapply incontext2_list_ok; eauto.
-      --  eapply incontext2_list_ok; eauto. *)
-      admit.
+      destruct (is_val a) as [[[vf fpt] fty]|] eqn:?; [destruct vf|];
+        (destruct (is_val_list rargs) as [vtl|] eqn:?;
+         [exploit is_val_list_all_values;eauto;intros|]); try solve_red...
+      * repeat dodestr; repeat doinv.
+        all: try (apply not_invert_ok; simpl; intros; repeat doinv;
+                  destruct H0; auto; repeat doinv; congruence).
+        -- solve_red. eapply sem_cast_arguments_sound; eauto.
+        -- apply not_invert_ok; simpl; intros; repeat doinv.
+           destruct H0; auto. repeat doinv.
+           eapply sem_cast_arguments_complete in H2. repeat doinv. congruence.
+      * repeat dodestr; repeat doinv.
+        -- solve_red. eapply sem_cast_arguments_sound; eauto.           
+        -- apply not_invert_ok; simpl; intros; repeat doinv.
+           destruct H0; auto. eapply sem_cast_arguments_complete in H0.
+           repeat doinv. congruence.
     + (* Ebuiltin *)
-      repeat dodestr...
-      * solve_red; try solve_trace.
-        admit.
-(*        eapply find_invert_ef; eauto.
-      * apply not_invert_ok; simpl; intros; repeat doinv.
-        apply find_invert_ef in H; auto. congruence. *)
+      solve_red.
     + (* loc *)
       split; intros. tauto. simpl; congruence.
     + (* paren *)
-      repeat dodestr; repeat doinv...
+      repeat dodestr; repeat doinv; try solve_red...
         
   - clear step_exprlist_sound. induction al; simpl; intros.
     + (* nil *)
       split; intros. tauto. simpl; congruence.
     + (* cons *)
       eapply incontext2_list_ok'; eauto.
-Admitted.
+Qed.
       
+End REDUCTION_OK.
+
 Lemma step_exprlist_val_list:
   forall te m pct al, is_val_list al <> None -> step_exprlist pct al te m = nil.
 Proof.
@@ -2020,10 +2133,14 @@ Proof.
   - rewrite H. rewrite dec_eq_true. econstructor; eauto.
   (* var local *)
   - rewrite H. rewrite dec_eq_true. econstructor; eauto.
-  (* var fun *)
-  - rewrite H; rewrite H0. econstructor; eauto.
   (* var global *)
   - rewrite H; rewrite H0. econstructor; eauto.
+  (* var ifun *)
+  - rewrite H; rewrite H0. econstructor; eauto.
+  (* var efun *)
+  - rewrite H; rewrite H0. econstructor; eauto.
+  (* builtin *)
+  - econstructor; eauto.
   (* deref (short) *)
   - econstructor; eauto.
   (* deref (long) *)
@@ -2049,14 +2166,47 @@ Lemma rred_topred:
     rred ge ce pct1 r1 te1 m1 t pct2 r2 te2 m2 -> possible_trace w t w' ->
     exists rule, step_expr RV pct1 r1 te1 m1 = topred (Rred rule pct2 r2 te2 m2 t).
 Proof.
-  induction 1; simpl; intros; eexists; unfold atom in *; repeat cronch; try constructor; auto.
-  (* cast *)
+  induction 1; simpl; intros; eexists; unfold Events.TLib.atom in *;
+    repeat cronch; try constructor; auto.
   - eapply do_deref_loc_complete in H; eauto. rewrite H.
     repeat cronch. reflexivity.
-  - unfold atom in *. admit.
   - destruct ty1; destruct ty; repeat cronch; eauto; congruence.
-  - admit. (* subst; destruct ty1; repeat cronch; eauto; congruence.*)
-  - admit. (* subst; destruct ty; repeat cronch; eauto; congruence. *)
+  - subst. destruct ty1.
+    + repeat cronch. eapply do_deref_loc_complete in H3; eauto.
+      rewrite H3. repeat cronch; eauto.
+    + repeat cronch. eapply do_deref_loc_complete in H3; eauto.
+      rewrite H3. repeat cronch; eauto.
+    + repeat cronch. eapply do_deref_loc_complete in H3; eauto.
+      rewrite H3. repeat cronch; eauto.
+    + repeat cronch. eapply do_deref_loc_complete in H3; eauto.
+      rewrite H3. repeat cronch; eauto.
+    + exfalso. eapply H. reflexivity.
+    + repeat cronch. eapply do_deref_loc_complete in H3; eauto.
+      rewrite H3. repeat cronch; eauto.
+    + repeat cronch. eapply do_deref_loc_complete in H3; eauto.
+      rewrite H3. repeat cronch; eauto.
+    + repeat cronch. eapply do_deref_loc_complete in H3; eauto.
+      rewrite H3. repeat cronch; eauto.
+    + repeat cronch. eapply do_deref_loc_complete in H3; eauto.
+      rewrite H3. repeat cronch; eauto.
+  - subst. destruct ty.
+    + repeat cronch. eapply do_deref_loc_complete in H3; eauto.
+      rewrite H3. repeat cronch; eauto.
+    + repeat cronch. eapply do_deref_loc_complete in H3; eauto.
+      rewrite H3. repeat cronch; eauto.
+    + repeat cronch. eapply do_deref_loc_complete in H3; eauto.
+      rewrite H3. repeat cronch; eauto.
+    + repeat cronch. eapply do_deref_loc_complete in H3; eauto.
+      rewrite H3. repeat cronch; eauto.
+    + exfalso. eapply H0. reflexivity.
+    + repeat cronch. eapply do_deref_loc_complete in H3; eauto.
+      rewrite H3. repeat cronch; eauto.
+    + repeat cronch. eapply do_deref_loc_complete in H3; eauto.
+      rewrite H3. repeat cronch; eauto.
+    + repeat cronch. eapply do_deref_loc_complete in H3; eauto.
+      rewrite H3. repeat cronch; eauto.
+    + repeat cronch. eapply do_deref_loc_complete in H3; eauto.
+      rewrite H3. repeat cronch; eauto.
   - subst; repeat cronch; eauto.
     eapply do_deref_loc_complete in H3; eauto.
     eapply do_deref_loc_complete in H5; eauto.
@@ -2064,15 +2214,12 @@ Proof.
   - eapply do_deref_loc_complete in H0; eauto.
     eapply do_assign_loc_complete in H3; eauto.
     repeat cronch; eauto.
-  - unfold atom in *. admit. (*rewrite H. econstructor.*)
   - eapply do_deref_loc_complete in H; eauto.
     repeat cronch; eauto.
-  - unfold atom in *. admit. (*rewrite H. econstructor.*)
   - eapply do_deref_loc_complete in H; eauto.
-    repeat cronch; eauto. destruct id; subst; econstructor.
-  - unfold atom in *. admit. (*rewrite H. econstructor.*)
-  - admit.
-Admitted.
+    repeat cronch; eauto.
+    destruct id; subst; reflexivity.
+Qed.
     
 Lemma rfailred_topred:
   forall w' pct r1 tr msg failure params te m,
@@ -2083,42 +2230,44 @@ Proof.
   - eapply do_deref_loc_complete in H; eauto. repeat cronch. constructor.
   - eapply do_deref_loc_complete in H; eauto. repeat cronch. constructor.
   - eapply do_deref_loc_complete in H; eauto. repeat cronch. constructor.
-  - admit.
+  - unfold Events.TLib.atom. repeat cronch. constructor.
   - eapply do_deref_loc_complete in H0; eauto. repeat cronch. constructor.
   - eapply do_deref_loc_complete in H0; eauto. repeat cronch. constructor.
   - eapply do_deref_loc_complete in H0; eauto. repeat cronch. constructor.
   - eapply do_deref_loc_complete in H0; eauto.
     eapply do_assign_loc_complete in H3; eauto.
     repeat cronch. constructor.
-  - admit. (*eapply sem_cast_arguments_complete in H0. destruct H0 as [vtl [P Q]]. rewrite P.
-            rewrite H2. rewrite Q. rewrite H. rewrite H1. rewrite (dec_eq_true). cronch. constructor.*)
+  - unfold Events.TLib.atom. repeat cronch. constructor.
   - eapply do_deref_loc_complete in H; eauto. repeat cronch. constructor.
   - eapply do_deref_loc_complete in H; eauto. repeat cronch. constructor.
   - eapply do_deref_loc_complete in H; eauto. repeat cronch. constructor.
-  - admit.
+  - unfold Events.TLib.atom. repeat cronch. constructor.
   - eapply do_deref_loc_complete in H; eauto. repeat cronch. constructor.
   - eapply do_deref_loc_complete in H; eauto. repeat cronch. constructor.
   - eapply do_deref_loc_complete in H; eauto. repeat cronch. constructor.
-  - admit.
-  - admit.
-(*  - destruct ty1; destruct ty; try congruence; repeat cronch; constructor.
-  - admit. (* subst; destruct ty1; try congruence; repeat cronch; constructor. *)
-  - admit. (* subst; destruct ty; try congruence; repeat cronch; constructor. *)
+  - unfold Events.TLib.atom. repeat cronch. constructor.    
+  - destruct ty1; destruct ty; try congruence; repeat cronch; constructor.
+  - subst. eapply do_deref_loc_complete in H3; eauto.
+    destruct ty1; try congruence; repeat cronch; constructor.
+  - subst. eapply do_deref_loc_complete in H3; eauto.
+    destruct ty; try congruence; repeat cronch; constructor.
   - eapply do_deref_loc_complete in H3; eauto.
     eapply do_deref_loc_complete in H5; eauto.
-    subst; repeat cronch. constructor.*)
-Admitted.
-    
+    subst; repeat cronch. constructor.
+Qed.
+
 Lemma callred_topred:
   forall pct a fd fpt args ty te m,
     callred ge pct a m fd fpt args ty ->
     exists rule, step_expr RV pct a te m = topred (Callred rule fd fpt args ty te m).
-Admitted.
-(*Proof.
+Proof.
   induction 1; simpl.
-  rewrite H2. exploit sem_cast_arguments_complete; eauto. intros [vtl [A B]].
-  rewrite A; rewrite H; rewrite B; rewrite H1; rewrite dec_eq_true. econstructor; eauto.
-Qed.*)
+  - rewrite H2. exploit sem_cast_arguments_complete; eauto. intros [vtl [A B]].
+    unfold find_funct in H.
+    rewrite A; rewrite H; rewrite B; rewrite H1; rewrite dec_eq_true. econstructor; eauto.
+  - exploit sem_cast_arguments_complete; eauto. intros [vtl [A B]].
+    rewrite A; rewrite B. econstructor; eauto.  
+Qed.
 
 Definition reducts_incl {A B: Type} (C: A -> B) (res1: reducts A) (res2: reducts B) : Prop :=
   forall C1 rd, In (C1, rd) res1 -> In ((fun x => C(C1 x)), rd) res2.
@@ -2242,14 +2391,14 @@ Proof.
     destruct (is_loc (C a)) as [[l ty']|] eqn:?; eauto.
   (* assign right *)
   - eapply reducts_incl_trans with (C' := fun x => Eassign e1 x ty); eauto.
-    destruct (is_loc e1) as [[[ofs pt bf|b|b pt] ty1]|] eqn:?; eauto;
+    destruct (is_loc e1) as [[[ofs pt bf|b|b pt|ef pt] ty1]|] eqn:?; eauto;
       destruct (is_val (C a)) as [[[v2 vt2] ty2]|] eqn:?; eauto.
   (* assignop left *)
   - eapply reducts_incl_trans with (C' := fun x => Eassignop op x e2 tyres ty); eauto.
     destruct (is_loc (C a)) as [[l ty']|] eqn:?; eauto.
   (* assignop right *)
   - eapply reducts_incl_trans with (C' := fun x => Eassignop op e1 x tyres ty); eauto.
-    destruct (is_loc e1) as [[[ofs pt bf|b|b pt] ty1]|] eqn:?; eauto;
+    destruct (is_loc e1) as [[[ofs pt bf|b|b pt|ef pt] ty1]|] eqn:?; eauto;
       destruct (is_val (C a)) as [[[v2 vt2] ty2]|] eqn:?; eauto.
   (* postincr *)
   - eapply reducts_incl_trans with (C' := fun x => Epostincr id x ty); eauto.
@@ -2261,6 +2410,7 @@ Proof.
   - eapply reducts_incl_trans with (C' := fun x => Ecall e1 x ty). apply step_exprlist_context. auto.
     destruct (is_val e1) as [[[v1 vt1] ty1]|] eqn:?; eauto.
     destruct (is_val_list (C a)) as [vl|] eqn:?; eauto.
+    admit.
   (* comma *)
   - eapply reducts_incl_trans with (C' := fun x => Ecomma x e2 ty); eauto.
     destruct (is_val (C a)) as [[[v vt] ty']|] eqn:?; eauto.
@@ -2275,7 +2425,7 @@ Proof.
     (* binop right *)
     + eapply reducts_incl_trans with (C' := fun x => Econs e1 x).
       apply step_exprlist_context; eauto. eauto.
-Qed.
+Admitted.
 
 (** Completeness part 2: if we can reduce to [Stuckstate], [step_expr]
     contains at least one [Stuckred] reduction. *)
@@ -2779,10 +2929,13 @@ Definition do_initial_state (p: program) :
   option (MemoryResult (Genv.t (Ctypes.fundef function) type * Csem.state)) :=
   match Csem.globalenv p with
   | MemorySuccess (ge,ce,m) =>
-      dol b, pt <- Genv.find_symbol ge p.(prog_main);
-      do f <- Genv.find_funct_ptr ge b;
-      check (type_eq (type_of_fundef f) (Tfunction Tnil type_int32s cc_default));
-      Some (MemorySuccess (ge, Callstate f InitPCT def_tag nil Kstop m))
+      match Genv.find_symbol ge p.(prog_main) with
+      | Some (SymIFun _ b pt) =>
+          do f <- Genv.find_funct_ptr ge b;
+          check (type_eq (type_of_fundef f) (Tfunction Tnil type_int32s cc_default));
+          Some (MemorySuccess (ge, Callstate f InitPCT def_tag nil Kstop m))
+      | _ => None
+      end
   | MemoryFail msg failure => Some (MemoryFail msg failure)
   end.
 
@@ -2793,5 +2946,3 @@ Definition at_final_state (S: Csem.state): option int :=
   end.
 
 End Cexec.
-
-              
