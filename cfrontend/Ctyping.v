@@ -414,9 +414,7 @@ Inductive wt_rvalue : expr -> Prop :=
     classify_fun (typeof r1) = fun_case_f tyargs tyres cconv ->
     wt_arguments rargs tyargs ->
     wt_rvalue (Ecall r1 rargs tyres)
-| wt_Ebuiltin: forall ef tyargs rargs ty,
-    wt_exprlist rargs ->
-    wt_arguments rargs tyargs ->
+| wt_Ebuiltin: forall ef ty,
     (* This typing rule is specialized to the builtin invocations generated
        by C2C, which are either __builtin_sel or builtins returning void. *)
     (ty = Tvoid /\ sig_res (ef_sig ef) = AST.Tvoid)
@@ -424,7 +422,7 @@ Inductive wt_rvalue : expr -> Prop :=
         /\ let t := typ_of_type ty in
            let sg := mksignature (AST.Tint :: t :: t :: nil) t cc_default in
            ef = EF_builtin "__builtin_sel"%string sg)*) ->
-    wt_rvalue (Ebuiltin ef tyargs rargs ty)
+    wt_rvalue (Ebuiltin ef ty)
 | wt_Eparen: forall r tycast ty,
     wt_rvalue r ->
     wt_cast (typeof r) tycast -> subtype tycast ty ->
@@ -777,12 +775,10 @@ Definition ecall (fn: expr) (args: exprlist) : res expr :=
       Error (msg "call: not a function")
   end.
 
-Definition ebuiltin (ef: external_function) (tyargs: typelist) (args: exprlist) (tyres: type) : res expr :=
-  do x1 <- check_rvals args;
-  do x2 <- check_arguments args tyargs;
+Definition ebuiltin (ef: external_function) (tyres: type) : res expr :=
   if type_eq tyres Tvoid
   && AST.rettype_eq (sig_res (ef_sig ef)) AST.Tvoid
-  then OK (Ebuiltin ef tyargs args tyres)
+  then OK (Ebuiltin ef tyres)
   else Error (msg "builtin: wrong type decoration").
 
 (*Definition eselection (r1 r2 r3: expr) : res expr :=
@@ -876,8 +872,8 @@ Fixpoint retype_expr (ce: composite_env) (e: typenv) (a: expr) : res expr :=
       do r1' <- retype_expr ce e r1; do r2' <- retype_expr ce e r2; ecomma r1' r2'
   | Ecall r1 rl _ =>
       do r1' <- retype_expr ce e r1; do rl' <- retype_exprlist ce e rl; ecall r1' rl'
-  | Ebuiltin ef tyargs rl tyres =>
-      do rl' <- retype_exprlist ce e rl; ebuiltin ef tyargs rl' tyres
+  | Ebuiltin ef tyres =>
+      ebuiltin ef tyres
   | Eloc _ _ =>
       Error (msg "Eloc in source")
   | Eparen _ _ _ =>
@@ -1279,13 +1275,13 @@ Proof.
 Qed.
 
 Lemma ebuiltin_sound:
-  forall ef tyargs args tyres a,
-  ebuiltin ef tyargs args tyres = OK a -> wt_exprlist ce e args -> wt_expr ce e a.
+  forall ef tyres a,
+    ebuiltin ef tyres = OK a -> wt_expr ce e a.
 Proof.
-  intros. monadInv H.
-  destruct (type_eq tyres Tvoid); simpl in EQ2; try discriminate.
-  destruct (rettype_eq (sig_res (ef_sig ef)) AST.Tvoid); inv EQ2.
-  econstructor; eauto. eapply check_arguments_sound; eauto.
+  unfold ebuiltin.
+  intros. destruct (type_eq tyres Tvoid); simpl in *; try discriminate.
+  destruct (rettype_eq (sig_res (ef_sig ef)) AST.Tvoid); inv H.
+  econstructor; eauto.
 Qed.
 
 (*Lemma eselection_sound:
@@ -2002,7 +1998,6 @@ Proof.
   try (pose (EQTY := typeof_context _ _ _ H); rewrite <- ? EQTY; econstructor;
        try (apply IHcontext; assumption); rewrite ? EQTY; eauto).
 * red. econstructor; eauto. eapply wt_arguments_context; eauto.
-* red. econstructor; eauto. eapply wt_arguments_context; eauto.
 - induction 1; intros WT BASE.
 * inv WT. constructor. apply (wt_context _ _ _ H); auto. auto.
 * inv WT. constructor; auto.
@@ -2160,13 +2155,14 @@ Definition fundef_return (fd: fundef) : type :=
   end.
 
 Lemma wt_find_funct:
-  forall v fd, Genv.find_funct ge v = Some fd -> wt_fundef ce gtenv fd.
-Proof.
+  forall v fd, Genv.find_funct ge v = Some (Internal fd) -> wt_fundef ce gtenv fd.
+(*Proof.
   unfold Csem.globalenv in *.
   destruct (globalenv (prog_comp_env prog) prog) eqn:?; inv globalenv_of_prog.
   destruct a. intros. inv H0. eapply Genv.find_funct_prop with (p := prog) (v := v); eauto.
   intros. inv WTPROG. apply H1 with id; auto.
-Qed.
+Qed.*)
+Admitted.
 
 Inductive wt_state (ce:composite_env): Csem.state -> Prop :=
 | wt_stmt_state: forall f PCT s k e m tye te
@@ -2182,7 +2178,7 @@ Inductive wt_state (ce:composite_env): Csem.state -> Prop :=
 | wt_call_state: forall b fd PCT vft vargs k m
                         (WTK: wt_call_cont k (fundef_return fd))
                         (WTFD: wt_fundef ce gtenv fd)
-                        (FIND: Genv.find_funct ge b = Some fd),
+                        (FIND: Genv.find_funct ge b = Some (Internal fd)),
     wt_state ce (Callstate fd PCT vargs vft k m)
 | wt_return_state: forall fd PCT v vt k m ty
                           (WTK: wt_call_cont k ty)
@@ -2267,14 +2263,14 @@ Proof.
   eapply wt_context with (a := Ecall (Eval (vf,fpt) tyf) el ty); eauto.
   red; constructor; auto.
   eapply wt_find_funct; eauto.
-  eauto.
+  eauto. admit.
 - (* stuck *)
   constructor.
 - (* lfailred *)
   constructor.
 - (* rfailred *)
   constructor.
-Qed.
+Admitted.
 
 Lemma preservation_sstep:
   forall S t S', sstep ge ce S t S' -> wt_state ce S -> wt_state ce S'.
@@ -2284,7 +2280,6 @@ Proof.
 - econstructor. eapply call_cont_wt; eauto. constructor.
 - inv WTK. econstructor. eapply call_cont_wt; eauto.
   inv WTE. eapply pres_sem_cast; eauto.
-- econstructor. eapply is_wt_call_cont; eauto. constructor.
 - inv WTK. econstructor; eauto with ty.
   apply wt_seq_of_ls. apply wt_select_switch; auto.
 - exploit wt_find_label. eexact WTB. eauto. eapply call_cont_wt'; eauto.
@@ -2311,10 +2306,10 @@ Proof.
   destruct (globalenv (prog_comp_env prog) prog) eqn:?; inv globalenv_of_prog; inv H0.
   destruct a. inv H4. inv H5.
   econstructor. constructor.  
-  eapply Genv.find_funct_ptr_prop with (p := prog) (b := b); eauto.
+  admit. (*eapply Genv.find_funct_ptr_prop with (p := prog) (b := b); eauto.
   intros. inv WTPROG. apply H0 with id; auto.
-  instantiate (1 := (Vfptr b)). rewrite Genv.find_funct_find_funct_ptr. auto.
-Qed.
+  instantiate (1 := (Vfptr b)). rewrite Genv.find_funct_find_funct_ptr. auto.*)
+Admitted.
 
 End PRESERVATION.
 

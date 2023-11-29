@@ -869,9 +869,7 @@ let rec convertExpr env e =
   | C.ECompound(ty1, ie) ->
       unsupported "compound literals"; ezero
 
-  | C.ECall({edesc = C.EVar {name = "__builtin_debug"}}, args) when List.length args < 2 ->
-      error "too few arguments to function call, expected at least 2, have 0";
-      ezero
+      (* **** Not currently supported ***** *)
 (*  | C.ECall({edesc = C.EVar {name = "__builtin_debug"}}, args) ->
       let (kind, args1) =
         match args with
@@ -888,9 +886,9 @@ let rec convertExpr env e =
       Csyntax.Ebuiltin(
          AST.EF_debug(P.of_int64 kind, intern_string text,
                  Ctypes.typlist_of_typelist targs2),
-        targs2, convertExprList env args2, convertTyp env e.etyp)*)
+        targs2, convertExprList env args2, convertTyp env e.etyp)
 
-(*  | C.ECall({edesc = C.EVar {name = "__builtin_annot"}}, args) ->
+  | C.ECall({edesc = C.EVar {name = "__builtin_annot"}}, args) ->
       begin match args with
       | {edesc = C.EConst(CStr txt)} :: args1 ->
           let targs1 = convertTypAnnotArgs env args1 in
@@ -900,9 +898,9 @@ let rec convertExpr env e =
       | _ ->
           error "argument 1 of '__builtin_annot' must be a string literal";
           ezero
-      end*)
+      end
 
-(*  | C.ECall({edesc = C.EVar {name = "__builtin_annot_intval"}}, args) ->
+  | C.ECall({edesc = C.EVar {name = "__builtin_annot_intval"}}, args) ->
       begin match args with
       | [ {edesc = C.EConst(CStr txt)}; arg ] ->
           let targ = convertTyp env
@@ -913,9 +911,9 @@ let rec convertExpr env e =
       | _ ->
           error "argument 1 of '__builtin_annot_intval' must be a string literal";
           ezero
-      end*)
+      end
 
-(*  | C.ECall({edesc = C.EVar {name = "__builtin_ais_annot"}}, args) when Configuration.elf_target ->
+  | C.ECall({edesc = C.EVar {name = "__builtin_ais_annot"}}, args) when Configuration.elf_target ->
       begin match args with
       | {edesc = C.EConst(CStr txt)} :: args1 ->
         let file,line = !currentLocation in
@@ -929,11 +927,41 @@ let rec convertExpr env e =
       | _ ->
           error "argument 1 of '__builtin_ais_annot' must be a string literal";
           ezero
-      end*)
+      end
 
-(* | C.ECall({edesc = C.EVar {name = "__builtin_memcpy_aligned"}}, args) ->
-      make_builtin_memcpy (convertExprList env args)*)
+ | C.ECall({edesc = C.EVar {name = "__builtin_memcpy_aligned"}}, args) ->
+      make_builtin_memcpy (convertExprList env args)
 
+
+  | C.ECall({edesc = C.EVar {name = "__builtin_va_arg"}}, [arg1; arg2]) ->
+      make_builtin_va_arg env (convertTyp env e.etyp) (convertExpr env arg1)
+
+
+  | C.ECall({edesc = C.EVar {name = "__builtin_va_copy"}}, [arg1; arg2]) ->
+      let dst = convertExpr env arg1 in
+      let src = convertExpr env arg2 in
+      Csyntax.Ebuiltin( AST.EF_memcpy(Z.of_uint CBuiltins.size_va_list, Z.of_uint 4),
+               Tcons(Tpointer(Tvoid, noattr),
+                 Tcons(Tpointer(Tvoid, noattr), Tnil)),
+               Csyntax.Econs(va_list_ptr dst, Csyntax.Econs(va_list_ptr src, Csyntax.Enil)),
+               Tvoid)
+
+  | C.ECall({edesc = C.EVar {name = "__builtin_sel"}}, [arg1; arg2; arg3]) ->
+      ewrap (Ctyping.eselection (convertExpr env arg1)
+                                (convertExpr env arg2) (convertExpr env arg3))*)
+
+  (* ***** Supported but treated as normal functions ***** *)
+
+  (*| C.ECall({edesc = C.EVar {name = "__builtin_debug"}}, args) when List.length args < 2 ->
+      error "too few arguments to function call, expected at least 2, have 0";
+      ezero
+  
+  | C.ECall({edesc = C.EVar {name = "__builtin_expect"}}, [arg1; arg2]) ->
+      convertExpr env arg1
+
+  | C.ECall({edesc = C.EVar {name = "__builtin_va_end"}}, _) ->
+      Csyntax.Ecast (ezero, Tvoid)
+  
   | C.ECall({edesc = C.EVar {name = "__builtin_fabs"}}, [arg]) ->
       ewrap (Ctyping.eunop Values.Oabsfloat (convertExpr env arg))
 
@@ -941,29 +969,7 @@ let rec convertExpr env e =
       Csyntax.Ecall(convertExpr env fn,
             Csyntax.Econs(va_list_ptr(convertExpr env arg), Csyntax.Enil),
             convertTyp env e.etyp)
-
-(*  | C.ECall({edesc = C.EVar {name = "__builtin_va_arg"}}, [arg1; arg2]) ->
-      make_builtin_va_arg env (convertTyp env e.etyp) (convertExpr env arg1)*)
-
-  | C.ECall({edesc = C.EVar {name = "__builtin_va_end"}}, _) ->
-      Csyntax.Ecast (ezero, Tvoid)
-
-(*  | C.ECall({edesc = C.EVar {name = "__builtin_va_copy"}}, [arg1; arg2]) ->
-      let dst = convertExpr env arg1 in
-      let src = convertExpr env arg2 in
-      Csyntax.Ebuiltin( AST.EF_memcpy(Z.of_uint CBuiltins.size_va_list, Z.of_uint 4),
-               Tcons(Tpointer(Tvoid, noattr),
-                 Tcons(Tpointer(Tvoid, noattr), Tnil)),
-               Csyntax.Econs(va_list_ptr dst, Csyntax.Econs(va_list_ptr src, Csyntax.Enil)),
-               Tvoid)*)
-
-(*  | C.ECall({edesc = C.EVar {name = "__builtin_sel"}}, [arg1; arg2; arg3]) ->
-      ewrap (Ctyping.eselection (convertExpr env arg1)
-                                (convertExpr env arg2) (convertExpr env arg3))*)
-
-  | C.ECall({edesc = C.EVar {name = "__builtin_expect"}}, [arg1; arg2]) ->
-      convertExpr env arg1
-
+  
   | C.ECall({edesc = C.EVar {name = "printf"}}, args)
     when !Clflags.option_interp ->
       let targs = convertTypArgs env [] args
@@ -982,8 +988,7 @@ let rec convertExpr env e =
       and tres = convertTyp env e.etyp in
       let sg = signature_of_type targs tres AST.cc_default in
       Csyntax.Ebuiltin( AST.EF_external(coqstring_of_camlstring "fgets", sg),
-               targs, convertExprList env [arg1;arg2], tres)
-       
+               targs, convertExprList env [arg1;arg2], tres)*)   
 
   | C.ECall(fn, args) ->
       begin match projFunType env fn.etyp with
