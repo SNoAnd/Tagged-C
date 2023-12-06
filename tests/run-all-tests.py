@@ -57,7 +57,7 @@ if __name__ == '__main__':
     print("\n=======\npvi tests (without input)\n=======")
 
     runACFileWithoutInput("printf_test.c", PVI,
-                          b'Hello World!\nTime 160: observable event: extcall printf(2986LL) -> 13\nTime 166: program terminated (exit code = 0)\n'
+                          b'Hello World!\n'
                           )
     runACFileWithoutInput("heap_load_store_ib.c", PVI,
                           nofault_cleanexit)
@@ -71,11 +71,11 @@ if __name__ == '__main__':
 
     print("\n=======\ndfree tests without input\n=======")
     runACFileWithoutInput("double_free_no_input_handlabelled.c", doublefree,
-                          b'Failstop on policy \n  DoubleFree::FreeT detects two colors:  FreeColor label1, Unallocated, FreeColor label1, FreeColor label0\n'
+                          b'DoubleFree::FreeT detects two colors:  FreeColor label1, Unallocated, FreeColor label1, FreeColor label0\n'
                           )
 
     runACFileWithoutInput("printf_test.c", doublefree,
-                          b'Hello World!\nTime 160: observable event: extcall printf(2986LL) -> 13\nTime 166: program terminated (exit code = 0)\n'
+                          b'Hello World!\n'
                           )
     
     print("=======\ndfree tests with input\n=======")

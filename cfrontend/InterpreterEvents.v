@@ -115,7 +115,7 @@ Module InterpreterEvents (P:Policy) (A:Allocator P).
           check (typ_eq t AST.Tptr);
           do id <- invert_symbol_block ge b;
           match find_symbol ge id with
-          | Some (inl (b,pt)) =>
+          | Some (SymIFun _ b pt) =>
               check (public_symbol ge id);
               check (tag_eq_dec vt pt);
               Some (EVptr_fun id)
@@ -172,7 +172,7 @@ Module InterpreterEvents (P:Policy) (A:Allocator P).
         check (Genv.public_symbol ge id);
         check (typ_eq t AST.Tptr);
         match Genv.find_symbol ge id with
-        | Some (inl (b,pt)) =>
+        | Some (SymIFun _ b pt) =>
           Some (Vfptr b, pt)
         | _ => None
         end    
@@ -208,15 +208,18 @@ Module InterpreterEvents (P:Policy) (A:Allocator P).
         rewrite H1 in Heqo0. inv Heqo0. destruct H2.
         rewrite Int64.unsigned_repr in *; eauto.
         eapply ev_match_global; eauto. *)
-      - apply (invert_find_symbol_block ce) in Heqo. destruct Heqo. rewrite H in Heqo0.
-        inv Heqo0. auto.
-      Qed.
+      - eapply (invert_find_symbol_block ge) in Heqo. destruct Heqo. rewrite H in Heqo0.
+        inv Heqo0. intros.
+        destruct (public_symbol ge i) eqn:?; try congruence.
+        destruct (tag_eq_dec t0 x) eqn:?; try congruence.
+        inv H0. constructor; auto.
+    Qed.
 
     Lemma eventval_of_atom_complete:
       forall ev t v, eventval_match ge ev t v -> eventval_of_atom v t = Some ev.
     Proof.
       induction 1; simpl; repeat (rewrite dec_eq_true); auto.
-      rewrite (Genv.find_invert_symbol_block ce _ _ H0). rewrite H0.
+      rewrite (Genv.find_invert_symbol_block _ _ H0). rewrite H0.
       simpl in H; rewrite H.
       rewrite dec_eq_true. auto.
     Qed.
@@ -241,7 +244,8 @@ Module InterpreterEvents (P:Policy) (A:Allocator P).
     Lemma atom_of_eventval_sound:
       forall ev t v, atom_of_eventval ev t = Some v -> eventval_match ge ev t v.
     Proof.
-      intros until v. destruct ev; simpl; mydestr; constructor; auto.
+      intros until v. destruct ev; simpl; mydestr; try constructor; auto.
+      destruct s; try congruence. intros. inv H. constructor; auto.
     Qed.
 
     Lemma atom_of_eventval_complete:

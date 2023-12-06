@@ -39,7 +39,8 @@ Module Csyntax (P:Policy) (A:Allocator P).
   Inductive loc_kind : Type :=
   | Lmem (ofs: int64) (pt: tag) (bf: bitfield)
   | Ltmp (b: block)
-  | Lfun (b: block) (pt: tag)
+  | Lifun (b: block) (pt: tag)
+  | Lefun (ef: external_function) (tyargs: typelist) (tyres:rettype) (cconv: calling_convention) (pt: tag)
   .
   
   (** ** Expressions *)
@@ -73,8 +74,8 @@ Module Csyntax (P:Policy) (A:Allocator P).
                                           (**r post-increment [l++] and post-decrement [l--] *)
   | Ecomma (r1 r2: expr) (ty: type)                        (**r sequence expression [r1, r2] *)
   | Ecall (r1: expr) (rargs: exprlist) (ty: type)             (**r function call [r1(rargs)] *)
-  | Ebuiltin (ef: external_function) (tyargs: typelist) (rargs: exprlist) (ty: type)
-                                                                  (**r builtin function call *)
+  | Ebuiltin (ef: external_function) (tyargs: typelist) (cc: calling_convention) (ty: type)
+                                                                  (**r builtin function name *)
   | Eloc (l:loc_kind) (ty: type)               (**r location, result of evaluating a l-value *)
   | Eparen (r: expr) (tycast: type) (ty: type)                     (**r marked subexpression *)
          

@@ -202,6 +202,8 @@ let print_typed_value p vty =
       fprintf p "%LdLL" (camlint64_of_coqint n)
   | (Vfptr b, _) ->
       fprintf p "<ptr%a>" !print_pointer_hook (b,coqint_of_camlint 0l)
+  | (Vefptr(_, _, _, _),_) ->
+      fprintf p "<builtin>"
   | (Vundef, _) ->
       fprintf p "<undef>"
 
@@ -221,8 +223,10 @@ let rec expr p (prec, e) =
       fprintf p "<loc%a>" !print_pointer_hook (P.one, ofs)
   | Csyntax.Eloc(Csyntax.Ltmp b, _) ->
       fprintf p "<loc%a>" !print_pointer_hook (b, BinNums.Z0)
-  | Csyntax.Eloc(Csyntax.Lfun (b, _), _) ->
+  | Csyntax.Eloc(Csyntax.Lifun (b, _), _) ->
       fprintf p "<loc%a>" !print_pointer_hook (b, BinNums.Z0)
+  | Csyntax.Eloc(Csyntax.Lefun (ef, _, _, _, _), _) ->
+      fprintf p "<builtin>"
   | Csyntax.Evar(id, _) ->
       fprintf p "%s" (extern_atom id)
   | Csyntax.Ederef(a1, _) ->
@@ -291,8 +295,8 @@ let rec expr p (prec, e) =
   | Csyntax.Ebuiltin(Csyntax.EF_builtin(name, _), _, args, _) ->
       fprintf p "%s@[<hov 1>(%a)@]"
                 (camlstring_of_coqstring name) exprlist (true, args)*)
-  | Csyntax.Ebuiltin(_, _, args, _) ->
-      fprintf p "<unknown builtin>@[<hov 1>(%a)@]" exprlist (true, args)
+  | Csyntax.Ebuiltin(_, _, _, _) ->
+      fprintf p "<unknown builtin>"
   | Csyntax.Eparen(a1, tycast, ty) ->
       fprintf p "(%s) %a" (name_type tycast) expr (prec', a1)
   end;

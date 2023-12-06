@@ -93,12 +93,12 @@ Fixpoint subtype_list (tyl1 tyl2: list typ) : bool :=
     types below. *)
 
 Inductive rettype : Type :=
-  | Tret (t: typ)                       (**r like type [t] *)
-  | Tint8signed                         (**r 8-bit signed integer *)
-  | Tint8unsigned                       (**r 8-bit unsigned integer *)
-  | Tint16signed                        (**r 16-bit signed integer *)
-  | Tint16unsigned                      (**r 16-bit unsigned integer *)
-  | Tvoid.                              (**r no value returned *)
+| Tret (t: typ)                       (**r like type [t] *)
+| Tint8signed                         (**r 8-bit signed integer *)
+| Tint8unsigned                       (**r 8-bit unsigned integer *)
+| Tint16signed                        (**r 16-bit signed integer *)
+| Tint16unsigned                      (**r 16-bit unsigned integer *)
+| Tvoid.                              (**r no value returned *)
 
 Coercion Tret: typ >-> rettype.
 
@@ -159,16 +159,16 @@ Definition signature_main :=
   chunk of memory being accessed. *)
 
 Inductive memory_chunk : Type :=
-  | Mint8signed     (**r 8-bit signed integer *)
-  | Mint8unsigned   (**r 8-bit unsigned integer *)
-  | Mint16signed    (**r 16-bit signed integer *)
-  | Mint16unsigned  (**r 16-bit unsigned integer *)
-  | Mint32          (**r 32-bit integer, or pointer *)
-  | Mint64          (**r 64-bit integer *)
-  | Mfloat32        (**r 32-bit single-precision float *)
-  | Mfloat64        (**r 64-bit double-precision float *)
-  | Many32          (**r any value that fits in 32 bits *)
-  | Many64.         (**r any value *)
+| Mint8signed     (**r 8-bit signed integer *)
+| Mint8unsigned   (**r 8-bit unsigned integer *)
+| Mint16signed    (**r 16-bit signed integer *)
+| Mint16unsigned  (**r 16-bit unsigned integer *)
+| Mint32          (**r 32-bit integer, or pointer *)
+| Mint64          (**r 64-bit integer *)
+| Mfloat32        (**r 32-bit single-precision float *)
+| Mfloat64        (**r 64-bit double-precision float *)
+| Many32          (**r any value that fits in 32 bits *)
+| Many64.         (**r any value *)
 
 Definition chunk_eq: forall (c1 c2: memory_chunk), {c1=c2} + {c1<>c2}.
 Proof. decide equality. Defined.

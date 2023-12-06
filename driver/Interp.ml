@@ -24,7 +24,6 @@ open! Ctypes
 open Maps
 open Tags
 open PrintCsyntax
-open Datatypes
 open Allocator
 
 (* Configuration *)
@@ -562,7 +561,7 @@ and world_vload ge m chunk id ofs =
   Genv.find_symbol ge id >>=
           fun res ->
                 match res with
-                | Coq_inr((base,bound),t) ->
+                | Genv.SymGlob(base,bound,t,gv) ->
                         (match A.load chunk m ofs with
                          | Memory.MemorySuccess v ->
                            Cexec.InterpreterEvents.eventval_of_atom ge v (type_of_chunk chunk) >>= fun ev ->
@@ -574,7 +573,7 @@ and world_vstore ge m chunk id ofs ev =
   Genv.find_symbol ge id >>=
           fun res ->
                 match res with
-                | Coq_inr((base,bound),t) ->
+                | Genv.SymGlob(base,bound,t,gv) ->
                         Cexec.InterpreterEvents.atom_of_eventval ge ev (type_of_chunk chunk) >>= fun v ->
                         (match A.store chunk m ofs v [] with
                          | Memory.MemorySuccess m' -> Some(world ge m')
@@ -627,10 +626,9 @@ let diagnose_stuck_expr p ge ce w f a kont pct e te m =
     | Csem.RV, Csyntax.Ecomma(r1, r2, ty) -> diagnose Csem.RV r1
     | Csem.RV, Csyntax.Eparen(r1, tycast, ty) -> diagnose Csem.RV r1
     | Csem.RV, Csyntax.Ecall(r1, rargs, ty) -> diagnose Csem.RV r1 ||| diagnose_list rargs
-    | Csem.RV, Csyntax.Ebuiltin(ef, tyargs, rargs, ty) -> diagnose_list rargs
     | _, _ -> false in
   if found then true else begin
-    let l = Cexec.step_expr ge ce do_external_function (*do_inline_assembly*) e w k pct a te m in
+    let l = Cexec.step_expr ge ce (*do_inline_assembly*) e w k pct a te m in
     if List.exists (fun (ctx,red) -> is_stuck red) l then begin
       Printing.print_pointer_hook := print_pointer ge e;
       fprintf p "@[<hov 2>Stuck subexpression:@ %a@]@."
