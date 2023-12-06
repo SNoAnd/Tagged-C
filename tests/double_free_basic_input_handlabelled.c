@@ -1,8 +1,8 @@
 /**
  * @file double_free_basic_input_handlabelled.c
- * @brief Most basic DoubleFree tagged policy violation for fuzzing.
- *      Free sites are hand labelled
- *      Looking at godbolt (I think these are in asm D, S form >.< )
+ * @brief Most basic DoubleFree tagged policy violation for fuzzing, 
+ * doublefrees regardless of input.
+ * @note Free sites are hand labelled
  */
 #include <stdlib.h> 
 #include <stdio.h>

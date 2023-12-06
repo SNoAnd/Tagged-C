@@ -1,7 +1,12 @@
 #Combine this config file with the config yaml to fuzz the haystack SUT
 #
-# VMF Variable parameters
-# Such as SUT args and input directory path
+# This one has target (SUT) specific stuff,
+#   such as as SUT args and input directory path
+#
+# Note that is one will always crash, 
+# which causes VMF to crash on the first iteration by default
+# invoke with
+# ./bin/vader -c test/config/PipeCliInterpreter_basicModules.yaml -c ~/fuzzer/tagged-c/tests/pipe-cleaner_vmf_dfree_basic_input.yaml
 
 vmfVariables:
   - &SUT_ARGV /home/amn/fuzzer/tagged-c/tests/double_free_basic_input_handlabelled.c
@@ -17,6 +22,10 @@ vmfFramework:
   logLevel : 0 #0=DEBUG, 1=INFO, 2=WARNING, 3=ERROR
 
 # Modules and their specific parameters
+controller:
+  runTimeInMinutes: 5 
+
+# NB there is one for the stats output
 PipeCliInterpreterInitialization:
   diagnostic_test_bin : *DIAGNOSTIC_BIN
   interp:  *INTERP_PATH
@@ -31,3 +40,10 @@ PipeCliInterpreterExecutor:
 
 DirectoryBasedSeedGen:
   inputDir: *INPUT_DIR
+
+# This lets it mutate crashing inputs.
+# this faults regardless of input, so it should all dedup down to
+#   the same entry
+# otherwise its normal test cases only
+GeneticAlgorithmInputGenerator:
+  enableMutationOfCrashes: true
