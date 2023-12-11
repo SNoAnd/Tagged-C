@@ -3,9 +3,11 @@
 # (vmf_install)$  ./bin/vader -c test/config/PipeCLIInterpreter_basicModules.yaml -c ~/fuzzer/tagged-c/tests/pipe-cleaner_vmf_dfree_confused_cleanup_1.yaml 
 
 vmfVariables:
-  - &SUT_ARGV "/home/amn/fuzzer/tagged-c/tests/double_free_confused_multi_handlabelled.c"
+  - &SUT_ARGV "/home/amn/fuzzer/tagged-c/tests/double_free_confused_cleanup_multi_handlabelled.c"
   - &INTERP_PATH /home/amn/fuzzer/tagged-c/ccomp
-  - &INPUT_DIR /home/amn/fuzzer/test_inputs/
+  # the traditional seed of Hello, World! crashes because [3] !=0
+  #   maybe I should have made a less crashy test :/
+  - &INPUT_DIR /home/amn/fuzzer/test_inputs_multi/
   - &DIAGNOSTIC_BIN /home/amn/fuzzer/tagged-c/tests/double_free_no_input_handlabelled.c
 
 # VMF Framework parameters

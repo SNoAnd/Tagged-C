@@ -1,6 +1,6 @@
 #Combine this config file with the config yaml 
 # this one is the target (SUT) specific stuff 
-# (vmf_install)$  ./bin/vader -c test/config/PipeCLIInterpreter_basicModules.yaml -c ~/fuzzer/tagged-c/tests/pipe-cleaner_vmf_dfree_confused_cleanup_1.yaml 
+# (~/fuzzer/pipe-cleaner-vmf-fuzzer/build/vmf_install)$  ./bin/vader -c test/config/PipeCLIInterpreter_basicModules.yaml -c ~/fuzzer/tagged-c/tests/pipe-cleaner_vmf_dfree_confused_cleanup_1.yaml 
 
 vmfVariables:
   - &SUT_ARGV "/home/amn/fuzzer/tagged-c/tests/double_free_confused_cleanup_1_handlabelled.c"

@@ -18,12 +18,12 @@
  *            -> for x, triggers dfree for x, label3, label4
  *      "220" -> 0
  *            -> for input, free at label0 (safe)
- *            -> for x, free at label4 (safe, skips label 3)
+ *            -> for x, free at label4 (safe) (skips label 3)
  *              
  *  ! = 33 dec ( /3 but not /2)
  *      "!!!" -> 1
  *            -> for input, triggers dfree at label1, label2
- *            -> for x, triggers dfree for x, label3, label4
+ *            -> for x, triggers dfree, label3, label4 (if we got there)
  *      "!!0" -> 2 (only input will trigger)
  *            -> for input, triggers dfree at label1, label2 
  *            -> for x, free at label4 (safe)
