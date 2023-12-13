@@ -21,6 +21,10 @@ vmfFramework:
 controller:
   runTimeInMinutes: 5  
 
+StatsOutput:
+  # every 3 minutes 
+  outputRateInSeconds:  60
+
 PipeCliInterpreterInitialization:
   diagnostic_test_bin : *DIAGNOSTIC_BIN
   interp:  *INTERP_PATH
