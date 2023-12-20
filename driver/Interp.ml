@@ -34,6 +34,8 @@ type mode = First | Random | All
 
 let mode = ref First
 
+let timeoutMaxSteps = ref 0
+
 module InterpP =
         functor (Pol: Policy) (Alloc: Allocator) ->
         struct
@@ -689,6 +691,8 @@ let do_step p prog ge ce time s w =
 let rec explore_one p prog ge ce time s w =
   if !trace >= 2 then
     fprintf p "@[<hov 2>Time %d:@ %a@]@." time print_state (prog, (ge,ce), s);
+  if !timeoutMaxSteps > 0 && time > !timeoutMaxSteps then 
+    exit 43;
   let succs = do_step p prog ge ce time s w in
   if succs <> [] then begin
     let (r, s', w') =
