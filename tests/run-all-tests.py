@@ -7,6 +7,7 @@ import subprocess
 # track total failures
 global testsfailed 
 testsfailed = 0
+defaulttimeout = 1000 # default # of steps to allow to run
 # strings to reuse
 doublefree = "dfree"
 PVI = "pvi"
@@ -20,7 +21,7 @@ nofault_cleanexit = b'program terminated (exit code = 0)'
 def runACFileWithoutInput (filename, policy, expectedoutput):
     print(f"\ttesting {filename} with {policy} policy")
     # run is a blocking call
-    completed_run = subprocess.run(["bash", "-c", f"../ccomp -interp -p {policy} {filename}"],
+    completed_run = subprocess.run(["bash", "-c", f"../ccomp -interp -timeout {defaulttimeout} -p {policy} {filename}"],
                                    capture_output=True )
 
     # this is not fancy, but it should keep me from checking in dumb mistakes
@@ -33,7 +34,7 @@ def runACFileWithoutInput (filename, policy, expectedoutput):
 
 def runACFileWithInput (filename, policy, testinput, expectedoutput):
     print(f"\n\ttesting {filename} with {policy} policy on input {testinput}")
-    with subprocess.Popen(["bash", "-c", f"../ccomp -interp -p {policy} {filename}"],
+    with subprocess.Popen(["bash", "-c", f"../ccomp -interp -timeout {defaulttimeout} -p {policy} {filename}"],
                           stdout=subprocess.PIPE,
                           stdin=subprocess.PIPE,
                           stderr=subprocess.PIPE) as process:
