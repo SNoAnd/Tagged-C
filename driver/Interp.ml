@@ -691,8 +691,10 @@ let do_step p prog ge ce time s w =
 let rec explore_one p prog ge ce time s w =
   if !trace >= 2 then
     fprintf p "@[<hov 2>Time %d:@ %a@]@." time print_state (prog, (ge,ce), s);
-  if !timeoutMaxSteps > 0 && time > !timeoutMaxSteps then 
-    exit 43;
+  if !timeoutMaxSteps > 0 && time > !timeoutMaxSteps then
+    (fprintf p "ERROR: Timeout Exceeded."; 
+    exit 43);
+    (*ignore (exit 43);  stops printing entirely. ignores side effects and we dont care that exit never returns *)
   let succs = do_step p prog ge ce time s w in
   if succs <> [] then begin
     let (r, s', w') =
