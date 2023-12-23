@@ -232,7 +232,7 @@ Module Genv (P:Policy) (A:Allocator P).
         : (t*mem) :=
         match idg#2 with
         | Gvar gv =>
-            let '(pt, vt, lt) := GlobalT ce (idg#1) Tvoid in
+            let '(pt, vt, lt) := GlobalT Cabs.no_loc ce (idg#1) Tvoid in
             match alloc_global ge m tree (idg#1) gv vt lt with
             | MemorySuccess (base', m') =>
                 let size := Zpos gv.(gvar_size) in

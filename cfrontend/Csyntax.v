@@ -198,6 +198,24 @@ with labeled_statements : Type :=            (**r cases of a [switch] *)
   | LSnil: labeled_statements
   | LScons: option Z -> statement -> labeled_statements -> labeled_statements.
                       (**r [None] is [default], [Some x] is [case x] *)
+
+Fixpoint loc_of (s : statement) : Cabs.loc :=
+  match s with
+  | Sskip => no_loc
+  | Sdo _ l => l
+  | Ssequence s1 _ => loc_of s1
+  | Sifthenelse _ _ _ _ l => l
+  | Swhile _ _ _ l => l
+  | Sdowhile _ _ _ l => l
+  | Sfor _ _ _ _ _ l => l
+  | Sbreak l => l
+  | Scontinue l => l
+  | Sreturn _ l => l
+  | Sswitch _ _ l => l
+  | Slabel _ s => loc_of s
+  | Sgoto _ l => l
+  end.
+  
 (** ** Functions *)
 
 (** A function definition is composed of its return type ([fn_return]),

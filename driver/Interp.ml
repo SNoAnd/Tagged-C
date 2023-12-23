@@ -189,18 +189,18 @@ let print_state p (prog, ge, s) =
 	      (print_tag pct)
               Printing.print_stmt s;
               if !trace > 2 then print_mem p (fst m) else ()
-  | Csem.ExprState(f, pct, r, k, e, te, m) ->
+  | Csem.ExprState(f, l, pct, r, k, e, te, m) ->
       Printing.print_pointer_hook := print_pointer (fst ge) e;
       fprintf p "in function %s, pct %s, expression@ @[<hv 0>%a@]"
               (name_of_function prog f)
 	      (print_tag pct)
               Printing.print_expr r
-  | Csem.Callstate(fd, pct, fpt, args, k, m) ->
+  | Csem.Callstate(fd, l, pct, fpt, args, k, m) ->
       Printing.print_pointer_hook := print_pointer (fst ge) Maps.PTree.empty;
       fprintf p "calling@ @[<hov 2>%s(%a)@]"
               (name_of_fundef prog fd)
               print_val_list (List.map fst args)
-  | Csem.Returnstate(pct, fd, res, k, m) ->
+  | Csem.Returnstate(pct, fd, l, res, k, m) ->
       Printing.print_pointer_hook := print_pointer (fst ge) Maps.PTree.empty;
       fprintf p "returning@ %a"
               print_val (fst res)
@@ -609,7 +609,7 @@ let is_stuck r =
   | Cexec.Stuckred msg -> true
   | _ -> false
 
-let diagnose_stuck_expr p ge ce w f a kont pct e te m =
+let diagnose_stuck_expr p ge ce w f a kont pct l e te m =
   let rec diagnose k a =
   (* diagnose subexpressions first *)
   let found =
@@ -630,7 +630,7 @@ let diagnose_stuck_expr p ge ce w f a kont pct e te m =
     | Csem.RV, Csyntax.Ecall(r1, rargs, ty) -> diagnose Csem.RV r1 ||| diagnose_list rargs
     | _, _ -> false in
   if found then true else begin
-    let l = Cexec.step_expr ge ce (*do_inline_assembly*) e w k pct a te m in
+    let l = Cexec.step_expr ge ce (*do_inline_assembly*) e w k pct l a te m in
     if List.exists (fun (ctx,red) -> is_stuck red) l then begin
       Printing.print_pointer_hook := print_pointer ge e;
       fprintf p "@[<hov 2>Stuck subexpression:@ %a@]@."
@@ -647,7 +647,7 @@ let diagnose_stuck_expr p ge ce w f a kont pct e te m =
   in diagnose Csem.RV a
 
 let diagnose_stuck_state p ge ce w = function
-  | Csem.ExprState(f,pct,a,k,e,te,m) -> ignore(diagnose_stuck_expr p ge ce w f a k pct e te m)
+  | Csem.ExprState(f,l,pct,a,k,e,te,m) -> ignore(diagnose_stuck_expr p ge ce w f a k l pct e te m)
   | _ -> ()
 
 (* Execution of a single step.  Return list of triples
