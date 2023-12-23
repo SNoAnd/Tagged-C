@@ -17,7 +17,15 @@ vmfFramework:
 
 # Modules and their specific parameters
 controller:
-  runTimeInMinutes: 5  
+  runTimeInMinutes: 2  
+
+storage:
+  # TODO rip this out properly. RN its testcase size
+  #sortByKey: FITNESS
+  sortOrder: ASCENDING
+
+SaveCorpusOutput:
+  tagsToSave: ["CRASHED", "HUNG", "PIPE_POLICYFAILURE"]
 
 PipeCliInterpreterInitialization:
   diagnostic_test_bin : *DIAGNOSTIC_BIN

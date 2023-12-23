@@ -18,12 +18,20 @@ vmfVariables:
 # Such as logging path, logging level, plugin path
 
 vmfFramework:
-  outputBaseDir: output
+  outputBaseDir: output-basic
   logLevel : 0 #0=DEBUG, 1=INFO, 2=WARNING, 3=ERROR
 
 # Modules and their specific parameters
 controller:
-  runTimeInMinutes: 5 
+  runTimeInMinutes: 2 
+
+storage:
+  # TODO rip this out properly. RN its testcase size
+  #sortByKey: FITNESS
+  sortOrder: ASCENDING
+
+SaveCorpusOutput:
+  tagsToSave: ["CRASHED", "HUNG", "PIPE_POLICYFAILURE"]
 
 # NB there is one for the stats output
 PipeCliInterpreterInitialization:

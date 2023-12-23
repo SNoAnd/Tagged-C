@@ -14,16 +14,26 @@ vmfVariables:
 # Such as logging path, logging level, plugin path
 
 vmfFramework:
-  outputBaseDir: output
+  outputBaseDir: output-cc-multi
+  # pipe tags arent saved seperated by default
+  tagsToSave: ["CRASHED", "HUNG", "PIPE_POLICYFAILURE"]
   logLevel : 0 #0=DEBUG, 1=INFO, 2=WARNING, 3=ERROR
 
 # Modules and their specific parameters
 controller:
   runTimeInMinutes: 5  
 
-StatsOutput:
+storage:
+  # TODO rip this out properly. RN its testcase size
+  #sortByKey: FITNESS
+  sortOrder: ASCENDING
+
+SaveCorpusOutput:
+  tagsToSave: ["CRASHED", "HUNG", "PIPE_POLICYFAILURE"]
+
+#StatsOutput:
   # every 3 minutes 
-  outputRateInSeconds:  60
+  #outputRateInSeconds:  60
 
 PipeCliInterpreterInitialization:
   diagnostic_test_bin : *DIAGNOSTIC_BIN
