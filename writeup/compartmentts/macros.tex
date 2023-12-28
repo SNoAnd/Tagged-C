@@ -1,0 +1,313 @@
+\newif\ifdraft \draftfalse
+\newif\iftext \textfalse
+\newif\iflater \laterfalse
+\newif\ifspace \spacefalse
+\newif\ifaftersubmission \aftersubmissionfalse
+\newif\ifcameraready  \camerareadyfalse
+\newif\ifexceptions \exceptionsfalse
+
+% !!! PLEASE DON'T CHANGE THESE !!! INSTEAD DEFINE YOUR OWN texdirectives.tex !!!
+\makeatletter \@input{texdirectives} \makeatother
+
+\newcommand{\gentag}[1][]{\mathit{\color{blue} t#1}}
+\newcommand{\vt}[1][]{\mathit{\color{blue} vt#1}}
+\newcommand{\pt}[1][]{\mathit{\color{blue} pt#1}}
+\newcommand{\lt}[1][]{\mathit{\color{blue} lt#1}}
+%\newcommand{\lts}{\overline{\color{blue} \lt}}
+\newcommand{\nt}[1][]{\mathit{\color{blue} nt#1}}
+\newcommand{\PCT}[1][]{\mathcal{\color{blue} P\mathit{#1}}}
+
+\newcommand{\FN}[1][f]{\mathtt{\color{blue} #1}_{\color{blue} \mathit{fun}}}
+\newcommand{\AN}[1][x]{\mathtt{\color{blue} #1}_{\color{blue} \mathit{arg}}}
+\newcommand{\GN}[1][x]{\mathtt{\color{blue} #1}_{\color{blue} \mathit{glb}}}
+\newcommand{\LN}[1][L]{\mathtt{\color{blue} #1}_{\color{blue} \mathit{lbl}}}
+\newcommand{\LNS}{\mathtt{\color{blue} \mathit{lbls}}}
+\newcommand{\TN}[1][ty]{\mathtt{\color{blue} #1}_{\color{blue} \mathit{typ}}}
+
+\newcommand{\apt}[1]{\ifdraft\textcolor{orange}{{[APT:~#1]}}\fi}
+\newcommand{\sna}[1]{\ifdraft\textcolor{green!100}{{[SNA:~#1]}}\fi}
+\newcommand{\amn}[1]{\ifdraft\textcolor{purple}{{AN:~#1}}\fi}
+
+\newcommand{\deftag}{\mathit{\color{blue} def}}
+
+%%% Policy Specific Tags %%%
+\newcommand{\N}{\textnormal{\color{blue} \sc n}}
+%% Initial Example %%
+\newcommand{\PT}{\mathit{\color{blue} \AN[pwd]}}
+\newcommand{\M}{{\color{blue} M}}
+%% Memory Safety %%
+\newcommand{\clr}[1][c]{\textnormal{\color{blue} \sc clr}{\color{blue}(\mathit{#1})}}
+\newcommand{\CAST}{\color{blue} \mathit{CAST}}
+\newcommand{\tagz}{{\color{blue} 0}}
+\newcommand{\tagone}{{\color{blue} 1}}
+\newcommand{\tagtwo}{{\color{blue} 2}}
+%% SIF %%
+\newcommand{\high}{\textnormal{\color{blue} \sc h}}
+\newcommand{\low}{\textnormal{\color{blue} \sc l}}
+\newcommand{\vtaint}[1]{\mathit{\color{blue} vtaint ~ #1}}
+\newcommand{\pctaint}[1]{\textnormal{\sc \color{blue} pc} \mathit{\color{blue} ~ #1}}
+\newcommand{\vol}{\mathit{\color{blue} vol}}
+\newcommand{\sink}[1]{\mathit{\color{blue} sink ~ #1}}
+
+%% Tag @ %%
+\newcommand{\tagat}{{\color{blue} @}}
+
+\newcommand{\fail}{\mathbf{\color{red} fail}}
+
+\newcommand{\trule}[2]{{\color{blue} #1 \leftarrow #2}}
+
+\newcommand{\truledef}[1]{
+  & \multispan{3} \({\color{blue} #1}\) \\}
+
+\newcommand{\assert}[1]{& & & \multispan{2} \(\mathbf{assert} ~ #1\) \hfill \\}
+\newcommand{\letin}[1]{& & & \multispan{2} \(\mathit{let} ~ #1 ~ \mathit{in}\) \\}
+
+\newcommand{\settag}[2]{\boldsymbol{#1} & \longleftarrow & & \mathit{#2}\\}
+\newcommand{\settagopt}[2]{\optional{\(\boldsymbol{#1}\)} & \longleftarrow & & \mathit{#2}\\}
+
+%%% Continuations, States, Values %%%
+
+\newcommand{\kemp}{\mathit{Kemp}}
+\newcommand{\kdo}[1]{\mathit{Kdo};~ #1}
+\newcommand{\kseq}[2]{\mathit{Kseq} ~ #1; ~ #2}
+\newcommand{\kif}[4]{\mathit{Kif} ~ #1 ~ #2 ~ #3; ~ #4}
+\newcommand{\kwhiletest}[4]{\mathit{KwhileTest} ~ #1 ~ #2 ~ #3; ~ #4}
+\newcommand{\kwhileloop}[4]{\mathit{KwhileLoop} ~ #1 ~ #2 ~ #3; ~ #4}
+\newcommand{\kdowhiletest}[4]{\mathit{KdoWhileTest} ~ #1 ~ #2 ~ #3; ~ #4}
+\newcommand{\kdowhileloop}[4]{\mathit{KdoWhileLoop} ~ #1 ~ #2 ~ #3; ~ #4}
+\newcommand{\kfor}[5]{\mathit{Kfor} ~ (#1,#2) ~ #3 ~ #4 ; ~ #5}
+\newcommand{\kforpost}[5]{\mathit{KforPost} ~ (#1,#2) ~ #3 ~ #4 ; ~ #5}
+\newcommand{\kcall}[5]{\mathit{Kcall} ~ #1 ~ #2 ~ #3 ~ #4; ~ #5}
+\newcommand{\kreturn}[1]{\mathit{Kreturn}; ~ #1}
+\newcommand{\kswitcha}[3]{\mathit{Kswitch1} ~ #1 ~ #2; ~ #3}
+\newcommand{\kswitchb}[1]{\mathit{Kswitch2}; ~ #1}
+
+\newcommand{\ctx}[1]{C \!\left[#1\right]}
+\newcommand{\rh}{\textnormal{\sc rh}}
+\newcommand{\lh}{\textnormal{\sc lh}}
+
+\newcommand{\sstate}[4]{\mathcal{S}\left(#2 \mid #3 \gg #4 {\color{blue} \tagat #1}\right)}
+\newcommand{\estate}[4]{\mathcal{E}\left(#2 \mid #3 \gg #4 {\color{blue} \tagat #1}\right)}
+\newcommand{\cstate}[5]{\mathcal{C}\left(#2 \mid #3(#4) \gg #5 {\color{blue} \tagat #1}\right)}
+\newcommand{\rstate}[4]{\mathcal{R}\left(#2 \mid #3 \gg #4 {\color{blue} \tagat #1}\right)}
+\newcommand{\fstate}[1]{\mathcal{F}\left(#1\right)}
+\newcommand{\sstatefun}[5]{\mathcal{S}\left(#1, #3 \mid #4 \gg #5 {\color{blue} \tagat #2}\right)}
+
+\newcommand{\mem}{m}
+\newcommand{\genv}{\mathit{ge}}
+\newcommand{\fenv}{\mathit{fe}}
+\newcommand{\lenv}{\mathit{le}}
+\newcommand{\tenv}{\mathit{te}}
+\newcommand{\cont}{k}
+\newcommand{\stmt}{s}
+\newcommand{\expr}{e}
+\newcommand{\type}{ty}
+\newcommand{\defestate}[1]
+           {\estate{\PCT}{\mem,\lenv,\tenv}{#1}{\cont}}
+\newcommand{\defsstate}[1]
+           {\sstate{\PCT}{\mem,\lenv,\tenv}{#1}{\cont}}
+
+\newcommand{\Int}{\mathit{int}}
+\newcommand{\AL}{\mathit{AL}}
+\newcommand{\contents}{\mathit{ctnt}}
+
+%% Expressions $$
+\newcommand{\val}[2]{\mathit{Eval} ~ #1\tagat#2}
+\newcommand{\var}[1]{\mathit{Evar} ~ #1}
+\newcommand{\field}[2]{\mathit{Efield} ~ #1 ~ #2}
+\newcommand{\valof}[1]{\mathit{EvalOf} ~ #1}
+\newcommand{\deref}[1]{\mathit{Ederef} ~ #1}
+\newcommand{\addrof}[1]{\mathit{EaddrOf} ~ #1}
+\newcommand{\unop}[2]{\mathit{Eunop} ~ #1 ~ #2}
+\newcommand{\binop}[3]{\mathit{Ebinop} ~ #1 ~ #2 ~ #3}
+\newcommand{\cast}[2]{\mathit{Ecast} ~ #1 ~ #2}
+\newcommand{\seqand}[2]{\mathit{EseqAnd ~ #1 ~ #2}}
+\newcommand{\seqor}[2]{\mathit{EseqOr ~ #1 ~ #2}}
+\newcommand{\condition}[3]{\mathit{Econd} ~ #1 ~ #2 ~ #3}
+\newcommand{\sizeof}[1]{\mathit{Esize} ~ #1}
+\newcommand{\alignof}[1]{\mathit{Ealign} ~ #1}
+\newcommand{\assign}[2]{\mathit{Eassign ~ #1 ~ #2}}
+\newcommand{\assignop}[3]{\mathit{EassignOp ~ #1 ~ #2 ~ #3}}
+\newcommand{\postinc}[2]{\mathit{EpostInc} ~ #1 ~ #2}
+\newcommand{\comma}[2]{\mathit{Ecomma} ~ #1 ~ #2}
+\newcommand{\call}[2]{\mathit{Ecall} ~ #1(#2)}
+\newcommand{\builtin}[2]{\mathit{Ebuiltin} ~ #1(#2)}
+\newcommand{\loc}[2]{\mathit{Eloc} ~ #1\tagat#2}
+\newcommand{\floc}[2]{\mathit{Efloc} ~ #1\tagat#2}
+\newcommand{\paren}[2]{\mathit{Eparen} ~ #1 ~ #2}
+\newcommand{\failstop}{\mathit{Efailstop}}
+
+\newcommand{\sskip}{\mathtt{Sskip}}
+\newcommand{\sdo}[1]{\mathtt{Sdo} ~ #1}
+\newcommand{\sseq}[2]{\mathtt{Sseq} ~ #1 ~ #2}
+\newcommand{\sifthenelse}[4]{\mathtt{Sif}(#1) ~ \mathtt{then} ~ #2 ~ \mathtt{else} ~ #3 ~ \mathtt{join} ~ #4}
+\newcommand{\swhile}[3]{\mathtt{Swhile}(#1) ~ \mathtt{do} ~ #2 ~ \mathtt{join} ~ #3}
+\newcommand{\sdowhile}[3]{\mathtt{Sdo} ~ #2 ~ \mathtt{while} ~ (#1) ~ \mathtt{join} ~ #3}
+\newcommand{\sfor}[5]{\mathtt{Sfor}(#1; #2; #3) ~ \mathtt{do} ~ #4 ~ \mathtt{join} ~ #5}
+\newcommand{\sbreak}{\mathtt{Sbreak}}
+\newcommand{\scontinue}{\mathtt{Scontinue}}
+\newcommand{\sreturn}[1]{\mathtt{Sreturn} ~ #1}
+\newcommand{\sswitch}[3]{\mathtt{Sswitch} ~ #1 ~ \{ ~ #2 ~ \} ~ \mathtt{join} ~ #3}
+\newcommand{\slabel}[2]{\mathtt{Slabel} ~ #1: ~ #2}
+\newcommand{\sgoto}[1]{\mathtt{Sgoto} ~ #1}
+
+\newcommand{\vundef}{\mathbf{undef}}
+
+\newcommand{\tptr}[1]{\mathit{ptr(#1)}}
+
+\newcommand{\judgment}[3][]{
+  {\centering
+  \smallskip
+  \begin{tabular}{c}
+    #2 \\
+    \hline
+    #3
+  \end{tabular}{\sc #1}
+  \smallskip\par}}
+
+\newcommand{\judgmentbr}[4][]{
+  {\centering
+  \smallskip
+  \begin{tabular}{c}
+    #2 \\
+    #3 \\
+    \hline
+    #4
+  \end{tabular}{\sc #1}
+   \smallskip\par}}
+
+\newcommand{\judgmentbrbr}[5][]{
+  {\centering
+  \smallskip
+  \begin{tabular}{c}
+    #2 \\
+    #3 \\
+    #4 \\
+    \hline
+    #5
+  \end{tabular}{\sc #1}
+   \smallskip\par}}
+
+\newcommand{\judgmentbrbrbr}[6][]{
+  {\centering
+  \smallskip
+  \begin{tabular}{c}
+    #2 \\
+    #3 \\
+    #4 \\
+    #5 \\
+    \hline
+    #6
+  \end{tabular}{\sc #1}
+   \smallskip\par}}
+
+\newcommand{\judgmenttwobr}[6][]{
+  {
+    \centering
+    \smallskip
+    \begin{tabular}{c c}
+       #2 & #3 \\
+       #4 & #5 \\
+       \hline
+       \multicolumn{2}{c}{#6}
+    \end{tabular}{\sc #1}
+    \vspace{\belowdisplayskip}\par
+  }}
+
+\newcommand{\judgmenttwobrlong}[5][]{
+  {
+    \centering
+    \smallskip
+    \begin{tabular}{c c}
+       #2 & #3 \\
+       \multicolumn{2}{c}{#4} \\
+       \hline
+       \multicolumn{2}{c}{#5}
+    \end{tabular}{\sc #1}
+    \vspace{\belowdisplayskip}\par
+  }}
+
+\newcommand{\judgmentthreebrlong}[6][]{
+  {
+    \centering
+    \smallskip
+    \begin{tabular}{c c c}
+       #2 & #3 & #4 \\
+       \multicolumn{3}{c}{#5} \\
+       \hline
+       \multicolumn{3}{c}{#6}
+    \end{tabular}{\sc #1}
+    \vspace{\belowdisplayskip}\par
+  }}
+
+\newcommand{\judgmentthreebrtwo}[7][]{
+  {
+    \centering
+    \smallskip
+    \begin{tabular}{c c c}
+       #2 & #3 & #4 \\
+       \multicolumn{3}{c}{#5 \hfill #6} \\
+       \hline
+       \multicolumn{3}{c}{#7}
+    \end{tabular}{\sc #1}
+    \vspace{\belowdisplayskip}\par
+  }}
+
+\newcommand{\judgmenttwobrlongbrlong}[6][]{
+  {
+    \centering
+    \smallskip
+    \begin{tabular}{c c}
+       #2 & #3 \\
+       \multicolumn{2}{c}{#4} \\
+       \multicolumn{2}{c}{#5} \\
+       \hline
+       \multicolumn{2}{c}{#6} \\
+    \end{tabular}{\sc #1}
+    \vspace{\belowdisplayskip}\par
+  }}
+
+
+\newcommand{\judgmentthreebr}[8][]{
+  {
+    \centering
+    \smallskip
+    \begin{tabular}{c c c}
+       #2 & #3 & #4 \\
+       #5 & #6 & #7 \\
+       \hline
+       \multicolumn{3}{c}{#8}
+    \end{tabular}{\sc #1}
+    \vspace{\belowdisplayskip}\par
+  }}
+
+
+\newcommand{\judgmenttwo}[4][]{
+  {\centering
+  \smallskip
+  \begin{tabular}{c c}
+    #2 & #3 \\
+    \hline
+    \multicolumn{2}{c}{#4}
+  \end{tabular}{\sc #1}
+  \smallskip\par}}
+
+\newcommand{\judgmentthree}[5][]{
+  {\centering
+  \smallskip
+  \begin{tabular}{c c c}
+    #2 & #3 & #4 \\
+    \hline
+    \multicolumn{3}{c}{#5}
+  \end{tabular}{\sc #1}
+  \smallskip\par}}
+
+\newcommand{\judgmentfour}[6][]{
+  {\centering
+  \smallskip
+  \begin{tabular}{c c c c}
+    #2 & #3 & #4 & #5 \\
+    \hline
+    \multicolumn{4}{c}{#6}
+  \end{tabular}{\sc #1}
+  \smallskip\par}}
