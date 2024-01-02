@@ -28,7 +28,7 @@ else
 ARCHDIRS=$(ARCH)_$(BITSIZE) $(ARCH)
 endif
 
-DIRS := lib common $(ARCHDIRS) cfrontend driver export cparser
+DIRS := lib common policies $(ARCHDIRS) cfrontend driver export cparser
 
 COQINCLUDES := $(foreach d, $(DIRS), -R $(d) compcert.$(d))
 
@@ -113,6 +113,10 @@ COMMON=Errors.v AST.v Linking.v \
 CFRONTEND=Ctypes.v Cop.v Csyntax.v Csem.v Ctyping.v Cstrategy.v Cexec.v \
   Initializers.v InterpreterEvents.v \
 
+# Policy definitions (in policies/)
+
+POLICIES=NullPolicy.v PVI.v PNVI.v DoubleFree.v
+
 # Parser
 
 PARSER=Cabs.v Parser.v
@@ -133,7 +137,7 @@ DRIVER=Compopts.v
 
 # All source files
 
-FILES=$(VLIB) $(COMMON) $(CFRONTEND) $(DRIVER) $(FLOCQ) \
+FILES=$(VLIB) $(COMMON) $(CFRONTEND) $(POLICIES) $(DRIVER) $(FLOCQ) \
   $(MENHIRLIB) $(PARSER) $(EXPORTLIB)
 
 all:

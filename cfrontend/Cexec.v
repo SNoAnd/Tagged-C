@@ -2860,7 +2860,6 @@ Proof with (unfold ret; eauto with coqlib).
       rewrite STEP; unfold topred; auto with coqlib.      
     (* callred *)
     + unfold do_step; rewrite NOTVAL.
-      About callred_topred.
       exploit callred_topred; eauto.
 
       instantiate (1 := te). instantiate (1 := l). instantiate (1 := w). instantiate (1 := e).
