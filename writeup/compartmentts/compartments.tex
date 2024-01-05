@@ -83,7 +83,7 @@ Our contributions are:
 
 \begin{itemize}
 \item A compartmentalization policy that separates a program into mutually distrustful
-  components, which may be ``rigid'' (memory safety is enforced internally) or ``lax''
+  components, which may be ``strict'' (memory safety is enforced internally) or ``lax''
   (permitted to treat memory fully concretely).
 \item A pen-and-paper proof that the compartmentalized system preserves the security of a
   safe component from an unsafe one, formalized as a robust safety preservation property.
@@ -92,190 +92,159 @@ Our contributions are:
   that our compartmentalization policy enforces [NAME] as well.
 \end{itemize}
 
-\section{Examples}
+\section{Good and Bad Behavior, by Example}
 
-For our examples we're interested in exploring the interaction between a compartment that uses
-cross-object pointer arithmetic and one that does not (but which has interesting interplay.)
-In all examples we will establish that {\tt f} is in the compartment {\tt A}, and {\tt g} is in
-compartment {\tt B}. We put {\tt main} in the opposite compartment from the function
-that it's going to call.
-
-In Figure \ref{fig:isoexample1}, {\tt B} contains a pretty ordinary off-by-one error
-that overflows {\tt a}. It is a rigid compartment, so it should failstop rather than
-violate memory safety in this way. Meanwhile, {\tt A} performs inter-object pointer
-arithmetic, which we do want to allow. Figure \ref{fig:isoexample1} goes on to give a possible
-trace (see Section \ref{sec:traces}) of execution of this program, with markings indicating
-where it failstops under a full memory safety policy ({\color{red} \sc ms}), our non-sharing
-compartmentalization policy ({\color{red} \sc noshare}), and our policy extended with
-sharing ({\color{red} \sc share}).
-
-%{\tt f} allocates {\tt x} and {\tt y}, and computes an
-%offset between them. Then it uses that offset to turn a pointer to {\tt x} into one to
-%{\tt y}, and write through it. After a call to {\tt g}, it returns {\tt y[0]}, which
-%should be 42. But, {\tt g} performs its own out of bounds store. Suppose {\tt x} is
-%allocated at {\tt 0xAB00}, {\tt y} at {\tt 0xAB20}, and {\tt z} at {\tt 0xAB40}.
-%Then {\tt g} will overwritte {\tt y[0]}!
+In this section we will motivate our compartmentalization policies with small
+examples illustrating requirements on our system's behavior. In all examples we will establish
+that {\tt f} is in the compartment {\tt A} (designated {\tt A >> ...}), and {\tt g} is in
+compartment {\tt B}. Table \ref{tab:reqs} summarizes whether each policy under consideration fulfills
+the requirements.
 
 \begin{figure}
-  \begin{subfigure}{\textwidth}
-    \begin{minipage}[t]{0.5\textwidth}
+  \begin{minipage}[t]{0.45\textwidth}
+\begin{verbatim}
+A >> int a[10];
+
+A >> int b[10];
+
+\end{verbatim}
+  \end{minipage}
+  \begin{minipage}[t]{0.45\textwidth}
 \begin{verbatim}
 A >> void f() {
-2      int* x = malloc(sizeof(int)*4);
-3      int* y = malloc(sizeof(int)*4);
-4      int off = y - x;
-5      x[off] = 42;
-6    }
+       for (int j=0; j<=10; ++j) {
+         a[j] = 0;
+       }
+     }
+\end{verbatim}
+  \end{minipage}
 
-A >> void main() {
-9      g(1);
-10   }
-\end{verbatim}
-    \end{minipage}
-    \begin{minipage}[t]{0.4\textwidth}
-\begin{verbatim}
-B >> void g(i) {
-12     int* a = malloc(sizeof(int)*i);
-13     f();
-14
-15     for (int j=0; j<=i; ++i) {
-16       a[j] = 0;
-17     }
-18   }
-\end{verbatim}
-    \end{minipage}
-  \end{subfigure}
-  \begin{subfigure}{\textwidth}
-    \[\begin{split}
-    B[A] \rightsquigarrow & \mathit{call} ~ g ~ [1] \cdot
-    \mathit{alloc} ~ \phi_0 ~ \mathtt{0xAB00} \dots \mathtt{0xAB03} \cdot \\
-    & \mathit{call} ~ f ~ [] \cdot
-    \mathit{alloc} ~ \phi_1 ~ \mathtt{0xAB20} \dots \mathtt{0xAB2F} \cdot \\
-    & \mathit{alloc} ~ \phi_2 ~ \mathtt{0xAB40} \dots \mathtt{0xAB3F} \cdot
-    \mathit{store} ~ \phi_1 ~ \mathtt{0xAB40} \dots \mathtt{0xAB43} ~ 42 ~
-           {\color{red} \mid \textnormal{\sc ms}} \\
-    & \mathit{return} \cdot
-           \mathit{store} ~ \phi_0 ~ \mathtt{0xAB00} \dots \mathtt{0xAB03} ~ 0 \cdot
-    \mathit{store} ~ \phi_1 ~ \mathtt{0xAB04} \dots \mathtt{0xAB07} ~ 0 ~
-           {\color{red} \mid \textnormal{\sc noshare/share}} \\
-    & \mathit{return} \\
-    \end{split}\]
-  \end{subfigure}
-  
-  \caption{Isolated Example}
-  \label{fig:isoexample1}
+  \caption{Memory Safety Violation}
+  \label{fig:viol_strict}
 \end{figure}
 
-%\begin{figure}
-%  \begin{subfigure}{\textwidth}
-%    \begin{minipage}[t]{0.5\textwidth}
-%\begin{verbatim}
-%A >> int f() {
-%2      int* x = malloc(sizeof(int)*4);
-%3      int* y = malloc(sizeof(int)*4);
-%4      int off = y - x;
-%5      x[off] = 42;
-%6      g();
-%7      return y[0];
-%8    }
-%\end{verbatim}
-%    \end{minipage}
-%    \begin{minipage}[t]{0.4\textwidth}
-%\begin{verbatim}
-%B >> int g() {
-%12     int* z = malloc(sizeof(int));
-%13     z[-16] = 5;
-%14   }
-%
-%B >> int main() {
-%17     return f();
-%18   }
-%\end{verbatim}
-%    \end{minipage}
-%  \end{subfigure}
-%  \begin{subfigure}{\textwidth}
-%    \[\begin{split}
-%    A[B] \rightsquigarrow_\bot & \mathit{call} ~ f ~ []; 
-%    \mathit{alloc} ~ \phi_0 ~ \mathtt{0xAB00} \dots \mathtt{0xAB0F}; 
-%    \mathit{alloc} ~ \phi_1 ~ \mathtt{0xAB20} \dots \mathtt{0xAB2F}; 
-%    \mathit{store} ~ \phi_0 ~ \mathtt{0xAB00} \dots \mathtt{0xAB03} ~ 42; \\
-%    & \mathit{call} ~ g ~ [];
-%    \mathit{alloc} ~ \phi_2 ~ \mathtt{0xAB40} \dots \mathtt{0xAB03};
-%    \mathit{store} ~ \phi_0 ~ \mathtt{0xAB20} \dots \mathtt{0xAB23} ~ 5; 
-%    \mathit{return}; \mathit{return} ~ 5 \\
-%    \end{split}\]
-%  \end{subfigure}
-  
-%  \caption{Isolated Example}
-%  \label{fig:isoexample2}
-%\end{figure}
-
-
-Meanwhile, in Figure \ref{fig:sharingexample}, {\tt f} takes the offset between
-{\tt x} and {\tt y} and adds it to the pointer to {\tt x} to produce a pointer to {\tt y}.
-Then it passes {\tt x} and the offset to {\tt g}, which assumes that it is passed an array
-and an in-bounds offset into it, and returns the value at that offset. The crux of the issue
-is that compartment {\tt A} can, perhaps, be trusted to do this kind of arithmetic with its
-own pointers, but we would not want compartment {\tt B} to be able to access arbitrary objects
-in compartment {\tt A} just by doing some pointer arithmetic.
-
+First, consider compartment {\tt A} in Figure \ref{fig:viol_strict}. Regardless of any compartment it
+gets linked against, {\tt f} contains an off-by-one error that overflows {\tt a}. In
+a standard memory layout, {\tt b} is contiguous to {\tt a}, so the overflow overwrites
+{\tt b[0]}. The baseline policy allows this, but this is undesirable behavior, and
+we require that it not occur ({\bf strict-UB} in \ref{tab:reqs}).
+We can enforce this by applying a memory safety policy, but we then run into other issues.
 
 \begin{figure}
   \begin{subfigure}{\textwidth}
     \begin{minipage}[t]{0.5\textwidth}
 \begin{verbatim}
-A >> int f() {
-2      int* x = malloc(sizeof(int)*4);
-3      int* y = malloc(sizeof(int)*4);
-4      int off = y - x;
-5      x[0] = 0;
-6      x[off] = 42;
-7      g(x,0);
-8      g(x,off);
-9
-10     return y[0];
-11   }
+A >> int a[10];
+
+A >> int b[10];
+
+A >> void f() {
+       for (int j=0; j<10; ++j) {
+         a[j] = 0;
+       }
+     }
 \end{verbatim}
     \end{minipage}
     \begin{minipage}[t]{0.4\textwidth}
 \begin{verbatim}
-B >> int g(int* p, int i) {
-12     p[i] = 5;
-13   }
+B >> int g() {
+       int* x = malloc(sizeof(int)*4);
+       int* y = malloc(sizeof(int)*4);
+       int off = y - x;
 
-B >> int main() {
-16     return f();
-17   }
+       f();
+       x[off] = 42;
+       return off;
+     }
 \end{verbatim}
     \end{minipage}
   \end{subfigure}
-  \begin{subfigure}{\textwidth}
-    \[\begin{split}
-    A[B] \rightsquigarrow & \mathit{call} ~ f ~ [] \cdot
-    \mathit{alloc} ~ \phi_0 ~ \mathtt{0xAB00} \dots \mathtt{0xAB0F} \cdot \\
-    & \mathit{alloc} ~ \phi_1 ~ \mathtt{0xAB20} \dots \mathtt{0xAB2F} \cdot
-    \mathit{store} ~ \phi_0 ~ \mathtt{0xAB20} \dots \mathtt{0xAB23} ~ 42 ~
-           {\color{red} \mid \textnormal{\sc ms}} \\
-    & \mathit{call} ~ g ~ [(\phi_0, \mathtt{0xAB00}); 0] \cdot
-    \mathit{load} ~ \phi_0 ~ \mathtt{0xAB00} \dots \mathtt{0xAB03} ~ 0 ~
-           {\color{red} \mid \textnormal{\sc noshare}} \\
-    & \mathit{call} ~ g ~ [(\phi_0, \mathtt{0xAB00}); 32] \cdot
-    \mathit{load} ~ \phi_0 ~ \mathtt{0xAB20} \dots \mathtt{0xAB23} ~ 42 ~
-           {\color{red} \mid \textnormal{\sc share}} \\
-    & \mathit{return} \cdot \mathit{return} ~ 42 \\
-    \end{split}\]
-  \end{subfigure}
+
+  \caption{Safe Despite UB}
+  \label{fig:safe_internal}
+\end{figure}
   
-  \caption{Example With Cross-compartment Sharing and Pointer Arithmetic}
-  \label{fig:sharingexample}
+Suppose that we fix {\tt f}, and link {\tt A} against compartment {\tt B}, which contains
+the function {\tt g} (Figure \ref{fig:safe_internal}). {\tt g} performs
+inter-object pointer arithmetic that
+violates memory safety, even though this usage is safe, so we will see a 
+we see a failstop in {\tt g} under the memory safety policy. That's a problem.
+Since we can't guarantee that no errors exist in general, we would like to find a
+middle ground that enables the low-level pointer manipulations of {\tt B} while still
+preventing any memory UB in {\tt A} ({\bf lax-internal-UB} in \ref{tab:reqs}).
+
+One simple solution to this problem is to separate our compartments into ``strict''
+and ``lax'' enforcement categories. {\tt A} should get strict enforcement, while
+{\tt B} needs lax enforcement to run. Now the program in Figure \ref{fig:viol_strict}
+will failstop in {\tt A}, while the one in Figure \ref{fig:safe_internal} will execute
+successfully.
+
+\begin{figure}
+  \begin{minipage}[t]{0.5\textwidth}
+\begin{verbatim}
+A >> int f() {
+       int* x = malloc(sizeof(int)*4);
+       g();
+       return x[0];
+     }
+\end{verbatim}
+  \end{minipage}
+  \begin{minipage}[t]{0.4\textwidth}
+\begin{verbatim}
+B >> int g() {
+       int* y = malloc(sizeof(int)*4);
+       p[sizeof(int)*(-4)] = 5;
+     }
+\end{verbatim}
+  \end{minipage}
+  
+  \caption{External Pointer Arithmetic}
+  \label{fig:viol_extern}
 \end{figure}
 
+But we need to be careful with lax enforcement! Consider the program in
+Figure \ref{fig:viol_extern}: if {\tt x} and {\tt y} are allocated contiguously,
+then {\tt g} will write to {\tt x} despite never having a valid pointer---and
+{\tt A} is not expecting its memory to be accessed in this way.
+We term this an ``external'' UB, because it spans both compartments: {\tt B} is doing
+the UB, but it's impacting {\tt A}'s memory. We want these to be illegal
+({\bf lax-external-UB}).
+
+The most straightforward way of implementing the division between lax and strict compartments
+is to decide which set of rules to use at any given time based on the status of the current
+compartment. This in turn means that cannot permit compartments to access one anothers' pointers.
+We call this policy {\sc noshare}.
+
+To allow compartments to share memory with one another ({\bf sharing}), we define a more
+sophisticated policy, {\sc share}. In {\sc share}, rather than separate whole compartments into
+lax and strict, we
+separate individual objects into ``shared'' and ``local''. Shared objects follow the full
+memory safety rules, as in a strict compartment, while local objects are guaranteed not to
+escape their compartments and can be accessed via pointer arithmetic by the compartment that
+owns them. A compartment that allocates all of its objects locally is equivalent to a lax
+compartment, and one that allocates them all as shared is equivalent to a strict compartment.
+
+\begin{table}
+  \begin{tabular}{|l|l|l|l|l|}
+    \hline
+    Policy & {\bf strict-UB} & {\bf lax-internal-UB} & {\bf lax-external-UB} & {\bf sharing} \\
+    \hline
+    \(\bot\) (baseline) & {\color{red} N} & {\color{green} Y} & {\color{red} N} & {\color{green} Y} \\
+    {\sc ms} & {\color{green} Y} & {\color{red} N} & {\color{green} Y} & {\color{green} Y} \\
+    {\sc noshare} & {\color{green} Y} & {\color{green} Y} & {\color{green} Y} & {\color{red} N} \\
+    {\sc share} & {\color{green} Y} & {\color{green} Y} & {\color{green} Y} & {\color{green} Y} \\
+    \hline
+  \end{tabular}
+  \caption{Policies and their requirements}
+  \label{tab:reqs}
+\end{table}
 
 
-\section{Separating Rigid and Lax Compartments}
+
+\section{Separating Strict and Lax Compartments}
 
 As a first step toward our ultimate goal, let's think about a simpler kind of protection:
-separating the world into rigid and lax compartments that do not share memory.
+separating the world into strict and lax compartments that do not share memory.
 
 \subsection{Policy In Detail}
 
@@ -296,7 +265,7 @@ Without further ado, let's define our policy. Tags consist of compartment identi
 \[\sigma := \mathbb{N} \]
 We assume a mapping \(owner\) from function and global identifiers to compartments,
 and initialize tags such that the function pointer tag for each function \(f\) is \(owner(f)\).
-The trusted compartment set \(\mathit{rigid} ~ C\) contains all of the compartments that
+The trusted compartment set \(\mathit{strict} ~ C\) contains all of the compartments that
 we wish to enforce memory safety within. We start by keeping track of which compartment we're in.
 
 \begin{minipage}{0.49\textwidth}
@@ -307,9 +276,9 @@ we wish to enforce memory safety within. We start by keeping track of which comp
 \end{minipage}
 
 The memory locations of global variables are tagged with the compartment that owns them.
-Dynamic memory is more complicated. We first check whether the active compartment is rigid.
+Dynamic memory is more complicated. We first check whether the active compartment is strict.
 If it is lax, the allocated memory is tagged with the compartment identity only. But if it is
-rigid, both the pointer and the memory location are tagged with the owning compartment and
+strict, both the pointer and the memory location are tagged with the owning compartment and
 a fresh allocation color. Once we have a color attached to a pointer, it is propagated along
 with the pointer, including through any arithmetic operations provided that the other operand
 is not tagged as a pointer.
@@ -359,15 +328,15 @@ is not tagged as a pointer.
 \end{minipage}
 
 Like allocations, loads and stores have different behavior depending on whether or not the active
-compartment is rigid or lax. In a lax compartment, it merely compares the PC tag to the location
-tag of the target address. In a rigid compartment, it also checks that the pointer color matches
+compartment is strict or lax. In a lax compartment, it merely compares the PC tag to the location
+tag of the target address. In a strict compartment, it also checks that the pointer color matches
 that of the target address.
 
 \hspace{-5em}
 \begin{minipage}{0.55\textwidth}
   \loadtruleblock{
     let \(\mathbf{comp}(C)\) := \(\PCT\) in \\
-    if \(\mathit{rigid} ~ C\) \\
+    if \(\mathit{strict} ~ C\) \\
     then \(\mathbf{assert} ~ \lt = \mathbf{comp}(C)\) \\
     \(\vt['] := \vt\) \\
     else \(\mathbf{assert} ~ \exists a . \pt = \mathbf{clr}(C,a) \land \lt = \mathbf{clr}(C,a)\) \\
@@ -377,7 +346,7 @@ that of the target address.
 \begin{minipage}{0.44\textwidth}
   \storetruleblock{
     let \(\mathbf{comp}(C)\) := \(\PCT\) in \\
-    if \(\mathit{rigid} ~ C\) \\
+    if \(\mathit{strict} ~ C\) \\
     then \(\mathbf{assert} ~ \lt = \mathbf{comp}(C)\) \\
     \(\PCT['] := \PCT; \vt['] := \vt; \lt['] := \lt\) \\
     else \(\mathbf{assert} ~ \exists a . \pt = \mathbf{clr}(C,a) \land \lt = \mathbf{clr}(C,a)\) \\
@@ -396,88 +365,16 @@ can no longer read or write to it.
 
 %\paragraph{Setting and Attacker Model}
 
-%Our proofs are phrased in terms of a program with two compartments: a rigid compartment
+%Our proofs are phrased in terms of a program with two compartments: a strict compartment
 %that is protected, and a lax one that may be compromised. The lax
 %component may contain arbitrary C code, including code with undefined behavior, representing
 %the worst-case scenario for a compromised component.
 
-\paragraph{Trace Examples}
-
-Before we define our property formally, let's 
-
-\begin{figure}
-  \begin{subfigure}{\textwidth}
-    \begin{minipage}[t]{0.42\textwidth}
-\begin{verbatim}
-A >> int f() {
-  int *x = malloc(sizeof(int));
-  *x = 42;
-  return g(x);
-}
-\end{verbatim}
-    \end{minipage}
-    \begin{minipage}[t]{0.3\textwidth}
-\begin{verbatim}
-B >> int g(int *p) {
-  int y = 5;
-  return *p + y;
-}
-\end{verbatim}
-    \end{minipage}
-    \begin{minipage}[t]{0.25\textwidth}
-\begin{verbatim}
-B >> int main() {
-  return f();
-}
-\end{verbatim}
-    \end{minipage}
-  
-  \end{subfigure}
-  \begin{subfigure}{\textwidth}
-    \begin{minipage}[t]{0.5\textwidth}
-\begin{verbatim}
-A >> int f() {
-  int *x = malloc(5*sizeof(int));
-  int *y = malloc(sizeof(int));
-  g(x,6);
-  return y[0];
-}
-\end{verbatim}
-    \end{minipage}
-    \begin{minipage}[t]{0.4\textwidth}
-\begin{verbatim}
-B >> void g(int *p, int i) {
-  p[i] = 5;
-  return;
-}
-\end{verbatim}
-    \end{minipage}
-  
-    \[A[B] \rightsquigarrow_\bot \mathit{call} ~ f ~ []; \mathit{call} ~ g ~ [(\phi_0, \mathtt{0xBEEF})];
-    \mathit{load} ~ (\phi_0, \mathtt{0xABCD}) ~ 42; \mathit{return} ~ 47; \mathit{return} ~ 47\]
-  \end{subfigure}
-  
-  \caption{Example of compartments and their traces}
-  \label{fig:trexample}
-\end{figure}
-
-[Give a couple of examples of programs and the traces they produce.]
-If we apply a memory safety policy to each of these examples, we get [new, truncated traces]. 
-Informally, we can get a sense of certain kinds of interactions that we just eliminated.
-[Example] very clearly violated the array abstraction \sna{Is that the right term?} by
-causing the code to read a different value from [address] than it wrote; with memory safety
-we the trace is truncated before that violation. In [example], [pointer] is never passed outside
-[compartment], yet it is written to by [compartment]; likewise, memory safety prevents this.
-
-We do not need to define these conditions formally, because they are implicitly enforced by
-the memory safety policy. Instead, we take memory safety as a reference point and define safe
-compartmentalization in terms of preserving all of these implicit properties.
+%We do not need to define these conditions formally, because they are implicitly enforced by
+%the memory safety policy. Instead, we take memory safety as a reference point and define safe
+%compartmentalization in terms of preserving all of these implicit properties.
 
 \paragraph{Events and Traces}
-
-For both of our examples, we will give a trace of how
-it behaves under each variation of the compartmentalization policy. In order to do that, we
-need to define a system of traces.
 
 Compartments interact via calls and returns, and via visible loads and stores. A load or a store
 is visible if it is made via a valid pointer. To each allocation we associate a provenance
@@ -508,6 +405,77 @@ Let \(A\) and \(B\) be components such that linking them produces a complete pro
 We write the linked program \(A[B]\), and when such a program run under tag
 policy \(\rho\) produces a trace \(t\), we write \(A[B] \rightsquigarrow_\rho t\).
 We represent the ``baseline'' policy, which never failstops, with \(\bot\).
+
+\paragraph{Trace Example}
+
+Let's look at an example of a program and the trace it produces. In Figure \ref{fig:trexample},
+we see multiple kinds of undefined behavior, as {\tt f} has internal {\tt UB} and {\tt g} has
+external. We give a full execution trace of the program (one of many, selecting arbitrary addresses
+for allocations), marking where it will be truncated by a failstop under each policy in red.
+
+\begin{figure}
+  \begin{subfigure}{\textwidth}
+    \begin{minipage}[t]{0.5\textwidth}
+\begin{verbatim}
+A >> int f() {
+2      int* x = malloc(sizeof(int)*4);
+3      int* y = malloc(sizeof(int)*4);
+4      int off = y - x;
+5      x[0] = 0;
+6      x[off] = 42;
+7      g(x,0);
+8      g(x,off);
+9
+10     return y[0];
+11   }
+\end{verbatim}
+    \end{minipage}
+    \begin{minipage}[t]{0.4\textwidth}
+\begin{verbatim}
+B >> int g(int* p, int i) {
+12     p[i] = 5;
+13   }
+
+B >> int main() {
+16     return f();
+17   }
+\end{verbatim}
+    \end{minipage}
+  \end{subfigure}
+  \begin{subfigure}{\textwidth}
+    \[\begin{split}
+    A[B] \rightsquigarrow & \mathit{call} ~ f ~ [] \cdot
+    \mathit{alloc} ~ \phi_0 ~ \mathtt{0xAB00} \dots \mathtt{0xAB0F} \cdot \\
+    & \mathit{alloc} ~ \phi_1 ~ \mathtt{0xAB20} \dots \mathtt{0xAB2F} \cdot
+    \mathit{store} ~ \phi_0 ~ \mathtt{0xAB20} \dots \mathtt{0xAB23} ~ 42 ~
+           {\color{red} \mid \textnormal{\sc ms}} \\
+    & \mathit{call} ~ g ~ [(\phi_0, \mathtt{0xAB00}); 0] \cdot
+    \mathit{load} ~ \phi_0 ~ \mathtt{0xAB00} \dots \mathtt{0xAB03} ~ 0 ~
+           {\color{red} \mid \textnormal{\sc noshare}} \\
+    & \mathit{call} ~ g ~ [(\phi_0, \mathtt{0xAB00}); 32] \cdot
+    \mathit{load} ~ \phi_0 ~ \mathtt{0xAB20} \dots \mathtt{0xAB23} ~ 42 ~
+           {\color{red} \mid \textnormal{\sc share}} \\
+    & \mathit{return} \cdot \mathit{return} ~ 42 \\
+    \end{split}\]
+  \end{subfigure}
+  
+  \caption{Example With Cross-compartment Sharing and Pointer Arithmetic}
+  \label{fig:trexample}
+\end{figure}
+
+As we truncate the trace, we eliminate interactions between compartments. 
+[TODO: say something intelligent here about what kinds of interactions.]
+Quantifying over all programs, some of our policies eliminate whole classes of interactions
+between compartments. Full memory safety is the most restrictive, and as it corresponds
+to the C standard, it forms the basis of our overall security property: for a particular
+interesting class of inter-compartment interactions, our compartmentalization policies should
+not be any more permissive than {\sc ms}.
+
+%Informally, we can get a sense of certain kinds of interactions that we just eliminated.
+%[Example] very clearly violated the array abstraction \sna{Is that the right term?} by
+%causing the code to read a different value from [address] than it wrote; with memory safety
+%we the trace is truncated before that violation. In [example], [pointer] is never passed outside
+%[compartment], yet it is written to by [compartment]; likewise, memory safety prevents this.
 
 \paragraph{Robust Safety Preservation}
 
@@ -601,7 +569,7 @@ do memory unsafe things.
 
 \section{Trust While Using Unsafe Idioms}
 
-While we have proven that our compartmentalization policy protects our rigid
+While we have proven that our compartmentalization policy protects our strict
 compartment from lax ones, we conjecture that it can also protect a lax compartment
 from an attacker that aims to exploit its non-standard behavior. But what does it mean
 for a compartment to be protected when it contains UB? To demonstrate the difficulty,
