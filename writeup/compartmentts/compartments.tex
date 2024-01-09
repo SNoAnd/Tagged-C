@@ -92,156 +92,165 @@ Our contributions are:
   that our compartmentalization policy enforces [NAME] as well.
 \end{itemize}
 
-\section{Good and Bad Behavior, by Example}
+\section{Compartments by Example}
 
-In this section we will motivate our compartmentalization policies with small
-examples illustrating requirements on our system's behavior. In all examples we will establish
-that {\tt f} is in the compartment {\tt A} (designated {\tt A >> ...}), and {\tt g} is in
-compartment {\tt B}. Table \ref{tab:reqs} summarizes whether each policy under consideration fulfills
-the requirements.
-
-\begin{figure}
-  \begin{minipage}[t]{0.45\textwidth}
-\begin{verbatim}
-A >> int a[10];
-
-A >> int b[10];
-
-\end{verbatim}
-  \end{minipage}
-  \begin{minipage}[t]{0.45\textwidth}
-\begin{verbatim}
-A >> void f() {
-       for (int j=0; j<=10; ++j) {
-         a[j] = 0;
-       }
-     }
-\end{verbatim}
-  \end{minipage}
-
-  \caption{Memory Safety Violation}
-  \label{fig:viol_strict}
-\end{figure}
-
-First, consider compartment {\tt A} in Figure \ref{fig:viol_strict}. Regardless of any compartment it
-gets linked against, {\tt f} contains an off-by-one error that overflows {\tt a}. In
-a standard memory layout, {\tt b} is contiguous to {\tt a}, so the overflow overwrites
-{\tt b[0]}. The baseline policy allows this, but this is undesirable behavior, and
-we require that it not occur ({\bf strict-UB} in \ref{tab:reqs}).
-We can enforce this by applying a memory safety policy, but we then run into other issues.
+In Figure \ref{fig:basic}, the function {\tt f} is assumed to always return 0,
+because {\tt x[0]} is assigned 0 and not updated before its value is returned. This assumption
+is dependent on the system being memory safe---in the absence of memory safety, {\tt g} might
+overwrite {\tt x[0]}. The fact that {\tt g} will not overwrite {\tt x} follows from a set of
+principles that we might term ``capability reasoning''---working backwards from the fact
+that every permitted load or store to an object must be made through pointer that traces
+its provenance to that object's initial allocation, we can rule out memory accesses by
+proving that no pointer of the relevant provenance is accessible to a given piece of code.
 
 \begin{figure}
-  \begin{subfigure}{\textwidth}
-    \begin{minipage}[t]{0.5\textwidth}
+  \begin{subfigure}{0.5\textwidth}
 \begin{verbatim}
-A >> int a[10];
+int f() {
+  int *x = malloc(sizeof(int)*8);
+  int *y = malloc(sizeof(int)*8);
 
-A >> int b[10];
+  for (int i = 0; i<8; ++i) {
+    x[i] = 0;
+    y[i] = 0;
+  }
 
-A >> void f() {
-       for (int j=0; j<10; ++j) {
-         a[j] = 0;
-       }
-     }
+  g();
+  return x[0]; // always returns 0
+}
 \end{verbatim}
-    \end{minipage}
-    \begin{minipage}[t]{0.4\textwidth}
-\begin{verbatim}
-B >> int g() {
-       int* x = malloc(sizeof(int)*4);
-       int* y = malloc(sizeof(int)*4);
-       int off = y - x;
-
-       f();
-       x[off] = 42;
-       return off;
-     }
-\end{verbatim}
-    \end{minipage}
   \end{subfigure}
-
-  \caption{Safe Despite UB}
-  \label{fig:safe_internal}
-\end{figure}
   
-Suppose that we fix {\tt f}, and link {\tt A} against compartment {\tt B}, which contains
-the function {\tt g} (Figure \ref{fig:safe_internal}). {\tt g} performs
-inter-object pointer arithmetic that
-violates memory safety, even though this usage is safe, so we will see a 
-we see a failstop in {\tt g} under the memory safety policy. That's a problem.
-Since we can't guarantee that no errors exist in general, we would like to find a
-middle ground that enables the low-level pointer manipulations of {\tt B} while still
-preventing any memory UB in {\tt A} ({\bf lax-internal-UB} in \ref{tab:reqs}).
+\caption{}
+\label{fig:basic}
+\end{figure}
 
-One simple solution to this problem is to separate our compartments into ``strict''
-and ``lax'' enforcement categories. {\tt A} should get strict enforcement, while
-{\tt B} needs lax enforcement to run. Now the program in Figure \ref{fig:viol_strict}
-will failstop in {\tt A}, while the one in Figure \ref{fig:safe_internal} will execute
-successfully.
+But, there are several reasons why we might not want to enforce full memory safety.
+For one thing, it's expensive. For another, the definition of {\tt g} might
+contains some undefined memory behavior that doesn't directly impact {\tt x}.
+
+Instead of memory safety, we can apply a compartmentalization policy that separates {\tt g}
+from {\tt f}, so that they cannot both access the same memory locations. This essentially
+merges {\tt x} and {\tt y}, from a protection perspective: they can both be accessed by {\tt f},
+even if {\tt f} should contain some undefined behavior, and only by {\tt f}.
+Therefore, as before, {\tt x[0]} will not change during the call.
+In performance terms, we halve the number of tags necessary to protect the two arrays.
 
 \begin{figure}
-  \begin{minipage}[t]{0.5\textwidth}
+  \begin{subfigure}{0.5\textwidth}
+\begin{verbatim}
+int f() {
+  int *x = malloc(sizeof(int)*8);
+  int *y = malloc(sizeof(int)*8);
+  int *z = malloc(sizeof(int)*8);
+
+  for (int i = 0; i<8; ++i) {
+    x[i] = 0;
+    y[i] = 0;
+    z[i] = i;
+  }
+
+  g(z);
+  return x[0]; // always returns 0
+}
+\end{verbatim}
+  \end{subfigure}
+  
+\caption{}
+\label{fig:share}
+\end{figure}
+
+But, now consider the version of {\tt f} in Figure \ref{fig:share}. It's now passing a pointer,
+{\tt z}, to {\tt g}. Our strict separation no longer works! This program will still run, and
+{\tt x} will still be protected, under a full memory safety policy. But under our compartmentalization
+policy, if {\tt g} attempts to read or write {\tt z}, execution will failstop.
+
+We need a hybrid model that allows some objects to be shared, while still allowing us to merge
+{\tt x} and {\tt y} for efficiency. Escape analysis can determine which objects need to be shared,
+by allocation site; we assume that the code is rewritten so that calls to {\tt malloc} that should
+be shared are replaced by a special {\tt malloc\_share} call, which behaves identically except
+in terms of how the policy treats it.
+
+Now, the question that we have to answer is: how fine-grained to we need our protection of the
+shared objects to be? We have a few different options.
+\begin{itemize}
+\item All shared objects are grouped together
+\item All objects are grouped according to which compartment(s) they are shared with
+\item Objects are grouped by allocation-site
+\item Each object is kept separate, with no grouping at all
+\end{itemize}
+
+Our guiding principle here is that we want to preserve all of the properties of
+a memory safe system, so keeping each object separate will definitely work. It would be
+nice to be able to compress them further, but it turns out that each kind of grouping will
+cost us something.
+
+\begin{figure}
+  \begin{subfigure}[t]{0.49\textwidth}
 \begin{verbatim}
 A >> int f() {
-       int* x = malloc(sizeof(int)*4);
-       g();
-       return x[0];
-     }
+  int* x = malloc_share(sizeof(int));
+  int* y = malloc_share(sizeof(int));
+  g(x);
+  x[0] = 0;
+  h(y);
+  return x[0];
+}
+
+B >> void g(int*);
+
+C >> void h(int*);
 \end{verbatim}
-  \end{minipage}
-  \begin{minipage}[t]{0.4\textwidth}
+    \caption{}
+    \label{subfig:allshare}
+  \end{subfigure}
+  \begin{subfigure}[t]{0.49\textwidth}
 \begin{verbatim}
-B >> int g() {
-       int* y = malloc(sizeof(int)*4);
-       p[sizeof(int)*(-4)] = 5;
-     }
+A >> int f() {
+  int* x;
+  for (int i = 0; i < 100; i++) {
+    x = malloc_share(sizeof(int));
+    if (i % 2) {
+      g(x);
+    } else {
+      h(x);
+    }
+  }
+  return x[0];
+}
 \end{verbatim}
-  \end{minipage}
-  
-  \caption{External Pointer Arithmetic}
-  \label{fig:viol_extern}
+    \caption{}
+    \label{subfig:escapeshare}
+  \end{subfigure}
+
+  \caption{}
+  \label{fig:groupings}
 \end{figure}
 
-But we need to be careful with lax enforcement! Consider the program in
-Figure \ref{fig:viol_extern}: if {\tt x} and {\tt y} are allocated contiguously,
-then {\tt g} will write to {\tt x} despite never having a valid pointer---and
-{\tt A} is not expecting its memory to be accessed in this way.
-We term this an ``external'' UB, because it spans both compartments: {\tt B} is doing
-the UB, but it's impacting {\tt A}'s memory. We want these to be illegal
-({\bf lax-external-UB}).
+First, in Figure \ref{subfig:allshare}, if {\tt g} and {\tt h} are
+in separate compartments that do not call one another, we should be able to rely on
+{\tt x[0]} staying constant during the call to {\tt h}. But if we group all shared objects
+together, then sharing {\tt y} with compartment {\tt B} implicitly means sharing
+{\tt x} as well.
 
-The most straightforward way of implementing the division between lax and strict compartments
-is to decide which set of rules to use at any given time based on the status of the current
-compartment. This in turn means that cannot permit compartments to access one anothers' pointers.
-We call this policy {\sc noshare}.
+We might consider grouping together objects based on which compartment(s) they're going to
+be shared with. One could imagine approximating the set of compartments that the objects
+from a given allocation site might escape to, and grouping together all objects that escape
+to the exactly the same set of compartments. This is unworkable; it is simple to construct
+an example like Figure \ref{subfig:escapeshare}, where objects' sharing behavior is finer-grained
+than their allocation-site. There are also temporal factors to consider: if a pointer is shared
+to {\tt B} early in its lifetime, and {\tt C} much later, can we rely on its safety from
+{\tt C} in the interim? This last concern seems to be the final nail in the coffin of any
+meaningful groupings. So, we must tag every shared object uniquely unless we're willing
+to give up capability-reasoning for all shared objects.
 
-To allow compartments to share memory with one another ({\bf sharing}), we define a more
-sophisticated policy, {\sc share}. In {\sc share}, rather than separate whole compartments into
-lax and strict, we
-separate individual objects into ``shared'' and ``local''. Shared objects follow the full
-memory safety rules, as in a strict compartment, while local objects are guaranteed not to
-escape their compartments and can be accessed via pointer arithmetic by the compartment that
-owns them. A compartment that allocates all of its objects locally is equivalent to a lax
-compartment, and one that allocates them all as shared is equivalent to a strict compartment.
+If we are willing to give up capability reasoning for all shared objects, then it isn't clear
+that we gain anything from grouping them more finely. This might not be so bad; in our original
+motivating example, we were concerned with {\tt x} being protected, and as {\tt x} does not escape
+at all, its allocation site will not be marked shared. This is a narrower form of reasoning, one
+that we might call ``escape-local'' reasoning.
 
-\begin{table}
-  \begin{tabular}{|l|l|l|l|l|}
-    \hline
-    Policy & {\bf strict-UB} & {\bf lax-internal-UB} & {\bf lax-external-UB} & {\bf sharing} \\
-    \hline
-    \(\bot\) (baseline) & {\color{red} N} & {\color{green} Y} & {\color{red} N} & {\color{green} Y} \\
-    {\sc ms} & {\color{green} Y} & {\color{red} N} & {\color{green} Y} & {\color{green} Y} \\
-    {\sc noshare} & {\color{green} Y} & {\color{green} Y} & {\color{green} Y} & {\color{red} N} \\
-    {\sc share} & {\color{green} Y} & {\color{green} Y} & {\color{green} Y} & {\color{green} Y} \\
-    \hline
-  \end{tabular}
-  \caption{Policies and their requirements}
-  \label{tab:reqs}
-\end{table}
-
-
-
-\section{Separating Strict and Lax Compartments}
+\section{Compartmentalization Without Sharing}
 
 As a first step toward our ultimate goal, let's think about a simpler kind of protection:
 separating the world into strict and lax compartments that do not share memory.
