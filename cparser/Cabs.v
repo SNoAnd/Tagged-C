@@ -15,6 +15,7 @@
 (* *********************************************************************)
 
 Require Import BinPos.
+Require Import String.
 
 (* OCaml's string type. *)
 Parameter string : Type.
@@ -22,8 +23,8 @@ Parameter string : Type.
 Parameter char_code : Type.
 (* Context information. *)
 Parameter loc : Type.
-
 Parameter no_loc : loc.
+Parameter print_loc : loc -> String.string.
 
 Record floatInfo := {
   isHex_FI:bool;

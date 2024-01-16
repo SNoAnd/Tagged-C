@@ -18,7 +18,7 @@
 
 open Format
 open Commandline
-open Cabs
+open C
 
 (* Ensure that the error formatter is flushed at exit *)
 let _ =
