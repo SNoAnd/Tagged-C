@@ -358,6 +358,8 @@ let print_loc_caml l =
   else
     "ccomp"
 
+let loc_eqb l1 l2 = l1.ident == l2.ident
+
 (* Ignoring the terminating "1" bit, canonical encodings of strings can
    be viewed as lists of bits, formed by concatenation of 6-bit fragments
    (for letters, numbers, and underscore) and 14-bit fragments (for other

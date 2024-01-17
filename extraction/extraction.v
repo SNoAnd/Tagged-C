@@ -87,6 +87,9 @@ End Extracted.
 
   Extract Inlined Constant Cabs.print_loc =>
             "Camlcoq.print_loc".
+
+  Extract Inlined Constant Cabs.loc_eqb =>
+            "Camlcoq.loc_eqb".
   
   Extract Inlined Constant Cabs.string => "String.t".
   Extract Constant Cabs.char_code => "int64".
