@@ -1,3 +1,11 @@
+(*
+updates for the print location
+In PVI.v I defined a helper function for just adding the location at the end
+
+That will do for most purposes, and should get you started
+
+For double free you'll want to carry the first free location on the tag to print it in the failure, too
+*)
 Require Import Coqlib.
 Require Import AST.
 Require Import Integers.
@@ -39,7 +47,7 @@ Module DoubleFree <: Policy.
 
  Inductive myTag :=
  | N (* N means unallocated, is also the starting "uncolor" *)
- | FreeColor (id:ident) (* new tag carrying the free site unique color *)
+ | FreeColor (l:loc) (* new tag carrying the free site unique color (its location) *)
  | Alloc (*(id:ident)*) (* this memory is allocated. NB in a future policy it too might have a dynamic color*)
  .
 
@@ -47,16 +55,22 @@ Module DoubleFree <: Policy.
  Definition tag := myTag.
  Theorem tag_eq_dec : forall (t1 t2:tag), {t1 = t2} + {t1 <> t2}.
  Proof.
-   unfold tag. intros. repeat decide equality.
- Qed.
+   apply eqdec_loc.
+   repeat decide equality.
+ Qed. (*SNA is working on this *)
  Definition def_tag := N.
 
 (* nothing has a color to start *)
  Definition InitPCT := N.
 
+(* This is a helper to print locations for human & fuzzer ingestion *)
+ Definition inj_loc (s:string) (l:loc) : string :=
+  s ++ " " ++ (print_loc l).
+
 Definition print_tag (t : tag) : string :=
     match t with
-    | FreeColor l => "FreeColor " ++ (extern_atom l)  (* converts internal id (positive) to string, using mapping established at parsing *)
+    (*| FreeColor l => "FreeColor " ++ (extern_atom l)*)  (* converts internal id (positive) to string, using mapping established at parsing *)
+    | FreeColor l => (inj_loc "location" l)
     | N => "Unallocated"
     | Alloc => "Allocated"
     end.
@@ -113,12 +127,13 @@ Definition print_tag (t : tag) : string :=
     LabelT(pct, L) returns a new pct, which is updated( return value) to record the free color
       of this free().
       - pct is program counter tag
-      - l is the label or color of the free site
+      - l is now teh location from the parser. well use that for color 
+      - id is the label or color of the free site
         (l promised to be there, promised to be unique. See assumptions at top of policy)
       returns a new pct after the label is applied. Imperative update to the PC tag.
       PC tag will have the id of hte last label we saw
  *)
- Definition LabelT (l:loc) (pct : tag) (l : ident) : PolicyResult tag := PolicySuccess (FreeColor l).
+ Definition LabelT (l:loc) (pct : tag) (id : ident) : PolicyResult tag := PolicySuccess (FreeColor l).
 
  (* Required for policy interface. Not relevant to this particular policy, pass values through *)
  Definition ExprSplitT (l:loc) (pct vt : tag) : PolicyResult tag := PolicySuccess pct.
@@ -182,9 +197,10 @@ Definition print_tag (t : tag) : string :=
   match vht with 
     | Alloc => PolicySuccess(pct, N, pct, N) (* was allocated then freed, assign free color from pct *)
     | N (* trying to free unallocated memory *)
-        => PolicyFail "DoubleFree::FreeT detects free of unallocated memory: " [pct;fptrt;pt;vht]
+           (* (inj_loc "PVI::LoadT X Failure" l)*)
+        => PolicyFail (inj_loc "DoubleFree::FreeT detects free of unallocated memory: " l) [pct;fptrt;pt;vht]
     | FreeColor l (* Freecolor means this was already freed and never reallocated *)
-        => PolicyFail "DoubleFree::FreeT detects two colors: " [pct;fptrt;pt;vht]
+        => PolicyFail  "DoubleFree::FreeT detects two colors: "  [pct;fptrt;pt;vht]
   end.
 
  (* Required for policy interface. Not relevant to this particular policy, pass values through *)

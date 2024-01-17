@@ -54,7 +54,7 @@ Module NullPolicy <: Policy.
 
   Definition SplitT (l:loc) (pct vt : tag) (id : option ident) : PolicyResult tag := PolicySuccess tt.
 
-  Definition LabelT (l:loc) (pct : tag) (l : ident) : PolicyResult tag := PolicySuccess tt.
+  Definition LabelT (l:loc) (pct : tag) (id : ident) : PolicyResult tag := PolicySuccess tt.
 
   Definition ExprSplitT (l:loc) (pct vt : tag) : PolicyResult tag := PolicySuccess tt.
 

@@ -81,7 +81,7 @@ Module PNVI <: Policy.
 
   Definition SplitT (l:loc) (pct vt : tag) (id : option ident) : PolicyResult tag := PolicySuccess pct.
 
-  Definition LabelT (l:loc) (pct : tag) (l : ident) : PolicyResult tag := PolicySuccess pct.
+  Definition LabelT (l:loc) (pct : tag) (id : ident) : PolicyResult tag := PolicySuccess pct.
 
   Definition ExprSplitT (l:loc) (pct vt : tag) : PolicyResult tag := PolicySuccess pct.
 
