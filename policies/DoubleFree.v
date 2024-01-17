@@ -47,17 +47,16 @@ Module DoubleFree <: Policy.
 
  Inductive myTag :=
  | N (* N means unallocated, is also the starting "uncolor" *)
- | FreeColor (l:loc) (* new tag carrying the free site unique color (its location) *)
+ | FreeColor (l:loc) (* new tag carrying the free site unique color *)
  | Alloc (*(id:ident)*) (* this memory is allocated. NB in a future policy it too might have a dynamic color*)
  .
 
-(* boilerplate tag equality proof. Since myTag does not inherit, we have to have our own copy *)
  Definition tag := myTag.
  Theorem tag_eq_dec : forall (t1 t2:tag), {t1 = t2} + {t1 <> t2}.
  Proof.
+   unfold tag. intros. repeat decide equality.
    apply eqdec_loc.
-   repeat decide equality.
- Qed. (*SNA is working on this *)
+ Qed.
  Definition def_tag := N.
 
 (* nothing has a color to start *)
