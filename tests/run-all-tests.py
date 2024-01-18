@@ -13,7 +13,8 @@ doublefree = "dfree"
 PVI = "pvi"
 passmsg = "\t\ttest passed"
 failmsg = "\t\ttest FAILED!"
-missinglabelsfail = b'Failstop on policy \n  DoubleFree::FreeT detects free of unallocated memory:  Unallocated, Unallocated, Unallocated, Unallocated\n'
+# after adding locations, these no longer have the same error
+#missinglabelsfail = b'Failstop on policy \n  DoubleFree::FreeT detects free of unallocated memory:  Unallocated, Unallocated, Unallocated, Unallocated\n'
 # use for the contains approach.
 nofault_cleanexit = b'program terminated (exit code = 0)'
 
@@ -72,7 +73,7 @@ if __name__ == '__main__':
 
     print("\n=======\ndfree tests without input\n=======")
     runACFileWithoutInput("double_free_no_input_handlabelled.c", doublefree,
-                          b'DoubleFree::FreeT detects two colors:  FreeColor label1, Unallocated, FreeColor label1, FreeColor label0\n'
+                          b'DoubleFree::FreeT detects two colors:  location double_free_no_input_handlabelled.c:9, Unallocated, location double_free_no_input_handlabelled.c:9, location double_free_no_input_handlabelled.c:8'
                           )
 
     runACFileWithoutInput("printf_test.c", doublefree,
@@ -93,12 +94,13 @@ if __name__ == '__main__':
     
     runACFileWithInput("double_free_basic_input_handlabelled.c",
                        doublefree, "ABCD",
-                       b'DoubleFree::FreeT detects two colors:  FreeColor label1, Unallocated, FreeColor label1, FreeColor label0')
+                       b'DoubleFree::FreeT detects two colors:  location double_free_basic_input_handlabelled.c:17, Unallocated, location double_free_basic_input_handlabelled.c:17, location double_free_basic_input_handlabelled.c:16')
     
+
     # should failstop
     runACFileWithInput("double_free_confused_cleanup_1_handlabelled.c",
                        doublefree, "PP",
-                       b'DoubleFree::FreeT detects two colors:  FreeColor label1, Unallocated, FreeColor label1, FreeColor label0')
+                       b'DoubleFree::FreeT detects two colors:  location double_free_confused_cleanup_1_handlabelled.c:21, Unallocated, location double_free_confused_cleanup_1_handlabelled.c:21, location double_free_confused_cleanup_1_handlabelled.c:19')
 
     # should not
     runACFileWithInput("double_free_confused_cleanup_1_handlabelled.c",
@@ -122,37 +124,37 @@ if __name__ == '__main__':
     
     runACFileWithInput("double_free_confused_cleanup_multi_handlabelled.c",
                        doublefree, "222",
-                       b"DoubleFree::FreeT detects two colors:  FreeColor label4, Unallocated, FreeColor label4, FreeColor label3")
+                       b"DoubleFree::FreeT detects two colors:  location double_free_confused_cleanup_multi_handlabelled.c:83, Unallocated, location double_free_confused_cleanup_multi_handlabelled.c:83, location double_free_confused_cleanup_multi_handlabelled.c:81")
 
     runACFileWithInput("double_free_confused_cleanup_multi_handlabelled.c",
                        doublefree, "BBB",
-                       b'DoubleFree::FreeT detects two colors:  FreeColor label2, Unallocated, FreeColor label2, FreeColor label0')
+                       b'DoubleFree::FreeT detects two colors:  location double_free_confused_cleanup_multi_handlabelled.c:75, Unallocated, location double_free_confused_cleanup_multi_handlabelled.c:75, location double_free_confused_cleanup_multi_handlabelled.c:67')
 
     # these two seem to be teh same, but if we skipped input's dfree, we should see different behavior for x in these two
     runACFileWithInput("double_free_confused_cleanup_multi_handlabelled.c",
                        doublefree, "!!!",
-                       b'DoubleFree::FreeT detects two colors:  FreeColor label2, Unallocated, FreeColor label2, FreeColor label1')
+                       b'DoubleFree::FreeT detects two colors:  location double_free_confused_cleanup_multi_handlabelled.c:75, Unallocated, location double_free_confused_cleanup_multi_handlabelled.c:75, location double_free_confused_cleanup_multi_handlabelled.c:69')
 
     runACFileWithInput("double_free_confused_cleanup_multi_handlabelled.c",
                        doublefree, "!!0",
-                       b'DoubleFree::FreeT detects two colors:  FreeColor label2, Unallocated, FreeColor label2, FreeColor label1')
+                       b'DoubleFree::FreeT detects two colors:  location double_free_confused_cleanup_multi_handlabelled.c:75, Unallocated, location double_free_confused_cleanup_multi_handlabelled.c:75, location double_free_confused_cleanup_multi_handlabelled.c:69')
     
     print("=======\nTests expected to get incorrect output but we'd like to know if that changes unexpectedly\n=======")
     # note tests like this should change when we get the automatic location info
     runACFileWithoutInput("double_free_no_input.c", doublefree,
-                          missinglabelsfail)
+                        b'DoubleFree::FreeT detects free of unallocated memory:  double_free_no_input.c:9 Unallocated, Unallocated, Unallocated, Unallocated')
     
     runACFileWithInput("double_free_basic_input.c",
                        doublefree, "ABCD",
-                       missinglabelsfail)
+                       b'DoubleFree::FreeT detects free of unallocated memory:  double_free_basic_input.c:26 Unallocated, Unallocated, Unallocated, Unallocated')
     
     runACFileWithInput("double_free_confused_cleanup_1.c",
                        doublefree, "PP",
-                       missinglabelsfail)
+                       b'DoubleFree::FreeT detects free of unallocated memory:  double_free_confused_cleanup_1.c:19 Unallocated, Unallocated, Unallocated, Unallocated')
 
     runACFileWithInput("double_free_confused_cleanup_2.c",
                        doublefree, "BBB",
-                       missinglabelsfail)
+                       b'DoubleFree::FreeT detects free of unallocated memory:  double_free_confused_cleanup_2.c:46 Unallocated, Unallocated, Unallocated, Unallocated')
     # TODO should all the confused_clean_up multi be included?
 
     # end

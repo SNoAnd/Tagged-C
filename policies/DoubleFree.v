@@ -170,7 +170,7 @@ Definition print_tag (t : tag) : string :=
            matter was value goes here. 
   *)
  Definition MallocT (l:loc) (pct fptrt st : tag) : PolicyResult (tag * tag * tag * tag * tag) :=
-   PolicySuccess (pct, Alloc (* APT: changed from N *), N, Alloc, N).
+   PolicySuccess (pct, Alloc, N, Alloc, N).
  (* 
   FreeT colors the header tag with the current Freecolor from the pct. If there is already 
     a color present on the tag of the header, this is a double free. If it tries to free
@@ -195,8 +195,7 @@ Definition print_tag (t : tag) : string :=
  Definition FreeT (l:loc) (pct fptrt pt vht : tag) : PolicyResult (tag * tag * tag * tag) :=
   match vht with 
     | Alloc => PolicySuccess(pct, N, pct, N) (* was allocated then freed, assign free color from pct *)
-    | N (* trying to free unallocated memory *)
-           (* (inj_loc "PVI::LoadT X Failure" l)*)
+    | N (* trying to free unallocated memory at this location *)
         => PolicyFail (inj_loc "DoubleFree::FreeT detects free of unallocated memory: " l) [pct;fptrt;pt;vht]
     | FreeColor l (* Freecolor means this was already freed and never reallocated *)
         => PolicyFail  "DoubleFree::FreeT detects two colors: "  [pct;fptrt;pt;vht]
