@@ -6,6 +6,7 @@
 # Note that is one will always crash, 
 # which causes VMF to crash on the first iteration by default
 # invoke with
+# $ cmake .. && make && make install && cd vmf_install
 # ./bin/vader -c test/config/PipeCliInterpreter_basicModules.yaml -c ~/fuzzer/tagged-c/tests/pipe-cleaner_vmf_dfree_basic_input.yaml
 
 vmfVariables:
@@ -23,7 +24,7 @@ vmfFramework:
 
 # Modules and their specific parameters
 controller:
-  runTimeInMinutes: 2 
+  runTimeInMinutes: 1 
 
 storage:
   # TODO rip this out properly. RN its testcase size

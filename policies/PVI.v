@@ -54,16 +54,16 @@ Module PVI <: Policy.
   
   Definition LoadT (l:loc) (pct pt vt: tag) (lts : list tag) : PolicyResult tag :=
     match pt with
-    | N => PolicyFail (inj_loc "PVI::LoadT X Failure" l) ([pct;pt;vt]++lts)
+    | N => PolicyFail (inj_loc "PVI || LoadT X Failure" l) ([pct;pt;vt]++lts)
     | _ => if forallb (tag_eq_dec pt) lts then PolicySuccess vt 
-           else PolicyFail (inj_loc "PVI::LoadT tag_eq_dec Failure" l) ([pct;pt;vt]++lts)
+           else PolicyFail (inj_loc "PVI || LoadT tag_eq_dec Failure" l) ([pct;pt;vt]++lts)
     end.
 
   Definition StoreT (l:loc) (pct pt vt : tag) (lts : list tag) : PolicyResult (tag * tag * list tag) :=
     match pt with
-    | N => PolicyFail (inj_loc "PVI::StoreT X Failure" l) ([pct;pt;vt]++lts)
+    | N => PolicyFail (inj_loc "PVI || StoreT X Failure" l) ([pct;pt;vt]++lts)
     | _ => if forallb (tag_eq_dec pt) lts then PolicySuccess (pct,vt,lts) 
-           else (PolicyFail (inj_loc "PVI::StoreT tag_eq_dec Failure" l) ([pct;pt;vt]++lts))
+           else (PolicyFail (inj_loc "PVI || StoreT tag_eq_dec Failure" l) ([pct;pt;vt]++lts))
     end.
   
   Definition AccessT (l:loc) (pct vt : tag) : PolicyResult tag := PolicySuccess vt.
@@ -99,7 +99,7 @@ Module PVI <: Policy.
     | Dyn c =>
         PolicySuccess (Dyn (S c), Dyn c, repeat (Dyn c) (Z.to_nat (sizeof ce ty)))
     | _ =>
-        PolicyFail (inj_loc "PVI::LocalT Failure" l) [pct]
+        PolicyFail (inj_loc "PVI || LocalT Failure" l) [pct]
     end.
   
   Definition DeallocT (l:loc) (ce : composite_env) (pct : tag) (ty : type) : PolicyResult (tag * tag * list tag) :=
@@ -110,7 +110,7 @@ Module PVI <: Policy.
     | Dyn c =>
         PolicySuccess (Dyn (S c), Dyn c, N, Dyn c, Dyn c)
     | _ =>
-        PolicyFail "PVI::MallocT Failure" [pct;pt;vt]
+        PolicyFail "PVI || MallocT Failure" [pct;pt;vt]
     end.
 
   Definition FreeT (l:loc) (pct pt1 pt2 vt : tag) : PolicyResult (tag * tag * tag * tag) :=

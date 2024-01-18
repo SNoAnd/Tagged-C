@@ -51,16 +51,16 @@ Module PNVI <: Policy.
 
   Definition LoadT (l:loc) (pct pt vt: tag) (lts : list tag) : PolicyResult tag :=
     match pt with
-    | N => PolicyFail "PNVI::LoadT::No_Color" ([pct;pt;vt]++lts)
+    | N => PolicyFail "PNVI || LoadT | No_Color |" ([pct;pt;vt]++lts)
     | _ => if forallb (tag_eq_dec pt) lts then PolicySuccess vt 
-           else (PolicyFail "PNVI::LoadT::Wrong_Color" ([pct;pt;vt]++lts))
+           else (PolicyFail "PNVI || LoadT | Wrong_Color |" ([pct;pt;vt]++lts))
     end.
 
   Definition StoreT (l:loc) (pct pt vt : tag) (lts : list tag) : PolicyResult (tag * tag * list tag) :=
     match pt with
-    | N => (PolicyFail "PNVI::StoreT::No_Color" ([pct;pt;vt]++lts))
+    | N => (PolicyFail "PNVI || StoreT | No_Color |" ([pct;pt;vt]++lts))
     | _ => if forallb (tag_eq_dec pt) lts then PolicySuccess (pct,vt,lts) 
-           else (PolicyFail "PNVI::StoreT::Wrong_Color" ([pct;pt;vt]++lts))
+           else (PolicyFail "PNVI || StoreT | Wrong_Color |" ([pct;pt;vt]++lts))
     end.
   
   Definition AccessT (l:loc) (pct vt : tag) : PolicyResult tag := PolicySuccess vt.
@@ -96,7 +96,7 @@ Module PNVI <: Policy.
     | Dyn c =>
         PolicySuccess (Dyn (S c), Dyn c, repeat (Dyn c) (Z.to_nat (sizeof ce ty)))
     | _ =>
-        PolicyFail "PNVI::LocalT Failure" [pct]
+        PolicyFail "PNVI || LocalT Failure |" [pct]
     end.
   
   Definition DeallocT (l:loc) (ce : composite_env) (pct : tag) (ty : type) : PolicyResult (tag * tag * list tag) :=
@@ -107,7 +107,7 @@ Module PNVI <: Policy.
     | Dyn c =>
         PolicySuccess (Dyn (S c), Dyn c, N, Dyn c, Dyn c)
     | _ =>
-        PolicyFail "PNVI::MallocT Failure" [pct;pt;vt]
+        PolicyFail "PNVI || MallocT Failure |" [pct;pt;vt]
     end.
 
   Definition FreeT (l:loc) (pct pt1 pt2 vt : tag) : PolicyResult (tag * tag * tag * tag) :=
@@ -123,12 +123,12 @@ Module PNVI <: Policy.
 
   Definition IPCastT (l:loc) (pct vt : tag)  (lts : list tag) (ty : type) : PolicyResult tag :=
     match lts with
-    | [] => PolicyFail "PNVI::IPCastT Failure" [pct;vt]
+    | [] => PolicyFail "PNVI|| IPCastT Failure |" [pct;vt]
     | N::lts' => PolicySuccess N
     | pt::lts' =>
         if forallb (tag_eq_dec pt) lts'
         then PolicySuccess pt
-        else PolicyFail "PNVI::IPCastT Failure" [pct;vt]
+        else PolicyFail "PNVI|| IPCastT Failure |" [pct;vt]
     end.
 
   Definition PPCastT (l:loc) (pct vt : tag) (lts1 lts2 : list tag) (ty : type) : PolicyResult tag := PolicySuccess vt.

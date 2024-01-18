@@ -1,6 +1,6 @@
 /**
  * @file double_free_confused_cleanup_multi_handlabelled.c
- * @brief Contains 2 double frees on different memory for root cause testing. 
+ * @brief Contains 3 double frees on different memory for root cause testing. 
  *      Has the same double free on input as confused_cleanup_2 and
  *      a 2nd double free on x if flag !=0
  *      Also relies on 1st three bytes existing. 

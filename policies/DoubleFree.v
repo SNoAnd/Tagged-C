@@ -196,9 +196,9 @@ Definition print_tag (t : tag) : string :=
   match vht with 
     | Alloc => PolicySuccess(pct, N, pct, N) (* was allocated then freed, assign free color from pct *)
     | N (* trying to free unallocated memory at this location *)
-        => PolicyFail (inj_loc "DoubleFree::FreeT detects free of unallocated memory: " l) [pct;fptrt;pt;vht]
+        => PolicyFail (inj_loc "DoubleFree||FreeT detects free of unallocated memory| " l) [pct;fptrt;pt;vht]
     | FreeColor l (* Freecolor means this was already freed and never reallocated *)
-        => PolicyFail  "DoubleFree::FreeT detects two colors: "  [pct;fptrt;pt;vht]
+        => PolicyFail  "DoubleFree||FreeT detects two frees| "  [pct;fptrt;pt;vht]
   end.
 
  (* Required for policy interface. Not relevant to this particular policy, pass values through *)
