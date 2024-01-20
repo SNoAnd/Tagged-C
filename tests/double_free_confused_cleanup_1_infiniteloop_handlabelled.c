@@ -19,6 +19,8 @@ int main() {
         label0: free (input);
     }
     label1: free(input);
-    printf("You entered %s. Hope it doesn't have a problem!", input);
+    printf("You entered %s. About to infinite loop!", input);
+    while(1) {}
+    
 	return EXIT_SUCCESS;
 }

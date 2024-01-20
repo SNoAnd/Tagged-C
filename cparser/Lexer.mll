@@ -21,7 +21,7 @@ open Pre_parser_aux
 
 module SSet = Set.Make(String)
 
-let lexicon : (string, Cabs.loc -> token) Hashtbl.t = Hashtbl.create 17
+let lexicon : (string, C.location -> token) Hashtbl.t = Hashtbl.create 17
 let ignored_keywords : SSet.t ref = ref SSet.empty
 
 let reserved_keyword loc id =
@@ -129,36 +129,36 @@ let currentLoc =
   in
   fun lb ->
     let p = Lexing.lexeme_start_p lb in
-    Cabs.({ lineno   = p.Lexing.pos_lnum;
-            filename = p.Lexing.pos_fname;
-            byteno   = p.Lexing.pos_cnum;
-            ident    = getident ();})
+    ({ C.lineno   = p.Lexing.pos_lnum;
+       C.filename = p.Lexing.pos_fname;
+       C.byteno   = p.Lexing.pos_cnum;
+       C.ident    = getident ();})
 
 (* Error reporting *)
 
 let fatal_error lb fmt =
   Diagnostics.fatal_error
         (let p = lb.Lexing.lex_curr_p in  
-        Cabs.({ filename = p.Lexing.pos_fname;
-                lineno   = p.Lexing.pos_lnum;
-                byteno   = p.Lexing.pos_cnum;
-                ident    = (-1); })) fmt
+        ({ C.filename = p.Lexing.pos_fname;
+           C.lineno   = p.Lexing.pos_lnum;
+           C.byteno   = p.Lexing.pos_cnum;
+           C.ident    = (-1); })) fmt
 
 let error lb fmt =
   Diagnostics.error
         (let p = lb.Lexing.lex_curr_p in  
-        Cabs.({ filename = p.Lexing.pos_fname;
-                lineno   = p.Lexing.pos_lnum;
-                byteno   = p.Lexing.pos_cnum;
-                ident    = (-1); })) fmt
+        ({ C.filename = p.Lexing.pos_fname;
+           C.lineno   = p.Lexing.pos_lnum;
+           C.byteno   = p.Lexing.pos_cnum;
+           C.ident    = (-1); })) fmt
 
 let warning lb fmt =
   Diagnostics.warning
         (let p = lb.Lexing.lex_curr_p in  
-        Cabs.({ filename = p.Lexing.pos_fname;
-                lineno   = p.Lexing.pos_lnum;
-                byteno   = p.Lexing.pos_cnum;
-                ident    = (-1); })) Diagnostics.Unnamed fmt
+        ({ C.filename = p.Lexing.pos_fname;
+           C.lineno   = p.Lexing.pos_lnum;
+           C.byteno   = p.Lexing.pos_cnum;
+           C.ident    = (-1); })) Diagnostics.Unnamed fmt
 
 (* Simple character escapes *)
 

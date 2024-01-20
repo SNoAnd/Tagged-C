@@ -1,18 +1,23 @@
 #Combine this config file with the config yaml 
 # this one is the target (SUT) specific stuff 
-# (~/fuzzer/pipe-cleaner-vmf-fuzzer/build/vmf_install)$  ./bin/vader -c test/config/PipeCLIInterpreter_basicModules.yaml -c ~/fuzzer/tagged-c/tests/pipe-cleaner_vmf_dfree_confused_cleanup_1.yaml 
+# (build) $ cmake .. && make && make install && cd vmf_install
+# (vmf_install)$ ./bin/vader -c test/config/PipeCliInterpreter_basicModules.yaml -c ~/fuzzer/tagged-c/tests/pipe-cleaner_vmf_dfree_confused_cleanup_multi.yaml
 
 vmfVariables:
-  - &SUT_ARGV "/home/amn/fuzzer/tagged-c/tests/double_free_confused_cleanup_1_handlabelled.c"
+  - &SUT_ARGV "/home/amn/fuzzer/tagged-c/tests/double_free_confused_cleanup_multi_handlabelled.c"
   - &INTERP_PATH /home/amn/fuzzer/tagged-c/ccomp
-  - &INPUT_DIR /home/amn/fuzzer/test_inputs/
+  # the traditional seed of Hello, World! crashes because [3] !=0
+  #   maybe I should have made a less crashy test :/
+  - &INPUT_DIR /home/amn/fuzzer/test_inputs_multi/
   - &DIAGNOSTIC_BIN /home/amn/fuzzer/tagged-c/tests/double_free_no_input_handlabelled.c
 
 # VMF Framework parameters
 # Such as logging path, logging level, plugin path
 
 vmfFramework:
-  outputBaseDir: output-cc1
+  outputBaseDir: output-cc-multi
+  # pipe tags arent saved seperated by default
+  tagsToSave: ["CRASHED", "HUNG", "PIPE_POLICYFAILURE"]
   logLevel : 0 #0=DEBUG, 1=INFO, 2=WARNING, 3=ERROR
 
 # Modules and their specific parameters
@@ -26,6 +31,10 @@ storage:
 
 SaveCorpusOutput:
   tagsToSave: ["CRASHED", "HUNG", "PIPE_POLICYFAILURE"]
+
+#StatsOutput:
+  # every 3 minutes 
+  #outputRateInSeconds:  60
 
 PipeCliInterpreterInitialization:
   diagnostic_test_bin : *DIAGNOSTIC_BIN

@@ -437,13 +437,13 @@ Module InterpreterEvents (P:Policy) (A:Allocator P).
       unfold alloc_size. unfold do_alloc_size. split; intros; destruct v; inv H; auto.
     Qed.
     
-    Definition do_ef_malloc (w: world) (vargs: list atom) (PCT fpt: tag) (m: mem)
+    Definition do_ef_malloc (l: Cabs.loc) (w: world) (vargs: list atom) (PCT fpt: tag) (m: mem)
       : option (world * trace * (MemoryResult (PolicyResult (atom * tag * mem)))) :=
       match vargs with
       | [(v,st)] =>
           match do_alloc_size v with
           | Some sz =>
-              match MallocT PCT fpt st with
+              match MallocT l PCT fpt st with
               | PolicySuccess (PCT',pt',vt_body,vt_head,lt) =>
                   match heapalloc m sz vt_head vt_body lt with
                   | MemorySuccess (m', base, bound) =>
@@ -459,10 +459,10 @@ Module InterpreterEvents (P:Policy) (A:Allocator P).
       end.
 
     Lemma do_ef_malloc_complete :
-      forall vargs pct fpt m tr res w w',
-        extcall_malloc_sem ge vargs pct fpt m tr res ->
+      forall l vargs pct fpt m tr res w w',
+        extcall_malloc_sem l ge vargs pct fpt m tr res ->
         possible_trace w tr w' ->
-        do_ef_malloc w vargs pct fpt m = Some (w', tr, res).
+        do_ef_malloc l w vargs pct fpt m = Some (w', tr, res).
     Proof.
       intros. unfold do_ef_malloc. inv H; apply do_alloc_size_correct in H1; rewrite H1; inv H0.
       - rewrite H2. rewrite H3. auto.
@@ -471,16 +471,16 @@ Module InterpreterEvents (P:Policy) (A:Allocator P).
     Qed.
     
     Lemma do_ef_malloc_sound :
-      forall vargs pct fpt m tr res w w',
-        do_ef_malloc w vargs pct fpt m = Some (w', tr, res) ->
-        extcall_malloc_sem ge vargs pct fpt m tr res /\ possible_trace w tr w'.
+      forall l vargs pct fpt m tr res w w',
+        do_ef_malloc l w vargs pct fpt m = Some (w', tr, res) ->
+        extcall_malloc_sem l ge vargs pct fpt m tr res /\ possible_trace w tr w'.
     Proof.
       unfold do_ef_malloc. intros.
       destruct vargs as [| [v vt]]; try congruence.
       destruct vargs; try congruence.
       destruct (do_alloc_size v) eqn:?.
       - apply do_alloc_size_correct in Heqo.
-        destruct (MallocT pct fpt vt) as [[[[[PCT' pt'] vt_body] vt_head] lt]|] eqn:?.
+        destruct (MallocT l pct fpt vt) as [[[[[PCT' pt'] vt_body] vt_head] lt]|] eqn:?.
         + destruct (heapalloc m z vt_head vt_body lt) as [[[m' base] bound]|] eqn:?; inv H.
           * split; econstructor; eauto. 
           * split; econstructor; eauto. 
@@ -488,14 +488,14 @@ Module InterpreterEvents (P:Policy) (A:Allocator P).
       - inv H.
     Qed.
     
-    Definition do_ef_free (w: world) (vargs: list atom) (PCT fpt: tag) (m: mem)
+    Definition do_ef_free (l: Cabs.loc) (w: world) (vargs: list atom) (PCT fpt: tag) (m: mem)
       : option (world * trace * (MemoryResult (PolicyResult (atom * tag * mem)))) :=
       match vargs with
       | [(Vlong addr,pt)] =>
           if Int64.eq addr Int64.zero then
             Some (w, E0, (MemorySuccess (PolicySuccess ((Vundef,def_tag),PCT,m))))
           else
-          match heapfree m (Int64.unsigned addr) (fun vt => FreeT PCT fpt pt vt) with
+          match heapfree m (Int64.unsigned addr) (fun vt => FreeT l PCT fpt pt vt) with
           | MemorySuccess (PolicySuccess (PCT', m')) =>
               Some (w, E0, (MemorySuccess (PolicySuccess ((Vundef,def_tag),PCT',m'))))
           | MemorySuccess (PolicyFail msg params) =>
@@ -506,10 +506,10 @@ Module InterpreterEvents (P:Policy) (A:Allocator P).
       end.
 
     Lemma do_ef_free_complete :
-      forall vargs pct fpt m tr res w w',
-        extcall_free_sem ge vargs pct fpt m tr res ->
+      forall l vargs pct fpt m tr res w w',
+        extcall_free_sem l ge vargs pct fpt m tr res ->
         possible_trace w tr w' ->
-        do_ef_free w vargs pct fpt m = Some (w', tr, res).
+        do_ef_free l w vargs pct fpt m = Some (w', tr, res).
     Proof.
       intros. unfold do_ef_free. inv H.
       - rewrite (Int64.eq_false _ _ H1).
@@ -522,9 +522,9 @@ Module InterpreterEvents (P:Policy) (A:Allocator P).
     Qed.
 
     Lemma do_ef_free_sound :
-      forall vargs pct fpt m tr res w w',
-        do_ef_free w vargs pct fpt m = Some (w', tr, res) ->
-        extcall_free_sem ge vargs pct fpt m tr res /\ possible_trace w tr w'.
+      forall l vargs pct fpt m tr res w w',
+        do_ef_free l w vargs pct fpt m = Some (w', tr, res) ->
+        extcall_free_sem l ge vargs pct fpt m tr res /\ possible_trace w tr w'.
     Proof.
       unfold do_ef_free. intros.
       destruct vargs as [| [v vt]]; try congruence.
@@ -535,13 +535,13 @@ Module InterpreterEvents (P:Policy) (A:Allocator P).
         inv H. split.
         + eapply extcall_free_sem_null.
         + constructor.
-      - destruct (heapfree m (Int64.unsigned i) (fun vt0 : tag => FreeT pct fpt vt vt0))
+      - destruct (heapfree m (Int64.unsigned i) (fun vt0 : tag => FreeT l pct fpt vt vt0))
           as [[[pct' m']|]|] eqn:?;
                              inv H; split; constructor; auto; intro;
           rewrite H in Heqb; rewrite Int64.eq_true in Heqb; discriminate.
     Qed.
 
-    Definition do_external (ef: external_function) :
+    Definition do_external (ef: external_function) (l: Cabs.loc) :
       world -> list atom -> tag -> tag -> mem -> option (world * trace * (MemoryResult (PolicyResult (atom * tag * mem)))) :=
       match ef with
       | EF_external name sg =>
@@ -550,14 +550,14 @@ Module InterpreterEvents (P:Policy) (A:Allocator P).
   (*| EF_builtin name sg => do_builtin_or_external name sg
     | EF_vload chunk => do_ef_volatile_load chunk
     | EF_vstore chunk => do_ef_volatile_store chunk*)
-      | EF_malloc => do_ef_malloc
-      | EF_free => do_ef_free
+      | EF_malloc => do_ef_malloc l
+      | EF_free => do_ef_free l
       end.
 
     Lemma do_ef_external_sound:
-      forall ef w vargs pct fpt m w' t res,
-        do_external ef w vargs pct fpt m = Some (w', t, res) ->
-        external_call ef ge vargs pct fpt m t res /\ possible_trace w t w'.
+      forall ef l w vargs pct fpt m w' t res,
+        do_external ef l w vargs pct fpt m = Some (w', t, res) ->
+        external_call l ef ge vargs pct fpt m t res /\ possible_trace w t w'.
     Proof with try congruence.
       intros until res.
       destruct ef; simpl...
@@ -570,9 +570,9 @@ Module InterpreterEvents (P:Policy) (A:Allocator P).
     Qed.
 
     Lemma do_ef_external_complete:
-      forall ef w vargs pct fpt m w' t res,
-        external_call ef ge vargs pct fpt m t res -> possible_trace w t w' ->
-        do_external ef w vargs pct fpt m = Some (w', t, res).
+      forall ef w l vargs pct fpt m w' t res,
+        external_call l ef ge vargs pct fpt m t res -> possible_trace w t w' ->
+        do_external ef l w vargs pct fpt m = Some (w', t, res).
     Proof.
       intros. destruct ef eqn:?; simpl in *.
       - (* EF_external *)

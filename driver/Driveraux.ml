@@ -14,7 +14,6 @@
 open Printf
 open Clflags
 open Diagnostics
-open Cabs
 
 (* Safe removal of files *)
 let safe_remove file =
@@ -48,9 +47,9 @@ let command stdout args =
     match status with
     | Unix.WEXITED rc -> rc
     | Unix.WSIGNALED n | Unix.WSTOPPED n ->
-        error no_loc "command '%s' killed on a signal." argv.(0); -1
+        error Cabs.no_loc "command '%s' killed on a signal." argv.(0); -1
   with Unix.Unix_error(err, fn, param) ->
-    error no_loc "executing '%s': %s: %s %s"
+    error Cabs.no_loc "executing '%s': %s: %s %s"
             argv.(0) fn (Unix.error_message err) param;
     -1
 
@@ -83,7 +82,7 @@ let command ?stdout args =
     command stdout args
 
 let command_error n exc =
-  fatal_error no_loc "%s command failed with exit code %d (use -v to see invocation)\n" n exc
+  fatal_error Cabs.no_loc "%s command failed with exit code %d (use -v to see invocation)\n" n exc
 
 
 (* Determine names for output files.  We use -o option if specified
@@ -108,7 +107,7 @@ let output_filename_default default_file =
 
 let ensure_inputfile_exists name =
   if not (Sys.file_exists name) then
-    fatal_error no_loc "no such file or directory: '%s'" name
+    fatal_error Cabs.no_loc "no such file or directory: '%s'" name
 
 (* Printing of error messages *)
 

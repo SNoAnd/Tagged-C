@@ -18,7 +18,6 @@
 
 open Format
 open C
-open Cabs
 
 let print_idents_in_full = ref false
 

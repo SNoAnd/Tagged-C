@@ -15,7 +15,6 @@ open Printf
 open Clflags
 open Commandline
 open Driveraux
-open Tags
 open CPragmas
 open Interp
 open Allocator
@@ -190,7 +189,7 @@ let init () =
   end
  
 module FrontendP =
-        functor (Pol: Policy) (Alloc: Allocator) -> struct
+        functor (Pol: Tags.Policy) (Alloc: Allocator) -> struct
 
                 module InterpInst = InterpP (Pol) (Alloc)
                 module Printing = InterpInst.Printing
@@ -229,6 +228,6 @@ module FrontendP =
   InterpInst.execute csyntax
 end
 
-module WithNull = FrontendP (NullPolicy) (FLAllocator)
-module WithPVI = FrontendP (PVI) (FLAllocator)
-module WithDoubleFree = FrontendP (DoubleFree) (ConcreteAllocator)
+module WithNull = FrontendP (NullPolicy.NullPolicy) (FLAllocator)
+module WithPVI = FrontendP (PVI.PVI) (FLAllocator)
+module WithDoubleFree = FrontendP (DoubleFree.DoubleFree) (ConcreteAllocator)

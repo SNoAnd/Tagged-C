@@ -1,6 +1,6 @@
 /**
  * @file double_free_confused_cleanup_multi_handlabelled.c
- * @brief Contains 2 double frees on different memory for root cause testing. 
+ * @brief Contains 3 double frees on different memory for root cause testing. 
  *      Has the same double free on input as confused_cleanup_2 and
  *      a 2nd double free on x if flag !=0
  *      Also relies on 1st three bytes existing. 
@@ -18,12 +18,12 @@
  *            -> for x, triggers dfree for x, label3, label4
  *      "220" -> 0
  *            -> for input, free at label0 (safe)
- *            -> for x, free at label4 (safe, skips label 3)
+ *            -> for x, free at label4 (safe) (skips label 3)
  *              
  *  ! = 33 dec ( /3 but not /2)
  *      "!!!" -> 1
  *            -> for input, triggers dfree at label1, label2
- *            -> for x, triggers dfree for x, label3, label4
+ *            -> for x, triggers dfree, label3, label4 (if we got there)
  *      "!!0" -> 2 (only input will trigger)
  *            -> for input, triggers dfree at label1, label2 
  *            -> for x, free at label4 (safe)

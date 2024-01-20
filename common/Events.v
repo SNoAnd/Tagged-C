@@ -443,28 +443,28 @@ Definition extcall_sem : Type :=
 
 (** ** Semantics of volatile loads *)
 
-Inductive volatile_load_sem (chunk: memory_chunk) (ge: Genv.t F V):
+Inductive volatile_load_sem (l:Cabs.loc) (chunk: memory_chunk) (ge: Genv.t F V):
   list atom -> tag -> tag -> mem -> trace ->
   MemoryResult (PolicyResult (atom * tag * mem)) -> Prop :=
 | volatile_load_sem_intro: forall ofs pt m pct fpt t v vt vt' vt'' lts,
     load_ltags chunk m (Int64.unsigned ofs) = MemorySuccess lts ->
-    LoadT pct pt vt lts = PolicySuccess vt' ->
-    AccessT pct vt' = PolicySuccess vt'' ->
+    LoadT l pct pt vt lts = PolicySuccess vt' ->
+    AccessT l pct vt' = PolicySuccess vt'' ->
     volatile_load ge chunk m ofs t (MemorySuccess (v,vt)) ->
-    volatile_load_sem chunk ge ((Vlong ofs, pt) :: nil) pct fpt m t
+    volatile_load_sem l chunk ge ((Vlong ofs, pt) :: nil) pct fpt m t
                       (MemorySuccess (PolicySuccess ((v,vt), pct, m))).
 
 (** ** Semantics of volatile stores *)
 
-Inductive volatile_store_sem (chunk: memory_chunk) (ge: Genv.t F V):
+Inductive volatile_store_sem (l:Cabs.loc) (chunk: memory_chunk) (ge: Genv.t F V):
   list atom -> tag -> tag -> mem -> trace ->
   (MemoryResult (PolicyResult (atom * tag * mem))) -> Prop :=
   | volatile_store_sem_intro: forall ofs pt m1 pct pct' pct'' fpt v0 vt0 v vt vt' vt'' lts lts' t m2,
       load_all chunk m1 (Int64.unsigned ofs) = MemorySuccess (v0,vt0,lts) -> 
-      AssignT pct vt0 vt = PolicySuccess (pct', vt') ->
-      StoreT pct' pt vt' lts = PolicySuccess (pct'',vt'',lts') ->
+      AssignT l pct vt0 vt = PolicySuccess (pct', vt') ->
+      StoreT l pct' pt vt' lts = PolicySuccess (pct'',vt'',lts') ->
       volatile_store ge chunk m1 ofs (v,vt) lts t (MemorySuccess m2) ->
-      volatile_store_sem chunk ge ((Vlong ofs,pt) :: (v,vt) :: nil) pct fpt m1 t
+      volatile_store_sem l chunk ge ((Vlong ofs,pt) :: (v,vt) :: nil) pct fpt m1 t
                          (MemorySuccess (PolicySuccess ((Vundef,def_tag), pct'', m2))).
 
 
@@ -476,47 +476,47 @@ Definition alloc_size (v: val) (z:Z) : Prop :=
   end.
 
 (** ** Semantics of dynamic memory allocation (malloc) *)
-Inductive extcall_malloc_sem (ge: Genv.t F V):
+Inductive extcall_malloc_sem (l:Cabs.loc) (ge: Genv.t F V):
   list atom -> tag -> tag -> mem -> trace ->
   (MemoryResult (PolicyResult (atom * tag * mem))) -> Prop :=
 | extcall_malloc_sem_intro: forall v sz st pct fpt m m' lo hi vt_body vt_head lt pt pct',
     alloc_size v sz ->
-    MallocT pct fpt st = PolicySuccess (pct', pt, vt_body, vt_head, lt) ->
+    MallocT l pct fpt st = PolicySuccess (pct', pt, vt_body, vt_head, lt) ->
     heapalloc m sz vt_head vt_body lt = MemorySuccess (m', lo, hi) ->
-    extcall_malloc_sem ge ((v,st) :: nil) pct fpt m E0
+    extcall_malloc_sem l ge ((v,st) :: nil) pct fpt m E0
                        (MemorySuccess (PolicySuccess ((Vlong (Int64.repr lo), pt), pct', m')))
 | extcall_malloc_sem_fail_0: forall v sz st pct fpt m msg params,
     alloc_size v sz ->
-    MallocT pct fpt st = PolicyFail msg params ->
-    extcall_malloc_sem ge ((v,st) :: nil) pct fpt m E0
+    MallocT l pct fpt st = PolicyFail msg params ->
+    extcall_malloc_sem l ge ((v,st) :: nil) pct fpt m E0
                        (MemorySuccess (PolicyFail msg params))
 | extcall_malloc_sem_fail_1: forall v sz st pct fpt m vt_body vt_head lt pt pct' msg failure,
     alloc_size v sz ->
-    MallocT pct fpt st = PolicySuccess (pct', pt, vt_body, vt_head, lt) ->
+    MallocT l pct fpt st = PolicySuccess (pct', pt, vt_body, vt_head, lt) ->
     heapalloc m sz vt_head vt_body lt = MemoryFail msg failure ->
-    extcall_malloc_sem ge ((v,st) :: nil) pct fpt m E0
+    extcall_malloc_sem l ge ((v,st) :: nil) pct fpt m E0
                        (MemoryFail msg failure).
 
-Inductive extcall_free_sem (ge: Genv.t F V) :
+Inductive extcall_free_sem (l:Cabs.loc) (ge: Genv.t F V) :
   list atom -> tag -> tag -> mem -> trace ->
   (MemoryResult (PolicyResult (atom * tag * mem))) -> Prop :=
 | extcall_free_sem_ptr: forall addr fpt pt pct pct' m m',
     addr <> Int64.zero ->
-    heapfree m (Int64.unsigned addr) (fun vt => FreeT pct fpt pt vt) = MemorySuccess (PolicySuccess (pct', m')) ->
-    extcall_free_sem ge ((Vlong addr,pt) :: nil) pct fpt m E0
+    heapfree m (Int64.unsigned addr) (fun vt => FreeT l pct fpt pt vt) = MemorySuccess (PolicySuccess (pct', m')) ->
+    extcall_free_sem l ge ((Vlong addr,pt) :: nil) pct fpt m E0
                      (MemorySuccess (PolicySuccess ((Vundef,def_tag), pct', m')))
 | extcall_free_sem_ptr_fail_0: forall addr fpt pt pct m msg failure,
     addr <> Int64.zero ->
-    heapfree m (Int64.unsigned addr) (fun vt => FreeT pct fpt pt vt) = MemoryFail msg failure ->
-    extcall_free_sem ge ((Vlong addr,pt) :: nil) pct fpt m E0
+    heapfree m (Int64.unsigned addr) (fun vt => FreeT l pct fpt pt vt) = MemoryFail msg failure ->
+    extcall_free_sem l ge ((Vlong addr,pt) :: nil) pct fpt m E0
                      (MemoryFail msg failure)
 | extcall_free_sem_ptr_fail_1: forall addr fpt pt pct m msg params,
     addr <> Int64.zero ->
-    heapfree m (Int64.unsigned addr) (fun vt => FreeT pct fpt pt vt) = MemorySuccess (PolicyFail msg params) ->
-    extcall_free_sem ge ((Vlong addr,pt) :: nil) pct fpt m E0
+    heapfree m (Int64.unsigned addr) (fun vt => FreeT l pct fpt pt vt) = MemorySuccess (PolicyFail msg params) ->
+    extcall_free_sem l ge ((Vlong addr,pt) :: nil) pct fpt m E0
                      (MemorySuccess (PolicyFail msg params))
 | extcall_free_sem_null: forall pct fpt m pt,
-    extcall_free_sem ge ((Vlong Int64.zero,pt) :: nil) pct fpt m E0
+    extcall_free_sem l ge ((Vlong Int64.zero,pt) :: nil) pct fpt m E0
                      (MemorySuccess (PolicySuccess ((Vundef,def_tag), pct, m))).
 
 (** ** Semantics of [memcpy] operations. *)
@@ -749,14 +749,14 @@ Qed.*)
 
 This predicate is used in the semantics of all CompCert languages. *)
 
-Definition external_call (ef: external_function): extcall_sem :=
+Definition external_call (l:Cabs.loc) (ef: external_function): extcall_sem :=
   match ef with
   | EF_external name sg  => external_functions_sem name sg
 (*  | EF_builtin name sg   => builtin_or_external_sem name sg
   | EF_vload chunk       => volatile_load_sem chunk
   | EF_vstore chunk      => volatile_store_sem chunk*)
-  | EF_malloc            => extcall_malloc_sem
-  | EF_free              => extcall_free_sem
+  | EF_malloc            => extcall_malloc_sem l
+  | EF_free              => extcall_free_sem l
 (*  | EF_memcpy sz al      => extcall_memcpy_sem sz al
   | EF_annot kind txt targs   => extcall_annot_sem txt targs
   | EF_annot_val kind txt targ => extcall_annot_val_sem txt targ

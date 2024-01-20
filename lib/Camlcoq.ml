@@ -21,6 +21,7 @@ open BinNums
 open BinNat
 open BinInt
 open BinPos
+open C
 open! Floats
 
 (* Coq's [nat] type and some of its operations *)
@@ -349,6 +350,16 @@ let extern_atom a =
   with Not_found ->
     Printf.sprintf "$%d" (P.to_int a)
 
+let print_loc_caml l =
+  let lineno = if l.lineno = -1 then "" else
+  Printf.sprintf ":%d" l.lineno in
+  if l.filename <> "" && l.filename <> "cabs loc unknown" then
+    Printf.sprintf "%s%s" l.filename lineno
+  else
+    "ccomp"
+
+let loc_eqb l1 l2 = l1.ident == l2.ident
+
 (* Ignoring the terminating "1" bit, canonical encodings of strings can
    be viewed as lists of bits, formed by concatenation of 6-bit fragments
    (for letters, numbers, and underscore) and 14-bit fragments (for other
@@ -398,6 +409,9 @@ let coqstring_uppercase_ascii_of_camlstring s =
       s.[pos] in
     cstring (d :: accu) (pos - 1)
   in cstring [] (String.length s - 1)
+
+let print_loc l =
+  coqstring_of_camlstring (print_loc_caml l)
 
 (* Floats *)
 

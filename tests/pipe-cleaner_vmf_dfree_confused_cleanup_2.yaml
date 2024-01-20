@@ -1,9 +1,9 @@
 #Combine this config file with the config yaml 
 # this one is the target (SUT) specific stuff 
-# (~/fuzzer/pipe-cleaner-vmf-fuzzer/build/vmf_install)$  ./bin/vader -c test/config/PipeCLIInterpreter_basicModules.yaml -c ~/fuzzer/tagged-c/tests/pipe-cleaner_vmf_dfree_confused_cleanup_1.yaml 
+# (vmf_install)$  ./bin/vader -c test/config/PipeCLIInterpreter_basicModules.yaml -c ~/fuzzer/tagged-c/tests/pipe-cleaner_vmf_dfree_confused_cleanup_1.yaml 
 
 vmfVariables:
-  - &SUT_ARGV "/home/amn/fuzzer/tagged-c/tests/double_free_confused_cleanup_1_handlabelled.c"
+  - &SUT_ARGV "/home/amn/fuzzer/tagged-c/tests/double_free_confused_cleanup_2_handlabelled.c"
   - &INTERP_PATH /home/amn/fuzzer/tagged-c/ccomp
   - &INPUT_DIR /home/amn/fuzzer/test_inputs/
   - &DIAGNOSTIC_BIN /home/amn/fuzzer/tagged-c/tests/double_free_no_input_handlabelled.c
@@ -12,12 +12,12 @@ vmfVariables:
 # Such as logging path, logging level, plugin path
 
 vmfFramework:
-  outputBaseDir: output-cc1
+  outputBaseDir: output-cc2
   logLevel : 0 #0=DEBUG, 1=INFO, 2=WARNING, 3=ERROR
 
 # Modules and their specific parameters
 controller:
-  runTimeInMinutes: 2  
+  runTimeInMinutes: 2
 
 storage:
   # TODO rip this out properly. RN its testcase size

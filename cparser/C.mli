@@ -14,13 +14,15 @@
 (*                                                                     *)
 (* *********************************************************************)
 
-open Cabs
-
 (* C abstract syntax after elaboration *)
 
 (* Locations *)
 
-type location = loc            (* filename, line number *)
+type location =
+  { ident: int;
+    filename: string;
+    lineno: int;
+    byteno: int }
 
 (* Identifiers *)
 

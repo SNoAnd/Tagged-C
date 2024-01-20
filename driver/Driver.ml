@@ -164,6 +164,7 @@ Code generation options: (use -fno-<opt> to turn off -f<opt>)
   -interp        Execute given .c files using the reference interpreter
   -quiet         Suppress diagnostic messages for the interpreter
   -trace         Have the interpreter produce a detailed trace of reductions
+  -timeout <int> Maximum number of steps allowed before terminating
   -random        Randomize execution order
   -all           Simulate all possible execution orders
   -main <name>   Start executing at function <name> instead of main()
@@ -285,6 +286,7 @@ let cmdline_actions =
 (* Interpreter mode *)
  [ Exact "-interp", Set option_interp;
   Exact "-quiet", Unit (fun () -> Interp.trace := 0);
+  Exact "-timeout", Integer (fun i  -> Interp.timeoutMaxSteps := i);
   Exact "-trace", Unit (fun () -> Interp.trace := 2);
   Exact "-memtrace", Unit (fun () -> Interp.trace := 3);
   Exact "-random", Unit (fun () -> Interp.mode := Interp.Random);

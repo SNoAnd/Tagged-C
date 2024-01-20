@@ -15,6 +15,7 @@
 (* *********************************************************************)
 
 Require Import BinPos.
+Require Import String.
 
 (* OCaml's string type. *)
 Parameter string : Type.
@@ -22,8 +23,18 @@ Parameter string : Type.
 Parameter char_code : Type.
 (* Context information. *)
 Parameter loc : Type.
-
 Parameter no_loc : loc.
+Parameter print_loc : loc -> String.string.
+Parameter loc_eqb : loc -> loc -> bool.
+
+Axiom loc_eqb_true : forall (l1 l2:loc), loc_eqb l1 l2 = true <-> l1 = l2.
+Axiom loc_eqb_false : forall (l1 l2:loc), loc_eqb l1 l2 = false <-> l1 <> l2.
+
+Lemma eqdec_loc : forall (l1 l2:loc), {l1 = l2} + {l1 <> l2}.
+  intros. destruct (loc_eqb l1 l2) eqn:?.
+  - left. apply loc_eqb_true; auto.
+  - right. apply loc_eqb_false; auto.
+Qed.
 
 Record floatInfo := {
   isHex_FI:bool;

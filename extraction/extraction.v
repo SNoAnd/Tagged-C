@@ -24,7 +24,7 @@ Require Ctypes.
 Require Csyntax.
 Require Parser.
 Require Initializers.
-Require Import Tags Allocator Initializers Csem.
+Require Import Tags NullPolicy PVI PNVI DoubleFree Allocator Initializers Csem.
 
 Module Extracted (P : Policy) (A : Allocator P).
 
@@ -76,19 +76,20 @@ End Extracted.
             in iter".
 
   (* Cabs *)
-  Extract Constant Cabs.loc =>
-            "{ lineno : int;
-               filename: string;
-               byteno: int;
-               ident : int;
-             }".
+  Extract Constant Cabs.loc => "C.location".
 
   Extract Constant Cabs.no_loc =>
-            "{ lineno = -1;
-               filename = """";
-               byteno = -1;
-               ident = -1;
+            "{ C.lineno = -1;
+               C.filename = """";
+               C.byteno = -1;
+               C.ident = -1;
              }".
+
+  Extract Inlined Constant Cabs.print_loc =>
+            "Camlcoq.print_loc".
+
+  Extract Inlined Constant Cabs.loc_eqb =>
+            "Camlcoq.loc_eqb".
   
   Extract Inlined Constant Cabs.string => "String.t".
   Extract Constant Cabs.char_code => "int64".
@@ -110,9 +111,9 @@ End Extracted.
   (* Go! *)
   
   Cd "extraction".
-
+  
   Separate Extraction
-           Tags
+           Tags NullPolicy PVI PNVI DoubleFree
            Allocator
            Extracted
            Ctypes.merge_attributes Ctypes.remove_attributes

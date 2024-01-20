@@ -16,6 +16,7 @@
 
 
 open Cabs
+open C
 
 (*********** HELPER FUNCTIONS **********)
 
