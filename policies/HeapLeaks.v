@@ -1,3 +1,7 @@
+(* 
+ * @TODO this file is not yet hooked into the TaggedC system
+    heap tests are also not hooked into run all tests.py
+ *)
 Require Import Coqlib.
 Require Import AST.
 Require Import Integers.
@@ -8,12 +12,11 @@ Require Import Cabs.
 Require Import String.
 Require Import Tags.
 
-Require Import List. Import ListNotations. (* list notations is a module inside list *)
+Require Import List. Import ListNotations. 
+(* list notations is a module inside list *)
 
 (*
-
- "Heap Leaks" combined policy. Going to try to hit at least the first 4 in the list. 
-    Implements Policy Interface.
+  Scratch/Brainstorming 
     problems: the dynamic tag ? sif already existing?
     algorithm:
         overread/overwrite #1, #2
@@ -26,24 +29,20 @@ Require Import List. Import ListNotations. (* list notations is a module inside 
         
               put the color of the nested on the value tag and the byte tag of the allocated
 
-            "state goes in the pc tag", counter 
+            "state goes in the pc tag", so the counter goes there? 
 
         secrets left in buffer after freeing #4
           if we can id the secrets, maybe with labelT, special tag type on it?
             AllocatedSecret(l:loc) ? then when it frees convert it to 
             UnAllocatedSecret(l:loc) until its written over? 
+            if we detect a read before the first write, 
+            failstop & out 
 
-        exhaustion, #5 
-          detect final exit by incrementing/decrementing when entering fns.
-            when pct hits 0, its the final one and everything should be freed.
-              we could either scan memory or maintain a data structure to watch things,
-                increasing with malloc, decreasing with free (assume dfree protection is active)
-        
         heap address leak, #3
           SIF. Sean says it exists in math form, but not really in coq yet
 
           put the tag on teh bytes, because its not the values, its address itself
-          tag output functions (we only have 1) 
+          tag output functions (we only have 1). There is a sif policy pushed up,
 
 
  * "heap leak" can mean just about any problem with the heap. There are at least 5:
@@ -53,7 +52,7 @@ Require Import List. Import ListNotations. (* list notations is a module inside 
  *      (4) heap secret recovery from improper clean up (steal keys that were correctly
  *              freed but not zeroed out)
  *      (5) heap resource exhaustion/resource leak through memory (DOS by OOM)
- *          We are not including this one
+ *          We are not including this one. 
  * 
  *      (1)(2)(5) are things that SOTA fuzzers can reasonably detect when augmented with 
  *          sanitizers like ASAN. 
@@ -62,8 +61,9 @@ Require Import List. Import ListNotations. (* list notations is a module inside 
  *      (5) can sometimes be detected by other means, like linux exit code 137. 
 
 Basic Features:
+  - Implements Policy Interface.
 
-Future:
+Future Work (?):
 
 Assumptions:
 
@@ -76,12 +76,32 @@ TaggedC Interpreter Notes:
       4 location tags, one per byte.
       Can be used to catch misaligned loads and stores, in theory.
 *)
+
 Module HeapLeaks <: Policy.
 
  Inductive myTag :=
- | N (* N means unallocated, is also the starting "uncolor" *)
- | FreeColor (l:loc) (* new tag carrying the free site unique color (location) *)
- | Alloc (l:loc) (*time to dynamic color with the location*)
+ | N (* in the paper, _|_ , N for NonApplicable?, this is a nonpointer/nonheap thing. 
+            keeping N to align with other policies. *)
+ | Unallocated (* Freed memory, may be dirty/containing secret 
+                  in the paper's micropolicy this is F *)
+               (* if we rolled DoubleFree in here, this would need to keep a color *)
+ | AllocatedDirty(l:loc) (* mem has been allocated, but not yet written to. 
+                          Do not allow reads before the first write. 
+                          During the first write, convert to AllocatedWithColor
+                          If there is a read on AllocatedDirty, 
+                          dump +/- 50ish bytes for auth tokens (usually 20-30 bytes)
+                          secret keys are often 2-4k bytes. Thats probably too big
+                          for our little system *)
+ | AllocatedWithColor (l:loc) (* AllocatedDirty has been written.
+                            carrying the free site unique color (location)
+                            + counter in pc tag *)
+ | PointerWithColor (l:loc) (* should match the AllocatedWithColor of the block
+                            not totally sure if I need a seperate type,
+                            but i think i need to know when its the block and
+                            when its the pointer*)
+ | Memloc (* this is a memory location in the heap, a heap address *)
+ | Output (* this is an output function. We only have 1 rn, printf()
+            Memloc tags should not flow here *)
  .
 
  Definition tag := myTag.
@@ -90,20 +110,22 @@ Module HeapLeaks <: Policy.
    unfold tag. intros. repeat decide equality.
    apply eqdec_loc.
  Qed.
+
  Definition def_tag := N.
 
-(* nothing has a color to start *)
+(* nothing has a color to start, valid programs don't have to use dynamic memory *)
+(* According to paper, PCT should carry around the current color,
+    to avoid leaking information about frames it shouldnt be able to touch*)
  Definition InitPCT := N.
 
 (* This is a helper to print locations for human & fuzzer ingestion *)
  Definition inj_loc (s:string) (l:loc) : string :=
   s ++ " " ++ (print_loc l).
 
+(* @TODO this will need an update after I settle the myTag type  *)
 Definition print_tag (t : tag) : string :=
     match t with
-    | FreeColor l => (inj_loc "location" l)
-    | N => "Unallocated"
-    | Alloc => "Allocated"
+    | N => "NA for heap"
     end.
 
 (* boilerplate. has to be reimplemented in each policy.
@@ -116,7 +138,12 @@ Definition print_tag (t : tag) : string :=
  Arguments PolicySuccess {_} _.
  Arguments PolicyFail {_} _ _.
 
- (* Required for policy interface. Not relevant to this particular policy, pass values through *)
+ (* @TODO
+    I think this is where I need to check for the Ouput tag/printf fn 
+    Or is it argT where I check the args for the Memloc tag? 
+    
+    What about strcat to evade my check? Or is that making this too complicated?
+    Do I even have the strlib? *)
  Definition CallT (l:loc) (pct pt: tag) : PolicyResult tag := PolicySuccess pct.
 
  (* Required for policy interface. Not relevant to this particular policy, pass values through *)
@@ -124,15 +151,30 @@ Definition print_tag (t : tag) : string :=
 
  (* Required for policy interface. Not relevant to this particular policy, pass values through *)
  (* pct_clr is pct of caller, pct_cle is callee *)
- Definition RetT (l:loc) (pct_clr pct_cle vt : tag) : PolicyResult (tag * tag) := PolicySuccess (pct_clr,vt).
+ Definition RetT (l:loc) (pct_clr pct_cle vt : tag) : PolicyResult (tag * tag) := 
+  PolicySuccess (pct_clr,vt).
 
- (* Required for policy interface. Not relevant to this particular policy, pass values through *)
- Definition LoadT (l:loc) (pct pt vt: tag) (lts : list tag) : PolicyResult tag := PolicySuccess pct.
+ (* @TODO
+    overreads, overwrites care about this one
+    based on policy in hte paper
+      the color in the pc tag (pct), 
+      the color in the pointer's tag (pt), 
+      the color in the block to be loaded (I think this is lts?)
+      should be the same, otehrwise failstop 
+    *)
+ Definition LoadT (l:loc) (pct pt vt: tag) (lts : list tag) : PolicyResult tag := 
+  PolicySuccess pct.
 
- (* Required for policy interface. Not relevant to this particular policy, pass values through *)
- Definition StoreT (l:loc) (pct pt vt : tag) (lts : list tag) : PolicyResult (tag * tag * list tag) := PolicySuccess (pct,vt,lts).
+(* @TODO
+    overreads, overwrites care about this one
+    base on policy in the paper *)
+ Definition StoreT (l:loc) (pct pt vt : tag) (lts : list tag) : PolicyResult (tag * tag * list tag) := 
+  PolicySuccess (pct,vt,lts).
 
- (* Required for policy interface. Not relevant to this particular policy, pass values through *)
+ (* @TODO 
+    secret recovery cares about this one. 
+    check that its not AllocatedDirty. If it is fail, and emit +/- around the buffer\
+        and the fuzzer will decide if it's a secret *)
  Definition AccessT (l:loc) (pct vt : tag) : PolicyResult tag := PolicySuccess vt.
 
  (* Required for policy interface. Not relevant to this particular policy, pass values through *)
@@ -142,7 +184,10 @@ Definition print_tag (t : tag) : string :=
  (* Required for policy interface. Not relevant to this particular policy, pass values through *)
  Definition UnopT (l:loc) (op : unary_operation) (pct vt : tag) : PolicyResult (tag * tag) := PolicySuccess (pct, vt).
 
- (* Required for policy interface. Not relevant to this particular policy, pass values through *)
+  (* @TODO
+    address leaks cares about this one
+    have to propagate the Memloc tag 
+    the paper heap policy propagates these for the colors as well *)
  Definition BinopT (l:loc) (op : binary_operation) (pct vt1 vt2 : tag) : PolicyResult (tag * tag) := PolicySuccess (pct, vt2).
 
  (* Constants are never pointers to malloced memory. *)
@@ -151,16 +196,19 @@ Definition print_tag (t : tag) : string :=
  (* Before pointer gets its value, it's not allocated *) 
  Definition InitT (l:loc) (pct : tag) : PolicyResult tag := PolicySuccess N.
 
- (* Required for policy interface. Not relevant to this particular policy, pass values through *)
+ (* @TODO
+    I think this one is SIF related? Do we need to propagate the Memloc tag here? *)
  Definition SplitT (l:loc) (pct vt : tag) (id : option ident) : PolicyResult tag := PolicySuccess pct.
 
  (* Required for policy interface. Not relevant to this particular policy, pass pct through *)
  Definition LabelT (l:loc) (pct : tag) (id : ident) : PolicyResult tag := PolicySuccess pct.
 
- (* Required for policy interface. Not relevant to this particular policy, pass values through *)
+ (* @TODO
+    I think this one is SIF related? Do we need to propagate the Memloc tag here? *)
  Definition ExprSplitT (l:loc) (pct vt : tag) : PolicyResult tag := PolicySuccess pct.
 
- (* Required for policy interface. Not relevant to this particular policy, pass values through *)
+ (* @TODO
+    I think this one is SIF related? Do we need to propagate the Memloc tag here? *)
  Definition ExprJoinT (l:loc) (pct vt : tag) : PolicyResult (tag * tag) := PolicySuccess (pct,vt).
 
  (* Required for policy interface. Not relevant to this particular policy, pass values through *)
@@ -177,9 +225,14 @@ Definition print_tag (t : tag) : string :=
 
  (* 
     MallocT is a key rule here, but will likely need to change.
+      needs to color dynamically, get counter out of pct some how? 
+          malloc is repsonsible for assigning colors 
+      set value tag on teh pointer with teh color
+      set mem tag on the block with the color (so that if it has yet more pointers colors dont get lost)
 
-    MallocT sets the tag to Alloc, and clears free color if one was present becausee
-      re-use of freed memory is legal.
+    Unlike the paper's micropolicy, we do not zero out memory in order to emulate a real system
+
+    From the double free policy: 
       - pct is program counter tag
       - fptrt is the tag on the function pointer that is being called, often left defT
           In a world with multiple mallocs (like compartments) this is useful.
@@ -197,12 +250,14 @@ Definition print_tag (t : tag) : string :=
   Definition MallocT (l:loc) (pct fptrt st : tag) : PolicyResult (tag * tag * tag * tag * tag) :=
    PolicySuccess (pct, Alloc, N, Alloc, N).
   
-  (* 
-  FreeT colors the header tag with the current Freecolor from the pct. If there is already 
-    a color present on the tag of the header, this is a double free. If it tries to free
-    something that is unallocated, this is a nonsense free. Freeing a
-    null pointer (free(0)) is legal C, but the rule should never be called on those. 
-  
+  (* Free
+    should check that color on the pointer still matches the block
+      IIRC the MTE policy in glibc does that check
+    set to block mem tags to UnallocatedDirty
+    clear color on the pointer? or leave it to detect a UAF?
+        ?? the paper's policy doesn't look like it clears the color on the pointer itself?
+
+    from DoubleFree policy
   Args:
     pct - program counter tag, which has the current Freecolor (acquired in LabelT)
     fptrt - tag on the function pointer of this fn (useful in world with multiple frees)
@@ -233,6 +288,10 @@ Definition print_tag (t : tag) : string :=
 
  (* Required for policy interface. Not relevant to this particular policy, pass values through *)
  Definition FieldT (l:loc) (ce : composite_env) (pct vt : tag) (ty : type) (id : ident) : PolicyResult tag := PolicySuccess vt.
+
+ (* 
+  @TODO do I need any of these casts for the address leak taint? or heap colors?
+ *)
 
  (* Required for policy interface. Not relevant to this particular policy, pass values through *)
  Definition PICastT (l:loc) (pct pt : tag)  (lts : list tag) (ty : type) : PolicyResult tag := PolicySuccess pt.
