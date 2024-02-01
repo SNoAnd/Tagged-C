@@ -137,8 +137,11 @@ Definition print_tag (t : tag) : string :=
  Definition ExprJoinT (l:loc) (pct vt : tag) : PolicyResult (tag * tag) := PolicySuccess (pct,vt).
 
  (* Required for policy interface. Not relevant to this particular policy, pass values through *)
- Definition GlobalT (l:loc) (ce : composite_env) (id : ident) (ty : type) : tag * tag * tag := (N, N, N).
+ Definition GlobalT (ce : composite_env) (id : ident) (ty : type) : tag * tag * tag := (N, N, N).
 
+ (* Required for policy interface. Not relevant to this particular policy, pass values through *)
+ Definition FunT (id : ident) (ty : type) :tag := N.
+ 
  (* Required for policy interface. Not relevant to this particular policy, pass values through *)
  Definition LocalT (l:loc) (ce : composite_env) (pct : tag) (ty : type) : PolicyResult (tag * tag * (list tag))%type :=
    PolicySuccess (N, N, [N]).

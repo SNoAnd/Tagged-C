@@ -70,7 +70,9 @@ Module Type Policy. (* anaaktge this is the interface for rules
 
   Parameter ExprJoinT : loc -> tag -> tag -> PolicyResult (tag * tag).
   
-  Parameter GlobalT : loc -> composite_env -> ident -> type -> tag * tag * tag.
+  Parameter GlobalT : composite_env -> ident -> type -> tag * tag * tag.
+
+  Parameter FunT : ident -> type -> tag.
   
   Parameter LocalT : loc -> composite_env -> tag -> type -> PolicyResult (tag * tag * list tag).
 

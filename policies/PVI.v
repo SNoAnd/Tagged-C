@@ -90,10 +90,11 @@ Module PVI <: Policy.
 
   Definition ExprJoinT (l:loc) (pct vt : tag) : PolicyResult (tag * tag) := PolicySuccess (pct,vt).
 
-  Definition GlobalT (l:loc) (ce : composite_env) (id : ident) (ty : type) : tag * tag * tag :=
+  Definition GlobalT (ce : composite_env) (id : ident) (ty : type) : tag * tag * tag :=
     (Glob id, N, Glob id).
-  (* anaaktge the % in exp preceding, treat ambigous ops as its type version*)
 
+  Definition FunT (id : ident) (ty : type) : tag := N.
+  
   Definition LocalT (l:loc) (ce : composite_env) (pct : tag) (ty : type) : PolicyResult (tag * tag * (list tag))%type :=
     match pct with
     | Dyn c =>

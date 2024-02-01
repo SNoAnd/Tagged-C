@@ -60,7 +60,9 @@ Module NullPolicy <: Policy.
 
   Definition ExprJoinT (l:loc) (pct vt : tag) : PolicyResult (tag * tag) := PolicySuccess (tt,tt).
 
-  Definition GlobalT (l:loc) (ce : composite_env) (id : ident) (ty : type) : tag * tag * tag := (tt, tt, tt).
+  Definition GlobalT (ce : composite_env) (id : ident) (ty : type) : tag * tag * tag := (tt, tt, tt).
+
+  Definition FunT (id : ident) (ty : type) : tag := tt.
 
   Definition LocalT (l:loc) (ce : composite_env) (pct : tag) (ty : type) : PolicyResult (tag * tag * list tag)%type :=
     PolicySuccess (tt, tt, repeat tt (Z.to_nat (sizeof ce ty))).
