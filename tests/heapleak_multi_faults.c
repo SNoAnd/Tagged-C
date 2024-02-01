@@ -1,0 +1,21 @@
+/**
+ * @todo write test. This is the "BIG test" once all the smaller tests are working 
+ * 
+ * @file heapleak_multi_fault
+ * @brief Demonstrate a variety of heap leak behavior in 1 program. Ideally get all 5 behaviors in there with some dupes
+ * @note
+ * "heap leak" can mean just about any problem with the heap. There are at least 5:
+ *      (1) heap buffer overwrite (RCE)
+ *      (2) heap buffer overread (heartbleed)
+ *      (3) heap address leak (defeat ASLR in an exploit chain)
+ *      (4) heap secret recovery from improper clean up (steal keys that were correctly
+ *              freed but not zeroed out)
+ *      (5) heap resource exhaustion/resource leak through memory (OOM )
+ * 
+ *      (1)(2)(5) are things that SOTA fuzzers can reasonably detect when augmented with 
+ *          sanitizers like ASAN. 
+ *      However they cannot usually tell (1) and (2) apart from each other or other segfaulting
+ *          conditions. 
+ *      (5) can sometimes be detected by other means. find_or_create_page() returns null,
+ *          linux exit code 137(), etc. 
+ */
