@@ -3,8 +3,7 @@
  * @brief A more involved confused clean up with helper functions.
  *      handlabelled frees 
  *      Relies on 1st two bytes 
- * @note failstops on 2nd char whose ascii value is divisible by 6.
- *      "BBB" should failstop, "AAA" should not
+ * @note has two double frees
  */
 #include <stdlib.h> 
 #include <stdio.h>

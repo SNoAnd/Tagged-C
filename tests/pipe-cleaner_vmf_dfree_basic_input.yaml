@@ -6,13 +6,14 @@
 # Note that is one will always crash, 
 # which causes VMF to crash on the first iteration by default
 # invoke with
+# $ cd build
 # $ cmake .. && make && make install && cd vmf_install
 # ./bin/vader -c test/config/PipeCliInterpreter_basicModules.yaml -c ~/fuzzer/tagged-c/tests/pipe-cleaner_vmf_dfree_basic_input.yaml
 
 vmfVariables:
-  - &SUT_ARGV /home/amn/fuzzer/tagged-c/tests/double_free_basic_input_handlabelled.c
+  - &SUT_ARGV /home/amn/fuzzer/tagged-c/tests/double_free_basic_input.c
   - &INTERP_PATH /home/amn/fuzzer/tagged-c/ccomp
-  - &DIAGNOSTIC_BIN /home/amn/fuzzer/tagged-c/tests/double_free_no_input_handlabelled.c
+  - &DIAGNOSTIC_BIN /home/amn/fuzzer/tagged-c/tests/double_free_no_input.c
   - &INPUT_DIR /home/amn/fuzzer/test_inputs/
 
 # VMF Framework parameters

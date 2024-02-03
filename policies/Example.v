@@ -54,9 +54,9 @@ Module Ex1_Gas <: Policy.
   (* A call counts as control flow, so we decrement the gas, or failstop if it's 0 *)
   Definition CallT (l:loc) (pct pt: tag) : PolicyResult tag :=
     match pct with
-    | PCGas 0 => PolicyFail "Ex1_Gas::CallT::NoGas" [pct] (* PolicyFail takes a string error message,
+    | PCGas 0 => PolicyFail "Ex1_Gas||CallT::NoGas|" [pct] (* PolicyFail takes a string error message,
                                                              and a list of tags to print. *)
-    | N => PolicyFail "Ex1_Gas::CallT::BadPC" []          (* We want to failstop if we get an N
+    | N => PolicyFail "Ex1_Gas::CallT|| BadPC|" []          (* We want to failstop if we get an N
                                                              in the PC tag, but it shouldn't happen *)
     | PCGas (S c') => PolicySuccess (PCGas c')            (* Otherwise, decrement the counter *)
     end.
@@ -64,8 +64,8 @@ Module Ex1_Gas <: Policy.
   (* Most other control flow primitives are handled by the SplitT rule. *)
   Definition SplitT (l:loc) (pct vt : tag) (id : option ident) : PolicyResult tag :=
     match pct with
-    | PCGas 0 => PolicyFail "Ex1_Gas::SplitT::NoGas" [pct]
-    | N => PolicyFail "Ex1_Gas::SplitT::BadPC" []
+    | PCGas 0 => PolicyFail "Ex1_Gas||SplitT::NoGas|" [pct]
+    | N => PolicyFail "Ex1_Gas||SplitT::BadPC|" []
     | PCGas (S c') => PolicySuccess (PCGas c')
     end.    
 

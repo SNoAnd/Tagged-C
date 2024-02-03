@@ -2,6 +2,7 @@
  * @file double_free_confused_cleanup_2.c
  * @brief A more involved confused clean up with helper functions. 
  *      Relies on 1st two bytes for control
+ * @note has 2 failstops, BBB, !!!
  */
 #include <stdlib.h> 
 #include <stdio.h>

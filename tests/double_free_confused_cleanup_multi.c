@@ -4,9 +4,27 @@
  *      Has the same double free on input as confused_cleanup_2 and
  *      a 2nd double free on x if flag !=0
  *      Also relies on 1st two bytes existing. 
+ * @note Test cases:
  * 
- * @note We expect the fuzzing output to report 0, 1, or 2 failures
- *  depending mostly on 2nd byte in input 
+ *  B = 66 dec (/ 6, /2 and /3) 
+ *      "BBB" -> 2 (only input will trigger)
+ *            -> for input, triggers dfree, label0, label2 
+ *            -> for x, triggers dfree, label3, label4 (if we got there)
+ *  2 = 50 dec ( /2 but not /3)
+ *      "222" -> 1 
+ *            -> for input, free at label0 (safe)
+ *            -> for x, triggers dfree for x, label3, label4
+ *      "220" -> 0
+ *            -> for input, free at label0 (safe)
+ *            -> for x, free at label4 (safe) (skips label 3)
+ *              
+ *  ! = 33 dec ( /3 but not /2)
+ *      "!!!" -> 1
+ *            -> for input, triggers dfree at label1, label2
+ *            -> for x, triggers dfree, label3, label4 (if we got there)
+ *      "!!0" -> 2 (only input will trigger)
+ *            -> for input, triggers dfree at label1, label2 
+ *            -> for x, free at label4 (safe)
  */
 #include <stdlib.h> 
 #include <stdio.h>
@@ -53,8 +71,9 @@ int main() {
         free (input);
     }
 
-    // if flag is not 0, double free
-    if (flag) {
+    // if 3rd byte is not '0', double free
+    int flagb3 = (char) input[2];
+    if (flagb3 != '0') {
         free (x);
     }
     free(x);
