@@ -76,7 +76,7 @@ Module Ex1_Gas <: Policy.
                                    We keep the latter. *)
   
   (* Everywhere else, we just propagate tags in a natural way. *)
-  Definition ArgT (l:loc) (pct vt : tag) (f x: ident) : PolicyResult (tag * tag) :=
+  Definition ArgT (l:loc) (pct pft vt : tag) (idx:nat) (ty: type) : PolicyResult (tag * tag) :=
     PolicySuccess (pct,vt).
   
   Definition LoadT (l:loc) (pct pt vt: tag) (lts : list tag) : PolicyResult tag :=

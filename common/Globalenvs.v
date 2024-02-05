@@ -232,7 +232,7 @@ Module Genv (P:Policy) (A:Allocator P).
         : (t*mem) :=
         match idg#2 with
         | Gvar gv =>
-            let '(pt, vt, lt) := GlobalT Cabs.no_loc ce (idg#1) Tvoid in
+            let '(pt, vt, lt) := GlobalT ce (idg#1) Tvoid in (* TODO: if we're going to do things based on type here, need to concretize V *)
             match alloc_global ge m tree (idg#1) gv vt lt with
             | MemorySuccess (base', m') =>
                 let size := Zpos gv.(gvar_size) in
@@ -252,7 +252,8 @@ Module Genv (P:Policy) (A:Allocator P).
         | Gfun _ =>
             match ext (idg#1) with
             | Some (ef,tyargs,tyres,cconv) =>
-                let genv_symb' := PTree.set idg#1 (SymEFun ef tyargs tyres cconv def_tag)
+                let pt := FunT (idg#1) Tvoid in (* TODO: as above, but F *)
+                let genv_symb' := PTree.set idg#1 (SymEFun ef tyargs tyres cconv pt)
                                             ge.(genv_symb) in
                 let ge' := @mkgenv
                              ge.(genv_public)

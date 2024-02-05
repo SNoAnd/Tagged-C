@@ -42,7 +42,7 @@ Module Type Policy. (* anaaktge this is the interface for rules
 
   Parameter CallT : loc -> tag -> tag -> PolicyResult tag.
 
-  Parameter ArgT : loc -> tag -> tag -> ident -> ident -> PolicyResult (tag * tag).
+  Parameter ArgT : loc -> tag -> tag -> tag -> nat -> type -> PolicyResult (tag * tag).
 
   Parameter RetT : loc -> tag -> tag -> tag -> PolicyResult (tag * tag).
   
@@ -59,7 +59,7 @@ Module Type Policy. (* anaaktge this is the interface for rules
   Parameter BinopT : loc -> binary_operation -> tag -> tag -> tag -> PolicyResult (tag * tag).
 
   Parameter ConstT : loc -> tag -> PolicyResult tag.
-
+  
   Parameter InitT : loc -> tag -> PolicyResult tag.
 
   Parameter SplitT : loc -> tag -> tag -> option ident -> PolicyResult (tag).
@@ -70,7 +70,9 @@ Module Type Policy. (* anaaktge this is the interface for rules
 
   Parameter ExprJoinT : loc -> tag -> tag -> PolicyResult (tag * tag).
   
-  Parameter GlobalT : loc -> composite_env -> ident -> type -> tag * tag * tag.
+  Parameter GlobalT : composite_env -> ident -> type -> tag * tag * tag.
+
+  Parameter FunT : ident -> type -> tag.
   
   Parameter LocalT : loc -> composite_env -> tag -> type -> PolicyResult (tag * tag * list tag).
 
