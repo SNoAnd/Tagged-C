@@ -374,7 +374,7 @@ Proof.
 Qed.
 
 Lemma callred_kind:
-  forall PCT a m PCT' fd args ty, callred ge PCT a m PCT' fd args ty -> expr_kind a = RV.
+  forall l pct ft a m pct' fd args ty, callred ge l pct a m ft fd args ty pct' -> expr_kind a = RV.
 Proof.
   induction 1; auto.
 Qed.

@@ -82,7 +82,7 @@ Definition print_tag (t : tag) : string :=
  Definition CallT (l:loc) (pct pt: tag) : PolicyResult tag := PolicySuccess pct.
 
  (* Required for policy interface. Not relevant to this particular policy, pass values through *)
- Definition ArgT (l:loc) (pct vt : tag) (f x: ident) : PolicyResult (tag * tag) := PolicySuccess (pct,vt).
+ Definition ArgT (l:loc) (pct fpt vt : tag) (idx:nat) (ty: type) : PolicyResult (tag * tag) := PolicySuccess (pct,vt).
 
  (* Required for policy interface. Not relevant to this particular policy, pass values through *)
  (* pct_clr is pct of caller, pct_cle is callee *)

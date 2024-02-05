@@ -33,7 +33,7 @@ Module NullPolicy <: Policy.
 
   Definition CallT (l:loc) (pct pt: tag) : PolicyResult tag := PolicySuccess tt.
 
-  Definition ArgT (l:loc) (pct vt : tag) (f x: ident) : PolicyResult (tag * tag) := PolicySuccess (tt,tt).
+  Definition ArgT (l:loc) (pct fpt vt : tag) (idx:nat) (ty: type) : PolicyResult (tag * tag) := PolicySuccess (tt,tt).
 
   Definition RetT (l:loc) (pct_clr pct_cle vt : tag) : PolicyResult (tag * tag) := PolicySuccess (tt,tt).
 

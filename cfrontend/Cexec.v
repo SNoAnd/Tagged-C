@@ -555,7 +555,8 @@ Qed.
 Inductive reduction: Type :=
 | Lred (rule: string) (l': expr) (te': tenv) (m': mem)
 | Rred (rule: string) (pct': tag) (r': expr) (te': tenv) (m': mem) (tr: trace)
-| Callred (rule: string) (fd: fundef) (fpt: tag) (args: list atom) (tyres: type) (te': tenv) (m': mem)
+| Callred (rule: string) (fd: fundef) (fpt: tag) (args: list atom)
+          (tyres: type) (te': tenv) (m': mem) (pct': tag)
 | Stuckred (msg: string) (*anaaktge enters impossible state or would have to take impossible step. 
               think like a /0 *)
 | Failstopred (rule: string) (msg: string) (failure: FailureClass) (params: list tag) (tr: trace)
@@ -584,11 +585,21 @@ Section EXPRS.
 
   Local Open Scope option_monad_scope.
   
-  Fixpoint sem_cast_arguments (vtl: list (atom * type)) (tl: typelist) (m: mem) : option (list atom) :=
+  Fixpoint sem_cast_arguments (lc:Cabs.loc) (pct fpt:tag) (vtl: list (atom * type)) (tl: typelist) (m: mem)
+    : option (PolicyResult (tag * list atom)) :=
     match vtl, tl with
-    | nil, Tnil => Some nil
+    | nil, Tnil => Some (PolicySuccess (pct,[]))
     | (v1,vt1,t1)::vtl, Tcons t1' tl =>
-        do v <- sem_cast v1 t1 t1' m; do vl <- sem_cast_arguments vtl tl m; Some((v,vt1)::vl)
+        do v <- sem_cast v1 t1 t1' m;
+        match ArgT lc pct fpt vt1 (length vtl) t1' with
+        | PolicySuccess (pct',vt') =>
+            match sem_cast_arguments lc pct' fpt vtl tl m with
+            | Some (PolicySuccess (pct'',vl)) =>
+                Some (PolicySuccess (pct'', (v,vt')::vl))
+            | res => res
+            end
+        | PolicyFail msg params => Some (PolicyFail msg params)
+        end
     | _, _ => None
     end.
 
@@ -1087,18 +1098,28 @@ Section EXPRS.
     | RV, Ecall r1 rargs ty =>
         match is_val r1, is_val_list rargs with
         | Some(Vfptr b, fpt, tyf), Some vtl =>
+            do fd <- Genv.find_funct ge (Vfptr b);
             match classify_fun tyf with
             | fun_case_f tyargs tyres cconv =>
-                do fd <- Genv.find_funct ge (Vfptr b);
-                do vargs <- sem_cast_arguments vtl tyargs m;
                 check type_eq (type_of_fundef fd) (Tfunction tyargs tyres cconv);
-                topred (Callred "red_call_internal" fd fpt vargs ty te m)
+                match sem_cast_arguments lc pct fpt vtl tyargs m with
+                | Some (PolicySuccess (pct', vargs)) =>
+                    topred (Callred "red_call_internal" fd fpt vargs ty te m pct')
+                | Some (PolicyFail msg params) =>
+                    topred (Failstopred "red_call_internal_fail" msg OtherFailure params E0)
+                | None => stuck 
+                end
             | _ => stuck
             end
         | Some(Vefptr ef tyargs tyres cconv, fpt, tyf), Some vtl =>
-            do vargs <- sem_cast_arguments vtl tyargs m;
-            topred (Callred "red_call_external"
-                            (External ef tyargs ty cconv) fpt vargs ty te m)
+            match sem_cast_arguments lc pct fpt vtl tyargs m with
+            | Some (PolicySuccess (pct', vargs)) =>
+                topred (Callred "red_call_external"
+                            (External ef tyargs ty cconv) fpt vargs ty te m pct')
+            | Some (PolicyFail msg params) =>
+                topred (Failstopred "red_call_external_fail" msg OtherFailure params E0)
+            | None => stuck
+            end
         | Some(_,_,_), Some vtl =>
             stuck
         | _, _ =>
@@ -1139,8 +1160,8 @@ Section EXPRS.
       rfailred ge ce lc pct r te m tr msg failure params -> possible_trace w tr w' ->
       context RV to C ->
       imm_safe_t to lc (C r) pct te m
-  | imm_safe_t_callred: forall lc to C pct pct' r te m fd args ty,
-      callred ge pct r m pct' fd args ty ->
+  | imm_safe_t_callred: forall lc to C pct ft pct' r te m fd args ty,
+      callred ge lc pct r m ft fd args ty pct' ->
       context RV to C ->
       imm_safe_t to lc (C r) pct te m.
 
@@ -1265,14 +1286,16 @@ Definition invert_expr_prop (lc:Cabs.loc) (a: expr) (pct: tag) (te: tenv) (m: me
       exists v, sem_cast v1 ty1 tycast m = Some v
   | Ecall (Eval (Vfptr b,vft) tyf) rargs ty =>
       exprlist_all_values rargs ->
-      exists tyargs tyres cconv fd vl,
-         classify_fun tyf = fun_case_f tyargs tyres cconv
-      /\ Genv.find_funct ge (Vfptr b) = Some fd
-      /\ cast_arguments m rargs tyargs vl
-      /\ type_of_fundef fd = Tfunction tyargs tyres cconv
+      exists tyargs tyres cconv fd,
+        Genv.find_funct ge (Vfptr b) = Some fd
+        /\ classify_fun tyf = fun_case_f tyargs tyres cconv
+        /\ type_of_fundef fd = Tfunction tyargs tyres cconv
+        /\ ((exists pct' vl, cast_arguments lc pct vft m rargs tyargs (PolicySuccess (pct', vl)))
+            \/ exists msg params, cast_arguments lc pct vft m rargs tyargs (PolicyFail msg params))
   | Ecall (Eval (Vefptr ef tyargs tyres cc,vft) tyf) rargs ty =>
       exprlist_all_values rargs ->
-      exists vl, cast_arguments m rargs tyargs vl
+      ((exists pct' vl, cast_arguments lc pct vft m rargs tyargs (PolicySuccess (pct', vl)))
+       \/ exists msg params, cast_arguments lc pct vft m rargs tyargs (PolicyFail msg params))
   | Ecall (Eval (_,_) _) rargs ty =>
       ~ exprlist_all_values rargs
   | _ => True
@@ -1337,7 +1360,9 @@ Proof.
 Qed.
     
 Lemma rfailred_invert:
-  forall lc w' pct r te m tr msg failure params, rfailred ge ce lc pct r te m tr msg failure params -> possible_trace w tr w' -> invert_expr_prop lc r pct te m.
+  forall lc w' pct r te m tr msg failure params,
+    rfailred ge ce lc pct r te m tr msg failure params ->
+    possible_trace w tr w' -> invert_expr_prop lc r pct te m.
 Proof.
   induction 1; intros; red; auto; repeat (chomp; eexists; try congruence; eauto).
   - destruct ty1; destruct ty; try congruence; repeat (eexists; eauto).
@@ -1345,20 +1370,22 @@ Proof.
   - destruct ty1; destruct ty; try congruence; repeat (eexists; eauto).
   - destruct ty1; destruct ty; try congruence.
     apply possible_trace_app_inv in H7 as [w0 [P Q]].    
-    repeat (eexists; eauto). 
+    repeat (eexists; eauto).
+  - intros. right. eexists. eexists. eauto.
 Qed.
 
 Lemma callred_invert:
-  forall lc pct fpt r fd args ty te m,
-    callred ge pct r m fd fpt args ty ->
+  forall lc pct pct' fpt r fd args ty te m,
+    callred ge lc pct r m fd fpt args ty pct' ->
     invert_expr_prop lc r pct te m.
 Proof.
   intros. inv H; simpl.
   - unfold find_funct in H0. inv H0. intros.
-    exists tyargs, tyres, cconv, fd, args; intuition congruence.
-  - intros. exists args; intuition congruence.
+    exists tyargs, tyres, cconv, fd. intuition.
+    left. exists pct', args; intuition congruence.
+  - intros. left. exists pct', args. intuition congruence.
 Qed.
-    
+
 Scheme context_ind2 := Minimality for context Sort Prop
   with contextlist_ind2 := Minimality for contextlist Sort Prop.
 Combined Scheme context_contextlist_ind from context_ind2, contextlist_ind2.
@@ -1439,7 +1466,7 @@ Definition reduction_ok (k: kind) (lc:Cabs.loc) (pct: tag) (a: expr) (te: tenv) 
   match k, rd with
   | LV, Lred _ l' te' m' => lred ge ce e lc a pct te m l' te' m'
   | RV, Rred _ pct' r' te' m' t => rred ge ce lc pct a te m t pct' r' te' m' /\ exists w', possible_trace w t w'
-  | RV, Callred _ fd fpt args tyres te' m' => callred ge pct a m fd fpt args tyres /\ te' = te /\ m' = m
+  | RV, Callred _ fd fpt args tyres te' m' pct' => callred ge lc pct a m fd fpt args tyres pct' /\ te' = te /\ m' = m
   | LV, Stuckred _ => ~imm_safe_t k lc a pct te m
   | RV, Stuckred _ => ~imm_safe_t k lc a pct te m
   | LV, Failstopred _ msg failure params tr => lfailred ce lc a pct tr msg failure params
@@ -1472,28 +1499,56 @@ Ltac monadInv :=
   | _ => idtac
   end.
 
-Lemma sem_cast_arguments_sound:
-  forall m rargs vtl tyargs vargs,
-  is_val_list rargs = Some vtl ->
-  sem_cast_arguments vtl tyargs m = Some vargs ->
-  cast_arguments m rargs tyargs vargs.
+Lemma is_val_list_preserves_len :
+  forall rargs vtl,
+    is_val_list rargs = Some vtl ->
+    exprlist_len rargs = List.length vtl.
 Proof.
+  induction rargs.
+  - intros. inv H. auto.
+  - intros. inv H. destruct (is_val r1); try discriminate.
+    destruct (is_val_list rargs); try discriminate.
+    inv H1. simpl. specialize IHrargs with l. rewrite IHrargs; auto.
+Qed.
+
+Lemma sem_cast_arguments_sound:
+  forall lc pct fpt m rargs vtl tyargs res,
+    is_val_list rargs = Some vtl ->
+    sem_cast_arguments lc pct fpt vtl tyargs m = Some res ->
+    cast_arguments lc pct fpt m rargs tyargs res.
+Proof.
+  intros until rargs. generalize dependent pct.
   induction rargs; simpl; intros.
-  inv H. destruct tyargs; simpl in H0; inv H0. constructor.
-  monadInv. inv H. simpl in H0. destruct p as [[v1 t1] ty1]. destruct tyargs; try congruence. monadInv.
-  inv H0. rewrite (is_val_inv _ _ _ Heqo). constructor. auto. eauto.
+  - inv H. destruct tyargs; simpl in H0; inv H0. constructor.
+  - monadInv. inv H. simpl in H0. destruct p as [[v1 t1] ty1].
+    destruct tyargs; try congruence.
+    destruct (ArgT lc pct fpt t1 (Datatypes.length l) t0) as [[pct' vt']|msg params] eqn:?.
+    + monadInv. destruct p.
+      * destruct res0. inv H0. rewrite (is_val_inv _ _ _ Heqo).
+        econstructor. rewrite (is_val_list_preserves_len _ _ Heqo0). eauto. auto.
+        specialize IHrargs with pct' l tyargs (PolicySuccess (t2,l0)).
+        auto.
+      * inv H0. rewrite (is_val_inv _ _ _ Heqo).
+        eapply cast_args_fail_later. rewrite (is_val_list_preserves_len _ _ Heqo0). eauto. eauto.
+        specialize IHrargs with pct' l tyargs (PolicyFail r params).
+        auto.
+    + inv H0. rewrite (is_val_inv _ _ _ Heqo).
+      destruct (sem_cast v1 ty1 t0 m) eqn:?; try discriminate. inv H1.
+      eapply cast_args_fail_now. rewrite (is_val_list_preserves_len _ _ Heqo0). eauto. eauto.
 Qed.
 
 Lemma sem_cast_arguments_complete:
-  forall m al tyl vl,
-  cast_arguments m al tyl vl ->
-  exists vtl, is_val_list al = Some vtl /\ sem_cast_arguments vtl tyl m = Some vl.
+  forall m al tyl res lc pct fpt,
+    cast_arguments lc pct fpt m al tyl res ->
+    exists vtl, is_val_list al = Some vtl /\ sem_cast_arguments lc pct fpt vtl tyl m = Some res.
 Proof.
   induction 1.
-  exists (@nil (atom * type)); auto.
-  destruct IHcast_arguments as [vtl [A B]].
-  exists (((v,vt), ty) :: vtl); simpl. rewrite A; rewrite B; rewrite H. auto.
-Qed.
+  - exists (@nil (atom * type)); auto.
+  - destruct IHcast_arguments as [vtl [A B]].
+    exists (((v,vt), ty) :: vtl); simpl. rewrite A. intuition.
+    rewrite <- (is_val_list_preserves_len _ _ A). rewrite H.
+    rewrite B. rewrite H0. auto.
+Admitted.
 
 Lemma topred_ok:
   forall k lc pct a m te rd,
@@ -1924,11 +1979,15 @@ Ltac solve_red :=
       repeat inv_deref_assign; solve_rred failred_cast_int_ptr
   | [ |- reducts_ok _ _ _ _ _ _ (failred "failred_cast_ptr_ptr" _ _ _ _) ] =>
       repeat inv_deref_assign; solve_rred failred_cast_ptr_ptr
+  | [ |- reducts_ok _ _ _ _ _ _ (topred (Failstopred "red_call_internal_fail" _ _ _ _)) ] =>
+      eapply topred_ok; split; [eapply red_call_internal_fail; eauto | solve_trace]
+  | [ |- reducts_ok _ _ _ _ _ _ (topred (Failstopred "red_call_external_fail" _ _ _ _)) ] =>
+      eapply topred_ok; split; [eapply red_call_external_fail; eauto | solve_trace]
 
   (* Callred *)
-  | [ |- reducts_ok _ _ _ _ _ _ (topred (Callred "red_call_internal" _ _ _ _ _ _)) ] =>
+  | [ |- reducts_ok _ _ _ _ _ _ (topred (Callred "red_call_internal" _ _ _ _ _ _ _)) ] =>
       eapply topred_ok; auto; split; eauto; eapply red_call_internal; eauto
-  | [ |- reducts_ok _ _ _ _ _ _ (topred (Callred "red_call_external" _ _ _ _ _ _)) ] =>
+  | [ |- reducts_ok _ _ _ _ _ _ (topred (Callred "red_call_external" _ _ _ _ _ _ _)) ] =>
       eapply topred_ok; auto; split; [eapply red_call_external|auto]
                 
   | [ |- reducts_ok _ _ _ _ _ _ (incontext _ _) ] =>
@@ -2087,14 +2146,20 @@ Proof with
         all: try (apply not_invert_ok; simpl; intros; repeat doinv;
                   destruct H0; auto; repeat doinv; congruence).
         -- solve_red. eapply sem_cast_arguments_sound; eauto.
-        -- apply not_invert_ok; simpl; intros; repeat doinv.
+        -- solve_red. eapply sem_cast_arguments_sound; eauto.
+        -- eapply not_invert_ok; simpl; intros; repeat doinv.
            destruct H0; auto. repeat doinv.
-           eapply sem_cast_arguments_complete in H2. repeat doinv. congruence.
+           ++ eapply sem_cast_arguments_complete in H3. repeat doinv. congruence.
+           ++ eapply sem_cast_arguments_complete in H3. repeat doinv. congruence.
       * repeat dodestr; repeat doinv.
-        -- solve_red. eapply sem_cast_arguments_sound; eauto.           
+        -- solve_red. eapply sem_cast_arguments_sound; eauto.
+        -- solve_red. eapply sem_cast_arguments_sound; eauto.
         -- apply not_invert_ok; simpl; intros; repeat doinv.
-           destruct H0; auto. eapply sem_cast_arguments_complete in H0.
-           repeat doinv. congruence.
+           destruct H0; auto.
+           ++ repeat doinv. eapply sem_cast_arguments_complete in H0.
+              repeat doinv. congruence.
+           ++ repeat doinv. eapply sem_cast_arguments_complete in H0.
+              repeat doinv. congruence.
     + (* Ebuiltin *)
       solve_red.
     + (* loc *)
@@ -2108,7 +2173,7 @@ Proof with
     + (* cons *)
       eapply incontext2_list_ok'; eauto.
 Qed.
-      
+
 End REDUCTION_OK.
 
 Lemma step_exprlist_val_list:
@@ -2254,17 +2319,23 @@ Proof.
   - eapply do_deref_loc_complete in H3; eauto.
     eapply do_deref_loc_complete in H5; eauto.
     subst; repeat cronch. constructor.
+  - eapply sem_cast_arguments_complete in H2. repeat doinv.
+    unfold find_funct in H. repeat cronch. rewrite H1.
+    rewrite H0. repeat cronch. eauto.
+  - eapply sem_cast_arguments_complete in H. repeat doinv.
+    unfold find_funct in H. repeat cronch. eauto.
 Qed.
 
 Lemma callred_topred:
-  forall lc pct a fd fpt args ty te m,
-    callred ge pct a m fd fpt args ty ->
-    exists rule, step_expr RV lc pct a te m = topred (Callred rule fd fpt args ty te m).
+  forall lc pct pct' a fd fpt args ty te m,
+    callred ge lc pct a m fd fpt args ty pct' ->
+    exists rule, step_expr RV lc pct a te m = topred (Callred rule fd fpt args ty te m pct').
 Proof.
   induction 1; simpl.
-  - rewrite H2. exploit sem_cast_arguments_complete; eauto. intros [vtl [A B]].
+  - exploit sem_cast_arguments_complete; eauto. intros [vtl [A B]].
     unfold find_funct in H.
-    rewrite A; rewrite H; rewrite B; rewrite H1; rewrite dec_eq_true. econstructor; eauto.
+    rewrite A; rewrite H; rewrite H1; rewrite H0; rewrite dec_eq_true; rewrite B.
+    econstructor; eauto.
   - exploit sem_cast_arguments_complete; eauto. intros [vtl [A B]].
     rewrite A; rewrite B. econstructor; eauto.  
 Qed.
@@ -2526,12 +2597,12 @@ End EXPRS.
 
 Inductive transition : Type := TR (rule: string) (t: trace) (S': Csem.state).
 
-Definition expr_final_state (f: function) (k: cont) (lc: Cabs.loc) (pct: tag) (e: env) (C_rd: (expr -> expr) * reduction)
-  : transition :=
+Definition expr_final_state (f: function) (k: cont) (lc: Cabs.loc) (pct: tag) (e: env)
+           (C_rd: (expr -> expr) * reduction) : transition :=
   match snd C_rd with
   | Lred rule a te m => TR rule E0 (ExprState f lc pct (fst C_rd a) k e te m)
-  | Rred rule pct a te m t => TR rule t (ExprState f lc pct (fst C_rd a) k e te m)
-  | Callred rule fd fpt vargs ty te m => TR rule E0 (Callstate fd lc pct fpt vargs (Kcall f e te lc pct (fst C_rd) ty k) m)
+  | Rred rule pct' a te m t => TR rule t (ExprState f lc pct' (fst C_rd a) k e te m)
+  | Callred rule fd fpt vargs ty te m pct' => TR rule E0 (Callstate fd lc pct' fpt vargs (Kcall f e te lc pct (fst C_rd) ty k) m)
   | Stuckred msg => TR ("step_stuck" ++ msg) E0 Stuckstate
   | Failstopred rule msg failure params tr => TR rule tr (Failstop msg failure params)
   end.
@@ -2862,11 +2933,11 @@ Proof with (unfold ret; eauto with coqlib).
     + unfold do_step; rewrite NOTVAL.
       exploit callred_topred; eauto.
 
-      instantiate (1 := te). instantiate (1 := l). instantiate (1 := w). instantiate (1 := e).
+      instantiate (1 := te). instantiate (1 := w). instantiate (1 := e).
       intros (rule & STEP). exists rule.
-      change (TR rule E0 (Callstate fd l PCT fpt vargs (Kcall f e te l PCT C ty k) m)) with (expr_final_state f k l PCT e (C, Callred rule fd fpt vargs ty te m)).
+      change (TR rule E0 (Callstate fd l pct' fpt vargs (Kcall f e te l pct C ty k) m)) with (expr_final_state f k l pct e (C, Callred rule fd fpt vargs ty te m pct')).
       apply in_map.
-      generalize (step_expr_context e w _ _ _ H1 l PCT a te m). unfold reducts_incl.
+      generalize (step_expr_context e w _ _ _ H1 l pct a te m). unfold reducts_incl.
       intro. replace C with (fun x => C x). apply H2.
       rewrite STEP; unfold topred; auto with coqlib.
       apply extensionality; auto.

@@ -312,14 +312,35 @@ Module Csem (P: Policy) (A: Allocator P).
     | LScons _ s sl' => Ssequence s (seq_of_labeled_statement sl')
     end.
 
+  Fixpoint exprlist_len (el:exprlist) : nat :=
+    match el with
+    | Enil => O
+    | Econs _ el' => S (exprlist_len el')
+    end.
+  
   (** Extract the values from a list of function arguments *)
-
-  Inductive cast_arguments (m: mem): exprlist -> typelist -> list atom -> Prop :=
+  Inductive cast_arguments (l:Cabs.loc) (pct fpt:tag) (m: mem):
+    exprlist -> typelist -> PolicyResult (tag * list atom) -> Prop :=
   | cast_args_nil:
-    cast_arguments m Enil Tnil nil
-  | cast_args_cons: forall v vt ty el targ1 targs v1 vl,
-      sem_cast v ty targ1 m = Some v1 -> cast_arguments m el targs vl ->
-      cast_arguments m (Econs (Eval (v,vt) ty) el) (Tcons targ1 targs) ((v1, vt) :: vl).
+    cast_arguments l pct fpt m Enil Tnil (PolicySuccess (pct, []))
+  | cast_args_cons: forall pct' pct'' v vt vt' ty el targ1 targs v1 vl,
+      ArgT l pct fpt vt (exprlist_len el) targ1 = PolicySuccess (pct', vt') ->
+      sem_cast v ty targ1 m = Some v1 ->
+      cast_arguments l pct' fpt m el targs (PolicySuccess (pct'',vl)) ->
+      cast_arguments l pct fpt m (Econs (Eval (v,vt) ty) el) (Tcons targ1 targs)
+                     (PolicySuccess (pct'',(v1, vt') :: vl))
+  | cast_args_fail_now: forall v v1 vt ty el targ1 targs msg params,
+      ArgT l pct fpt vt (exprlist_len el) targ1 = PolicyFail msg params ->
+      sem_cast v ty targ1 m = Some v1 ->
+      cast_arguments l pct fpt m (Econs (Eval (v,vt) ty) el) (Tcons targ1 targs)
+                     (PolicyFail msg params)
+  | cast_args_fail_later: forall pct' v vt vt' ty el targ1 targs v1 msg params,
+      ArgT l pct fpt vt (exprlist_len el) targ1 = PolicySuccess (pct', vt') ->
+      sem_cast v ty targ1 m = Some v1 ->
+      cast_arguments l pct' fpt m el targs (PolicyFail msg params) ->
+      cast_arguments l pct fpt m (Econs (Eval (v,vt) ty) el) (Tcons targ1 targs)
+                     (PolicyFail msg params)
+  .
 
   (** ** Reduction semantics for expressions *)
 
@@ -335,7 +356,7 @@ Module Csem (P: Policy) (A: Allocator P).
 
     (** Head reduction for l-values. *)
     (* anaaktge - part of prop, we can asswert its valid if it succeeds *)
-    Inductive lred: expr -> tag -> tenv -> mem -> expr -> tenv -> mem -> Prop :=
+    Inductive lred : expr -> tag -> tenv -> mem -> expr -> tenv -> mem -> Prop :=
     | red_var_tmp: forall x ty pct te m,
         e!x = Some (PRIV ty) ->
         lred (Evar x ty) pct te m
@@ -768,22 +789,35 @@ Module Csem (P: Policy) (A: Allocator P).
         PPCastT l PCT vt1 lts1 lts ty = PolicyFail msg params ->
         rfailred PCT (Ecast (Eval (v1,vt1) ty1) ty) te m (tr1 ++ tr)
              msg OtherFailure params
+
+    | red_call_internal_fail: forall ty te m b fd vft tyf tyargs tyres cconv el msg params,
+        Genv.find_funct ge (Vfptr b) = Some fd ->
+        type_of_fundef fd = Tfunction tyargs tyres cconv ->
+        classify_fun tyf = fun_case_f tyargs tyres cconv ->
+        cast_arguments l PCT vft m el tyargs (PolicyFail msg params) ->
+        rfailred PCT (Ecall (Eval (Vfptr b,vft) tyf) el ty) te m E0
+                 msg OtherFailure params
+    | red_call_external_fail: forall vft tyf te m tyargs tyres cconv el ty ef msg params,
+        cast_arguments l PCT vft m el tyargs (PolicyFail msg params) ->
+        rfailred PCT (Ecall (Eval (Vefptr ef tyargs tyres cconv,vft) tyf) el ty) te m E0
+                msg OtherFailure params
     .
 
     (** Head reduction for function calls.
         (More exactly, identification of function calls that can reduce.) *)
-    Inductive callred: tag -> expr -> mem -> fundef -> tag -> list atom -> type -> Prop :=
-    | red_call_internal: forall PCT b vft tyf m tyargs tyres cconv el ty fd vargs,
+    Inductive callred: tag -> expr -> mem -> fundef -> tag -> list atom -> type -> tag
+                       -> Prop :=
+    | red_call_internal: forall pct pct' b vft tyf m tyargs tyres cconv el ty fd vargs,
         Genv.find_funct ge (Vfptr b) = Some fd ->
-        cast_arguments m el tyargs vargs ->
         type_of_fundef fd = Tfunction tyargs tyres cconv ->
         classify_fun tyf = fun_case_f tyargs tyres cconv ->
-        callred PCT (Ecall (Eval (Vfptr b,vft) tyf) el ty) m
-                fd vft vargs ty
-    | red_call_external: forall PCT vft tyf m tyargs tyres cconv el ty ef vargs,
-        cast_arguments m el tyargs vargs ->
-        callred PCT (Ecall (Eval (Vefptr ef tyargs tyres cconv,vft) tyf) el ty) m
-                (External ef tyargs ty cconv) vft vargs ty.
+        cast_arguments l pct vft m el tyargs (PolicySuccess (pct',vargs)) ->
+        callred pct (Ecall (Eval (Vfptr b,vft) tyf) el ty) m
+                fd vft vargs ty pct'
+    | red_call_external: forall pct pct' vft tyf m tyargs tyres cconv el ty ef vargs,
+        cast_arguments l pct vft m el tyargs (PolicySuccess (pct',vargs)) ->
+        callred pct (Ecall (Eval (Vefptr ef tyargs tyres cconv,vft) tyf) el ty) m
+                (External ef tyargs ty cconv) vft vargs ty pct'.
     
     (** Reduction contexts.  In accordance with C's nondeterministic semantics,
         we allow reduction both to the left and to the right of a binary operator.
@@ -894,10 +928,10 @@ Module Csem (P: Policy) (A: Allocator P).
         rfailred PCT e te m tr msg failure param ->
         context RV to C ->
         imm_safe to (C e) PCT te m
-    | imm_safe_callred: forall PCT to C e te m fd fpt args ty,
-        callred PCT e m fd fpt args ty ->
+    | imm_safe_callred: forall pct to C e te m fd fpt args ty pct',
+        callred pct e m fd fpt args ty pct' ->
         context RV to C ->
-        imm_safe to (C e) PCT te m.
+        imm_safe to (C e) pct te m.
 
     Definition not_stuck (e: expr) (te: tenv) (m: mem) : Prop :=
       forall k C e' PCT,
@@ -1127,11 +1161,11 @@ Inductive estep: state -> trace -> state -> Prop :=
     context RV RV C ->
     estep (ExprState f l PCT (C a) k e te m)
           tr (ExprState f l PCT' (C a') k e te' m')
-| step_call: forall C f l PCT fpt a k e te m fd vargs ty,
-    callred PCT a m fd fpt vargs ty ->
+| step_call: forall C f l pct pct' fpt a k e te m fd vargs ty,
+    callred l pct a m fd fpt vargs ty pct' ->
     context RV RV C ->
-    estep (ExprState f l PCT (C a) k e te m)
-          E0 (Callstate fd l PCT fpt vargs (Kcall f e te l PCT C ty k) m)
+    estep (ExprState f l pct (C a) k e te m)
+          E0 (Callstate fd l pct' fpt vargs (Kcall f e te l pct C ty k) m)
 | step_stuck: forall C f l PCT a k e te m K,
     context K RV C -> ~(imm_safe e l K a PCT te m) ->
     estep (ExprState f l PCT (C a) k e te m)
