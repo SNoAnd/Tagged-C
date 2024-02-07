@@ -116,19 +116,9 @@ Definition print_tag (t : tag) : string :=
  (* Required for policy interface. Not relevant to this particular policy, pass values through *)
  Definition SplitT (l:loc) (pct vt : tag) (id : option ident) : PolicyResult tag := PolicySuccess pct.
 
- (*
-    LabelT(pct, L) returns a new pct, which is updated( via the return value) to record the free color
-      of this free(). In the original version this was the handlabel from the source file. 
-      Now it is the location (loc) automatically found by the parser+cabs.
-      This is the filename:lineno that the fuzzer will use.
-      - pct is program counter tag
-      - l is now the location from the parser. We'll use that for the unique "color" 
-      - id is the label or color of the free site
-
-    Returns a new pct after the label is applied. Effectively an imperative update to the PC tag.
-      PC tag will have the id of the last label we saw.
- *)
- Definition LabelT (l:loc) (pct : tag) (id : ident) : PolicyResult tag := PolicySuccess (FreeColor l).
+ (* Before we had locations from the parser, we needed hand labels to find the frees *)
+ (* Required for policy interface. Not relevant to this particular policy, pass values through *)
+ Definition LabelT (l:loc) (pct : tag) (id : ident) : PolicyResult tag := PolicySuccess pct.
 
  (* Required for policy interface. Not relevant to this particular policy, pass values through *)
  Definition ExprSplitT (l:loc) (pct vt : tag) : PolicyResult tag := PolicySuccess pct.
@@ -181,25 +171,34 @@ Definition print_tag (t : tag) : string :=
     pct - program counter tag, which has the current Freecolor (acquired in LabelT)
     fptrt - tag on the function pointer of this fn (useful in world with multiple frees)
     pt - pointer tag of pointer to block (tag on the argument passed to free() )
-    vth value tag on header, vt header, of block to free
+    vht value tag on header, vt header, of block to free
   
   If rule succeeds, the return tuple contains:
-    1st tag - pct, program counter tag
+    1st tag - pct, program counter tag. This replaces the LabelT behavior that set the 
+        pct to FreeColor l
     2nd tag - vt body, tags on body of valyes in block
-    3rd tag - vt header tag on the header, index -1 of block. This carries the free color.
+    3rd tag - vht header tag on the header, index -1 of block. This carries the free color.
     4th tag - lt, location tags in block 
   
-  If rule fails, the return tuple's most important members are:
-    - vht is the color of previous free
-    - pct is the color of the 2nd/current free
+  If rule fails with two frees, the return tuple is :
+    - the color of the first/previous free (recorded in the block header during first free)
+    - the color of the 2nd/current free (where we are now)
+
+  If the rule fails with a nonsense or random free of memory (either inside or outside
+      its block), while the argumetn l is really the only one the fuzzer needs,
+      the return tuple is
+    - pct - program tag counter
+    - tag on free's function pointer
+    - tag on the pointer passed to free
+    - tag on the "header" 
  *)
  Definition FreeT (l:loc) (pct fptrt pt vht : tag) : PolicyResult (tag * tag * tag * tag) :=
   match vht with 
-    | Alloc => PolicySuccess(pct, N, pct, N) (* was allocated then freed, assign free color from pct *)
+    | Alloc => PolicySuccess(pct, N, (FreeColor l), N) (* was allocated then freed, assign free color from pct *)
     | N (* trying to free unallocated memory at this location *)
         => PolicyFail (inj_loc "DoubleFree||FreeT detects free of unallocated memory| " l) [pct;fptrt;pt;vht]
-    | FreeColor l (* Freecolor means this was already freed and never reallocated *)
-        => PolicyFail  "DoubleFree||FreeT detects two frees| "  [pct;fptrt;pt;vht]
+    | FreeColor c (* Freecolor means this was already freed and never reallocated *)
+        => PolicyFail  "DoubleFree||FreeT detects two frees| "  [vht;(FreeColor l)]
   end.
 
  (* Required for policy interface. Not relevant to this particular policy, pass values through *)

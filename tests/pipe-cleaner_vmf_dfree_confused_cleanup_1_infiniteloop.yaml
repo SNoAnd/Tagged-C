@@ -1,5 +1,8 @@
 #Combine this config file with the config yaml 
 # this one is the target (SUT) specific stuff 
+# invoke with
+# $ cd build
+# $ cmake .. && make && make install && cd vmf_install
 # (~/fuzzer/pipe-cleaner-vmf-fuzzer/build/vmf_install)$  ./bin/vader -c test/config/PipeCLIInterpreter_basicModules.yaml -c ~/fuzzer/tagged-c/tests/pipe-cleaner_vmf_dfree_confused_cleanup_1.yaml 
 
 vmfVariables:
@@ -17,7 +20,7 @@ vmfFramework:
 
 # Modules and their specific parameters
 controller:
-  runTimeInMinutes: 2  
+  runTimeInMinutes: 1  
 
 storage:
   # TODO rip this out properly. RN its testcase size
@@ -44,5 +47,5 @@ DirectoryBasedSeedGen:
 
 # This lets it mutate crashing inputs.
 # otherwise its normal test cases only
-#GeneticAlgorithmInputGenerator:
-#  enableMutationOfCrashes: true
+GeneticAlgorithmInputGenerator:
+  enableMutationOfCrashes: true
