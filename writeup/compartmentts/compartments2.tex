@@ -126,8 +126,8 @@ only have a pen-and-paper proof. We consider them in the following other dimensi
 \item They propose a tag policy based on linear tags, which are unlikely to be technically
   feasible (in their words, ``folklore.'') However, without too much trouble, they could be
   implemented using techniques from Roessler and DeHon. Their model does not depend on protecting
-  memory internally, and they don't support sharing, so they could be implemented efficiently
-  using our policy with all memory allocated locally (tags linear in the number of compartments).
+  memory internally, and they don't support sharing, so they could implement it on tagged hardware
+  with a relatively small number of tags, that number being linear in the number of compartments.
 \end{enumerate}
 
 \(\Delta:\) our language is full C, our policy supports sharing, and our property supports
@@ -145,12 +145,12 @@ internal UB with more specificity.
   narrow gap between their machines, they don't really need to make a distinction
   between trusted and untrusted compartments. Everyone is equally well-behaved.
 \item Their target machine is fully memory safe, so we must assume that implementing it in
-  tagged hardware is no more efficient than other memory safety (tags linear in the number
-  of allocations).
+  tagged hardware would require a number of tags linear in the number of simultaneously live
+  allocations, a fairly high bar.
 \end{enumerate}
 
-\(\Delta:\) our language is full C, our policy is more efficient than (a likely implementation of)
-theirs, and our property property supports internal UB.
+\(\Delta:\) our language is full C, our policy does not require as many tags as the likely
+implementation of theirs, and our property property supports internal UB.
 
 \paragraph{SECOMP}
 
@@ -164,8 +164,8 @@ theirs, and our property property supports internal UB.
   theorem, which states that any UB encountered by a source compartment must have originated
   in that compartment. As with ``Good Components,'' we consider this too strong, as we would
   like to preserve a semantics that allows us to reason about what happens in the presence of UB.
-\item This appears to be the same as ``Good Components'': it can be efficient, because it doesn't
-  require individual object tags.
+\item This appears to be the same as ``Good Components'': it can be done with lightweight hardware,
+  because it doesn't require individual object tags.
 \end{enumerate}
 
 \(\Delta:\) our policy supports sharing, and our property supports
