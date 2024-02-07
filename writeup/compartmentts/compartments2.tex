@@ -11,56 +11,80 @@
 \input{macros.tex}
 \input{tagrules.tex}
 
-\section{Motivating Example}
+\section{Introduction}
 
-Consider a system in which a ``gatekeeper'' function takes as argument a hashed password,
-checks it against the hash in its own memory, and reports whether it was correct. If correct,
-it sets a flag that allows missiles to be launched with {\tt fire\_missiles}. Is this secure?
+In this paper we introduce a novel compartmentalization scheme that distinguishes between memory
+that is local to compartments, and memory shared between them by memory-safe pointers. Our Tagged
+C implementation places fewer requirements on the underlying tagged hardware that similar systems
+from the literature. We describe the specification of the policy in terms of an abstract machine
+that gives definition to many memory undefined-behaviors if they are internal to a compartment,
+allowing it to describe the behavior of the system in the presence of UB more precisely. We then prove
+that Tagged C, running our compartmentalization policy, preserves all properties of the abstract
+machine.
 
-There are potential risks to this code in a memory-unsafe setting. An erroneous or hostile caller
-could cheat by changing the password in the gatekeeper's memory, or else extract and copy it. It
-could also directly flip the password bit.
+\subsection{Motivating Example}
+
+Consider a program for firing missiles that listens on standard input for a password,
+checks it against the master password in its own memory, and reports whether it was correct.
+If correct, it launches missiles with a system call. It also logs that it recieved an attempted
+launch before checking, using an off-the-shelf logging library.
+
+Should the logging library have a vulnerability, it might be used to undermine the security
+of the whole system. The harm that it can do is not obvious, assuming the basic restriction that
+it cannot call {\tt \_\_sys\_fire\_missiles} directly, but in a memory unsafe setting it could
+easily overwrite {\tt master\_pwd} to make it match the supplied password, or leak its value to
+be used in a future attempt.
 
 \begin{figure}
+  \begin{minipage}[t]{0.5\textwidth}
 \begin{verbatim}
-int* master_pwd;
-int len;
-bool armed = false;
+#def LEN 1 // parameterize pwd length
+char* master_pwd;
 
-void fire_missiles() {
-  if (armed) {
-    __sys_fire_missiles() // talk to the hardware
-  } 
+void listen() {
+  char pwd[LEN];
+  while (1) {
+    gets(pwd);
+    // call external log library 
+    log("launch attempt");
+    if (check_pwd(pwd)) {
+      __sys_fire_missiles();
+    }
+  }
 }
-
-void init(int _len) {
-  len = _len;
-  master_pwd = malloc(sizeof(int)*len);
-  for (int i = 0; i < len; i++) {
-    master_pwd[i] = 0x42;
+\end{verbatim}
+  \end{minipage}
+  \begin{minipage}[t]{0.49\textwidth}
+\begin{verbatim}
+void init() {
+  master_pwd = malloc(sizeof(int)*LEN);
+  for (int i = 0; i < LEN; i++) {
+    master_pwd[i] = '0';
   }
 }
 
 int check_pwd(int* pwd) {
-  for (int i = 0; i < len; i++) {
-    if (pwd[i] != master_pwd[i]) {
-      return -1; // bad password
-    }
+  for (int i = 0; i < LEN; i++) {
+    if (pwd[i] != master_pwd[i])
+      return 0; // bad password
   }
-  armed = true; // correct password: allow missiles to fire
-  return 0; // report success
+  return 1; // report success
 }
 \end{verbatim}
+  \end{minipage}
 
 \caption{Example Password Checker}
 \label{fig:exchecker}
 \end{figure}
 
 One approach to making the system secure is to compartmentalize it. All of the above code
-is gathered in one unit, which we will call \(A\), and kept separate from the code that calls
-it, which belongs to its own compartment, \(B\). The two compartments' memories are kept disjoint,
-except for the buffer passed as {\tt pwd}, which must be accessible to both. The special
-{\tt \_\_sys\_fire\_missiles} function is modeled as an external call, outside of both compartments.
+is gathered in one unit, which we will call \(A\), and kept separate from the logging library,
+which belongs to its own compartment, \(B\). We might further keep the standard library in yet
+another compartment, \(C\). The compartments' memories are kept disjoint, except that {\tt gets}
+must take a pointer to an array that will be accessible to both \(A\) and \(C\).
+(The string argument to {\tt log} will also be a shared global, but this is less interesting.)
+The special {\tt \_\_sys\_fire\_missiles} function is modeled as an external call,
+outside of both compartments.
 
 How do we know when this compartmentalization is successful? For this specific program,
 we could try to prove that it satisfies a particular {\em property} describing its dynamic behavior.
@@ -70,40 +94,125 @@ need a {\em trace semantics} that provides a simple description of how compartme
 one another in a given execution. This semantics needs enable reasoning about program behavior
 in the presence of shared memory.
 
-\paragraph{Abstract Sharing Semantics}
+\subsection{Related Work}
 
+There are three main works that we need to compare in detail: ``When Good Components Go Bad,''
+from Abate et al., ``SecurePtrs,'' from El-Korashy et al., and ``SECOMP,'' from Thibault et al.
+These works all present mechanized proofs of some compartmentalization scheme in C, while we
+only have a pen-and-paper proof. We consider them in the following other dimensions:
+\begin{enumerate}
+\item How much of the C language do they cover?
+\item Do they support shared memory? Are there any restrictions?
+\item How strong is their specification? How does it handle non-standard C (i.e., UB)?
+  Is it different in trusted vs. untrusted compartments? Ideally it should be strong enough
+  to rule out bad cross-compartment behavior but not so strong as to fail when behavior
+  is only internal.
+\item What hardware assumptions do we need to make for their implementations to be supported
+  by tags?
+\end{enumerate}
+
+\paragraph{Good Components}
+
+\begin{enumerate}
+\item Their language is the epitome of a toy, it isn't even really C-like.
+\item There is no shared memory, only a small number of shared registers.
+\item They model UB in the traditional C sense of ``anything might happen'', by replacing
+  components that encounter UB with hypothetical arbitrary components. Their aim is to keep
+  the UB restricted to the compartment in which it occurred. Therefore, their model is not
+  useful for reasoning about the specific behavior of compartments that contain UB but that
+  may nonetheless have consistent behavior. Their trust model is dynamic, and therefore very
+  precise: trusted compartments become untrusted if they reach UB.
+  This makes their specification too strong for us.
+\item They propose a tag policy based on linear tags, which are unlikely to be technically
+  feasible (in their words, ``folklore.'') However, without too much trouble, they could be
+  implemented using techniques from Roessler and DeHon. Their model does not depend on protecting
+  memory internally, and they don't support sharing, so they could be implemented efficiently
+  using our policy with all memory allocated locally (tags linear in the number of compartments).
+\end{enumerate}
+
+\(\Delta:\) our language is full C, our policy supports sharing, and our property supports
+internal UB with more specificity.
+
+\paragraph{SecurePtrs}
+
+\begin{enumerate}
+\item They cover more of C than above, but they still are fairly restricted.
+\item They fully support shared memory.
+\item Their specification is RSP from a fully-defined source language with safe pointers,
+  which is very strong. They mention in passing that they could deal with UB along the lines
+  of the paper above, but because all pointers are safe by construction, would not include
+  memory UB. This is even more restrictive than above. As a result of the relatively
+  narrow gap between their machines, they don't really need to make a distinction
+  between trusted and untrusted compartments. Everyone is equally well-behaved.
+\item Their target machine is fully memory safe, so we must assume that implementing it in
+  tagged hardware is no more efficient than other memory safety (tags linear in the number
+  of allocations).
+\end{enumerate}
+
+\(\Delta:\) our language is full C, our policy is more efficient than (a likely implementation of)
+theirs, and our property property supports internal UB.
+
+\paragraph{SECOMP}
+
+\begin{enumerate}
+\item They cover all of CompCert C.
+\item Shared memory is not supported.
+\item {\em How strong is their specification?}
+  They handle UB similarly to ``Good Components'', while adding new UB in the form of
+  violations of the compartment interfaces. But, because they are focused on secure compilation
+  rather than compiler correctness, the question of UB is primarily focused on their ``blame''
+  theorem, which states that any UB encountered by a source compartment must have originated
+  in that compartment. As with ``Good Components,'' we consider this too strong, as we would
+  like to preserve a semantics that allows us to reason about what happens in the presence of UB.
+\item This appears to be the same as ``Good Components'': it can be efficient, because it doesn't
+  require individual object tags.
+\end{enumerate}
+
+\(\Delta:\) our policy supports sharing, and our property supports
+internal UB with more specificity.
+
+\paragraph{Distinguishing Our Work}
+
+Compared to these works in total, ours supports cross-compartment sharing with fewer constraints
+on available tags. Our property is tighter: the source model that it is based on gives definition
+to some UB, and therefore we can describe more precisely what happens in the presence of that UB.
+We also support cross-compartment sharing in a full C setting, not merely a toy.
+
+\section{Abstract Sharing Semantics}
+
+In the example above, we discussed the need to reason about the behavior of a compartmentalized
+system in terms of whether memory is being shared or is local to a compartment.
 We define a C semantics that builds this kind of reasoning into the memory model. This section
 will assume familiarity with the Tagged C semantics, and will focus on how this abstract semantics
 differs. Instead of a single flat memory, we separate the world
 into compartments, ranged over by \(A\), \(B\), \(C\), etc., each with its own flat memory.
-[TODO: justify flat memory somewhere.] Additionally, there is a shared memory that follows the
-rules of a standard block-offset model. Any compartment may allocated objects in either its own
-local memory, or in the shared memory. This takes the form of two distinct calls to {\tt malloc},
-one of which we call {\tt malloc\_share}.
 
-Regular state is now extended with a compartment id (the active compartment), a map from
-compartments to flat memories, a block-offset memory, and a memory oracle \(\alpha\) (explained later):
+Using a flat memory model inside of compartments gives two benefits. First, it is generally
+less expensive to enforce, and therefore can be implemented on tagged hardware that is more
+restrictive. Second, it allows the abstract machine to reason about how programs with some
+forms of memory UB will behave after compilation, given a particular compiler and allocator.
 
-\[M \in \mathcal{M} : \mathit{comp} \rightarrow \mathit{mem}_{\mathit{flat}}\]
-
-\[\mu \in \mathit{mem}_{bo} : \mathit{block} \rightarrow \mathit{int} \rightharpoonup \mathit{val}\]
-
-\[\mathcal{S}(C, M, \mu, \alpha, le, te \mid s \gg k \tagat \PCT)\]
+Additionally, there is a shared memory that follows the
+rules of a standard block-offset model. Any compartment may allocate objects in its own
+local memory with a call to {\tt malloc}, or in the shared memory with a call to a special
+{\tt malloc\_share}.
 
 On a call to {\tt malloc} in compartment \(C\), the allocation oracle \(\alpha\) provides a base
-address that doesn't overlap with an allocated object in any memory, and the appropriately-sized
-region starting at that base address is allocated in \(M[C]\) (with an appropriate functional array
-update). A call to {\tt malloc\_shared}, meanwhile, generates a fresh block identifier \(b\)
-and returns the pointer \((b,0)\).
+address that doesn't overlap with an allocated object in that memory, and the appropriately-sized
+region starting at that base address is allocated in \(M[C]\).
+A call to {\tt malloc\_shared}, meanwhile, generates a fresh block identifier \(b\)
+and returns the pointer \((b,0)\); however, such a call may fail due to the system as a whole
+running out of memory.
 
 Values now include two kinds of pointer: block-offset pairs that access the shared memory,
 and pairs of compartment identifiers and integers that access that compartment's memory.
 
-\[v ::= \dots | \mathit{sptr} ~ b ~ \mathit{off} | \mathit{lptr} ~ \mathit{addr}\]
+\[v ::= \dots \mid \mathit{sptr} ~ b ~ \mathit{off} \mid \mathit{lptr} ~ \mathit{addr}\]
 
 The latter local pointers are subject to several restrictions, namely that they cannot be
-passed or returned across a compartment boundary, nor written to shared memory. This means
-that they will only ever be accessible to the compartment that owns them.
+passed or returned across a compartment boundary, nor written to shared memory. Doing so
+is undefined behavior. This means that they will only ever be accessible to the compartment
+that owns them. \sna{Note: they could alternatively be forbidden from being recieved/read.}
 
 Load and store semantics differ based on which kind of pointer is being accessed.
 Shared pointers access their usual memory at the block and offset that they carry,
@@ -112,18 +221,43 @@ always be the active compartment, because they can't escape.)
 
 [TODO: sample rules]
 
+\paragraph{Allocation Axioms}
+
+[TODO: list out the normal Concrete C axioms here]
+
+\paragraph{Allocator Oracles and Realizability}
+
+\sna{Trying something a little different: we define the flat memories as separate, but then
+  specify that we're going to restrict ourselves to allocators that we can realize
+  in a single memory. Then we use those allocators to index the relation between high and low
+  states.}
+
+In these abstract semantics, we quantify over all allocators that satisfy the above axioms.
+Many such allocators are not actually realizeable in a given concrete system: most obviously,
+because they allow more memory to be allocated than the system has. A related obstacle is that
+we cannot realize in a single address space an allocator that would assign the same internal
+address. To simplify our model, we will restrict all of our proofs to deal with a specific subset of
+allocators that correspond to realistic allocation systems and therefore are guaranteed to be
+realizable.
+
+Formally, we assume that such an allocator instantiates a ``live list'' that associates
+every allocation---local allocations in every compartment and shared allocations alike---to
+a range of addresses that are guaranteed not to overlap.
+
 \paragraph{Abstract Events and Traces}
 
 One advantage of defining a property in terms of this abstract machine is that we have a clear
 distinction between loads and stores that represent compartment interactions (and should appear
 in a trace) and those that are internal to a compartment and don't matter.
 
-We define the set of trace events as calls, returns, and cross-compartment loads and stores.
+We define the set of trace events as calls, returns, and cross-compartment loads and stores,
+as well as the terminal \(\mathit{stuck}\) event representing undefined behavior.
 \[\begin{split}
 e \in EvA ::= & \mathit{call} ~ f ~ \overline{v} \\
 & \mathit{return} ~ v \\
 & \mathit{store} ~ b ~ \mathit{off} ~ v \\
 & \mathit{load} ~ b ~ \mathit{off} ~ v \\
+& \mathit{stuck} \\
 \end{split}\]
 
 A trace is a (possibly infinite) sequence of events.
@@ -134,6 +268,7 @@ We describe the behavior of a given program via its trace set \(\llbracket A[B] 
 \[\llbracket A[B] \rrbracket \triangleq \bigcup_{\alpha}
 \{ t \mid \alpha \vdash A[B] \rightsquigarrow t \}\]
 
+\begin{comment}
 \paragraph{Properties In Safe Semantics}
 
 Now that we have a system of traces, we can attempt to define our trace property.
@@ -152,27 +287,16 @@ resulting trace.
 \begin{figure}
   \begin{subfigure}{0.5\textwidth}
 \begin{verbatim}
-void driver() {
-  init(1);
-  int* pwd = malloc(sizeof(int));
-  pwd[0] = 0x42;
-
-  if (check_pwd(pwd)) {
-    return;
-  } else {
-    launch_missiles() {
-  }
-}
 \end{verbatim}
-    \caption{Driver Code}
+    \caption{Log Code}
   \end{subfigure}
   \begin{subfigure}{0.5\textwidth}
     \[\begin{split}
-    A[B] \rightsquigarrow & \ldots \mathit{store} ~ b ~ 0 ~ (\mathit{int} ~ \mathtt{0x42}) \cdot \\
-    & \mathit{call} ~ \mathtt{check\_pwd} ~ [\mathit{sptr} ~ b ~ 0] \cdot \\
-    & \mathit{return} ~ (\mathit{int} ~ 0) \cdot \\
-    & \mathit{call} ~ \mathtt{launch\_missiles} ~ [~] \cdot \\
-    & \mathit{call} ~ \mathtt{\_\_sys\_launch\_missiles} ~ [~] \cdot \ldots \\
+    A[B] \rightsquigarrow & \ldots  \cdot \\
+    &  \cdot \\
+    &  \cdot \\
+    &  \cdot \\
+    &  \cdot \ldots \\
     \end{split}\]
     \caption{Partial Trace}
   \end{subfigure}
@@ -195,10 +319,16 @@ But even without proving or even rigorously defining a specific property of inte
 the abstract semantics matches the intuitive behavior of programs, so as long as the abstract
 semantics are reproduced in our concrete implementation, observers examining this
 code can reason about its behavior in different scenarios and convince themselves that it is secure.
+\end{comment}
 
 \section{Implementing Compartmentalization in Tagged C}
 
-The concrete machine is Tagged C with a compartmentalization policy. We give it a trace semantics
+[This is where I would put the description of the policy, but right now I'm not focused on that.]
+
+\section{Proving Correctness}
+
+Our correctness proofs relate the abstract machine defined above to the Tagged C semantics,
+instantiated with the policy above. We give Tagged C a trace semantics
 as well, with a separate type of traces reflecting the more concrete setting. We will need to
 show that we can reproduce any property from the abstract traces semantics in the concrete one;
 the remainder of this writeup is dedicated to defining what it means to reproduce a property
@@ -211,22 +341,27 @@ So, its trace model must be somewhat different. Specifically, loads and stores n
 concrete addresses, and load and store events are generated on every load and store, not just the
 cross-compartment ones.
 
-We define the set of trace events as calls, returns, and cross-compartment loads and stores.
+We define the set of trace events as calls, returns, loads, stores, stuckness/UB, and now an
+explicit {\em fail} event representing failstop behavior.
 \[\begin{split}
 \hat{e} \in EvC ::= & \mathit{call} ~ f ~ \overline{v} \\
 & \mathit{return} ~ v \\
 & \mathit{store} ~ \mathit{addr} ~ v \\
 & \mathit{load} ~ \mathit{addr} ~ v \\
+& \mathit{stuck} \\
+& \mathit{fail} \\
 \end{split}\]
 
 When a Tagged C program under policy \(\rho\) produces a trace \(\hat{t}\), we write it
 \(\alpha \vdash A[B] \rightsquigarrow \hat{t}\), and we define \(\llbracket A[B] \rrbracket_\rho\)
 similarly to above.
 
-The intuition behind our notion of correct compartmentalization is that for any compartment
+The intuition behind our notion of safe compartmentalization is that for any compartment
 \(A\) and any property that it robustly satisfies in the abstract machine, it should also
-robustly satisfy that property in Tagged C with our policy. However, the differences in the
-events that comprise traces mean that they can't actually be the same traces; we instead
+robustly satisfy that property in Tagged C with our policy. Additionally, we should sanity-check
+our semantics by proving forward simulation. In fact, we will prove a bisimulation, from which
+both forward simulation and robust property preservation follow naturally. However, the differences
+in the events that comprise traces mean that they can't actually be the same traces; we instead
 need to describe the relationship between them that we consider to capture an important notion
 of sameness.
 
@@ -243,10 +378,12 @@ We define a relation \(\sim\) indexed by an assignment of blocks to their base a
 
 \begin{minipage}{0.38\textwidth}
   \judgment{\(\Gamma ~ b = (\mathit{base},\mathit{bound})\)}
-           {\(\Gamma \vdash \mathit{sptr} ~ b ~ \mathit{off} \sim \mathit{long} ~ (\mathit{base}+\mathit{off})\)}
+           {\(\Gamma \vdash \mathit{sptr} ~ b ~ \mathit{off} \sim
+             \mathit{long} ~ (\mathit{base}+\mathit{off})\)}
 \end{minipage}
 \begin{minipage}{0.38\textwidth}
-  \judgment{}{\(\Gamma \vdash \mathit{lptr} ~ C ~ \mathit{addr} \sim \mathit{long} ~ \mathit{addr}\)}
+  \judgment{}{\(\Gamma \vdash \mathit{lptr} ~ C ~ \mathit{addr} \sim
+    \mathit{long} ~ \mathit{addr}\)}
 \end{minipage}
 \begin{minipage}{0.23\textwidth}
   \judgment{}{\(\Gamma \vdash v \sim v\)}
@@ -278,7 +415,7 @@ Which extends naturally to events:
 
 And finally, to traces, via the possible addition of (non-shared) loads and stores. These must
 not overlap with any blocks that are mapped in \(\Gamma\). Note that these are coinductive
-definitions.
+definitions. Also, the \(\mathit{fail}\) event in Tagged C relates to any abstract trace.
 
 \judgmenttwo{\(\forall ~ b . \Gamma ~ b = (base,bound) \rightarrow \neg (base \leq addr < bound)\)}
             {\(\Gamma \vdash t \sim \hat{t}\)}
@@ -292,24 +429,43 @@ definitions.
             {\(\Gamma \vdash t \sim \hat{t}\)}
             {\(\Gamma \vdash v \cdot t \sim \hat{v} \cdot \hat{t}\)}
 
+\judgment{}
+         {\(\Gamma \vdash t \sim \mathit{fail}\)}
+            
 Which finally brings us to defining the overall trace relation \(\approx\)
 by quantifying over \(\Gamma\).
 
 \[t \approx \hat{t} \triangleq \exists \Gamma . \Gamma \vdash t \sim \hat{t}\]
 
 In short, \(\hat{t}\) is a plausible result of starting with \(t\), assigning concrete
-addresses to blocks, and placing internal accesses in the memory. Conversely, \(t\) is
-the result of stripping internal loads and stores out of \(\hat{t}\) and mapping shared
-ones to their block-offset addresses.
+addresses to blocks, and recording additional internal memory accesses, possibly failing prematurely.
+Conversely, \(t\) is the result of stripping internal loads and stores out of \(\hat{t}\) and
+mapping shared ones to their block-offset addresses.
+
+\paragraph{Trace-relating Correctness}
+
+In order for the abstract machine to be at all useful in reasoning about the behavior of Tagged
+C, we need to show that Tagged C (with a compartmentalization policy) actually implements it!
+This is akin to {\em forward correctness}, albeit with an identity compiler and a target machine
+that might failstop. 
+Formally, Tagged C with policy \(\rho\) enjoys forward correctness if,
+for all programs \(P\) and realizable allocator \(\alpha\), if \(\alpha \vdash P \rightsquigarrow t\),
+then there exists some \(\hat{t}\) such that \(t \approx \hat{t}\) and
+\(\alpha \vdash P \rightsquigarrow_\rho \hat{t}\).
+
+The possibility of failstop makes this form of correctness quite weak. It might be desirable to
+prove that it only failstops under certain conditions, particularly that a fully memory-safe
+program never failstops. \sna{I'm considering whether I can just match stuck events in the
+  source with failstops in the target, so we only failstop on abstract UB.}
 
 \paragraph{Trace-relating Property Preservation}
 
-The following definitions are based on those of Abate et al. (TODO: cite).
-Abstract and concrete properties are related if, for every trace in one, all related traces are
-in the other:
+Abstract and concrete properties are related if, for every trace in one, the other produces a
+related trace.
 \[\begin{split}
 \pi \approx \hat{\pi} \triangleq
-& \forall t ~ \hat{t} . ~ t \approx \hat{t} \Rightarrow (t \in \pi \Leftrightarrow \hat{t} \in \hat{\pi}) \\
+& (\forall t . ~ t \in \pi \Rightarrow \exists \hat{t} . ~ \hat{t} \in \hat{\pi} \land t \approx \hat{t}) \land \\
+& (\forall \hat{t} . ~ \hat{t} \in \hat{\pi} \Rightarrow \exists t . ~ t \in \pi \land t \approx \hat{t)} \\
 \end{split}\]
 
 A policy \(\rho\) enjoys {\em trace-relating robust property preservation} with respect to the
@@ -322,53 +478,42 @@ machine with policy \(\rho\) robustly satisfies any \(\hat{\pi}\) when \(\pi \ap
 & (\forall ~ B . ~ \llbracket A[B] \rrbracket_\rho \subseteq \hat{\pi}) \\
 \end{split}\]
 
-\paragraph{Taking The Contrapositive}
+\paragraph{Proving both Correctness and Property-Preservation Using Bisimulation}
 
-It's a major hassle to quantify over properties, so we prefer to prove a different
-metaproperty, \(\mathit{RPC}\). This is the ``property-free'' variant of \(\mathit{RPP}\).
-It is provably equivalent.
-%
-\[\begin{split}
-\mathit{RPC} \triangleq & \forall A ~ B ~ \alpha ~ \hat{t} . ~ \alpha \vdash A[B] \rightsquigarrow_\rho \hat{t} \Rightarrow \\
-& \exists B' ~ \alpha' ~ t . ~ \alpha' \vdash A[B'] \rightsquigarrow t \land t \approx \hat{t} \\
-\end{split}\]
+We define the bisimulation relation \(\mathfrak{R}\) between states of the abstract machine and
+states of Tagged C, indexed by an allocator \(\alpha\). We'll define the specific relation
+below. We first prove that, for any machine states \(S\) and
+\(\hat{S}\), if \(S \mathfrak{R}_\alpha \hat{S}\), then one of three cases holds:
+\begin{itemize}
+\item \(S \longrightarrow S'\) and \(\hat{S} \longrightarrow \hat{S}'\), \(S'\) and \(\hat{S}'\)
+  both have the same allocator state \(\alpha'\), and \(S' ~ \mathfrak{R}_{\alpha'} ~ \hat{S}'\).
+  Memory trace events are either related, or internal.
+\item \(S\) and \(\hat{S}\) are both stuck.
+\item \(\hat{S}\) does not step due to failstop.
+\end{itemize}
 
-This means that if we have a function that, given any \(A\), \(B\), \(\alpha\), and \(\hat{t}\),
-constructs a \(B'\), \(\alpha'\), and \(t\) such that \(A[B'] \rightsquigarrow t\) and
-\(t \approx \hat{t}\), that will be sufficient to prove \(\mathit{RPC}\) and by extension
-\(\mathit{RPP}\). Such a function is called a {\em backtranslation}. We will specifically implement
-it using a technique called {\em dataflow backtranslation}. The basic proof technique is that we build
-an even richer trace model, one that also tracks the flow of data through private variables,
-and consider the trace produced by \(A[B]\) under that model. We construct a \(B'\) that duplicates
-(a finite prefix of) that trace in the abstract machine.
+Then, by proving that for any program, its initial states in both machines are related
+by \(\mathfrak{R}\), we can show by coinduction that every trace produced by one machine
+has a related trace produced by the other.
 
-\paragraph{Consulting the Oracle}
+\sna{And then I started to write out the relation itself, but I need to do another pass for it
+  to make sense, so I'm commenting it out for now. That's next on my list, though: including
+  enough concrete state stuff that it will make sense.}
 
-So far I've been very abstract about the role that the oracle plays in all of this. 
-This section is a stub to give a very lightweight description of how I'm thinking about the
-oracle. We model an oracle as a (co-inductive) stream of pairs of integers.
+\begin{comment}
 
-\[\alpha ::= (\mathit{sz}, \mathit{addr}):\alpha'\]
+Recall that \(\alpha\) contains a live-list
+that maps allocations to concrete base addresses. A shared pointer
+\(\mathit{sptr} ~ b ~ \mathit{off}\) is related to a tagged value \(v \tagat \vt[]\) if
+\(b\) maps to some base address \(\mathit{addr}\) and \(\mathit{addr} + \mathit{off} = v\).
 
-The first integer is the size of the next block that will be allocated, and the second is its
-base address. The oracle therefore corresponds to the behavior of the compiler and allocator
-in a particular run of a program---it knows the order in which blocks of various sizes will be
-allocated in that run. Just to avoid any weirdness, any universal quantification over oracles
-that will then produce a trace representing an execution should be restricted to those oracles
-that actually capture the ordering of that execution. Fortunately if we ever need to produce
-such an oracle, we can simply define it as the one that corresponds to the allocator's actual
-behavior on a given program.
+Two addresses are related by
+\(\mathfrak{R}\) if:
 
-But in our actual proof, we are just going to be given an arbitrary allocator. The concern is
-what happens if our backtranslation involves allocating additional memory. Provided that there
-is sufficient memory available, we simply insert a new pair at the head of the allocator stream,
-in a usable location. It is far from clear that we actually will need to allocate the additional
-memory, though.
-%modify its behavior as needed if we allocate more objects than the original.
-%(I'm not sure that we will, though.)
+\begin{itemize}
+  \item 
+\end{itemize}
 
-\paragraph{Other}
-
-TODO: Justify semantics vs. stack-safety-style trace properties
+\end{comment}
 
 \end{document}
