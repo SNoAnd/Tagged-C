@@ -180,22 +180,74 @@ We also support cross-compartment sharing in a full C setting, not merely a toy.
 
 \section{Abstract Sharing Semantics}
 
+\begin{figure}
+  \begin{subfigure}{0.5\textwidth}
+    \[\begin{split}
+    m \in & \mathit{mem}_{\mathit{flat}} \\
+    \mathit{read}_{\mathit{flat}} \in & \mathit{mem}_{\mathit{flat}} \rightarrow
+    \mathbb{Z} \rightharpoonup \mathit{val} \\
+    \mathit{write}_{\mathit{flat}} \in & \mathit{mem}_{\mathit{flat}} \rightarrow
+    \mathbb{Z} \rightarrow \mathit{val} \rightharpoonup \mathit{mem}_{\mathit{flat}} \\
+    \mathit{alloc}_{\mathit{flat}} \in & \mathit{oracle} \rightarrow
+    \mathit{mem}_{\mathit{flat}} \rightarrow \mathbb{Z} \rightharpoonup \\
+    & (\mathit{oracle} \times \mathbb{Z}
+    \times \mathit{mem}_{\mathit{flat}}) \\
+    \mathit{free}_{\mathit{flat}} \in & \mathit{oracle} \rightarrow \mathit{mem}_{\mathit{flat}} \rightarrow
+    \mathbb{Z} \rightharpoonup \\
+    & (\mathit{oracle} \times \mathit{mem}_{\mathit{flat}}) \\
+    \end{split}\]
+
+    \caption{Flat Memory Operations}
+    \label{fig:flat}
+  \end{subfigure}
+  \begin{subfigure}{0.5\textwidth}
+    \[\begin{split}
+    b \in & \mathit{block} \\
+    m \in & \mathit{mem}_{bo} \\
+    \mathit{read}_{bo} \in & \mathit{mem}_{bo} \rightarrow \mathit{block} \rightarrow
+    \mathbb{Z} \rightharpoonup \mathit{val} \\
+    \mathit{write}_{bo} \in & \mathit{mem}_{bo} \rightarrow \mathit{block} \rightarrow
+    \mathbb{Z} \rightarrow \mathit{val} \rightharpoonup \mathit{mem}_{bo} \\
+    \mathit{alloc}_{bo} \in & \mathit{oracle} \rightarrow \mathit{mem}_{bo} \rightarrow
+    \mathbb{Z} \rightharpoonup \\
+    & (\mathit{oracle} \times \mathit{block} \times \mathit{mem}_{bo}) \\
+    \mathit{free}_{bo} \in & \mathit{mem}_{bo} \rightarrow \mathit{block} \rightarrow
+    \mathbb{Z} \rightharpoonup \\
+    & (\mathit{oracle} \times \mathit{mem}_{bo}) \\
+    \end{split}\]
+    
+    \caption{Block-Offset Memory Operations}
+    \label{fig:blockoff}
+  \end{subfigure}
+
+  \begin{subfigure}{1\textwidth}
+    \[\alpha \in \mathit{oracle}\]
+    \[M \in \mathcal{M} ::= (\mathit{oracle} \times (\mathit{comp} \rightarrow
+    \mathit{mem}_{\mathit{flat}}) \times \mathit{mem}_{bo})\]
+    
+    
+    \caption{Memory State}
+    \label{fig:integrated}
+  \end{subfigure}
+
+  \caption{Memory State}
+  \label{fig:memmod}
+\end{figure}
+
 In the example above, we discussed the need to reason about the behavior of a compartmentalized
 system in terms of whether memory is being shared or is local to a compartment.
-We define a C semantics that builds this kind of reasoning into the memory model. This section
-will assume familiarity with the Tagged C semantics, and will focus on how this abstract semantics
-differs. Instead of a single flat memory, we separate the world
+We define a C semantics that builds this kind of reasoning into the memory model.
+As shown in Figure \ref{fig:memmod}, we separate the world
 into compartments, ranged over by \(A\), \(B\), \(C\), etc., each with its own flat memory.
+Additionally, there is a shared memory that follows the
+rules of a standard block-offset model. Any compartment may allocate objects in its own
+local memory with a call to {\tt malloc}, or in the shared memory with a call to a special
+{\tt malloc\_share}.
 
 Using a flat memory model inside of compartments gives two benefits. First, it is generally
 less expensive to enforce, and therefore can be implemented on tagged hardware that is more
 restrictive. Second, it allows the abstract machine to reason about how programs with some
 forms of memory UB will behave after compilation, given a particular compiler and allocator.
-
-Additionally, there is a shared memory that follows the
-rules of a standard block-offset model. Any compartment may allocate objects in its own
-local memory with a call to {\tt malloc}, or in the shared memory with a call to a special
-{\tt malloc\_share}.
 
 On a call to {\tt malloc} in compartment \(C\), the allocation oracle \(\alpha\) provides a base
 address that doesn't overlap with an allocated object in that memory, and the appropriately-sized
