@@ -237,11 +237,8 @@ Definition print_tag (t : tag) : string :=
  Definition LoadT (l:loc) (pct pt vt: tag) (lts : list tag) : PolicyResult tag := 
   match pt with 
   | V_PointerWithColor l ptr_color => (
-    (* i dont think this works. lts is wra*)
-    if (List.forallb lts (L_AllocatedWithColor _ ptr_color))
-    (* we don't realy mess with the vt *)
-    then PolicySuccess (vt)
-    else  
+    (* @TODO this needs a helper fn becuase i need a loop*)
+      PolicySuccess (vt) 
       (* it would be really nice to have a loop? 
       L_AllocatedDirty => secret disclosure error
       L_NotHeap => ?? , 
@@ -274,18 +271,19 @@ Definition print_tag (t : tag) : string :=
   PolicySuccess (pct,vt,lts).
 
 
- Definition AccessT (l:loc) (pct vt : tag) : PolicyResult tag := PolicySuccess vt.
+ Definition AccessT (l:loc) (pct vt : tag) : PolicyResult tag := 
+  PolicySuccess vt.
 
  (* Required for policy interface. Not relevant to this particular policy, pass values through *)
  (* vt1 is lhs, vt2 is rhs *)
- Definition AssignT (l:loc) (pct vt1 vt2 : tag) : PolicyResult (tag * tag) := PolicySuccess (pct,vt2).
+ Definition AssignT (l:loc) (pct vt1 vt2 : tag) : PolicyResult (tag * tag) := 
+  PolicySuccess (pct,vt2).
 
  (*
-  @TODO SIF- this one is similiar to binop  
-      i think we can propagate pointerness nicely here
-    
+  @TODO i think we can propagate pointerness nicely here
  *)
- Definition UnopT (l:loc) (op : unary_operation) (pct vt : tag) : PolicyResult (tag * tag) := PolicySuccess (pct, vt).
+ Definition UnopT (l:loc) (op : unary_operation) (pct vt : tag) : PolicyResult (tag * tag) := 
+  PolicySuccess (pct, vt).
 
   (* @TODO address disclosure, SIF
     address leaks cares about this one, propagate mem tags 
@@ -319,28 +317,36 @@ Definition print_tag (t : tag) : string :=
         1 ptr or num, propagate the pointer
 
     *)
- Definition BinopT (l:loc) (op : binary_operation) (pct vt1 vt2 : tag) : PolicyResult (tag * tag) := PolicySuccess (pct, vt2).
+ Definition BinopT (l:loc) (op : binary_operation) (pct vt1 vt2 : tag) : PolicyResult (tag * tag) := 
+  PolicySuccess (pct, vt2).
 
  (* Constants are never pointers to malloced memory. *)
- Definition ConstT (l:loc) (pct : tag) : PolicyResult tag := PolicySuccess N.
+ Definition ConstT (l:loc) (pct : tag) : PolicyResult tag := 
+  PolicySuccess N.
 
  (* Before pointer gets its value, it's not allocated *) 
- Definition InitT (l:loc) (pct : tag) : PolicyResult tag := PolicySuccess N.
+ Definition InitT (l:loc) (pct : tag) : PolicyResult tag := 
+  PolicySuccess N.
 
  (* @TODO SIF related? Do we need to propagate the Memloc tag here? *)
- Definition SplitT (l:loc) (pct vt : tag) (id : option ident) : PolicyResult tag := PolicySuccess pct.
+ Definition SplitT (l:loc) (pct vt : tag) (id : option ident) : PolicyResult tag := 
+  PolicySuccess pct.
 
  (* Required for policy interface. Not relevant to this particular policy, pass pct through *)
- Definition LabelT (l:loc) (pct : tag) (id : ident) : PolicyResult tag := PolicySuccess pct.
+ Definition LabelT (l:loc) (pct : tag) (id : ident) : PolicyResult tag := 
+  PolicySuccess pct.
 
  (* @TODO SIF related? Do we need to propagate the Memloc tag here? *)
- Definition ExprSplitT (l:loc) (pct vt : tag) : PolicyResult tag := PolicySuccess pct.
+ Definition ExprSplitT (l:loc) (pct vt : tag) : PolicyResult tag := 
+  PolicySuccess pct.
 
  (* @TODO SIF related? Do we need to propagate the Memloc tag here? *)
- Definition ExprJoinT (l:loc) (pct vt : tag) : PolicyResult (tag * tag) := PolicySuccess (pct,vt).
+ Definition ExprJoinT (l:loc) (pct vt : tag) : PolicyResult (tag * tag) := 
+  PolicySuccess (pct,vt).
 
  (* Required for policy interface. Not relevant to this particular policy, pass values through *)
- Definition GlobalT (ce : composite_env) (id : ident) (ty : type) : tag * tag * tag := (N, N, N).
+ Definition GlobalT (ce : composite_env) (id : ident) (ty : type) : tag * tag * tag := 
+  (N, N, N).
  
  (* Required for policy interface. Not relevant to this particular policy, pass values through *)
  Definition FunT (id : ident) (ty : type) :tag := N.
@@ -454,10 +460,12 @@ Definition print_tag (t : tag) : string :=
   end.
 
  (* Required for policy interface. Not relevant to this particular policy, pass values through *)
- Definition BuiltinT (l:loc) (fn : string) (pct : tag) (args : list tag) : PolicyResult tag := PolicySuccess pct.
+ Definition BuiltinT (l:loc) (fn : string) (pct : tag) (args : list tag) : PolicyResult tag := 
+  PolicySuccess pct.
 
  (* Required for policy interface. Not relevant to this particular policy, pass values through *)
- Definition FieldT (l:loc) (ce : composite_env) (pct vt : tag) (ty : type) (id : ident) : PolicyResult tag := PolicySuccess vt.
+ Definition FieldT (l:loc) (ce : composite_env) (pct vt : tag) (ty : type) (id : ident) : PolicyResult tag := 
+  PolicySuccess vt.
 
  (* 
     I think we should not strip pointness during casting for now. 
@@ -466,16 +474,20 @@ Definition print_tag (t : tag) : string :=
  *)
 
  (* Required for policy interface. Not relevant to this particular policy, pass values through *)
- Definition PICastT (l:loc) (pct pt : tag)  (lts : list tag) (ty : type) : PolicyResult tag := PolicySuccess pt.
+ Definition PICastT (l:loc) (pct pt : tag)  (lts : list tag) (ty : type) : PolicyResult tag := 
+  PolicySuccess pt.
 
  (* Required for policy interface. Not relevant to this particular policy, pass values through *)
- Definition IPCastT (l:loc) (pct vt : tag)  (lts : list tag) (ty : type) : PolicyResult tag := PolicySuccess vt.
+ Definition IPCastT (l:loc) (pct vt : tag)  (lts : list tag) (ty : type) : PolicyResult tag := 
+  PolicySuccess vt.
  
  (* Required for policy interface. Not relevant to this particular policy, pass values through *)
- Definition PPCastT (l:loc) (pct vt : tag) (lts1 lts2 : list tag) (ty : type) : PolicyResult tag := PolicySuccess vt.
+ Definition PPCastT (l:loc) (pct vt : tag) (lts1 lts2 : list tag) (ty : type) : PolicyResult tag := 
+  PolicySuccess vt.
 
  (* Required for policy interface. Not relevant to this particular policy, pass values through *)
- Definition IICastT (l:loc) (pct vt : tag) (ty : type) : PolicyResult tag := PolicySuccess vt.
+ Definition IICastT (l:loc) (pct vt : tag) (ty : type) : PolicyResult tag := 
+  PolicySuccess vt.
 
 End HeapProblem
 .
