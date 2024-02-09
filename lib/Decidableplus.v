@@ -188,7 +188,7 @@ Global Program Instance Decidable_forall : forall (T: Type) (fT: Finite T) (P: T
   Decidable_witness := List.forallb (fun x => @Decidable_witness (P x) (dP x)) (@Finite_elements T fT)
 }.
 Next Obligation.
-  rewrite List._forall. split; intros.
+  rewrite List.forallb_forall. split; intros.
 - eapply Decidable_sound; eauto. apply H. apply Finite_elements_spec.
 - eapply Decidable_complete; eauto.
 Qed.

@@ -243,9 +243,9 @@ Definition print_tag (t : tag) : string :=
       L_AllocatedDirty => secret disclosure error
       L_NotHeap => ?? , 
       L_UnallocatedHeap => malformed pointer? pointer corruption?
-      *).
+      *)
   )
-  | _ => PolicyFail (inj_loc "HeapProblem|| LoadT tried to load an invalid pointer tag " l) [pct;pt;vt;lts]
+  | _ => PolicyFail (inj_loc "HeapProblem|| LoadT tried to load an invalid pointer tag " l) [pct;pt;vt] 
   end.
   
 
