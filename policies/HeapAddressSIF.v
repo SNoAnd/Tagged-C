@@ -2,6 +2,13 @@
  * @TODO - hook into system
  * @TODO - write policy
  * @brief TODO policy summary 
+
+    heap address leak, #3
+          SIF. Sean says it exists in math form, but not really in coq yet
+
+          put the tag on teh bytes, because its not the values, its address itself
+          tag output functions (we only have 1). There is a sif policy pushed up,
+
  *)
 
 Require Import Coqlib.
