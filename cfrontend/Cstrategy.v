@@ -108,7 +108,7 @@ Module Cstrategy (P: Policy) (A: Allocator P).
       Variable e: env.
       Variable te: tenv.
       Variable m: mem.
-      Variable PCT: tag.
+      Variable PCT: control_tag.
 
       Inductive eval_simple_lvalue: expr -> loc_kind -> Prop :=
       | esl_loc: forall loc ty,
@@ -151,7 +151,7 @@ Module Cstrategy (P: Policy) (A: Allocator P).
           ce!id = Some co ->
           eval_simple_lvalue (Efield r f ty) (Lmem (Int64.add ofs (Int64.repr delta)) def_tag bf)
 
-      with eval_simple_rvalue: tag -> expr -> atom -> Prop :=
+      with eval_simple_rvalue: control_tag -> expr -> atom -> Prop :=
       | esr_val: forall v ty,
           eval_simple_rvalue PCT (Eval v ty) v
       | esr_rvalof_mem: forall ofs pt bf l ty v lts,

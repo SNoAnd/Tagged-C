@@ -270,7 +270,8 @@ Module Cexec (P:Policy) (A:Allocator P).
     Variable ce: composite_env.
 
     Variable do_external_function:
-      string -> signature -> Genv.t fundef type -> world -> list atom -> tag -> tag -> mem -> option (world * trace * (MemoryResult (PolicyResult (atom * tag * mem)))).
+      string -> signature -> Genv.t fundef type -> world -> list atom -> control_tag -> val_tag
+      -> mem -> option (world * trace * (MemoryResult (PolicyResult (atom * control_tag * mem)))).
 
     Hypothesis do_external_function_sound:
       forall id sg ge vargs pct fpt m t res w w',
@@ -286,8 +287,8 @@ Module Cexec (P:Policy) (A:Allocator P).
     Local Open Scope memory_monad_scope.
     (** Accessing locations *)
 
-    Definition do_deref_loc (w: world) (ty: type) (m: mem) (ofs: int64) (pt:tag) (bf: bitfield)
-      : option (world * trace * MemoryResult (atom * list tag)) :=
+    Definition do_deref_loc (w: world) (ty: type) (m: mem) (ofs: int64) (pt:val_tag) (bf: bitfield)
+      : option (world * trace * MemoryResult (atom * list loc_tag)) :=
       match bf with
       | Full =>
           match access_mode ty with
@@ -358,7 +359,7 @@ Module Cexec (P:Policy) (A:Allocator P).
     Defined.
 
     Definition do_assign_loc (w: world) (ty: type) (m: mem) (ofs: int64)
-               (pt:tag) (bf: bitfield) (v: atom) (lts: list tag)
+               (pt:val_tag) (bf: bitfield) (v: atom) (lts: list loc_tag)
       : option (world * trace * MemoryResult (mem * atom)) :=
       match bf with
       | Full =>
@@ -554,9 +555,9 @@ Qed.
 
 Inductive reduction: Type :=
 | Lred (rule: string) (l': expr) (te': tenv) (m': mem)
-| Rred (rule: string) (pct': tag) (r': expr) (te': tenv) (m': mem) (tr: trace)
-| Callred (rule: string) (fd: fundef) (fpt: tag) (args: list atom)
-          (tyres: type) (te': tenv) (m': mem) (pct': tag)
+| Rred (rule: string) (pct': control_tag) (r': expr) (te': tenv) (m': mem) (tr: trace)
+| Callred (rule: string) (fd: fundef) (fpt: val_tag) (args: list atom)
+          (tyres: type) (te': tenv) (m': mem) (pct': control_tag)
 | Stuckred (msg: string) (*anaaktge enters impossible state or would have to take impossible step. 
               think like a /0 *)
 | Failstopred (rule: string) (msg: string) (failure: FailureClass) (params: list tag) (tr: trace)
@@ -585,8 +586,8 @@ Section EXPRS.
 
   Local Open Scope option_monad_scope.
   
-  Fixpoint sem_cast_arguments (lc:Cabs.loc) (pct fpt:tag) (vtl: list (atom * type)) (tl: typelist) (m: mem)
-    : option (PolicyResult (tag * list atom)) :=
+  Fixpoint sem_cast_arguments (lc:Cabs.loc) (pct: control_tag) (fpt: val_tag) (vtl: list (atom * type))
+           (tl: typelist) (m: mem) : option (PolicyResult (control_tag * list atom)) :=
     match vtl, tl with
     | nil, Tnil => Some (PolicySuccess (pct,[]))
     | (v1,vt1,t1)::vtl, Tcons t1' tl =>
@@ -725,7 +726,7 @@ Section EXPRS.
   Opaque do_deref_loc.
   Opaque do_assign_loc.
   
-  Fixpoint step_expr (k: kind) (lc: Cabs.loc) (pct: tag) (a: expr) (te: tenv) (m: mem): reducts expr :=
+  Fixpoint step_expr (k: kind) (lc: Cabs.loc) (pct: control_tag) (a: expr) (te: tenv) (m: mem): reducts expr :=
     match k, a with
     | LV, Eloc l ty => []
     | LV, Evar x ty =>
@@ -1129,7 +1130,7 @@ Section EXPRS.
     | _, _ => stuck
     end
 
-  with step_exprlist (lc:Cabs.loc) (pct: tag) (rl: exprlist) (te: tenv) (m: mem): reducts exprlist :=
+  with step_exprlist (lc:Cabs.loc) (pct: control_tag) (rl: exprlist) (te: tenv) (m: mem): reducts exprlist :=
          match rl with
          | Enil =>
              nil
@@ -1139,7 +1140,7 @@ Section EXPRS.
          end.
   
   (** Technical properties on safe expressions. *)
-  Inductive imm_safe_t: kind -> Cabs.loc -> expr -> tag -> tenv -> mem -> Prop :=
+  Inductive imm_safe_t: kind -> Cabs.loc -> expr -> control_tag -> tenv -> mem -> Prop :=
   | imm_safe_t_val: forall lc v ty pct te m,
       imm_safe_t RV lc (Eval v ty) pct te m
   | imm_safe_t_loc: forall lc l ty pct te m,
@@ -1185,7 +1186,7 @@ Fixpoint exprlist_all_values (rl: exprlist) : Prop :=
   | Econs _ _ => False
   end.
 
-Definition invert_expr_prop (lc:Cabs.loc) (a: expr) (pct: tag) (te: tenv) (m: mem) : Prop :=
+Definition invert_expr_prop (lc:Cabs.loc) (a: expr) (pct: control_tag) (te: tenv) (m: mem) : Prop :=
   match a with
   | Eloc l ty => False
   | Evar x ty =>
@@ -1462,33 +1463,36 @@ Local Hint Resolve context_compose contextlist_compose : core.
 
 Section REDUCTION_OK.
   
-Definition reduction_ok (k: kind) (lc:Cabs.loc) (pct: tag) (a: expr) (te: tenv) (m: mem) (rd: reduction) : Prop :=
-  match k, rd with
-  | LV, Lred _ l' te' m' => lred ge ce e lc a pct te m l' te' m'
-  | RV, Rred _ pct' r' te' m' t => rred ge ce lc pct a te m t pct' r' te' m' /\ exists w', possible_trace w t w'
-  | RV, Callred _ fd fpt args tyres te' m' pct' => callred ge lc pct a m fd fpt args tyres pct' /\ te' = te /\ m' = m
-  | LV, Stuckred _ => ~imm_safe_t k lc a pct te m
-  | RV, Stuckred _ => ~imm_safe_t k lc a pct te m
-  | LV, Failstopred _ msg failure params tr => lfailred ce lc a pct tr msg failure params
-  | RV, Failstopred _ msg failure params tr => rfailred ge ce lc pct a te m tr msg failure params /\ exists w', possible_trace w tr w'
-  | _, _ => False
-  end.
+  Definition reduction_ok (k: kind) (lc:Cabs.loc) (pct: control_tag) (a: expr) (te: tenv) (m: mem)
+             (rd: reduction) : Prop :=
+    match k, rd with
+    | LV, Lred _ l' te' m' => lred ge ce e lc a pct te m l' te' m'
+    | RV, Rred _ pct' r' te' m' t => rred ge ce lc pct a te m t pct' r' te' m' /\ exists w', possible_trace w t w'
+    | RV, Callred _ fd fpt args tyres te' m' pct' => callred ge lc pct a m fd fpt args tyres pct' /\ te' = te /\ m' = m
+    | LV, Stuckred _ => ~imm_safe_t k lc a pct te m
+    | RV, Stuckred _ => ~imm_safe_t k lc a pct te m
+    | LV, Failstopred _ msg failure params tr => lfailred ce lc a pct tr msg failure params
+    | RV, Failstopred _ msg failure params tr => rfailred ge ce lc pct a te m tr msg failure params /\ exists w', possible_trace w tr w'
+    | _, _ => False
+    end.
 
-Definition reducts_ok (k: kind) (lc:Cabs.loc) (pct: tag) (a: expr) (te: tenv) (m: mem) (ll: reducts expr) : Prop :=
-  (forall C rd,
-      In (C, rd) ll ->
-      exists a', exists k', context k' k C /\ a = C a' /\ reduction_ok k' lc pct a' te m rd)
-  /\ (ll = nil ->
-      match k with
-      | LV => is_loc a <> None
-      | RV => is_val a <> None
-      end).
+  Definition reducts_ok (k: kind) (lc:Cabs.loc) (pct: control_tag) (a: expr) (te: tenv) (m: mem)
+             (ll: reducts expr) : Prop :=
+    (forall C rd,
+        In (C, rd) ll ->
+        exists a', exists k', context k' k C /\ a = C a' /\ reduction_ok k' lc pct a' te m rd)
+    /\ (ll = nil ->
+        match k with
+        | LV => is_loc a <> None
+        | RV => is_val a <> None
+        end).
 
-Definition list_reducts_ok (lc:Cabs.loc) (pct: tag) (al: exprlist) (te: tenv) (m: mem) (ll: reducts exprlist) : Prop :=
-  (forall C rd,
-      In (C, rd) ll ->
-      exists a', exists k', contextlist k' C /\ al = C a' /\ reduction_ok k' lc pct a' te m rd)
-  /\ (ll = nil -> is_val_list al <> None).
+  Definition list_reducts_ok (lc:Cabs.loc) (pct: control_tag) (al: exprlist) (te: tenv) (m: mem)
+             (ll: reducts exprlist) : Prop :=
+    (forall C rd,
+        In (C, rd) ll ->
+        exists a', exists k', contextlist k' C /\ al = C a' /\ reduction_ok k' lc pct a' te m rd)
+    /\ (ll = nil -> is_val_list al <> None).
 
 Ltac monadInv :=
   match goal with
@@ -1526,7 +1530,7 @@ Proof.
     + monadInv. destruct p.
       * destruct res0. inv H0. rewrite (is_val_inv _ _ _ Heqo).
         econstructor. rewrite (is_val_list_preserves_len _ _ Heqo0). eauto. auto.
-        specialize IHrargs with pct' l tyargs (PolicySuccess (t2,l0)).
+        specialize IHrargs with pct' l tyargs (PolicySuccess (c,l0)).
         auto.
       * inv H0. rewrite (is_val_inv _ _ _ Heqo).
         eapply cast_args_fail_later. rewrite (is_val_list_preserves_len _ _ Heqo0). eauto. eauto.
@@ -2597,7 +2601,7 @@ End EXPRS.
 
 Inductive transition : Type := TR (rule: string) (t: trace) (S': Csem.state).
 
-Definition expr_final_state (f: function) (k: cont) (lc: Cabs.loc) (pct: tag) (e: env)
+Definition expr_final_state (f: function) (k: cont) (lc: Cabs.loc) (pct: control_tag) (e: env)
            (C_rd: (expr -> expr) * reduction) : transition :=
   match snd C_rd with
   | Lred rule a te m => TR rule E0 (ExprState f lc pct (fst C_rd a) k e te m)

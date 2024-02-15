@@ -78,9 +78,9 @@ Module Genv (P:Policy) (A:Allocator P).
     Variable ce: composite_env.
     
     Inductive symb_kind : Type :=
-    | SymIFun (b:block) (pt:tag)
-    | SymEFun (ef:external_function) (tyargs:typelist) (tyres:rettype) (cc:calling_convention) (pt:tag)
-    | SymGlob (base bound:Z) (pt:tag) (gv:globvar V)
+    | SymIFun (b:block) (pt:val_tag)
+    | SymEFun (ef:external_function) (tyargs:typelist) (tyres:rettype) (cc:calling_convention) (pt:val_tag)
+    | SymGlob (base bound:Z) (pt:val_tag) (gv:globvar V)
     .
       
     (** The type of global environments. *)
@@ -176,7 +176,7 @@ Module Genv (P:Policy) (A:Allocator P).
 
     Section CONSTRUCTION.
 
-      Definition store_init_data (ge: t) (m: mem) (p: Z) (id: init_data) (vt: tag) (lt: tag) :
+      Definition store_init_data (ge: t) (m: mem) (p: Z) (id: init_data) (vt: val_tag) (lt: loc_tag) :
         MemoryResult mem :=
         match id with
         | Init_int8 n => store Mint8unsigned m p (Vint n, vt) [lt]
@@ -196,7 +196,7 @@ Module Genv (P:Policy) (A:Allocator P).
         | Init_space n => MemorySuccess m
         end.
 
-      Fixpoint store_init_data_list (ge: t) (m: mem) (p: Z) (idl: list init_data) (vt: tag) (lt: tag)
+      Fixpoint store_init_data_list (ge: t) (m: mem) (p: Z) (idl: list init_data) (vt: val_tag) (lt: loc_tag)
                {struct idl}: MemoryResult mem :=
         match idl with
         | [] => MemorySuccess m
@@ -214,7 +214,7 @@ Module Genv (P:Policy) (A:Allocator P).
       Definition perm_globvar (gv: globvar V) : permission := Live.
       
       Definition alloc_global (ge: t) (m: mem) (tree: PTree.t (Z*Z)) (id: ident)
-                 (v: globvar V) (vt lt : tag) : MemoryResult (Z * mem) :=
+                 (v: globvar V) (vt : val_tag) (lt : loc_tag) : MemoryResult (Z * mem) :=
         let init := v.(gvar_init) in
         let sz := v.(gvar_size) in
         let init_sz := init_data_list_size init in
@@ -252,7 +252,7 @@ Module Genv (P:Policy) (A:Allocator P).
         | Gfun _ =>
             match ext (idg#1) with
             | Some (ef,tyargs,tyres,cconv) =>
-                let pt := FunT (idg#1) Tvoid in (* TODO: as above, but F *)
+                let pt := FunT ce (idg#1) Tvoid in (* TODO: as above, but F *)
                 let genv_symb' := PTree.set idg#1 (SymEFun ef tyargs tyres cconv pt)
                                             ge.(genv_symb) in
                 let ge' := @mkgenv
@@ -337,7 +337,7 @@ Module Genv (P:Policy) (A:Allocator P).
       
       Definition init_record (m: A.mem) (base: Z) (sz: Z) : MemoryResult A.mem :=
         let szv := Vlong (Int64.neg (Int64.repr sz)) in
-        A.store Mint64 m base (szv, def_tag) [def_tag].
+        A.store Mint64 m base (szv, InitT) [DefLT].
 
       Fixpoint filter_var_sizes (idgs:list (ident*globdef F V)) :=
         match idgs with
@@ -358,7 +358,7 @@ Module Genv (P:Policy) (A:Allocator P).
 
         Variable ge : t.
 
-        Definition bytes_of_init_data (ge: t) (i: init_data) (t:tag): list memval :=
+        Definition bytes_of_init_data (ge: t) (i: init_data) (t:val_tag): list memval :=
           match i with
           | Init_int8 n => inj_bytes (encode_int 1%nat (Int.unsigned n)) t
           | Init_int16 n => inj_bytes (encode_int 2%nat (Int.unsigned n)) t
@@ -382,7 +382,7 @@ Module Genv (P:Policy) (A:Allocator P).
           intros. unfold Mptr. simpl. destruct Archi.ptr64; auto.
         Qed.
 
-        Fixpoint bytes_of_init_data_list (il: list init_data) (t: tag): list memval :=
+        Fixpoint bytes_of_init_data_list (il: list init_data) (t: val_tag): list memval :=
           match il with
           | nil => nil
           | i :: il => bytes_of_init_data ge i t ++ bytes_of_init_data_list il t

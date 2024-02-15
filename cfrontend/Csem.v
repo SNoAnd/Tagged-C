@@ -56,7 +56,7 @@ Module Csem (P: Policy) (A: Allocator P).
 
   Inductive var_entry : Type :=
   | PRIV (ty: type)
-  | PUB (base bound:Z) (pt:tag) (ty:type)
+  | PUB (base bound:Z) (pt:val_tag) (ty:type)
   .
   
   Definition env := PTree.t var_entry. (* map variable -> base address & bound & ptr tag *)
@@ -82,8 +82,8 @@ Module Csem (P: Policy) (A: Allocator P).
   (** Tag policies: these operations do not contain control points.
       They include tags in the relations in order to connect with control points
       in the reduction semantics. *)
-  Inductive deref_loc (ty: type) (m: mem) (ofs: int64) (pt: tag) :
-    bitfield -> trace -> MemoryResult (atom * list tag) -> Prop :=
+  Inductive deref_loc (ty: type) (m: mem) (ofs: int64) (pt: val_tag) :
+    bitfield -> trace -> MemoryResult (atom * list loc_tag) -> Prop :=
   | deref_loc_value: forall chunk,
       access_mode ty = By_value chunk ->
       type_is_volatile ty = false ->
@@ -123,8 +123,8 @@ Module Csem (P: Policy) (A: Allocator P).
       if [bf] is [Full], and to [v] normalized to the width and signedness
       of the bitfield [bf] otherwise.
    *)
-  Inductive assign_loc (ty: type) (m: mem) (ofs: int64) (pt: tag):
-    bitfield -> atom -> trace -> MemoryResult (mem * atom) -> list tag -> Prop :=
+  Inductive assign_loc (ty: type) (m: mem) (ofs: int64) (pt: val_tag):
+    bitfield -> atom -> trace -> MemoryResult (mem * atom) -> list loc_tag -> Prop :=
   | assign_loc_value: forall v vt lts chunk m',
       access_mode ty = By_value chunk ->
       type_is_volatile ty = false ->
@@ -199,8 +199,8 @@ Module Csem (P: Policy) (A: Allocator P).
     end.
 
   (* Allocates local (public) variables *)
-  Definition do_alloc_variable (l: Cabs.loc) (pct: tag) (e: env) (m: mem) (id: ident) (ty:type) :
-    MemoryResult (PolicyResult (tag * env * mem)) :=
+  Definition do_alloc_variable (l: Cabs.loc) (pct: control_tag) (e: env) (m: mem) (id: ident) (ty:type) :
+    MemoryResult (PolicyResult (control_tag * env * mem)) :=
     match stkalloc m (alignof ce ty) (sizeof ce ty), LocalT l ce pct ty with
     | MemorySuccess (m',base,bound), PolicySuccess (pct', pt', lts') =>
         match storebytes m' base (repeat Mem.MD.Undef (Z.to_nat (sizeof ce ty))) lts' with
@@ -214,8 +214,8 @@ Module Csem (P: Policy) (A: Allocator P).
         MemoryFail msg failure
     end.
 
-  Definition do_alloc_variables (l: Cabs.loc) (pct: tag) (e: env) (m: mem) (vs: list (ident * type)) :
-    MemoryResult (PolicyResult (tag * env * mem)) :=
+  Definition do_alloc_variables (l: Cabs.loc) (pct: control_tag) (e: env) (m: mem) (vs: list (ident * type)) :
+    MemoryResult (PolicyResult (control_tag * env * mem)) :=
     fold_left (fun res '(id,ty) =>
                  match res with
                  | MemorySuccess (PolicySuccess (pct', e', m')) =>
@@ -227,8 +227,9 @@ Module Csem (P: Policy) (A: Allocator P).
                  end) vs (MemorySuccess (PolicySuccess (pct, e, m))).
   
   (* Allocates local (public) arguments and initializes them with their corresponding values *)
-  Definition do_init_param (l: Cabs.loc) (pct: tag) (e: env) (m: mem) (id: ident) (ty: type) (init: option atom) :
-    MemoryResult (PolicyResult (tag * env * mem)) :=
+  Definition do_init_param (l: Cabs.loc) (pct: control_tag) (e: env) (m: mem) (id: ident)
+             (ty: type) (init: option atom) :
+    MemoryResult (PolicyResult (control_tag * env * mem)) :=
     match do_alloc_variable l pct e m id ty with
     | MemorySuccess (PolicySuccess (pct', e', m')) =>
         match e'!id, init with
@@ -245,8 +246,9 @@ Module Csem (P: Policy) (A: Allocator P).
         MemoryFail msg failure
     end.
 
-  Definition do_init_params (l: Cabs.loc) (pct: tag) (e: env) (m: mem) (ps: list (ident * type * option atom))
-    : MemoryResult (PolicyResult (tag * env * mem)) :=
+  Definition do_init_params (l: Cabs.loc) (pct: control_tag) (e: env) (m: mem)
+             (ps: list (ident * type * option atom))
+    : MemoryResult (PolicyResult (control_tag * env * mem)) :=
     fold_left (fun res '(id,ty,init) =>
                  match res with
                  | MemorySuccess (PolicySuccess (pct', e', m')) =>
@@ -257,8 +259,8 @@ Module Csem (P: Policy) (A: Allocator P).
                      MemoryFail msg failure
                  end) ps (MemorySuccess (PolicySuccess (pct, e, m))).    
     
-  Fixpoint do_free_variables (l: Cabs.loc) (pct: tag) (m: mem) (vs: list (Z*Z*type))
-    : MemoryResult (PolicyResult (tag * mem)) :=
+  Fixpoint do_free_variables (l: Cabs.loc) (pct: control_tag) (m: mem) (vs: list (Z*Z*type))
+    : MemoryResult (PolicyResult (control_tag * mem)) :=
     match vs with
     | [] => MemorySuccess (PolicySuccess (pct,m))
     | (base,bound,ty) :: vs' =>
@@ -319,8 +321,8 @@ Module Csem (P: Policy) (A: Allocator P).
     end.
   
   (** Extract the values from a list of function arguments *)
-  Inductive cast_arguments (l:Cabs.loc) (pct fpt:tag) (m: mem):
-    exprlist -> typelist -> PolicyResult (tag * list atom) -> Prop :=
+  Inductive cast_arguments (l:Cabs.loc) (pct: control_tag) (fpt: val_tag) (m: mem):
+    exprlist -> typelist -> PolicyResult (control_tag * list atom) -> Prop :=
   | cast_args_nil:
     cast_arguments l pct fpt m Enil Tnil (PolicySuccess (pct, []))
   | cast_args_cons: forall pct' pct'' v vt vt' ty el targ1 targs v1 vl,
@@ -356,7 +358,7 @@ Module Csem (P: Policy) (A: Allocator P).
 
     (** Head reduction for l-values. *)
     (* anaaktge - part of prop, we can asswert its valid if it succeeds *)
-    Inductive lred : expr -> tag -> tenv -> mem -> expr -> tenv -> mem -> Prop :=
+    Inductive lred : expr -> control_tag -> tenv -> mem -> expr -> tenv -> mem -> Prop :=
     | red_var_tmp: forall x ty pct te m,
         e!x = Some (PRIV ty) ->
         lred (Evar x ty) pct te m
@@ -402,7 +404,7 @@ Module Csem (P: Policy) (A: Allocator P).
         lred (Efield (Eval (Vlong ofs, pt) (Tunion id a)) f ty) pct te m
              (Eloc (Lmem (Int64.add ofs (Int64.repr delta)) pt' bf) ty) te m.
 
-    Inductive lfailred: expr -> tag -> trace -> string -> FailureClass -> list tag -> Prop :=
+    Inductive lfailred: expr -> control_tag -> trace -> string -> FailureClass -> list tag -> Prop :=
     | failred_field_struct: forall ofs pt id co a f ty pct delta bf msg params,
         ce!id = Some co ->
         field_offset ce f (co_members co) = OK (delta, bf) ->
@@ -418,7 +420,8 @@ Module Csem (P: Policy) (A: Allocator P).
     .
 
     (** Head reductions for r-values *)
-    Inductive rred (PCT:tag) : expr -> tenv -> mem -> trace -> tag -> expr -> tenv -> mem -> Prop :=
+    Inductive rred (PCT:control_tag) : expr -> tenv -> mem -> trace -> control_tag
+                                       -> expr -> tenv -> mem -> Prop :=
     | red_const: forall v ty te m vt',
         ConstT l PCT = PolicySuccess vt' ->
         rred PCT (Econst v ty) te m E0
@@ -617,7 +620,8 @@ Module Csem (P: Policy) (A: Allocator P).
              PCT' (Eval (v,vt') ty) te m.
     
     (** Failstops for r-values *)
-    Inductive rfailred (PCT:tag) : expr -> tenv -> mem -> trace -> string -> FailureClass -> list tag -> Prop :=
+    Inductive rfailred (PCT:control_tag) : expr -> tenv -> mem -> trace ->
+                                           string -> FailureClass -> list tag -> Prop :=
     | failred_const: forall v ty te m msg params,
         ConstT l PCT = PolicyFail msg params ->
         rfailred PCT (Econst v ty) te m E0
@@ -805,7 +809,7 @@ Module Csem (P: Policy) (A: Allocator P).
 
     (** Head reduction for function calls.
         (More exactly, identification of function calls that can reduce.) *)
-    Inductive callred: tag -> expr -> mem -> fundef -> tag -> list atom -> type -> tag
+    Inductive callred: control_tag -> expr -> mem -> fundef -> val_tag -> list atom -> type -> control_tag
                        -> Prop :=
     | red_call_internal: forall pct pct' b vft tyf m tyargs tyres cconv el ty fd vargs,
         Genv.find_funct ge (Vfptr b) = Some fd ->
@@ -907,7 +911,7 @@ Module Csem (P: Policy) (A: Allocator P).
         is not immediately stuck if it is a value (of the appropriate kind)
         or it can reduce (at head or within). *)
 
-    Inductive imm_safe: kind -> expr -> tag -> tenv -> mem -> Prop :=
+    Inductive imm_safe: kind -> expr -> control_tag -> tenv -> mem -> Prop :=
     | imm_safe_val: forall v ty PCT te m,
         imm_safe RV (Eval v ty) PCT te m
     | imm_safe_loc: forall lk ty PCT te m,
@@ -1017,7 +1021,7 @@ Inductive cont: Type :=
          env ->                (**r local env of calling function *)
          tenv ->               (**r temp env of calling function *)
          Cabs.loc ->           (**r location before call *)
-         tag ->                (**r PC tag before call *)
+         control_tag ->                (**r PC tag before call *)
          (expr -> expr) ->     (**r context of the call *)
          type ->               (**r type of call expression *)
          cont -> cont.
@@ -1060,7 +1064,7 @@ Definition is_call_cont (k: cont) : Prop :=
 Inductive state: Type :=
 | State                               (**r execution of a statement *)
     (f: function)
-    (PCT: tag)
+    (PCT: control_tag)
     (s: statement)
     (k: cont)
     (e: env)
@@ -1069,7 +1073,7 @@ Inductive state: Type :=
 | ExprState                           (**r reduction of an expression *)
     (f: function)
     (l: Cabs.loc)
-    (PCT: tag)
+    (PCT: control_tag)
     (r: expr)
     (k: cont)
     (e: env)
@@ -1078,14 +1082,15 @@ Inductive state: Type :=
 | Callstate                           (**r calling a function *)
     (fd: fundef)                      (* callee that has just been entered *)
     (l: Cabs.loc)
-    (PCT fpt: tag)
+    (PCT: control_tag)
+    (fpt: val_tag)
     (args: list atom)
     (k: cont)
     (m: mem) : state
 | Returnstate                         (**r returning from a function *)
     (fd: fundef)                      (* callee that is now returning *)
     (l: Cabs.loc)
-    (PCT: tag)
+    (PCT: control_tag)
     (res: atom)
     (k: cont)
     (m: mem) : state

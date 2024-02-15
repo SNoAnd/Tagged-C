@@ -77,20 +77,20 @@ Module InterpreterEvents (P:Policy) (A:Allocator P).
       let '(v,vt) := a in
       match v with
       | Vint i => check (typ_eq t AST.Tint);
-                  check (tag_eq_dec vt def_tag);
+                  check (vt_eq_dec vt def_tag);
                   Some (EVint i)
         (* ev_match_int : forall i : int, eventval_match ge (EVint i) AST.Tint (Vint i, def_tag)*)
       | Vfloat f => check (typ_eq t AST.Tfloat);
-                    check (tag_eq_dec vt def_tag);
+                    check (vt_eq_dec vt def_tag);
                     Some (EVfloat f)
         (* ev_match_float : forall f : float, eventval_match ge (EVfloat f) AST.Tfloat (Vfloat f, def_tag) *)
       | Vsingle f => check (typ_eq t AST.Tsingle);
-                     check (tag_eq_dec vt def_tag);
+                     check (vt_eq_dec vt def_tag);
                      Some (EVsingle f)
         (* ev_match_single : forall f : float32, eventval_match ge (EVsingle f) Tsingle (Vsingle f, def_tag) *)
       | Vlong n =>
           check (typ_eq t AST.Tlong);
-          check (tag_eq_dec vt def_tag); Some (EVlong n)
+          check (vt_eq_dec vt def_tag); Some (EVlong n)
           (* ev_match_long : forall i : int64, eventval_match ge (EVlong i) AST.Tlong (Vlong i, def_tag) *)
 (*          else check (typ_eq t AST.Tptr);
           match invert_symbol_ofs ge n with
@@ -117,7 +117,7 @@ Module InterpreterEvents (P:Policy) (A:Allocator P).
           match find_symbol ge id with
           | Some (SymIFun _ b pt) =>
               check (public_symbol ge id);
-              check (tag_eq_dec vt pt);
+              check (vt_eq_dec vt pt);
               Some (EVptr_fun id)
           | _ => None
           end
@@ -211,7 +211,7 @@ Module InterpreterEvents (P:Policy) (A:Allocator P).
       - eapply (invert_find_symbol_block ge) in Heqo. destruct Heqo. rewrite H in Heqo0.
         inv Heqo0. intros.
         destruct (public_symbol ge i) eqn:?; try congruence.
-        destruct (tag_eq_dec t0 x) eqn:?; try congruence.
+        destruct (vt_eq_dec v0 x) eqn:?; try congruence.
         inv H0. constructor; auto.
     Qed.
 
@@ -280,7 +280,7 @@ Module InterpreterEvents (P:Policy) (A:Allocator P).
       end.
 
     Definition do_volatile_store (w: world) (chunk: memory_chunk) (m: mem)
-               (ofs: int64) (v: atom) (lts: list tag) : option (world * trace * MemoryResult mem) :=
+               (ofs: int64) (v: atom) (lts: list loc_tag) : option (world * trace * MemoryResult mem) :=
       let id_if_vol := match invert_symbol_ofs ge ofs with
                        | Some (id, gv) =>
                            if gv.(gvar_volatile)
@@ -390,7 +390,7 @@ Module InterpreterEvents (P:Policy) (A:Allocator P).
 
     (** External calls *)
     Variable do_external_function:
-      string -> signature -> Genv.t fundef type -> world -> list atom -> tag -> tag -> mem -> option (world * trace * (MemoryResult (PolicyResult (atom * tag * mem)))).
+      string -> signature -> Genv.t fundef type -> world -> list atom -> control_tag -> val_tag -> mem -> option (world * trace * (MemoryResult (PolicyResult (atom * control_tag * mem)))).
 
     Hypothesis do_external_function_sound:
       forall id sg ge vargs pct fpt m t res w w',
@@ -437,8 +437,8 @@ Module InterpreterEvents (P:Policy) (A:Allocator P).
       unfold alloc_size. unfold do_alloc_size. split; intros; destruct v; inv H; auto.
     Qed.
     
-    Definition do_ef_malloc (l: Cabs.loc) (w: world) (vargs: list atom) (PCT fpt: tag) (m: mem)
-      : option (world * trace * (MemoryResult (PolicyResult (atom * tag * mem)))) :=
+    Definition do_ef_malloc (l: Cabs.loc) (w: world) (vargs: list atom) (PCT: control_tag) (fpt: val_tag) (m: mem)
+      : option (world * trace * (MemoryResult (PolicyResult (atom * control_tag * mem)))) :=
       match vargs with
       | [(v,st)] =>
           match do_alloc_size v with
@@ -488,8 +488,8 @@ Module InterpreterEvents (P:Policy) (A:Allocator P).
       - inv H.
     Qed.
     
-    Definition do_ef_free (l: Cabs.loc) (w: world) (vargs: list atom) (PCT fpt: tag) (m: mem)
-      : option (world * trace * (MemoryResult (PolicyResult (atom * tag * mem)))) :=
+    Definition do_ef_free (l: Cabs.loc) (w: world) (vargs: list atom) (PCT: control_tag) (fpt: val_tag) (m: mem)
+      : option (world * trace * (MemoryResult (PolicyResult (atom * control_tag * mem)))) :=
       match vargs with
       | [(Vlong addr,pt)] =>
           if Int64.eq addr Int64.zero then
@@ -535,14 +535,14 @@ Module InterpreterEvents (P:Policy) (A:Allocator P).
         inv H. split.
         + eapply extcall_free_sem_null.
         + constructor.
-      - destruct (heapfree m (Int64.unsigned i) (fun vt0 : tag => FreeT l pct fpt vt vt0))
+      - destruct (heapfree m (Int64.unsigned i) (fun vt0 : val_tag => FreeT l pct fpt vt vt0))
           as [[[pct' m']|]|] eqn:?;
                              inv H; split; constructor; auto; intro;
           rewrite H in Heqb; rewrite Int64.eq_true in Heqb; discriminate.
     Qed.
 
     Definition do_external (ef: external_function) (l: Cabs.loc) :
-      world -> list atom -> tag -> tag -> mem -> option (world * trace * (MemoryResult (PolicyResult (atom * tag * mem)))) :=
+      world -> list atom -> control_tag -> val_tag -> mem -> option (world * trace * (MemoryResult (PolicyResult (atom * control_tag * mem)))) :=
       match ef with
       | EF_external name sg =>
           fun w vargs pct fpt m =>

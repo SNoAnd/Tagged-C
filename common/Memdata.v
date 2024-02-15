@@ -310,22 +310,22 @@ Module Memdata (P: Policy).
 
 Inductive memval: Type :=
   | Undef: memval
-  | Byte: byte -> tag -> memval
+  | Byte: byte -> val_tag -> memval
   | Fragment: atom -> quantity -> nat -> memval.
 
 (** * Encoding and decoding values *)
 
-Definition inj_bytes (bl: list byte) (t : tag) : list memval :=
+Definition inj_bytes (bl: list byte) (t : val_tag) : list memval :=
   List.map (fun v => (Byte v t)) bl.
 
-Fixpoint proj_bytes (vl: list memval) : option (list byte) * option tag :=
+Fixpoint proj_bytes (vl: list memval) : option (list byte) * option val_tag :=
   match vl with
   | nil => (Some nil, None)
   | Byte b t :: vl' =>
       match proj_bytes vl' with
       | (Some bl, None) => (Some (b :: bl), Some t)
       | (Some bl, Some t') =>
-          if tag_eq_dec t t'
+          if vt_eq_dec t t'
           then (Some (b :: bl), Some t)
           else (None, None)
       | _ => (None, None)
@@ -453,12 +453,12 @@ Definition decode_encode_val (v1: val) (chunk1 chunk2: memory_chunk) (v2: val) :
   | Vint n, Many32, Many32 => v2 = Vint n
   | Vint n, Mint32, Mfloat32 => v2 = Vsingle(Float32.of_bits n)
   | Vint n, Many64, Many64 => v2 = Vint n
-  | Vint n, (Mint64 | Mfloat32 | Mfloat64 | Many64), _ => v2 = Vundef
-  | Vint n, _, _ => True (**r nothing meaningful to say about v2 *)
+  | Vint _, (Mint64 | Mfloat32 | Mfloat64 | Many64), _ => v2 = Vundef
+  | Vint _, _, _ => True
   | Vfptr b, Mint64, (Mint64 | Many64) => v2 = Vfptr b
   | Vfptr b, Many64, Many64 => v2 = Vfptr b 
   | Vfptr b, Many64, Mint64 => v2 = Vfptr b
-  | Vfptr b, _, _ => v2 = Vundef
+  | Vfptr _, _, _ => v2 = Vundef
   | Vefptr _ _ _ _, Mint64, (Mint64 | Many64)
   | Vefptr _ _ _ _, Many64, Many64
   | Vefptr _ _ _ _, Many64, Mint64 => v2 = v1
@@ -466,19 +466,19 @@ Definition decode_encode_val (v1: val) (chunk1 chunk2: memory_chunk) (v2: val) :
   | Vlong n, Mint64, Mint64 => v2 = Vlong n
   | Vlong n, Mint64, Mfloat64 => v2 = Vfloat(Float.of_bits n)
   | Vlong n, Many64, Many64 => v2 = Vlong n
-  | Vlong n, (Mint8signed|Mint8unsigned|Mint16signed|Mint16unsigned|Mint32|Mfloat32|Mfloat64|Many32), _ => v2 = Vundef
-  | Vlong n, _, _ => True (**r nothing meaningful to say about v2 *)
+  | Vlong _, (Mint8signed|Mint8unsigned|Mint16signed|Mint16unsigned|Mint32|Mfloat32|Mfloat64|Many32), _ => v2 = Vundef
+  | Vlong _, _, _ => True
   | Vfloat f, Mfloat64, Mfloat64 => v2 = Vfloat f
   | Vfloat f, Mfloat64, Mint64 => v2 = Vlong(Float.to_bits f)
   | Vfloat f, Many64, Many64 => v2 = Vfloat f
-  | Vfloat f, (Mint8signed|Mint8unsigned|Mint16signed|Mint16unsigned|Mint32|Mfloat32|Mint64|Many32), _ => v2 = Vundef
-  | Vfloat f, _, _ => True   (* nothing interesting to say about v2 *)
+  | Vfloat _, (Mint8signed|Mint8unsigned|Mint16signed|Mint16unsigned|Mint32|Mfloat32|Mint64|Many32), _ => v2 = Vundef
+  | Vfloat _, _, _ => True
   | Vsingle f, Mfloat32, Mfloat32 => v2 = Vsingle f
   | Vsingle f, Mfloat32, Mint32 => v2 = Vint(Float32.to_bits f)
   | Vsingle f, Many32, Many32 => v2 = Vsingle f
   | Vsingle f, Many64, Many64 => v2 = Vsingle f
-  | Vsingle f, (Mint8signed|Mint8unsigned|Mint16signed|Mint16unsigned|Mint32|Mint64|Mfloat64|Many64), _ => v2 = Vundef
-  | Vsingle f, _, _ => True (* nothing interesting to say about v2 *)
+  | Vsingle _, (Mint8signed|Mint8unsigned|Mint16signed|Mint16unsigned|Mint32|Mint64|Mfloat64|Many64), _ => v2 = Vundef
+  | Vsingle _, _, _ => True
   end.
 
 Remark decode_val_undef:

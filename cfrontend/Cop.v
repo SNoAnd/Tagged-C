@@ -1044,7 +1044,7 @@ Definition bitfield_normalize (sz: intsize) (sg: signedness) (width: Z) (n: int)
   else Int.sign_ext width n.
 
 Inductive load_bitfield: type -> intsize -> signedness -> Z -> Z -> mem -> Z ->
-                         MemoryResult (atom * list tag) -> Prop :=
+                         MemoryResult (atom * list loc_tag) -> Prop :=
   | load_bitfield_intro: forall sz sg1 attr sg pos width m addr c vt lts,
       0 <= pos -> 0 < width <= bitsize_intsize sz -> pos + width <= bitsize_carrier sz ->
       sg1 = (if zlt width (bitsize_intsize sz) then Signed else sg) ->
@@ -1060,7 +1060,7 @@ Inductive load_bitfield: type -> intsize -> signedness -> Z -> Z -> mem -> Z ->
 
 
 Inductive store_bitfield: type -> intsize -> signedness -> Z -> Z -> mem ->
-                          Z -> tag -> atom -> list tag ->
+                          Z -> val_tag -> atom -> list loc_tag ->
                           MemoryResult (mem * atom) -> Prop :=
   | store_bitfield_intro: forall sz sg1 attr sg pos width m addr pt c n vt ovt lts m',
       0 <= pos -> 0 < width <= bitsize_intsize sz -> pos + width <= bitsize_carrier sz ->

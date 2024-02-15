@@ -78,7 +78,7 @@ Module Mem (P:Policy).
   Qed.
   
   Record mem' : Type := mkmem {
-    mem_contents: ZMap.t (memval*tag);  (**r [offset -> memval] *)
+    mem_contents: ZMap.t (memval*loc_tag);  (**r [offset -> memval] *)
     mem_access: Z -> permission;        (**r [block -> offset -> kind -> option permission] *)
     live: list (Z*Z);
   }.    
@@ -215,7 +215,7 @@ Module Mem (P:Policy).
   Definition init_dead : Z -> bool := fun _ => false.
 
   Definition empty: mem :=
-    mkmem (ZMap.init (Undef, def_tag))
+    mkmem (ZMap.init (Undef, DefLT))
           (fun ofs => if init_dead ofs then Dead else MostlyDead)
           []
   .
@@ -231,7 +231,7 @@ Module Mem (P:Policy).
 
   (** Reading N adjacent bytes in a block content. *)
   
-  Fixpoint getN (n: nat) (p: Z) (c: ZMap.t (memval*tag)) {struct n}: list (memval * tag) :=
+  Fixpoint getN (n: nat) (p: Z) (c: ZMap.t (memval*loc_tag)) {struct n}: list (memval * loc_tag) :=
     match n with
     | O => nil
     | S n' => ZMap.get p c :: getN n' (p + 1) c
@@ -244,18 +244,19 @@ Module Mem (P:Policy).
   Definition load (chunk: memory_chunk) (m: mem) (ofs: Z): MemoryResult atom :=
     if aligned_access_dec chunk ofs then
       if allowed_access_dec m chunk ofs
-      then MemorySuccess (decode_val chunk (map (fun x => fst x) (getN (size_chunk_nat chunk) ofs (m.(mem_contents)))))
+      then MemorySuccess (decode_val chunk (map (fun x => fst x) (getN (size_chunk_nat chunk) ofs
+                                                                       (m.(mem_contents)))))
       else MemoryFail "" (PrivateLoad ofs)
     else MemoryFail "" (MisalignedLoad (align_chunk chunk) ofs).
 
-  Definition load_ltags (chunk: memory_chunk) (m: mem) (ofs: Z): MemoryResult (list tag) :=
+  Definition load_ltags (chunk: memory_chunk) (m: mem) (ofs: Z): MemoryResult (list loc_tag) :=
     if aligned_access_dec chunk ofs then
       if allowed_access_dec m chunk ofs
       then MemorySuccess (map (fun x => snd x) (getN (size_chunk_nat chunk) ofs (m.(mem_contents))))
       else MemoryFail "" (PrivateLoad ofs)
     else MemoryFail "" (MisalignedLoad (align_chunk chunk) ofs).
 
-  Definition load_all (chunk: memory_chunk) (m: mem) (ofs: Z): MemoryResult (atom * list tag) :=
+  Definition load_all (chunk: memory_chunk) (m: mem) (ofs: Z): MemoryResult (atom * list loc_tag) :=
     if aligned_access_dec chunk ofs then
       if allowed_access_dec m chunk ofs
       then MemorySuccess (decode_val chunk
@@ -299,7 +300,7 @@ Module Mem (P:Policy).
     then MemorySuccess (map (fun x => fst x) (getN (Z.to_nat n) ofs (m.(mem_contents))))
     else MemoryFail "" (PrivateLoad ofs).
 
-  Definition loadtags (m: mem) (ofs n: Z) : MemoryResult (list tag) :=
+  Definition loadtags (m: mem) (ofs n: Z) : MemoryResult (list loc_tag) :=
     if range_perm_neg_dec m ofs (ofs + n) Dead
     then MemorySuccess (map (fun x => snd x) (getN (Z.to_nat n) ofs (m.(mem_contents))))
     else MemoryFail "" (PrivateLoad ofs).
@@ -308,7 +309,8 @@ Module Mem (P:Policy).
 
   (** Writing N adjacent bytes in a block content. *)
 
-  Fixpoint setN (vl: list (memval*tag)) (p: Z) (c: ZMap.t (memval*tag)) {struct vl}: ZMap.t (memval*tag) :=
+  Fixpoint setN (vl: list (memval*loc_tag)) (p: Z)
+           (c: ZMap.t (memval*loc_tag)) {struct vl}: ZMap.t (memval*loc_tag) :=
     match vl with
     | nil => c
     | v :: vl' => setN vl' (p + 1) (ZMap.set p v c)
@@ -384,14 +386,14 @@ Module Mem (P:Policy).
       Return the updated memory store, or [None] if the accessed bytes
       are not writable. *)
   
-  Fixpoint merge_vals_tags (vs:list memval) (lts:list tag) :=
+  Fixpoint merge_vals_tags (vs:list memval) (lts:list loc_tag) :=
     match vs with
     | v::vs' =>
-        (v,hd def_tag lts)::(merge_vals_tags vs' (tl lts))
+        (v,hd DefLT lts)::(merge_vals_tags vs' (tl lts))
     | _ => []
     end.
   
-  Definition store (chunk: memory_chunk) (m: mem) (ofs: Z) (a:atom) (lts:list tag)
+  Definition store (chunk: memory_chunk) (m: mem) (ofs: Z) (a:atom) (lts:list loc_tag)
     : MemoryResult mem :=
     if aligned_access_dec chunk ofs then
       if allowed_access_dec m chunk ofs then
@@ -413,7 +415,7 @@ Module Mem (P:Policy).
   (** [storebytes m ofs bytes] stores the given list of bytes [bytes]
       starting at location [(b, ofs)].  Returns updated memory state
       or [None] if the accessed locations are not writable. *)
-  Program Definition storebytes (m: mem) (ofs: Z) (bytes: list memval) (lts:list tag)
+  Program Definition storebytes (m: mem) (ofs: Z) (bytes: list memval) (lts:list loc_tag)
     : MemoryResult mem :=
     if range_perm_neg_dec m ofs (ofs + Z.of_nat (length bytes)) Dead then
       MemorySuccess (mkmem
@@ -500,7 +502,7 @@ Section STOREBYTES.
 Variable m1: mem.
 Variable ofs: Z.
 Variable bytes: list memval.
-Variable lts: list tag.
+Variable lts: list loc_tag.
 Variable m2: mem.
 Hypothesis STORE: storebytes m1 ofs bytes lts = MemorySuccess m2.
 
