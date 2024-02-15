@@ -10,6 +10,7 @@
  *      (4) heap secret recovery from improper clean up (steal keys that were correctly
  *              freed but not zeroed out)
  *      (5) heap resource exhaustion/resource leak through memory (OOM )
+ *              We are explicitly ignoring this one. 
  * 
  *      (1)(2)(5) are things that SOTA fuzzers can reasonably detect when augmented with 
  *          sanitizers like ASAN. 

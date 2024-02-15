@@ -13,6 +13,7 @@ to the extraction list
    
    You have a choice of FLAllocator or ConcreteAllocator.
 6. In driver/Driver.ml, add a policy option to the command line options
+7. Add C test files to the test suite in /tests/ . Add invocations to the run-all-tests.py file
 
 ### Guidance for Policy Design ###
 1. In this version of PIPE there is a tag on the value and one on byte memory. This is an abstraction of spliting them up to make reasoning easier. In hardware it is all together.
