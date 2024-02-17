@@ -34,6 +34,9 @@ Module PolProduct (P1:Policy) (P2: Policy) <: Policy.
   Arguments PolicySuccess {_} _. 
   Arguments PolicyFail {_} _ _.
 
+(* Line 37, CallT shows basically what to do: 
+  check the P1 and P2 instances of the rules on the fst and snd projects of each argument, 
+  and then recombine them.*)
   Definition CallT (l:loc) (pct pt: tag) : PolicyResult tag :=
     match P1.CallT l (fst pct) (fst pt), P2.CallT l (snd pct) (snd pt) with
     | P1.PolicySuccess pct1', P2.PolicySuccess pct2' => PolicySuccess (pct1',pct2')

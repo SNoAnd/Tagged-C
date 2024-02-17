@@ -293,7 +293,8 @@ let cmdline_actions =
   Exact "-all", Unit (fun () -> Interp.mode := Interp.All);
   Exact "-main", String (fun s -> main_function_name := s)
  ]
- (* Policy options *)
+ (* Policy options. Per Policies.md, add policy cli option here 
+    NB: remember to add the extra ) before the ] at the end of the list*)
   @ [
   Exact "-p", String
         (fun arg ->
@@ -301,9 +302,11 @@ let cmdline_actions =
                 then (runner := WithPVI.run_i_file; initter := WithPVI.init_with)
                 else (if arg = "dfree"
                 then (runner := WithDoubleFree.run_i_file; initter := WithDoubleFree.init_with)
+                else (if arg = "heapproblem"
+                then (runner := WithHeapProblem.run_i_file; initter := WithHeapProblem.init_with)
                 else (if arg = "null"
                 then (runner := WithNull.run_i_file; initter := WithNull.init_with)
-                else error no_loc "Unknown policy `%s'" arg)))
+                else error no_loc "Unknown policy `%s'" arg))))
   ]
 (* Optimization options *)
 (* -f options: come in -f and -fno- variants *)

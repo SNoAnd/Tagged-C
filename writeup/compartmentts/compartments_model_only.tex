@@ -1,0 +1,145 @@
+\documentclass{article}
+
+\usepackage{geometry}
+\usepackage{xcolor, colortbl}
+\usepackage[most]{tcolorbox}
+\usepackage{amsmath, amssymb, stmaryrd}
+\usepackage{subcaption}
+
+\begin{document}
+
+\input{macros.tex}
+\input{tagrules.tex}
+
+\section{Abstract Sharing Semantics}
+
+\begin{figure}
+  \begin{subfigure}{0.4\textwidth}
+    \[C \in \mathcal{C}~~~ b \in \mathit{block}~~~  m \in \mathit{mem}~~~ \alpha \in \mathit{oracle}\]
+    \[\begin{aligned}
+    \mathcal{C}^+ & ::= \mathbf{L}(C) \mid \mathbf{S}(b, \mathit{base}) &
+    \mathit{base} \in \mathbb{Z} \\
+    \mathit{val} & ::= \ldots \mid \mathit{ptr} ~ c ~ \mathit{off} &
+    c \in \mathcal{C}^+, \mathit{off} \in \mathbb{Z}
+    \end{aligned}\]
+    %
+    \[\begin{split}
+    \mathit{read} \in ~ & \mathit{oracle} \rightarrow \mathit{mem} \rightarrow
+    \mathbb{Z} \rightharpoonup \mathit{val} \\
+    \mathit{write} \in ~ & \mathit{oracle} \rightarrow \mathit{mem} \rightarrow
+    \mathbb{Z} \rightarrow \mathit{val} \rightharpoonup \mathit{mem} \\
+    M \in ~ & \mathcal{M} \subseteq \mathcal{C}^+ \rightarrow \mathit{mem} \\
+    \mathit{alloc} \in ~ & \mathit{oracle} \rightarrow
+    \mathcal{C} + \mathit{block} \rightarrow \mathbb{Z} \rightharpoonup \\
+    & (\mathbb{Z} \times \mathit{oracle}) \\
+    \mathit{free} \in ~ & \mathit{oracle} \rightarrow \mathcal{C}^+ \rightarrow
+    \mathbb{Z} \rightharpoonup \mathit{oracle} \\
+%    \mathit{baseof} \in ~ & \mathit{oracle} \rightarrow \mathit{block} \rightharpoonup \mathbb{Z} \\
+    \end{split}\]
+
+    \caption{Definitions}
+    \label{subfig:defs}
+  \end{subfigure}
+  \begin{subfigure}{0.55\textwidth}
+    \judgment{\(\mathit{read} ~ (M ~ C) ~ \mathit{off} = v\)}
+             {\(C, \alpha, M \mid *(\mathit{ptr} ~ \mathbf{L}(C) ~ \mathit{off})
+               \longrightarrow C, \alpha, M \mid v\)}
+
+    \judgmenttwo{\(\mathit{write} ~ (M ~ C) ~ \mathit{off} ~ v = m'\)}
+                {\(M' = M[C \mapsto m']\)}
+                {\(C, \alpha, M \mid *(\mathit{ptr} ~ \mathbf{L}(C) ~ \mathit{off}) := v
+                  \longrightarrow C, \alpha, M' \mid v\)}
+
+    \judgment{\(\mathit{read} ~ (M ~ b) ~ (\mathit{base} + \mathit{off}) = v\)}
+             {\(C, \alpha, M \mid *(\mathit{ptr} ~ \mathbf{S}(b, \mathit{base}) ~ \mathit{off})
+               \longrightarrow C, \alpha, M \mid v\)}
+
+    \judgmenttwo{\(\mathit{write} ~ (M ~ b) ~ (\mathit{base} + \mathit{off}) ~ v = m'\)}
+                {\(M' = M[b \mapsto m']\)}
+                {\(C, \alpha, M \mid *(\mathit{ptr} ~ \mathbf{S}(b, \mathit{base}) ~ \mathit{off}) := v
+                  \longrightarrow C, \alpha, M' \mid v\)}
+
+    \caption{Reads and writes}
+    \label{subfig:rnw}
+  \end{subfigure}
+  \begin{subfigure}{\textwidth}
+    \judgment{\(\mathit{alloc} ~ \alpha ~ C ~ sz = (p, \alpha')\)}
+             {\(C, \alpha, M \mid \mathtt{malloc}(\mathit{int} ~ sz) \longrightarrow
+               C, \alpha', M \mid \mathit{ptr} ~ \mathbf{L}(C) ~ p\)}
+    \judgmenttwo{\(\mathit{fresh} ~ b\)}
+                {\(\mathit{alloc} ~ \alpha ~ b ~ sz = (p, \alpha')\)}
+                {\(C, \alpha, M \mid \mathtt{malloc}(\mathit{int} ~ sz) \longrightarrow
+                  C, \alpha', M \mid \mathit{ptr} ~ \mathbf{S}(b,p) ~ 0\)}
+    \judgment{}
+             {\(C,\alpha,M \mid \mathtt{(int)}
+               (\mathit{ptr} ~ \mathbf{L}(C) ~ \mathit{off})
+               \longrightarrow C,\alpha,M \mid \mathit{int} ~ \mathit{off}\)}
+    \judgment{}
+             {\(C,\alpha,M \mid \mathtt{(int)}
+               (\mathit{ptr} ~ \mathbf{S}(b,\mathit{base}) ~ \mathit{off})
+               \longrightarrow C,\alpha,M \mid \mathit{int} ~ (\mathit{base}+\mathit{off})\)}
+    \judgment{}
+             {\(C,\alpha,M \mid \mathtt{(t*)} (\mathit{int} ~ i) \longrightarrow
+               C,\alpha,M \mid \mathit{ptr} ~ \mathbf{L}(C) ~ \mathit{i}\)}
+
+    \caption{Allocations and Casts}
+    \label{subfig:allocs}
+  \end{subfigure}
+
+  \caption{Compartmentalized Memory Model}
+  \label{fig:memmod}
+\end{figure}
+
+We define a C semantics that separates the world into compartments, ranged over by
+\(A\), \(B\), \(C\), etc., each with its own separate memory. The basics are shown in
+Figure \ref{fig:memmod}. The core of this memory model is the allocator oracle, ranged
+over by \(\alpha\); this abstract state encapsulates information about how allocations
+are arrayed inside compartments or as shared blocks.
+
+The \(\mathit{read}\) and \(\mathit{write}\) operations always operate on a single
+abstract memory, which behaves as a single flat address space accessed via integers,
+except that operations that access addresses outside of previously allocated blocks
+can failstop depending on the oracle. Memories are kept totally separate, and accesses
+in one can't interact with the others.
+
+Pointer values carry one of two types of indices that determine which memory they access:
+\(\mathbf{L}(C)\), for local pointers into the compartment \(C\), and
+\(\mathbf{S}(b,\mathit{base})\), where \(b\) is an abstract block identifier and
+\(\mathit{base}\) is an integer. A ``super-memory'' \(M\) is a map from such indices
+to memories. Pointers also always carry an offset. (This means that we can always convert a
+pointer to either an abstract block-offset model or to an integer.)
+
+Figure \ref{subfigs:rnw} shows how loads and stores occur in this system. Shared pointers
+are converted to integer offsets, while local pointers just use their existing offsets,
+and then the \(\mathit{read}\) and \(\mathit{write}\) operations occur.
+
+\paragraph{Allocation}
+
+The abstract operation, \(\mathit{alloc}\), yields an address at which to locate a new
+block, either within a compartment's memory or in its own isolated block. In the latter
+case, the address provided becomes the new base of that block. It also produces a new
+oracle that, among other things, will guarantee that loads and stores to the new block will
+not failstop. Since the \(\mathit{alloc}\) operation is parameterized by the compartment
+or block in question, it is allowed to give one compartment an address that is not currently
+allocated within it, even if other compartments might have that address allocated.
+
+\paragraph{Casting}
+
+Figure \ref{subfigs:alloc} also gives a demonstration of how integer-pointer and
+pointer-integer casts work. We can always cast pointers to integers; integers cast to pointers
+always point into the compartment that performed the cast.
+
+\section{Cross-compartment interfaces}
+
+In this system, each function is assigned to a compartment, and we annotate all function arguments
+and returns that are meant to take values that will be used as shared pointers. Control passes
+from one compartment to another whenever a call is made to an inactive compartment, and on return
+from such a call. It is undefined behavior to pass or return a pointer without a sharing annotation,
+and all pointers passed with annotation must have \(\mathbf{S}(\dots)\) as their index, else this
+is also UB. As a consequence, a compartment can never obtain a \(\mathbf{L}(\dots)\)-indexed variable
+from a compartment other than itself. Using static escape analysis, we can approximate the allocations
+that should be shared, replacing calls to {\tt malloc} with {\tt malloc\_shared} or identifying
+stack allocations that need to be sharable.
+
+
+\end{document}

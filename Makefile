@@ -113,9 +113,9 @@ COMMON=Errors.v AST.v Linking.v \
 CFRONTEND=Ctypes.v Cop.v Csyntax.v Csem.v Ctyping.v Cstrategy.v Cexec.v \
   Initializers.v InterpreterEvents.v \
 
-# Policy definitions (in policies/)
+# Policy definitions (in policies/) Add new policy files here
 
-POLICIES=NullPolicy.v PVI.v DoubleFree.v
+POLICIES=NullPolicy.v PVI.v DoubleFree.v HeapProblem.v
 
 # Parser
 
