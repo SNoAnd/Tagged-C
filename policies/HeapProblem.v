@@ -72,7 +72,7 @@
  *      - If the pt is not a pointer tag, auto fail. 
  *      - If the header tag is N, L_NotHeap, or L_UnallocatedHeap, fail
  *      - If the header tag is AllocatedDirty, or AllocatedwithColor and the location+color are the same, success
- *      - If the header tag is Allocated, but the location+color do not match, 
+ *      - If the header tag is Allocated, but the location+color do not match, that is heap corruption.
  *  - Binary Operations & Unary Operations
  *      - most of the unary ones don't make a lot of sense with pointers 
  *      - classic arthimetic ops that make sense with ptrs preserve pointerness
