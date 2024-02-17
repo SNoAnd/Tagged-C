@@ -39,23 +39,36 @@ Notes:
       Can be used to catch misaligned loads and stores, in theory.
 *)
 Module DoubleFree <: Policy.
-
+ Import Passthrough.
+  
  Inductive myTag :=
  | N (* N means unallocated, is also the starting "uncolor" *)
  | FreeColor (l:loc) (* new tag carrying the free site unique color *)
  | Alloc (*(id:ident)*) (* this memory is allocated. NB in a future policy it too might have a dynamic color*)
  .
 
- Definition tag := myTag.
- Theorem tag_eq_dec : forall (t1 t2:tag), {t1 = t2} + {t1 <> t2}.
- Proof.
-   unfold tag. intros. repeat decide equality.
-   apply eqdec_loc.
- Qed.
- Definition def_tag := N.
+ Definition val_tag := myTag.
+ Definition control_tag := unit.
+ Definition loc_tag := unit.
 
-(* nothing has a color to start *)
- Definition InitPCT := N.
+ Theorem vt_eq_dec : forall (t1 t2:val_tag), {t1 = t2} + {t1 <> t2}.
+ Proof. repeat decide equality. apply eqdec_loc. Qed.
+ Theorem ct_eq_dec : forall (t1 t2:control_tag), {t1 = t2} + {t1 <> t2}.
+ Proof. repeat decide equality. Qed.
+ Theorem lt_eq_dec : forall (t1 t2:loc_tag), {t1 = t2} + {t1 <> t2}.
+ Proof. repeat decide equality. Qed.
+
+ Inductive tag : Type :=
+ | VT : val_tag -> tag
+ | CT : control_tag -> tag
+ | LT : loc_tag -> tag
+ .
+
+ Definition def_tag : val_tag := N.
+ (* nothing has a color to start *)
+ Definition InitPCT : control_tag := tt.
+ Definition DefLT   : loc_tag := tt.
+ Definition InitT   : val_tag := N.
 
 (* This is a helper to print locations for human & fuzzer ingestion *)
  Definition inj_loc (s:string) (l:loc) : string :=
@@ -63,9 +76,9 @@ Module DoubleFree <: Policy.
 
 Definition print_tag (t : tag) : string :=
     match t with
-    | FreeColor l => (inj_loc "location" l)
-    | N => "Unallocated"
-    | Alloc => "Allocated"
+    | VT (FreeColor l) => (inj_loc "location" l)
+    | VT N | CT _ | LT _ => "Unallocated"
+    | VT Alloc => "Allocated"
     end.
 
 (* boilerplate. has to be reimplemented in each policy.
@@ -78,68 +91,12 @@ Definition print_tag (t : tag) : string :=
  Arguments PolicySuccess {_} _.
  Arguments PolicyFail {_} _ _.
 
- (* Required for policy interface. Not relevant to this particular policy, pass values through *)
- Definition CallT (l:loc) (pct pt: tag) : PolicyResult tag := PolicySuccess pct.
-
- (* Required for policy interface. Not relevant to this particular policy, pass values through *)
- Definition ArgT (l:loc) (pct fpt vt : tag) (idx:nat) (ty: type) : PolicyResult (tag * tag) := PolicySuccess (pct,vt).
-
- (* Required for policy interface. Not relevant to this particular policy, pass values through *)
- (* pct_clr is pct of caller, pct_cle is callee *)
- Definition RetT (l:loc) (pct_clr pct_cle vt : tag) : PolicyResult (tag * tag) := PolicySuccess (pct_clr,vt).
-
- (* Required for policy interface. Not relevant to this particular policy, pass values through *)
- Definition LoadT (l:loc) (pct pt vt: tag) (lts : list tag) : PolicyResult tag := PolicySuccess pct.
-
- (* Required for policy interface. Not relevant to this particular policy, pass values through *)
- Definition StoreT (l:loc) (pct pt vt : tag) (lts : list tag) : PolicyResult (tag * tag * list tag) := PolicySuccess (pct,vt,lts).
-
- (* Required for policy interface. Not relevant to this particular policy, pass values through *)
- Definition AccessT (l:loc) (pct vt : tag) : PolicyResult tag := PolicySuccess vt.
-
- (* Required for policy interface. Not relevant to this particular policy, pass values through *)
- (* vt1 is lhs, vt2 is rhs *)
- Definition AssignT (l:loc) (pct vt1 vt2 : tag) : PolicyResult (tag * tag) := PolicySuccess (pct,vt2).
-
- (* Required for policy interface. Not relevant to this particular policy, pass values through *)
- Definition UnopT (l:loc) (op : unary_operation) (pct vt : tag) : PolicyResult (tag * tag) := PolicySuccess (pct, vt).
-
- (* Required for policy interface. Not relevant to this particular policy, pass values through *)
- Definition BinopT (l:loc) (op : binary_operation) (pct vt1 vt2 : tag) : PolicyResult (tag * tag) := PolicySuccess (pct, vt2).
-
  (* Constants are never pointers to malloced memory. *)
- Definition ConstT (l:loc) (pct : tag) : PolicyResult tag := PolicySuccess N.
+ Definition ConstT (l:loc) (pct : control_tag) : PolicyResult val_tag := PolicySuccess N.
 
- (* Before pointer gets its value, it's not allocated *) 
- Definition InitT (l:loc) (pct : tag) : PolicyResult tag := PolicySuccess N.
-
- (* Required for policy interface. Not relevant to this particular policy, pass values through *)
- Definition SplitT (l:loc) (pct vt : tag) (id : option ident) : PolicyResult tag := PolicySuccess pct.
-
- (* Before we had locations from the parser, we needed hand labels to find the frees *)
- (* Required for policy interface. Not relevant to this particular policy, pass values through *)
- Definition LabelT (l:loc) (pct : tag) (id : ident) : PolicyResult tag := PolicySuccess pct.
-
- (* Required for policy interface. Not relevant to this particular policy, pass values through *)
- Definition ExprSplitT (l:loc) (pct vt : tag) : PolicyResult tag := PolicySuccess pct.
-
- (* Required for policy interface. Not relevant to this particular policy, pass values through *)
- Definition ExprJoinT (l:loc) (pct vt : tag) : PolicyResult (tag * tag) := PolicySuccess (pct,vt).
-
- (* Required for policy interface. Not relevant to this particular policy, pass values through *)
- Definition GlobalT (ce : composite_env) (id : ident) (ty : type) : tag * tag * tag := (N, N, N).
-
- (* Required for policy interface. Not relevant to this particular policy, pass values through *)
- Definition FunT (id : ident) (ty : type) :tag := N.
- 
- (* Required for policy interface. Not relevant to this particular policy, pass values through *)
- Definition LocalT (l:loc) (ce : composite_env) (pct : tag) (ty : type) : PolicyResult (tag * tag * (list tag))%type :=
-   PolicySuccess (N, N, [N]).
-
- (* Required for policy interface. Not relevant to this particular policy, pass values through *)
  (* NB this is for stack allocated variables. Not relevant to dynamic memory *)
- Definition DeallocT (l:loc) (ce : composite_env) (pct : tag) (ty : type) : PolicyResult (tag * tag * list tag) :=
-   PolicySuccess (pct, N, [N]).
+ Definition DeallocT (l:loc) (ce : composite_env) (pct : control_tag) (ty : type) :
+   PolicyResult (control_tag * val_tag * loc_tag) := PolicySuccess (pct, N, tt).
 
  (* 
     MallocT sets the tag to Alloc, and clears free color if one was present becausee
@@ -158,8 +115,9 @@ Definition print_tag (t : tag) : string :=
            Free in this policy does not look at these at all, so it does not really
            matter was value goes here. 
   *)
-  Definition MallocT (l:loc) (pct fptrt st : tag) : PolicyResult (tag * tag * tag * tag * tag) :=
-   PolicySuccess (pct, Alloc, N, Alloc, N).
+ Definition MallocT (l:loc) (pct: control_tag) (fptrt st : val_tag) :
+   PolicyResult (control_tag * val_tag * val_tag * val_tag * loc_tag) :=
+   PolicySuccess (pct, Alloc, N, Alloc, tt).
   
   (* 
   FreeT colors the header tag with the current Freecolor from the pct. If there is already 
@@ -192,31 +150,52 @@ Definition print_tag (t : tag) : string :=
     - tag on the pointer passed to free
     - tag on the "header" 
  *)
- Definition FreeT (l:loc) (pct fptrt pt vht : tag) : PolicyResult (tag * tag * tag * tag) :=
+ Definition FreeT (l:loc) (pct: control_tag) (fptrt pt vht : val_tag) :
+   PolicyResult (control_tag * val_tag * val_tag * loc_tag) :=
   match vht with 
-    | Alloc => PolicySuccess(pct, N, (FreeColor l), N) (* was allocated then freed, assign free color from pct *)
+    | Alloc => PolicySuccess(pct, N, (FreeColor l), tt) (* was allocated then freed, assign free color from pct *)
     | N (* trying to free unallocated memory at this location *)
-        => PolicyFail (inj_loc "DoubleFree||FreeT detects free of unallocated memory| " l) [pct;fptrt;pt;vht]
+      => PolicyFail (inj_loc "DoubleFree||FreeT detects free of unallocated memory| " l)
+                    [CT pct;VT fptrt;VT pt;VT vht]
     | FreeColor c (* Freecolor means this was already freed and never reallocated *)
-        => PolicyFail  "DoubleFree||FreeT detects two frees| "  [vht;(FreeColor l)]
+        => PolicyFail  "DoubleFree||FreeT detects two frees| "  [VT vht;VT (FreeColor l)]
   end.
-
  (* Required for policy interface. Not relevant to this particular policy, pass values through *)
- Definition BuiltinT (l:loc) (fn : string) (pct : tag) (args : list tag) : PolicyResult tag := PolicySuccess pct.
-
- (* Required for policy interface. Not relevant to this particular policy, pass values through *)
- Definition FieldT (l:loc) (ce : composite_env) (pct vt : tag) (ty : type) (id : ident) : PolicyResult tag := PolicySuccess vt.
-
- (* Required for policy interface. Not relevant to this particular policy, pass values through *)
- Definition PICastT (l:loc) (pct pt : tag)  (lts : list tag) (ty : type) : PolicyResult tag := PolicySuccess pt.
-
- (* Required for policy interface. Not relevant to this particular policy, pass values through *)
- Definition IPCastT (l:loc) (pct vt : tag)  (lts : list tag) (ty : type) : PolicyResult tag := PolicySuccess vt.
+ Definition GlobalT (ce : composite_env) (id : ident) (ty : type) :
+   val_tag * val_tag * loc_tag := (N, N, tt).
  
  (* Required for policy interface. Not relevant to this particular policy, pass values through *)
- Definition PPCastT (l:loc) (pct vt : tag) (lts1 lts2 : list tag) (ty : type) : PolicyResult tag := PolicySuccess vt.
+ Definition FunT (ce: composite_env) (id : ident) (ty : type) : val_tag := N.
 
  (* Required for policy interface. Not relevant to this particular policy, pass values through *)
- Definition IICastT (l:loc) (pct vt : tag) (ty : type) : PolicyResult tag := PolicySuccess vt.
+ Definition LocalT (l:loc) (ce : composite_env) (pct : control_tag) (ty : type) :
+   PolicyResult (control_tag * val_tag * (list loc_tag))%type :=
+   PolicySuccess (tt, N, []).
+
+ Definition ExtCallT (l:loc) (fn : string) (pct : control_tag) (args : list val_tag)
+   : PolicyResult (control_tag*val_tag) :=
+   PolicySuccess (pct,N).
+ 
+   (* Passthrough rules *)
+  Definition CallT := (fun l pct fpt => PolicySuccess (Passthrough.CallT val_tag control_tag l pct fpt)).  
+  Definition ArgT := (fun l pct fpt vt idx ty => PolicySuccess (Passthrough.ArgT val_tag control_tag l pct fpt vt idx ty)).
+  Definition RetT := (fun l pct1 pct2 vt => PolicySuccess (Passthrough.RetT val_tag control_tag l pct1 pct2 vt)).
+  Definition AccessT := (fun l pct vt => PolicySuccess (Passthrough.AccessT val_tag control_tag l pct vt)).
+  Definition AssignT := (fun l pct vt1 vt2 => PolicySuccess (Passthrough.AssignT val_tag control_tag l pct vt1 vt2)).
+  Definition LoadT := (fun l pct pt vt lts => PolicySuccess (Passthrough.LoadT val_tag control_tag loc_tag l pct pt vt lts)).
+  Definition StoreT := (fun l pct pt vt lts => PolicySuccess (Passthrough.StoreT val_tag control_tag loc_tag l pct pt vt lts)).
+  Definition UnopT := (fun l op pct vt => PolicySuccess (Passthrough.UnopT val_tag control_tag l op pct vt)).
+  Definition BinopT := (fun l op pct vt1 vt2 => PolicySuccess (Passthrough.BinopT val_tag control_tag l op pct vt1 vt2)).
+  Definition SplitT := (fun l pct vt lbl => PolicySuccess (Passthrough.SplitT val_tag control_tag l pct vt lbl)).
+  Definition LabelT := (fun l pct lbl => PolicySuccess (Passthrough.LabelT control_tag l pct lbl)).
+  Definition ExprSplitT := (fun l pct vt => PolicySuccess (Passthrough.ExprSplitT val_tag control_tag l pct vt)).
+  Definition ExprJoinT := (fun l pct vt => PolicySuccess (Passthrough.ExprJoinT val_tag control_tag l pct vt)).
+  Definition FieldT := (fun l ce pct vt id ty => PolicySuccess (Passthrough.FieldT val_tag control_tag l ce pct vt id ty)).
+  Definition PICastT := (fun l pct pt lts ty => PolicySuccess (Passthrough.PICastT val_tag control_tag loc_tag l pct pt lts ty)).
+  Definition IPCastT := (fun l pct vt lts ty => PolicySuccess (Passthrough.IPCastT val_tag control_tag loc_tag l pct vt lts ty)).
+  Definition PPCastT := (fun l pct pt lts1 lts2 ty => PolicySuccess (Passthrough.PPCastT val_tag control_tag loc_tag l pct pt lts1 lts2 ty)).
+  Definition IICastT := (fun l pct vt ty => PolicySuccess (Passthrough.IICastT val_tag control_tag l pct vt ty)).
+
+  (*Definition ExtCallT := Passthrough.ExtCallT val_tag control_tag PolicyResult PS InitT.*)
 
 End DoubleFree.

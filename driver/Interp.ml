@@ -159,7 +159,7 @@ let print_mem p m =
       | A.Mem.MostlyDead -> fprintf p "/");
       let (mv,t) = (ZMap.get (coqint_of_camlint (Int32.of_int i)) (A.Mem.mem_contents m)) in
       match mv with
-      | A.Mem.MD.Undef -> fprintf p " U @ %s|" (print_tag t); print_at (i+1) max
+      | A.Mem.MD.Undef -> fprintf p " U @ %s|" (print_tag (Pol.LT t)); print_at (i+1) max
       | A.Mem.MD.Byte (b,t) -> fprintf p " %lu |" (camlint_of_coqint b); print_at (i+1) max
       | A.Mem.MD.Fragment ((v,_), q, n) -> fprintf p "| %a |" print_val v; print_at (i+(camlint_of_coqnat (Memdata.size_quantity_nat q))) max)
     else () in
@@ -186,14 +186,14 @@ let print_state p (prog, ge, s) =
       Printing.print_pointer_hook := print_pointer (fst ge) e;
       fprintf p "in function %s, pct %s, statement@ @[<hv 0>%a@] \n"
               (name_of_function prog f)
-	      (print_tag pct)
+	      (print_tag (Pol.CT pct))
               Printing.print_stmt s;
               if !trace > 2 then print_mem p (fst m) else ()
   | Csem.ExprState(f, l, pct, r, k, e, te, m) ->
       Printing.print_pointer_hook := print_pointer (fst ge) e;
       fprintf p "in function %s, pct %s, expression@ @[<hv 0>%a@]"
               (name_of_function prog f)
-	      (print_tag pct)
+	      (print_tag (Pol.CT pct))
               Printing.print_expr r
   | Csem.Callstate(fd, l, pct, fpt, args, k, m) ->
       Printing.print_pointer_hook := print_pointer (fst ge) Maps.PTree.empty;
@@ -466,7 +466,7 @@ let store_string m ofs buff size =
   let rec store m i = 
     if i < size then (* use default value and location tags for now; this is probably bogus *)
       (match A.store Mint8unsigned m  (Z.add ofs (Z.of_sint i))
-	  (Vint (Z.of_uint (Char.code (Bytes.get buff i))),Pol.def_tag) [Pol.def_tag] with
+	  (Vint (Z.of_uint (Char.code (Bytes.get buff i))),Pol.def_tag) [Pol.coq_DefLT] with
       | Memory.MemorySuccess m' -> store m' (i+1)
       | _ -> None)
     else Some m in

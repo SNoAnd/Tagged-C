@@ -303,3 +303,75 @@ Module TagLib (P:Policy).
     repeat decide equality.        
   Qed.  
 End TagLib.
+
+Module Passthrough.
+
+  Section WITH_TAGS.
+    Variable val_tag control_tag loc_tag : Type.
+
+    Inductive tag : Type :=
+    | VT : val_tag -> tag
+    | CT : control_tag -> tag
+    | LT : loc_tag -> tag
+    .
+        
+    Variable InitT : val_tag.
+    
+    Definition CallT (l:loc) (pct:control_tag) (pt: val_tag) : control_tag := pct.
+
+    Definition ArgT (l:loc) (pct:control_tag) (fpt vt: val_tag) (idx:nat) (ty: type) :
+      (control_tag * val_tag) := (pct,vt).
+
+    Definition RetT (l:loc) (pct_clr pct_cle: control_tag) (vt: val_tag) :
+      (control_tag * val_tag) :=
+      (pct_cle,vt).
+
+    Definition AccessT (l:loc) (pct: control_tag) (vt: val_tag) : val_tag := vt.
+
+    Definition AssignT (l:loc) (pct: control_tag) (vt1 vt2: val_tag) :
+      (control_tag * val_tag) := (pct,vt2).
+
+    Definition LoadT (l:loc) (pct: control_tag) (pt vt: val_tag) (lts: list loc_tag) :
+      val_tag := vt.
+
+    Definition StoreT (l:loc) (pct: control_tag) (pt vt: val_tag) (lts: list loc_tag) :
+      (control_tag * val_tag * list loc_tag) := (pct, vt, lts).
+    
+    Definition UnopT (l:loc) (op : unary_operation) (pct: control_tag) (vt: val_tag) :
+      (control_tag * val_tag) := (pct, vt).
+
+    Definition BinopT (l:loc) (op : binary_operation) (pct: control_tag) (vt1 vt2: val_tag) :
+      (control_tag * val_tag) := (pct, vt1).
+
+    Definition SplitT (l:loc) (pct: control_tag) (vt: val_tag) (id : option ident) :
+      control_tag := pct.
+
+    Definition LabelT (l:loc) (pct : control_tag) (id : ident) :
+      control_tag := pct.
+
+    Definition ExprSplitT (l:loc) (pct: control_tag) (vt: val_tag) :
+      control_tag := pct.
+
+    Definition ExprJoinT (l:loc) (pct: control_tag) (vt: val_tag) :
+      (control_tag * val_tag) := (pct,vt).
+    
+    Definition ExtCallT (l:loc) (fn : string) (pct : control_tag) (args : list val_tag) :
+      (control_tag * val_tag) := (pct, InitT).
+  
+    Definition FieldT (l:loc) (ce : composite_env) (pct: control_tag) (vt: val_tag)
+               (ty : type) (id : ident) : val_tag := vt.
+
+    Definition PICastT (l:loc) (pct: control_tag) (pt: val_tag)  (lts : list loc_tag) (ty : type) :
+      val_tag := pt.
+    
+    Definition IPCastT (l:loc) (pct: control_tag) (vt: val_tag)  (lts : list loc_tag) (ty : type) :
+      val_tag := vt.
+
+    Definition PPCastT (l:loc) (pct: control_tag) (vt: val_tag) (lts1 lts2 : list loc_tag)
+               (ty : type) : val_tag := vt.
+
+    Definition IICastT (l:loc) (pct: control_tag) (vt: val_tag) (ty : type) :
+      val_tag := vt.
+  
+  End WITH_TAGS.
+End Passthrough.

@@ -238,7 +238,7 @@ let rec expr p (prec, e) =
   | Csyntax.Eval((v, vt), ty) ->
       fprintf p "%a %@ %s"
         print_typed_value (v,ty)
-        (String.of_seq (List.to_seq (Pol.print_tag vt)))
+        (String.of_seq (List.to_seq (Pol.print_tag (Pol.VT vt))))
   | Csyntax.Econst(v, ty) ->
       print_typed_value p (v,ty)
   | Csyntax.Esizeof(ty, _) ->
