@@ -20,20 +20,17 @@ Require Import Coqlib Maps Integers Floats Errors.
 Require Import AST Linking Values Tags Allocator.
 Require Import Cabs Ctypes Cop.
 
-Module Csyntax (T: Tags) (P: Policy T) (A: Allocator T P).
-  Module Cop := Cop T P A.
+Module Csyntax (P:Policy) (A:Allocator P).
+  Module TLib := TagLib P.
+  Import TLib.
+  Module Cop := Cop P A.
   Import Cop.
   Import Deterministic.
   Import Behaviors.
   Import Smallstep.
   Import Events.
   Import Genv.
-  Import A.
-  Import P.
-  Import Mem.
-  Import MD.
-  Import TLib.
-  
+
   (** ** Location Kinds *)
 
   (** A Tagged C location can be a memory location, a temporary variable

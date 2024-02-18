@@ -18,7 +18,6 @@ open Driveraux
 open CPragmas
 open Interp
 open Allocator
-open Tags
 
 (* Common frontend functions between clightgen and ccomp *)
 
@@ -190,12 +189,12 @@ let init () =
   end
  
 module FrontendP =
-        functor (T: Tags) (Pol: Policy) (Alloc: Allocator) -> struct
+        functor (Pol: Tags.Policy) (Alloc: Allocator) -> struct
 
-                module InterpInst = InterpP (T) (Pol) (Alloc)
+                module InterpInst = InterpP (Pol) (Alloc)
                 module Printing = InterpInst.Printing
                 module C2CPInst = Printing.C2CPInst
-                module PragmaInst = Pragma (T) (Pol) (Alloc)
+                module PragmaInst = Pragma (Pol) (Alloc)
  
                 let init_with () =
                 Env.set_builtins C2CPInst.builtins;
@@ -230,7 +229,7 @@ module FrontendP =
 end
 
 (* Per Policies.md, add new policies in combination of module + desired allocator *)
-module WithNull = FrontendP (NullPolicy.NullTags) (NullPolicy.NullPolicy) (FLAllocator)
+module WithNull = FrontendP (NullPolicy.NullPolicy) (FLAllocator)
 module WithPVI = FrontendP (PVI.PVI) (FLAllocator)
 module WithDoubleFree = FrontendP (DoubleFree.DoubleFree) (ConcreteAllocator)
 module WithHeapProblem = FrontendP (HeapProblem.HeapProblem) (ConcreteAllocator)

@@ -43,12 +43,11 @@ Notation "'check' A ; B" := (if A then B else None)
 
 Open Scope option_monad_scope.
 
-Module Type Allocator (T: Tags) (P: Policy T).
-  Module Mem := Mem T P.
+Module Type Allocator (P : Policy).
+  Module Mem := Mem P.
   Import Mem.
   Import MD.
   Import P.
-  Import TLib.
   
   Parameter t : Type.  
   Parameter init : t.
@@ -96,14 +95,14 @@ Module Type Allocator (T: Tags) (P: Policy T).
   Definition load_all (chunk:memory_chunk) (m:mem) (addr:Z) := Mem.load_all chunk (fst m) addr.
   Definition loadbytes (m:mem) (ofs n:Z) := Mem.loadbytes (fst m) ofs n.
   
-  Definition store (chunk:memory_chunk) (m:mem) (addr:Z) (v:TLib.atom) (lts:list loc_tag) :=
+  Definition store (chunk:memory_chunk) (m:mem) (addr:Z) (v:Mem.TLib.atom) (lts:list loc_tag) :=
     let (m,st) := m in
     match Mem.store chunk m addr v lts with
     | MemorySuccess m' => MemorySuccess (m',st)
     | MemoryFail msg failure => MemoryFail msg failure
     end.
 
-  Definition store_atom (chunk:memory_chunk) (m:mem) (addr:Z) (v:TLib.atom) :=
+  Definition store_atom (chunk:memory_chunk) (m:mem) (addr:Z) (v:Mem.TLib.atom) :=
     let (m,st) := m in
     match Mem.store_atom chunk m addr v with
     | MemorySuccess m' => MemorySuccess (m',st)
@@ -119,12 +118,11 @@ Module Type Allocator (T: Tags) (P: Policy T).
   
 End Allocator.
 
-Module ConcreteAllocator (T: Tags) (P: Policy T) : Allocator T P.
-  Module Mem := Mem T P.
+Module ConcreteAllocator (P : Policy) : Allocator P.
+  Module Mem := Mem P.
   Import Mem.
   Import MD.
   Import P.
-  Import TLib.
   
   Definition t : Type := (* stack pointer *) Z.
   Definition init : t := 3000.
@@ -258,14 +256,14 @@ Module ConcreteAllocator (T: Tags) (P: Policy T) : Allocator T P.
   Definition load_all (chunk:memory_chunk) (m:mem) (addr:Z) := Mem.load_all chunk (fst m) addr.
   Definition loadbytes (m:mem) (ofs n:Z) := Mem.loadbytes (fst m) ofs n.
   
-  Definition store (chunk:memory_chunk) (m:mem) (addr:Z) (v:TLib.atom) (lts:list loc_tag) :=
+  Definition store (chunk:memory_chunk) (m:mem) (addr:Z) (v:Mem.TLib.atom) (lts:list loc_tag) :=
     let (m,sp) := m in
     match Mem.store chunk m addr v lts with
     | MemorySuccess m' => MemorySuccess (m',sp)
     | MemoryFail msg failure => MemoryFail msg failure
     end.
 
-  Definition store_atom (chunk:memory_chunk) (m:mem) (addr:Z) (v:TLib.atom) :=
+  Definition store_atom (chunk:memory_chunk) (m:mem) (addr:Z) (v:Mem.TLib.atom) :=
     let (m,st) := m in
     match Mem.store_atom chunk m addr v with
     | MemorySuccess m' => MemorySuccess (m',st)
@@ -281,12 +279,11 @@ Module ConcreteAllocator (T: Tags) (P: Policy T) : Allocator T P.
   
 End ConcreteAllocator.
   
-Module FLAllocator (T: Tags) (P: Policy T) : Allocator T P.
-  Module Mem := Mem T P.
+Module FLAllocator (P : Policy) : Allocator P.
+  Module Mem := Mem P.
   Import Mem.
   Import MD.
   Import P.
-  Import TLib.
   
   Definition freelist : Type := list (Z*Z*val_tag (* "header" val tag *)).
 
@@ -381,14 +378,14 @@ Module FLAllocator (T: Tags) (P: Policy T) : Allocator T P.
   Definition load_all (chunk:memory_chunk) (m:mem) (addr:Z) := Mem.load_all chunk (fst m) addr.
   Definition loadbytes (m:mem) (ofs n:Z) := Mem.loadbytes (fst m) ofs n.
 
-  Definition store (chunk:memory_chunk) (m:mem) (addr:Z) (v:TLib.atom) (lts:list loc_tag) :=
+  Definition store (chunk:memory_chunk) (m:mem) (addr:Z) (v:Mem.TLib.atom) (lts:list loc_tag) :=
     let (m,sp) := m in
     match Mem.store chunk m addr v lts with
     | MemorySuccess m' => MemorySuccess (m',sp)
     | MemoryFail msg failure => MemoryFail msg failure
     end.
 
-  Definition store_atom (chunk:memory_chunk) (m:mem) (addr:Z) (v:TLib.atom) :=
+  Definition store_atom (chunk:memory_chunk) (m:mem) (addr:Z) (v:Mem.TLib.atom) :=
     let (m,st) := m in
     match Mem.store_atom chunk m addr v with
     | MemorySuccess m' => MemorySuccess (m',st)

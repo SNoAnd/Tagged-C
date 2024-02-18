@@ -26,10 +26,10 @@ open C2C
 open Allocator
 
 module PrintCsyntaxP =
-        functor (T: Tags) (Pol: Policy) (Alloc: Allocator) ->
+        functor (Pol: Policy) (Alloc: Allocator) ->
                 struct
 
-module C2CPInst = C2CP (T) (Pol) (Alloc)
+module C2CPInst = C2CP (Pol) (Alloc)
 module Init = C2CPInst.Init
 module Ctyping = Init.Cexec.InterpreterEvents.Cstrategy.Ctyping
 module Csyntax = Ctyping.Csem.Csyntax
@@ -238,7 +238,7 @@ let rec expr p (prec, e) =
   | Csyntax.Eval((v, vt), ty) ->
       fprintf p "%a %@ %s"
         print_typed_value (v,ty)
-        (String.of_seq (List.to_seq (T.print_vt vt)))
+        (String.of_seq (List.to_seq (Pol.print_tag (Pol.VT vt))))
   | Csyntax.Econst(v, ty) ->
       print_typed_value p (v,ty)
   | Csyntax.Esizeof(ty, _) ->

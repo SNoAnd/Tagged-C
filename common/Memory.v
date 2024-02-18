@@ -64,11 +64,11 @@ Inductive MemoryResult (A:Type) : Type :=
 Arguments MemorySuccess {_} _.
 Arguments MemoryFail {_} _.
 
-Module Mem (T: Tags) (P: Policy T).
-  Module MD := Memdata T P.
-  Import MD.
-  Import P.
+Module Mem (P:Policy).
+  Module TLib := TagLib P.
   Import TLib.
+  Module MD := Memdata P.
+  Import MD.
   
   Inductive permission : Type := Live | Dead | MostlyDead.
 

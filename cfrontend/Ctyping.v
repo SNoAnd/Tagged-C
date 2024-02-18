@@ -24,8 +24,10 @@ Require Import Ctypes Cop Csyntax Csem.
 
 Local Open Scope error_monad_scope.
 
-Module Ctyping (T: Tags) (P: Policy T) (A: Allocator T P).
-  Module Csem := Csem T P A.
+Module Ctyping (P: Policy) (A: Allocator P).
+  Module TLib := TagLib P.
+  Import TLib.
+  Module Csem := Csem P A.
   Import Csem.
   Import Csyntax.
   Import Cop.
@@ -38,8 +40,7 @@ Module Ctyping (T: Tags) (P: Policy T) (A: Allocator T P).
   Import A.Mem.
   Import MD.
   Import P.
-  Import TLib.
-  
+
   Definition strict := false.
   Opaque strict.
 

@@ -115,7 +115,7 @@ CFRONTEND=Ctypes.v Cop.v Csyntax.v Csem.v Ctyping.v Cstrategy.v Cexec.v \
 
 # Policy definitions (in policies/) Add new policy files here
 
-POLICIES=NullPolicy.v PVI.v DoubleFree.v
+POLICIES=NullPolicy.v PVI.v DoubleFree.v HeapProblem.v
 
 # Parser
 

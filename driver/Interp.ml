@@ -37,10 +37,11 @@ let mode = ref First
 let timeoutMaxSteps = ref 0
 
 module InterpP =
-        functor (T: Tags) (Pol: Policy) (Alloc: Allocator) ->
+        functor (Pol: Policy) (Alloc: Allocator) ->
         struct
 
-module Printing = PrintCsyntaxP (T) (Pol) (Alloc)
+module A = Alloc (Pol)
+module Printing = PrintCsyntaxP (Pol) (Alloc)
 module Init = Printing.Init
 module Cexec = Init.Cexec
 module Csem = Cexec.InterpreterEvents.Cstrategy.Ctyping.Csem
@@ -48,10 +49,6 @@ module Csyntax = Csem.Csyntax
 module Determinism = Csyntax.Cop.Deterministic
 module Events = Determinism.Behaviors.Smallstep.Events
 module Genv = Events.Genv
-
-module A = Printing.C2CPInst.A
-module Pol = Printing.C2CPInst.Pl
-module TLib = Pol.TLib
 
 (* Printing events *)
 
@@ -149,11 +146,7 @@ let print_val_list p vl =
       print_val p v1;
       List.iter (fun v -> fprintf p ",@ %a" print_val v) vl
 
-let print_tag t =
-       match t with
-       | Printing.C2CPInst.Pl.TLib.VT vt -> Camlcoq.camlstring_of_coqstring (T.print_vt vt)
-       | Printing.C2CPInst.Pl.TLib.CT ct -> Camlcoq.camlstring_of_coqstring (T.print_ct ct)
-       | Printing.C2CPInst.Pl.TLib.LT lt -> Camlcoq.camlstring_of_coqstring (T.print_lt lt)
+let print_tag t = Camlcoq.camlstring_of_coqstring (Pol.print_tag t)
 
 let print_mem p m =
   fprintf p "|";
@@ -166,7 +159,7 @@ let print_mem p m =
       | A.Mem.MostlyDead -> fprintf p "/");
       let (mv,t) = (ZMap.get (coqint_of_camlint (Int32.of_int i)) (A.Mem.mem_contents m)) in
       match mv with
-      | A.Mem.MD.Undef -> fprintf p " U @ %s|" (camlstring_of_coqstring (T.print_lt t)); print_at (i+1) max
+      | A.Mem.MD.Undef -> fprintf p " U @ %s|" (print_tag (Pol.LT t)); print_at (i+1) max
       | A.Mem.MD.Byte (b,t) -> fprintf p " %lu |" (camlint_of_coqint b); print_at (i+1) max
       | A.Mem.MD.Fragment ((v,_), q, n) -> fprintf p "| %a |" print_val v; print_at (i+(camlint_of_coqnat (Memdata.size_quantity_nat q))) max)
     else () in
@@ -193,14 +186,14 @@ let print_state p (prog, ge, s) =
       Printing.print_pointer_hook := print_pointer (fst ge) e;
       fprintf p "in function %s, pct %s, statement@ @[<hv 0>%a@] \n"
               (name_of_function prog f)
-	      (camlstring_of_coqstring (T.print_ct pct))
+	      (print_tag (Pol.CT pct))
               Printing.print_stmt s;
-              (*if !trace > 2 then print_mem p (fst m) else*) ()
+              if !trace > 2 then print_mem p (fst m) else ()
   | Csem.ExprState(f, l, pct, r, k, e, te, m) ->
       Printing.print_pointer_hook := print_pointer (fst ge) e;
       fprintf p "in function %s, pct %s, expression@ @[<hv 0>%a@]"
               (name_of_function prog f)
-	      (camlstring_of_coqstring (T.print_ct pct))
+	      (print_tag (Pol.CT pct))
               Printing.print_expr r
   | Csem.Callstate(fd, l, pct, fpt, args, k, m) ->
       Printing.print_pointer_hook := print_pointer (fst ge) Maps.PTree.empty;
@@ -366,7 +359,7 @@ let (>>=) opt f = match opt with None -> None | Some arg -> f arg
 let extract_string m ofs =
   let b = Buffer.create 80 in
   let rec extract ofs =
-    match Printing.C2CPInst.A.load Mint8unsigned m ofs with
+    match A.load Mint8unsigned m ofs with
     | Memory.MemorySuccess (Vint n,_) ->
         let c = Char.chr (Z.to_int n) in
         if c = '\000' then begin
@@ -546,13 +539,13 @@ let do_external_function id sg ge w args pct fpt m =
       flush stdout;
       convert_external_args ge args sg.sig_args >>= fun eargs ->
       Some((w,[Events.Event_syscall(id, eargs, Events.EVint len)]),
-          (Memory.MemorySuccess(TLib.PolicySuccess(((Vint len, Pol.def_tag), pct), m))))
+          (Memory.MemorySuccess(Pol.PolicySuccess(((Vint len, Pol.def_tag), pct), m))))
   | "fgets", (Vlong ofs,pt) :: (Vint siz,vt) :: args' ->
       do_fgets m ofs pt siz >>= fun (p,m') ->
       convert_external_args ge args sg.sig_args >>= fun eargs ->
       convert_external_arg ge (fst p) (proj_rettype sg.sig_res) >>= fun eres -> 
       Some((w,[Events.Event_syscall(id, eargs, eres)]),
-          (Memory.MemorySuccess(TLib.PolicySuccess((p, pct), m'))))
+          (Memory.MemorySuccess(Pol.PolicySuccess((p, pct), m'))))
   | _ ->
       None
 

@@ -44,11 +44,9 @@ Set Asymmetric Patterns.
   performed before the program gets stuck.
 *)
 
-Module Behaviors (T: Tags) (P: Policy T) (A: Allocator T P).
-  Module Smallstep := Smallstep T P A.
-  Import Smallstep.
-  Import Events.
-  Import Genv.
+Module Behaviors (P:Policy) (A:Allocator P).
+  Module Smallstep := Smallstep P A.
+  Export Smallstep.
   
 Inductive program_behavior: Type :=
   | Terminates: trace -> int -> program_behavior

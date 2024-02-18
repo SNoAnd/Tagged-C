@@ -37,8 +37,10 @@ Require Import Csem.
 Require Import Ctyping.
 Require Import Tags.
 
-Module Cstrategy (T: Tags) (P: Policy T) (A: Allocator T P).
-  Module Ctyping := Ctyping T P A.
+Module Cstrategy (P: Policy) (A: Allocator P).
+  Module TLib := TagLib P.
+  Import TLib.
+  Module Ctyping := Ctyping P A.
   Import Ctyping.
   Import Csem.
   Import Csyntax.
@@ -50,7 +52,7 @@ Module Cstrategy (T: Tags) (P: Policy T) (A: Allocator T P).
   Import Genv.
   Import A.
   Import P.
-  Import TLib.
+
 
   Section STRATEGY.
 

@@ -22,10 +22,10 @@ open C2C
 open Allocator
 
 module Pragma =
-        functor (T: Tags) (Pol: Policy) (Alloc: Allocator) ->
+        functor (Pol: Policy) (Alloc: Allocator) ->
                 struct
 
-module C2CPInst = C2CP (T) (Pol) (Alloc)
+module C2CPInst = C2CP (Pol) (Alloc)
 
 (* #pragma section *)
 

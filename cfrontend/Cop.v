@@ -27,17 +27,11 @@ Require Import Tags.
 Require Import Determinism.
 Require Archi.
 
-Module Cop (T: Tags) (P: Policy T) (A: Allocator T P).
-  Module TLib := TagLib T.
+Module Cop (P:Policy) (A:Allocator P).
+  Module TLib := TagLib P.
   Import TLib.
-  Module Deterministic := Deterministic T P A.
-  Import Deterministic.
-  Import Behaviors.
-  Import Smallstep.
-  Import Events.  
-  Import Genv.
-  Import A.
-  Import P.
+  Module Deterministic := Deterministic P A.
+  Export Deterministic.
 
 Inductive incr_or_decr : Type := Incr | Decr.
 
