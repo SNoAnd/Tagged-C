@@ -157,7 +157,7 @@ Module Cstrategy (P: Policy) (A: Allocator P).
       | esr_rvalof_mem: forall ofs pt bf l ty v lts,
           eval_simple_lvalue l (Lmem ofs pt bf) ->
           ty = typeof l -> type_is_volatile ty = false ->
-          deref_loc ge ty m ofs pt bf E0 (MemorySuccess (v, lts)) ->
+          deref_loc ge ty m ofs pt bf E0 (Success (v, lts)) ->
           eval_simple_rvalue PCT (Evalof l ty) v
       | esr_rvalof_tmp: forall b l ty v,
           eval_simple_lvalue l (Ltmp b) ->
@@ -179,7 +179,7 @@ Module Cstrategy (P: Policy) (A: Allocator P).
       | esr_binop: forall l PCT' op r1 r2 ty v1 vt1 v2 vt2 v vt,
           eval_simple_rvalue PCT r1 (v1,vt1) -> eval_simple_rvalue PCT r2 (v2,vt2) ->
           sem_binary_operation ce op v1 (typeof r1) v2 (typeof r2) m = Some v ->
-          BinopT l op PCT vt1 vt2 = PolicySuccess (PCT', vt) ->
+          BinopT l op PCT vt1 vt2 = Success (PCT', vt) ->
           eval_simple_rvalue PCT' (Ebinop op r1 r2 ty) (v,vt)
       | esr_cast: forall ty r1 v1 vt v,
           eval_simple_rvalue PCT r1 (v1,vt) ->
@@ -356,7 +356,7 @@ Proof.
 Qed.
 
 Lemma lfailred_kind:
-  forall l a PCT tr msg failure params, lfailred ce l a PCT tr msg failure params -> expr_kind a = LV.
+  forall l a PCT tr msg failure, lfailred ce l a PCT tr msg failure -> expr_kind a = LV.
 Proof.
   induction 1; auto.
 Qed.
@@ -368,7 +368,7 @@ Proof.
 Qed.
 
 Lemma rfailred_kind:
-  forall l PCT a m e tr msg failure params, rfailred ge ce l PCT a e m tr msg failure params -> expr_kind a = RV.
+  forall l PCT a m e tr msg failure, rfailred ge ce l PCT a e m tr msg failure -> expr_kind a = RV.
 Proof.
   induction 1; auto.
 Qed.

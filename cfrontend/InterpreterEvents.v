@@ -7,6 +7,7 @@ Require Import Csem.
 Require Import Tags.
 Require Import List. Import ListNotations.
 Require Import Cstrategy Ctypes.
+Require Import ExtLib.Structures.Monads. Import MonadNotation.
 
 Local Open Scope string_scope.
 Local Open Scope list_scope.
@@ -48,23 +49,8 @@ Module InterpreterEvents (P:Policy) (A:Allocator P).
   Import Mem.MD.
   Import P.
   Import Csem.TLib.
-
-  Notation "'do_mem' X <- A ; B" := (match A with
-                                     | MemorySuccess X => B
-                                     | MemoryFail msg failure => MemoryFail msg failure
-                                     end)
-                                      (at level 200, X name, A at level 100, B at level 200)
-      : memory_monad_scope.
-
-  Notation "'do_mem' X , Y <- A ; B" := (match A with
-                                         | MemorySuccess (X, Y) => B
-                                         | MemoryFail msg failure => MemoryFail msg failure
-                                         end)
-                                          (at level 200, X name, Y name, A at level 100, B at level 200)
-      : memory_monad_scope.
   
   Local Open Scope option_monad_scope.
-  Local Open Scope memory_monad_scope.
 
   Section EXEC.
     Variable ge: genv.
@@ -191,7 +177,7 @@ Module InterpreterEvents (P:Policy) (A:Allocator P).
       | [ |- match ?x with true => _ | false => _ end = _ -> _ ] => destruct x eqn:?; mydestr
       | [ |- match ?x with inl _ => _ | inr _ => _ end = _ -> _ ] => destruct x; mydestr
       | [ |- match ?x with left _ => _ | right _ => _ end = _ -> _ ] => destruct x; mydestr
-      | [ |- match ?x with MemorySuccess _ => _ | MemoryFail _ _ => _ end = _ -> _ ] => destruct x eqn:?; mydestr
+      | [ |- match ?x with Success _ => _ | Fail _ _ => _ end = _ -> _ ] => destruct x eqn:?; mydestr
       | [ |- (let (_, _) := ?x in _) = _ -> _ ] => destruct x; mydestr
       | _ => idtac
       end.
@@ -257,7 +243,7 @@ Module InterpreterEvents (P:Policy) (A:Allocator P).
 
     (** Volatile memory accesses. *)
     Definition do_volatile_load (w: world) (chunk: memory_chunk) (m: mem)
-               (ofs: int64) : option (world * trace * MemoryResult atom) :=
+               (ofs: int64) : option (world * trace * PolicyResult atom) :=
       let id_if_vol := match invert_symbol_ofs ge ofs with
                        | Some (id, gv) =>
                            if gv.(gvar_volatile)
@@ -269,18 +255,15 @@ Module InterpreterEvents (P:Policy) (A:Allocator P).
       | Some id =>
           do res,w' <- nextworld_vload w chunk id ofs;
           do vres,vt <- atom_of_eventval res (type_of_chunk chunk);
-          Some (w', Event_vload chunk id ofs res :: nil, MemorySuccess (Val.load_result chunk vres, vt))
+          Some (w', Event_vload chunk id ofs res :: nil, Success (Val.load_result chunk vres, vt))
       | None =>
-          match load_all chunk m (Int64.unsigned ofs) with
-          | MemorySuccess (v,lts) =>
-              Some (w, E0, MemorySuccess v)
-          | MemoryFail msg failure =>
-              Some (w, E0, MemoryFail msg failure)
-          end
+          let res := load chunk m (Int64.unsigned ofs) in
+          Some (w, E0, res)
       end.
 
     Definition do_volatile_store (w: world) (chunk: memory_chunk) (m: mem)
-               (ofs: int64) (v: atom) (lts: list loc_tag) : option (world * trace * MemoryResult mem) :=
+               (ofs: int64) (v: atom) (lts: list loc_tag) :
+      option (world * trace * PolicyResult mem) :=
       let id_if_vol := match invert_symbol_ofs ge ofs with
                        | Some (id, gv) =>
                            if gv.(gvar_volatile)
@@ -292,14 +275,10 @@ Module InterpreterEvents (P:Policy) (A:Allocator P).
       | Some id =>
           do ev <- eventval_of_atom (atom_map (Val.load_result chunk) v) (type_of_chunk chunk);
           do w' <- nextworld_vstore w chunk id ofs ev;
-          Some(w', Event_vstore chunk id ofs ev :: nil, MemorySuccess m)
+          Some(w', Event_vstore chunk id ofs ev :: nil, Success m)
       | None =>
-          match store chunk m (Int64.unsigned ofs) v lts with
-          | MemorySuccess m' =>
-              Some (w, E0, MemorySuccess m')
-          | MemoryFail msg failure =>
-              Some (w, E0, MemoryFail msg failure)
-          end
+          let res := store chunk m (Int64.unsigned ofs) v lts in
+          Some (w, E0, res)
       end.
 
     Lemma do_volatile_load_sound:
@@ -315,13 +294,7 @@ Module InterpreterEvents (P:Policy) (A:Allocator P).
         + econstructor. econstructor. eauto. constructor.
       - split.
         + apply volatile_load_nonvol; auto.
-          * intros. rewrite H in Heqo. destruct (gvar_volatile gv); congruence.
-          * eapply A.Mem.load_all_compose in Heqm0 as [H1 H2]; auto.
-        + constructor.
-      - split.
-        + apply volatile_load_nonvol; auto.
-          * intros. rewrite H in Heqo. destruct (gvar_volatile gv); congruence.
-          * eapply A.Mem.load_all_fail in Heqm0 as [H1 H2]; auto.
+          intros. rewrite H in Heqo. destruct (gvar_volatile gv); congruence.
         + constructor.          
     Qed.
           
@@ -339,17 +312,7 @@ Module InterpreterEvents (P:Policy) (A:Allocator P).
         + inv H0.
           specialize H1 with id gv.
           rewrite H1; auto.
-          destruct (load_all chunk m (Int64.unsigned ofs)) as [[[v vt] lts]|] eqn:?.
-          * eapply A.Mem.load_all_compose in Heqm0. destruct Heqm0.
-            unfold Genv.load. rewrite H. auto.
-          * eapply A.Mem.load_all_fail in Heqm0. destruct Heqm0.
-            unfold Genv.load. rewrite H. auto.
-        + inv H0.
-          destruct (load_all chunk m (Int64.unsigned ofs)) as [[[v vt] lts]|] eqn:?.
-          * eapply A.Mem.load_all_compose in Heqm0. destruct Heqm0.
-            unfold Genv.load. rewrite H. auto.
-          * eapply A.Mem.load_all_fail in Heqm0. destruct Heqm0.
-            unfold Genv.load. rewrite H. auto.
+        + inv H0. auto.
     Qed.
             
     Lemma do_volatile_store_sound:
@@ -363,9 +326,6 @@ Module InterpreterEvents (P:Policy) (A:Allocator P).
         + eapply volatile_store_vol; eauto.
           apply eventval_of_atom_sound; auto.
         + econstructor. constructor; eauto. constructor.
-      - split. eapply volatile_store_nonvol; eauto.
-        + intros. rewrite H in Heqo. destruct (gvar_volatile gv); congruence.
-        + constructor.
       - split. eapply volatile_store_nonvol; eauto.
         + intros. rewrite H in Heqo. destruct (gvar_volatile gv); congruence.
         + constructor.
@@ -384,13 +344,12 @@ Module InterpreterEvents (P:Policy) (A:Allocator P).
         + inv H0.
           specialize H6 with id gv.
           rewrite H6; auto.
-          destruct (store chunk m (Int64.unsigned ofs) (v,vt) lts); auto.
         + inv H0. destruct (store chunk m (Int64.unsigned ofs) (v,vt) lts); auto.
     Qed.
 
     (** External calls *)
     Variable do_external_function:
-      string -> signature -> Genv.t fundef type -> world -> list atom -> control_tag -> val_tag -> mem -> option (world * trace * (MemoryResult (PolicyResult (atom * control_tag * mem)))).
+      string -> signature -> Genv.t fundef type -> world -> list atom -> control_tag -> val_tag -> mem -> option (world * trace * (PolicyResult (atom * control_tag * mem))).
 
     Hypothesis do_external_function_sound:
       forall id sg ge vargs pct fpt m t res w w',
@@ -438,21 +397,16 @@ Module InterpreterEvents (P:Policy) (A:Allocator P).
     Qed.
     
     Definition do_ef_malloc (l: Cabs.loc) (w: world) (vargs: list atom) (PCT: control_tag) (fpt: val_tag) (m: mem)
-      : option (world * trace * (MemoryResult (PolicyResult (atom * control_tag * mem)))) :=
+      : option (world * trace * (PolicyResult (atom * control_tag * mem))) :=
       match vargs with
       | [(v,st)] =>
           match do_alloc_size v with
           | Some sz =>
-              match MallocT l PCT fpt st with
-              | PolicySuccess (PCT',pt',vt_body,vt_head,lt) =>
-                  match heapalloc m sz vt_head vt_body lt with
-                  | MemorySuccess (m', base, bound) =>
-                      Some (w, E0, (MemorySuccess (PolicySuccess((Vlong (Int64.repr base), pt'), PCT', m'))))
-                  | MemoryFail msg failure => Some (w, E0, (MemoryFail msg failure))
-                  end
-              | PolicyFail msg params =>
-                  Some (w, E0, (MemorySuccess (PolicyFail msg params)))
-              end
+              let res :=
+                '(PCT',pt',vt_body,vt_head,lt) <- MallocT l PCT fpt st;;
+                '(m', base, bound) <- heapalloc m sz vt_head vt_body lt;;
+                ret ((Vlong (Int64.repr base), pt'), PCT', m') in
+              Some (w, E0, res)
           | None => None
           end
       | _ => None
@@ -465,9 +419,9 @@ Module InterpreterEvents (P:Policy) (A:Allocator P).
         do_ef_malloc l w vargs pct fpt m = Some (w', tr, res).
     Proof.
       intros. unfold do_ef_malloc. inv H; apply do_alloc_size_correct in H1; rewrite H1; inv H0.
-      - rewrite H2. rewrite H3. auto.
-      - rewrite H2. auto.
-      - rewrite H2. rewrite H3. auto.
+      - rewrite H2. simpl. rewrite H3. auto.
+      - rewrite H2. simpl. auto.
+      - rewrite H2. simpl. rewrite H3. auto.
     Qed.
     
     Lemma do_ef_malloc_sound :
@@ -480,10 +434,12 @@ Module InterpreterEvents (P:Policy) (A:Allocator P).
       destruct vargs; try congruence.
       destruct (do_alloc_size v) eqn:?.
       - apply do_alloc_size_correct in Heqo.
-        destruct (MallocT l pct fpt vt) as [[[[[PCT' pt'] vt_body] vt_head] lt]|] eqn:?.
-        + destruct (heapalloc m z vt_head vt_body lt) as [[[m' base] bound]|] eqn:?; inv H.
-          * split; econstructor; eauto. 
-          * split; econstructor; eauto. 
+        destruct (MallocT l pct fpt vt) as [[[[[PCT' pt'] vt_body] vt_head] lt]| |] eqn:?.
+        + destruct (heapalloc m z vt_head vt_body lt) as [[[m' base] bound]| |] eqn:?; inv H.
+          * rewrite Heqp0. split; econstructor; eauto.
+          * admit.
+          * rewrite Heqp0. Print extcall_malloc_sem.
+            split. eapply extcall_malloc_sem_fail_1; eauto. constructor.
         + inv H. split; econstructor; eauto.
       - inv H.
     Qed.

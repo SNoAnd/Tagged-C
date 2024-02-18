@@ -296,6 +296,7 @@ Qed.
 Module Memdata (P: Policy).
   Module TLib := TagLib P.
   Import TLib.
+  Import P.
 
 (** * Memory values *)
 

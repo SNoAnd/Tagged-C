@@ -15,18 +15,18 @@ Module ErrorMonads (P:Policy).
                    end }.
     
     Global Instance Monad_polres : Monad PolicyResult :=
-      { ret := fun _ t => PolicySuccess t;
+      { ret := fun _ t => Success t;
         bind :=  fun _ _ c f =>
                    match c with
-                   | PolicySuccess t => f t
+                   | Success t => f t
                    | PolicyFail msg params => PolicyFail msg params
                    end }.
 
     Global Instance Monad_mpres : Monad (fun t => MemoryResult (PolicyResult t)) :=
-      { ret := fun _ t => MemorySuccess (PolicySuccess t);
+      { ret := fun _ t => MemorySuccess (Success t);
         bind :=  fun _ _ c f =>
                    match c with
-                   | MemorySuccess (PolicySuccess t) => f t
+                   | MemorySuccess (Success t) => f t
                    | MemorySuccess (PolicyFail msg params) => MemorySuccess (PolicyFail msg params)
                    | MemoryFail msg failure => MemoryFail msg failure
                    end }.

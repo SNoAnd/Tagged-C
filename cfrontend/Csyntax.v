@@ -24,13 +24,9 @@ Module Csyntax (P:Policy) (A:Allocator P).
   Module TLib := TagLib P.
   Import TLib.
   Module Cop := Cop P A.
-  Import Cop.
-  Import Deterministic.
-  Import Behaviors.
-  Import Smallstep.
-  Import Events.
-  Import Genv.
-
+  Export Cop.
+  Import P.
+  
   (** ** Location Kinds *)
 
   (** A Tagged C location can be a memory location, a temporary variable

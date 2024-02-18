@@ -48,27 +48,12 @@ Local Unset Case Analysis Schemes.
 
 Local Notation "a # b" := (PMap.get b a) (at level 1).
 
-Inductive FailureClass : Type :=
-| MisalignedStore (alignment ofs : Z)
-| MisalignedLoad (alignment ofs : Z)
-| PrivateStore (ofs : Z)
-| PrivateLoad (ofs : Z)
-| OtherFailure
-.
-
-Inductive MemoryResult (A:Type) : Type :=
-| MemorySuccess (a:A)
-| MemoryFail (msg:string) (failure:FailureClass)
-.
-
-Arguments MemorySuccess {_} _.
-Arguments MemoryFail {_} _.
-
 Module Mem (P:Policy).
   Module TLib := TagLib P.
   Import TLib.
   Module MD := Memdata P.
   Import MD.
+  Import P.
   
   Inductive permission : Type := Live | Dead | MostlyDead.
 
@@ -241,36 +226,36 @@ Module Mem (P:Policy).
       [b] and offset [ofs].  It returns the value of the memory chunk
       at that address.  [None] is returned if the accessed bytes
       are not readable. *)
-  Definition load (chunk: memory_chunk) (m: mem) (ofs: Z): MemoryResult atom :=
+  Definition load (chunk: memory_chunk) (m: mem) (ofs: Z): PolicyResult atom :=
     if aligned_access_dec chunk ofs then
       if allowed_access_dec m chunk ofs
-      then MemorySuccess (decode_val chunk (map (fun x => fst x) (getN (size_chunk_nat chunk) ofs
+      then Success (decode_val chunk (map (fun x => fst x) (getN (size_chunk_nat chunk) ofs
                                                                        (m.(mem_contents)))))
-      else MemoryFail "" (PrivateLoad ofs)
-    else MemoryFail "" (MisalignedLoad (align_chunk chunk) ofs).
+      else Fail "" (PrivateLoad ofs)
+    else Fail "" (MisalignedLoad (align_chunk chunk) ofs).
 
-  Definition load_ltags (chunk: memory_chunk) (m: mem) (ofs: Z): MemoryResult (list loc_tag) :=
+  Definition load_ltags (chunk: memory_chunk) (m: mem) (ofs: Z): PolicyResult (list loc_tag) :=
     if aligned_access_dec chunk ofs then
       if allowed_access_dec m chunk ofs
-      then MemorySuccess (map (fun x => snd x) (getN (size_chunk_nat chunk) ofs (m.(mem_contents))))
-      else MemoryFail "" (PrivateLoad ofs)
-    else MemoryFail "" (MisalignedLoad (align_chunk chunk) ofs).
+      then Success (map (fun x => snd x) (getN (size_chunk_nat chunk) ofs (m.(mem_contents))))
+      else Fail "" (PrivateLoad ofs)
+    else Fail "" (MisalignedLoad (align_chunk chunk) ofs).
 
-  Definition load_all (chunk: memory_chunk) (m: mem) (ofs: Z): MemoryResult (atom * list loc_tag) :=
+  Definition load_all (chunk: memory_chunk) (m: mem) (ofs: Z): PolicyResult (atom * list loc_tag) :=
     if aligned_access_dec chunk ofs then
       if allowed_access_dec m chunk ofs
-      then MemorySuccess (decode_val chunk
+      then Success (decode_val chunk
                                      (map (fun x => fst x)
                                           (getN (size_chunk_nat chunk)
                                                 ofs (m.(mem_contents)))),
                            map (fun x => snd x) (getN (size_chunk_nat chunk) ofs (m.(mem_contents))))
-      else MemoryFail "" (PrivateLoad ofs)
-    else MemoryFail "" (MisalignedLoad (align_chunk chunk) ofs).
+      else Fail "" (PrivateLoad ofs)
+    else Fail "" (MisalignedLoad (align_chunk chunk) ofs).
 
   Lemma load_all_compose :
     forall chunk m ofs a lts,
-      load_all chunk m ofs = MemorySuccess (a,lts) <->
-        load chunk m ofs = MemorySuccess a /\ load_ltags chunk m ofs = MemorySuccess lts.
+      load_all chunk m ofs = Success (a,lts) <->
+        load chunk m ofs = Success a /\ load_ltags chunk m ofs = Success lts.
   Proof.
     intros until lts.
     unfold load_all; unfold load; unfold load_ltags.
@@ -281,8 +266,8 @@ Module Mem (P:Policy).
 
   Lemma load_all_fail :
     forall chunk m ofs msg failure,
-      load_all chunk m ofs = MemoryFail msg failure <->
-        load chunk m ofs = MemoryFail msg failure /\ load_ltags chunk m ofs = MemoryFail msg failure.
+      load_all chunk m ofs = Fail msg failure <->
+        load chunk m ofs = Fail msg failure /\ load_ltags chunk m ofs = Fail msg failure.
   Proof.
     intros until failure.
     unfold load_all; unfold load; unfold load_ltags.
@@ -295,15 +280,15 @@ Module Mem (P:Policy).
       location [(b, ofs)].  Returns [None] if the accessed locations are
       not readable. *)
 
-  Definition loadbytes (m: mem) (ofs n: Z): MemoryResult (list memval) :=
+  Definition loadbytes (m: mem) (ofs n: Z): PolicyResult (list memval) :=
     if range_perm_neg_dec m ofs (ofs + n) Dead
-    then MemorySuccess (map (fun x => fst x) (getN (Z.to_nat n) ofs (m.(mem_contents))))
-    else MemoryFail "" (PrivateLoad ofs).
+    then Success (map (fun x => fst x) (getN (Z.to_nat n) ofs (m.(mem_contents))))
+    else Fail "" (PrivateLoad ofs).
 
-  Definition loadtags (m: mem) (ofs n: Z) : MemoryResult (list loc_tag) :=
+  Definition loadtags (m: mem) (ofs n: Z) : PolicyResult (list loc_tag) :=
     if range_perm_neg_dec m ofs (ofs + n) Dead
-    then MemorySuccess (map (fun x => snd x) (getN (Z.to_nat n) ofs (m.(mem_contents))))
-    else MemoryFail "" (PrivateLoad ofs).
+    then Success (map (fun x => snd x) (getN (Z.to_nat n) ofs (m.(mem_contents))))
+    else Fail "" (PrivateLoad ofs).
 
   (** Memory stores. *)
 
@@ -394,34 +379,34 @@ Module Mem (P:Policy).
     end.
   
   Definition store (chunk: memory_chunk) (m: mem) (ofs: Z) (a:atom) (lts:list loc_tag)
-    : MemoryResult mem :=
+    : PolicyResult mem :=
     if aligned_access_dec chunk ofs then
       if allowed_access_dec m chunk ofs then
-        MemorySuccess (mkmem (setN (merge_vals_tags (encode_val chunk a) lts) ofs (m.(mem_contents)))
+        Success (mkmem (setN (merge_vals_tags (encode_val chunk a) lts) ofs (m.(mem_contents)))
                              m.(mem_access) m.(live))
-      else MemoryFail "" (PrivateStore ofs)
-    else MemoryFail "" (MisalignedStore (align_chunk chunk) ofs).
+      else Fail "" (PrivateStore ofs)
+    else Fail "" (MisalignedStore (align_chunk chunk) ofs).
 
   Definition store_atom (chunk: memory_chunk) (m: mem) (ofs: Z) (a:atom)
-    : MemoryResult mem :=
+    : PolicyResult mem :=
     if aligned_access_dec chunk ofs then
       if allowed_access_dec m chunk ofs then
         let lts := map snd (getN (Z.to_nat (size_chunk chunk)) ofs (m.(mem_contents))) in
-        MemorySuccess (mkmem (setN (merge_vals_tags (encode_val chunk a) lts) ofs (m.(mem_contents)))
+        Success (mkmem (setN (merge_vals_tags (encode_val chunk a) lts) ofs (m.(mem_contents)))
                              m.(mem_access) m.(live))
-      else MemoryFail "" (PrivateStore ofs)
-    else MemoryFail "" (MisalignedStore (align_chunk chunk) ofs).
+      else Fail "" (PrivateStore ofs)
+    else Fail "" (MisalignedStore (align_chunk chunk) ofs).
   
   (** [storebytes m ofs bytes] stores the given list of bytes [bytes]
       starting at location [(b, ofs)].  Returns updated memory state
       or [None] if the accessed locations are not writable. *)
   Program Definition storebytes (m: mem) (ofs: Z) (bytes: list memval) (lts:list loc_tag)
-    : MemoryResult mem :=
+    : PolicyResult mem :=
     if range_perm_neg_dec m ofs (ofs + Z.of_nat (length bytes)) Dead then
-      MemorySuccess (mkmem
+      Success (mkmem
                        (setN (merge_vals_tags bytes lts) ofs (m.(mem_contents)))
                        m.(mem_access) m.(live))
-    else MemoryFail "" (PrivateStore ofs).
+    else Fail "" (PrivateStore ofs).
   
   (** * Properties of the memory operations *)
 
@@ -436,7 +421,7 @@ Module Mem (P:Policy).
 Theorem range_perm_loadbytes:
   forall m ofs len,
   range_perm_neg m ofs (ofs + len) Dead ->
-  exists bytes, loadbytes m ofs len = MemorySuccess bytes.
+  exists bytes, loadbytes m ofs len = Success bytes.
 Proof.
   intros. econstructor. unfold loadbytes. rewrite pred_dec_true; eauto.
 Qed.
@@ -444,15 +429,15 @@ Qed.
 (*Axiom range_perm_loadbytes_live:
   forall m ofs len,
   range_perm m ofs (ofs + len) Live ->
-  exists bytes, loadbytes m ofs len = MemorySuccess bytes.
+  exists bytes, loadbytes m ofs len = Success bytes.
 Axiom range_perm_loadbytes_md:
   forall m ofs len,
   range_perm m ofs (ofs + len) MostlyDead ->
-  exists bytes, loadbytes m ofs len = MemorySuccess bytes.*)
+  exists bytes, loadbytes m ofs len = Success bytes.*)
 
 Theorem loadbytes_range_perm:
   forall m ofs len bytes,
-  loadbytes m ofs len = MemorySuccess bytes ->
+  loadbytes m ofs len = Success bytes ->
   range_perm_neg m ofs (ofs + len) Dead.
 Proof.
   intros until bytes. unfold loadbytes. intros.
@@ -468,7 +453,7 @@ Qed.
 
 Theorem loadbytes_empty:
   forall m ofs n,
-  n <= 0 -> loadbytes m ofs n = MemorySuccess nil.
+  n <= 0 -> loadbytes m ofs n = Success nil.
 Proof.
   intros. unfold loadbytes. rewrite pred_dec_true. rewrite Z_to_nat_neg; auto.
   red; intros. extlia.
@@ -490,7 +475,7 @@ Qed.
 Theorem range_perm_storebytes:
   forall m1 ofs bytes lts,
   range_perm_neg m1 ofs (ofs + Z.of_nat (length bytes)) Dead ->
-  { m2 : mem | storebytes m1 ofs bytes lts = MemorySuccess m2 }.
+  { m2 : mem | storebytes m1 ofs bytes lts = Success m2 }.
 Proof.
   intros. unfold storebytes.
   destruct (range_perm_neg_dec m1 ofs (ofs + Z.of_nat (length bytes)) Dead).
@@ -504,7 +489,7 @@ Variable ofs: Z.
 Variable bytes: list memval.
 Variable lts: list loc_tag.
 Variable m2: mem.
-Hypothesis STORE: storebytes m1 ofs bytes lts = MemorySuccess m2.
+Hypothesis STORE: storebytes m1 ofs bytes lts = Success m2.
 
 Lemma storebytes_access: mem_access m2 = mem_access m1.
 Proof.

@@ -6,19 +6,42 @@ Require Import Values.
 Require Import Ctypes.
 Require Import Cabs.
 Require Import String.
+Require Import ExtLib.Structures.Monads.
 
 Require Import List. Import ListNotations. (* list notations is a module inside list *)
 
 Parameter extern_atom : positive -> string.
 
-Module Type Policy. (* anaaktge this is the interface for rules
-                      start with where 
-                      rule itself might not be structured
-                      want something to convert tags to string
-                      dont want it used in galina 
-                      terrible hack - give trival def,
-                      then mod the ocaml code yourself 
-                    *)
+Inductive FailureClass : Type :=
+| MisalignedStore (alignment ofs : Z)
+| MisalignedLoad (alignment ofs : Z)
+| PrivateStore (ofs : Z)
+| PrivateLoad (ofs : Z)
+| OtherFailure
+| PolicyFailure
+.
+
+Inductive PolicyResult (A: Type) :=
+| Success (res: A)
+| Log (res: A) (msg: string)
+| Fail (msg: string) (failure: FailureClass)
+.
+
+Arguments Success {_} _.
+Arguments Log {_} _ _.
+Arguments Fail {_} _ _.
+
+Definition bind_bin (A B:Type) (res: PolicyResult A) (f: A -> PolicyResult B) :=
+  match res with
+  | Success a => f a
+  | Log _ msg => Fail msg OtherFailure
+  | Fail msg failure => Fail msg failure
+  end.
+
+Instance PolicyResultMonad : Monad PolicyResult :=
+  {| bind := bind_bin; ret := @Success |}.
+
+Module Type Policy.
   Parameter val_tag : Type.
   Parameter control_tag : Type.
   Parameter loc_tag : Type.
@@ -26,34 +49,16 @@ Module Type Policy. (* anaaktge this is the interface for rules
   Parameter vt_eq_dec : forall (vt1 vt2:val_tag), {vt1 = vt2} + {vt1 <> vt2}.
   Parameter ct_eq_dec : forall (ct1 ct2:control_tag), {ct1 = ct2} + {ct1 <> ct2}. 
   Parameter lt_eq_dec : forall (lt1 lt2:loc_tag), {lt1 = lt2} + {lt1 <> lt2}.
-  
-  Inductive tag : Type :=
-  | VT : val_tag -> tag
-  | CT : control_tag -> tag
-  | LT : loc_tag -> tag
-  .
 
+  Parameter print_vt : val_tag -> string.
+  Parameter print_ct : control_tag -> string.
+  Parameter print_lt : loc_tag -> string.
+  
   Parameter def_tag : val_tag.
   Parameter InitPCT : control_tag.
   Parameter DefLT   : loc_tag.
   Parameter InitT   : val_tag.
   
-  Parameter print_tag : tag -> string.
-    (* anaaktge parameterized by tag type but are shared regardless of policy
-      and c/p them around would be really annoying. n copies is n-1 too many. 
-
-      unfortunately we don't get that.
-      A sign I missed one is  an error somewhat like
-      Error: The field PolicyFailure is missing in Tags.NullPolicy.
-    *)
-  Inductive PolicyResult (A: Type) :=
-  | PolicySuccess (res: A) 
-  | PolicyFail (r: string) (params: list tag).
-
-  (* anaaktge mixing implicit and explicit *)
-  Arguments PolicySuccess {_} _.
-  Arguments PolicyFail {_} _ _.
-
   (* CallT executes at the transition from an expression state to a call state. *)
   Parameter CallT : loc                     (* Inputs: *)
                     -> control_tag          (* PC tag *)
@@ -264,25 +269,17 @@ Module Type Policy. (* anaaktge this is the interface for rules
                       -> type               (* Type cast to *)
                       -> PolicyResult       (* Outputs: *)
                            val_tag          (* Tag on resulting value *).
-  
 End Policy.
 
 Module TagLib (P:Policy).
-  Export P.
-  Export Values.
-
+  Import P.
+  
   Definition atom : Type := val * val_tag.
   Definition atom_map (f:val -> val) (a:atom) :=
     let '(v,t) := a in (f v, t).
-  Definition at_map (f:val -> val) (a:atom*tag) :=
-    let '(v,t,t') := a in (f v, t, t').
 
-  (* These things should not take policy results... *)
   Definition opt_atom_map (f:val -> val) (a:option atom) :=
     option_map (atom_map f) a.
-
-  Definition opt_at_map (f:val -> val) (a:option (atom*tag)) :=
-    option_map (at_map f) a.
 
   Lemma atom_eq_dec :
     forall (a1 a2:atom),
@@ -302,76 +299,67 @@ Module TagLib (P:Policy).
     apply type_eq.
     repeat decide equality.        
   Qed.  
+
 End TagLib.
 
 Module Passthrough.
-
   Section WITH_TAGS.
     Variable val_tag control_tag loc_tag : Type.
-
-    Inductive tag : Type :=
-    | VT : val_tag -> tag
-    | CT : control_tag -> tag
-    | LT : loc_tag -> tag
-    .
         
-    Variable InitT : val_tag.
+  Definition CallT (l:loc) (pct:control_tag) (pt: val_tag) :
+    PolicyResult control_tag := Success pct.
+
+  Definition ArgT (l:loc) (pct:control_tag) (fpt vt: val_tag) (idx:nat) (ty: type) :
+    PolicyResult (control_tag * val_tag) := Success (pct,vt).
+
+  Definition RetT (l:loc) (pct_clr pct_cle: control_tag) (vt: val_tag) :
+    PolicyResult (control_tag * val_tag) := Success (pct_cle,vt).
+
+  Definition AccessT (l:loc) (pct: control_tag) (vt: val_tag) :
+    PolicyResult val_tag := Success vt.
+
+  Definition AssignT (l:loc) (pct: control_tag) (vt1 vt2: val_tag) :
+    PolicyResult (control_tag * val_tag) := Success (pct,vt2).
+
+  Definition LoadT (l:loc) (pct: control_tag) (pt vt: val_tag) (lts: list loc_tag) :
+    PolicyResult val_tag := Success vt.
+
+  Definition StoreT (l:loc) (pct: control_tag) (pt vt: val_tag) (lts: list loc_tag) :
+    PolicyResult (control_tag * val_tag * list loc_tag) :=
+    Success (pct, vt, lts).
     
-    Definition CallT (l:loc) (pct:control_tag) (pt: val_tag) : control_tag := pct.
+  Definition UnopT (l:loc) (op : unary_operation) (pct: control_tag) (vt: val_tag) :
+    PolicyResult (control_tag * val_tag) := Success (pct, vt).
 
-    Definition ArgT (l:loc) (pct:control_tag) (fpt vt: val_tag) (idx:nat) (ty: type) :
-      (control_tag * val_tag) := (pct,vt).
+  Definition BinopT (l:loc) (op : binary_operation) (pct: control_tag) (vt1 vt2: val_tag) :
+    PolicyResult (control_tag * val_tag) := Success (pct, vt1).
 
-    Definition RetT (l:loc) (pct_clr pct_cle: control_tag) (vt: val_tag) :
-      (control_tag * val_tag) :=
-      (pct_cle,vt).
+  Definition SplitT (l:loc) (pct: control_tag) (vt: val_tag) (id : option ident) :
+    PolicyResult control_tag := Success pct.
 
-    Definition AccessT (l:loc) (pct: control_tag) (vt: val_tag) : val_tag := vt.
+  Definition LabelT (l:loc) (pct : control_tag) (id : ident) :
+    PolicyResult control_tag := Success pct.
 
-    Definition AssignT (l:loc) (pct: control_tag) (vt1 vt2: val_tag) :
-      (control_tag * val_tag) := (pct,vt2).
+  Definition ExprSplitT (l:loc) (pct: control_tag) (vt: val_tag) :
+    PolicyResult control_tag := Success pct.
 
-    Definition LoadT (l:loc) (pct: control_tag) (pt vt: val_tag) (lts: list loc_tag) :
-      val_tag := vt.
-
-    Definition StoreT (l:loc) (pct: control_tag) (pt vt: val_tag) (lts: list loc_tag) :
-      (control_tag * val_tag * list loc_tag) := (pct, vt, lts).
+  Definition ExprJoinT (l:loc) (pct: control_tag) (vt: val_tag) :
+    PolicyResult (control_tag * val_tag) := Success (pct,vt).
     
-    Definition UnopT (l:loc) (op : unary_operation) (pct: control_tag) (vt: val_tag) :
-      (control_tag * val_tag) := (pct, vt).
+  Definition FieldT (l:loc) (ce : composite_env) (pct: control_tag) (vt: val_tag)
+             (ty : type) (id : ident) : PolicyResult val_tag := Success vt.
 
-    Definition BinopT (l:loc) (op : binary_operation) (pct: control_tag) (vt1 vt2: val_tag) :
-      (control_tag * val_tag) := (pct, vt1).
-
-    Definition SplitT (l:loc) (pct: control_tag) (vt: val_tag) (id : option ident) :
-      control_tag := pct.
-
-    Definition LabelT (l:loc) (pct : control_tag) (id : ident) :
-      control_tag := pct.
-
-    Definition ExprSplitT (l:loc) (pct: control_tag) (vt: val_tag) :
-      control_tag := pct.
-
-    Definition ExprJoinT (l:loc) (pct: control_tag) (vt: val_tag) :
-      (control_tag * val_tag) := (pct,vt).
+  Definition PICastT (l:loc) (pct: control_tag) (pt: val_tag)  (lts : list loc_tag) (ty : type) :
+    PolicyResult val_tag := Success pt.
     
-    Definition ExtCallT (l:loc) (fn : string) (pct : control_tag) (args : list val_tag) :
-      (control_tag * val_tag) := (pct, InitT).
-  
-    Definition FieldT (l:loc) (ce : composite_env) (pct: control_tag) (vt: val_tag)
-               (ty : type) (id : ident) : val_tag := vt.
+  Definition IPCastT (l:loc) (pct: control_tag) (vt: val_tag)  (lts : list loc_tag) (ty : type) :
+    PolicyResult val_tag := Success vt.
 
-    Definition PICastT (l:loc) (pct: control_tag) (pt: val_tag)  (lts : list loc_tag) (ty : type) :
-      val_tag := pt.
-    
-    Definition IPCastT (l:loc) (pct: control_tag) (vt: val_tag)  (lts : list loc_tag) (ty : type) :
-      val_tag := vt.
+  Definition PPCastT (l:loc) (pct: control_tag) (vt: val_tag) (lts1 lts2 : list loc_tag)
+             (ty : type) : PolicyResult val_tag := Success vt.
 
-    Definition PPCastT (l:loc) (pct: control_tag) (vt: val_tag) (lts1 lts2 : list loc_tag)
-               (ty : type) : val_tag := vt.
+  Definition IICastT (l:loc) (pct: control_tag) (vt: val_tag) (ty : type) :
+    PolicyResult val_tag := Success vt.
 
-    Definition IICastT (l:loc) (pct: control_tag) (vt: val_tag) (ty : type) :
-      val_tag := vt.
-  
   End WITH_TAGS.
 End Passthrough.

@@ -25,6 +25,7 @@ Require Import Allocator.
 Require Import Ctypes.
 Require Import Tags.
 Require Import Determinism.
+Require Import Values.
 Require Archi.
 
 Module Cop (P:Policy) (A:Allocator P).
@@ -32,6 +33,8 @@ Module Cop (P:Policy) (A:Allocator P).
   Import TLib.
   Module Deterministic := Deterministic P A.
   Export Deterministic.
+  Import A.
+  Import P.
 
 Inductive incr_or_decr : Type := Incr | Decr.
 
@@ -1044,47 +1047,47 @@ Definition bitfield_normalize (sz: intsize) (sg: signedness) (width: Z) (n: int)
   else Int.sign_ext width n.
 
 Inductive load_bitfield: type -> intsize -> signedness -> Z -> Z -> mem -> Z ->
-                         MemoryResult (atom * list loc_tag) -> Prop :=
+                         PolicyResult (atom * list loc_tag) -> Prop :=
   | load_bitfield_intro: forall sz sg1 attr sg pos width m addr c vt lts,
       0 <= pos -> 0 < width <= bitsize_intsize sz -> pos + width <= bitsize_carrier sz ->
       sg1 = (if zlt width (bitsize_intsize sz) then Signed else sg) ->
-      load_all (chunk_for_carrier sz) m addr = MemorySuccess (Vint c, vt, lts) ->
+      load_all (chunk_for_carrier sz) m addr = Success (Vint c, vt, lts) ->
       load_bitfield (Tint sz sg1 attr) sz sg pos width m addr
-                    (MemorySuccess ((Vint (bitfield_extract sz sg pos width c), vt), lts))
+                    (Success ((Vint (bitfield_extract sz sg pos width c), vt), lts))
   | load_bitfield_fail: forall sz sg1 attr sg pos width m addr msg failure,
       0 <= pos -> 0 < width <= bitsize_intsize sz -> pos + width <= bitsize_carrier sz ->
       sg1 = (if zlt width (bitsize_intsize sz) then Signed else sg) ->
-      load_all (chunk_for_carrier sz) m addr = MemoryFail msg failure ->
+      load_all (chunk_for_carrier sz) m addr = Fail msg failure ->
       load_bitfield (Tint sz sg1 attr) sz sg pos width m addr
-                    (MemoryFail msg failure).
+                    (Fail msg failure).
 
 
 Inductive store_bitfield: type -> intsize -> signedness -> Z -> Z -> mem ->
                           Z -> val_tag -> atom -> list loc_tag ->
-                          MemoryResult (mem * atom) -> Prop :=
+                          PolicyResult (mem * atom) -> Prop :=
   | store_bitfield_intro: forall sz sg1 attr sg pos width m addr pt c n vt ovt lts m',
       0 <= pos -> 0 < width <= bitsize_intsize sz -> pos + width <= bitsize_carrier sz ->
       sg1 = (if zlt width (bitsize_intsize sz) then Signed else sg) ->
-      load (chunk_for_carrier sz) m addr = MemorySuccess (Vint c, ovt) ->
+      load (chunk_for_carrier sz) m addr = Success (Vint c, ovt) ->
       store (chunk_for_carrier sz) m addr
-                 (Vint (Int.bitfield_insert (first_bit sz pos width) width c n), vt) lts = MemorySuccess m' ->
+                 (Vint (Int.bitfield_insert (first_bit sz pos width) width c n), vt) lts = Success m' ->
       store_bitfield (Tint sz sg1 attr) sz sg pos width m addr pt (Vint n,vt) lts
-                     (MemorySuccess (m', (Vint (bitfield_normalize sz sg width n),vt)))
+                     (Success (m', (Vint (bitfield_normalize sz sg width n),vt)))
   | store_bitfield_fail_0: forall sz sg1 attr sg pos width m addr pt n vt lts msg failure,
       0 <= pos -> 0 < width <= bitsize_intsize sz -> pos + width <= bitsize_carrier sz ->
       sg1 = (if zlt width (bitsize_intsize sz) then Signed else sg) ->
-      load (chunk_for_carrier sz) m addr = MemoryFail msg failure ->
+      load (chunk_for_carrier sz) m addr = Fail msg failure ->
       store_bitfield (Tint sz sg1 attr) sz sg pos width m addr pt (Vint n,vt) lts
-                     (MemoryFail msg failure)
+                     (Fail msg failure)
   | store_bitfield_fail_1: forall sz sg1 attr sg pos width m addr pt c n vt ovt lts msg failure,
       0 <= pos -> 0 < width <= bitsize_intsize sz -> pos + width <= bitsize_carrier sz ->
       sg1 = (if zlt width (bitsize_intsize sz) then Signed else sg) ->
-      load (chunk_for_carrier sz) m addr = MemorySuccess (Vint c, ovt) ->
+      load (chunk_for_carrier sz) m addr = Success (Vint c, ovt) ->
       store (chunk_for_carrier sz) m addr
             (Vint (Int.bitfield_insert (first_bit sz pos width) width c n), vt)
-            lts = MemoryFail msg failure ->
+            lts = Fail msg failure ->
       store_bitfield (Tint sz sg1 attr) sz sg pos width m addr pt (Vint n,vt) lts
-                     (MemoryFail msg failure).
+                     (Fail msg failure).
 
 (*Lemma sem_cast_inject:
   forall f v1 ty1 ty m v tv1 tm,

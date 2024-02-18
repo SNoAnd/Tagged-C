@@ -42,6 +42,7 @@ Require Import List. Import ListNotations.
 Require Import Ctypes.
 Require Import Tags.
 Require Import Layout.
+Require Import ExtLib.Structures.Monads. Import MonadNotation.
 
 Notation "s #1" := (fst s) (at level 9, format "s '#1'") : pair_scope.
 Notation "s #2" := (snd s) (at level 9, format "s '#2'") : pair_scope.
@@ -69,6 +70,7 @@ Module Genv (P:Policy) (A:Allocator P).
   Notation empty := A.empty.
   Import MD.
   Import A.
+  Import P.
   
   (** * Global environments *)
   Section GENV.
@@ -177,7 +179,7 @@ Module Genv (P:Policy) (A:Allocator P).
     Section CONSTRUCTION.
 
       Definition store_init_data (ge: t) (m: mem) (p: Z) (id: init_data) (vt: val_tag) (lt: loc_tag) :
-        MemoryResult mem :=
+        PolicyResult mem :=
         match id with
         | Init_int8 n => store Mint8unsigned m p (Vint n, vt) [lt]
         | Init_int16 n => store Mint16unsigned m p (Vint n, vt) [lt;lt]
@@ -187,24 +189,22 @@ Module Genv (P:Policy) (A:Allocator P).
         | Init_float64 n => store Mfloat64 m p (Vfloat n, vt) [lt;lt;lt;lt;lt;lt;lt;lt]
         | Init_addrof symb ofs =>
             match find_symbol ge symb with
-            | None => MemoryFail "Symbol not found" OtherFailure
+            | None => Fail "Symbol not found" OtherFailure
             | Some (SymGlob base bound pt gv) =>
                 store Mptr m p (Vint (Int.repr base), vt) [lt;lt;lt;lt;lt;lt;lt;lt]
-            | Some (SymIFun b pt) => MemorySuccess m
-            | Some (SymEFun ef tyargs tyres cc pt) => MemorySuccess m
+            | Some (SymIFun b pt) => Success m
+            | Some (SymEFun ef tyargs tyres cc pt) => Success m
             end
-        | Init_space n => MemorySuccess m
+        | Init_space n => Success m
         end.
 
       Fixpoint store_init_data_list (ge: t) (m: mem) (p: Z) (idl: list init_data) (vt: val_tag) (lt: loc_tag)
-               {struct idl}: MemoryResult mem :=
+               {struct idl}: PolicyResult mem :=
         match idl with
-        | [] => MemorySuccess m
+        | [] => ret m
         | id :: idl' =>
-            match store_init_data ge m p id vt lt with
-            | MemorySuccess m' => store_init_data_list ge m' (p + init_data_size id) idl' vt lt
-            | res => res
-            end
+            m' <- store_init_data ge m p id vt lt;;
+            store_init_data_list ge m' (p + init_data_size id) idl' vt lt
         end.
 
       Definition pad_init_data_list (n: nat) (idl: list init_data) :=
@@ -214,18 +214,16 @@ Module Genv (P:Policy) (A:Allocator P).
       Definition perm_globvar (gv: globvar V) : permission := Live.
       
       Definition alloc_global (ge: t) (m: mem) (tree: PTree.t (Z*Z)) (id: ident)
-                 (v: globvar V) (vt : val_tag) (lt : loc_tag) : MemoryResult (Z * mem) :=
+                 (v: globvar V) (vt : val_tag) (lt : loc_tag) : PolicyResult (Z * mem) :=
         let init := v.(gvar_init) in
         let sz := v.(gvar_size) in
         let init_sz := init_data_list_size init in
         match PTree.get id tree with
         | Some (base, bound) =>
             let padded := pad_init_data_list (Pos.to_nat sz) init in
-            match store_init_data_list ge m base padded vt lt with
-            | MemorySuccess m2 => MemorySuccess (base,m2)
-            | MemoryFail msg failure => MemoryFail msg failure
-            end
-        | None => MemoryFail "Globals weren't allocated correctly" OtherFailure
+            m2 <- store_init_data_list ge m base padded vt lt;;
+            ret (base,m2)
+        | None => Fail "Globals weren't allocated correctly" OtherFailure
         end.
 
       Program Definition add_global (ge: t) (m: mem) (tree: PTree.t (Z*Z)) (idg: ident * globdef F V)
@@ -234,7 +232,7 @@ Module Genv (P:Policy) (A:Allocator P).
         | Gvar gv =>
             let '(pt, vt, lt) := GlobalT ce (idg#1) Tvoid in (* TODO: if we're going to do things based on type here, need to concretize V *)
             match alloc_global ge m tree (idg#1) gv vt lt with
-            | MemorySuccess (base', m') =>
+            | Success (base', m') =>
                 let size := Zpos gv.(gvar_size) in
                 let bound := base' + size in
                 let genv_symb' := PTree.set idg#1 (SymGlob base' bound pt gv) ge.(genv_symb) in
@@ -247,7 +245,7 @@ Module Genv (P:Policy) (A:Allocator P).
                              _ _
                 in
                 (ge', m')
-            | MemoryFail msg failure => (ge, m)
+            | _ => (ge, m)
             end
         | Gfun _ =>
             match ext (idg#1) with
@@ -335,7 +333,7 @@ Module Genv (P:Policy) (A:Allocator P).
       Program Definition empty_genv (pub: list ident) : t :=
         @mkgenv pub (PTree.empty _) (PTree.empty _) [] 2%positive _ _.
       
-      Definition init_record (m: A.mem) (base: Z) (sz: Z) : MemoryResult A.mem :=
+      Definition init_record (m: A.mem) (base: Z) (sz: Z) : PolicyResult A.mem :=
         let szv := Vlong (Int64.neg (Int64.repr sz)) in
         A.store Mint64 m base (szv, InitT) [DefLT].
 
@@ -346,13 +344,10 @@ Module Genv (P:Policy) (A:Allocator P).
         | _::idgs' => filter_var_sizes idgs'
         end.
       
-      Definition globalenv (p: AST.program F V) : MemoryResult (t * mem) :=
-        match init_record A.empty 1000 1000 with
-        | MemorySuccess m =>
-            let (m',tree) := A.globalalloc m (filter_var_sizes p.(AST.prog_defs)) in
-            MemorySuccess (add_globals (empty_genv p.(AST.prog_public)) m tree p.(AST.prog_defs))
-        | MemoryFail msg failure => MemoryFail msg failure
-        end.
+      Definition globalenv (p: AST.program F V) : PolicyResult (t * mem) :=
+        m <- init_record A.empty 1000 1000;;
+        let (m',tree) := A.globalalloc m (filter_var_sizes p.(AST.prog_defs)) in
+        ret (add_globals (empty_genv p.(AST.prog_public)) m tree p.(AST.prog_defs)).
 
       Section WITH_GE.
 
