@@ -57,9 +57,8 @@ Local Unset Case Analysis Schemes.
 
 Parameter ext : ident -> option (external_function * typelist * rettype * calling_convention)%type.
 
-Module Genv (P:Policy) (A:Allocator P).
-  Module TLib := TagLib P.
-  Import TLib.
+Module Genv (T: Tags) (P: Policy T) (A: Allocator T P).
+  Import A.
   Import A.Mem.
   Notation mem := A.mem.
   Notation store := A.store.
@@ -68,6 +67,8 @@ Module Genv (P:Policy) (A:Allocator P).
   Notation load_all := A.load_all.
   Notation empty := A.empty.
   Import MD.
+  Import P.
+  Import TLib.
   Import A.
   
   (** * Global environments *)

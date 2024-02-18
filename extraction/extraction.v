@@ -25,29 +25,8 @@ Require Csyntax.
 Require Parser.
 Require Initializers.
 (* Per Policies.md, add new policies here*)
-Require Import Tags NullPolicy PVI DoubleFree HeapProblem Allocator Initializers Csem.
+Require Import Tags NullPolicy PVI DoubleFree Allocator Initializers Csem.
 
-Module Extracted (P : Policy) (A : Allocator P).
-
-  Module I := Initializers P A.
-  Import I.
-  Import Cexec.
-  Import InterpreterEvents.
-  Import Cstrategy.
-  Import Ctyping.
-  Import Csem.
-  Import Csyntax.
-  Import Cop.
-  Import Deterministic.
-  Import Behaviors.
-  Import Smallstep.
-  Import Events.
-  Import Genv.
-  Import Mem.
-  Import A.
-  
-End Extracted.
-  
   (* Standard lib *)
   Require Import ExtrOcamlBasic.
   Require Import ExtrOcamlString.
@@ -106,18 +85,14 @@ End Extracted.
   (* Avoid name clashes *)
   Extraction Blacklist List String Int.
 
-  (* Needed in Coq 8.4 to avoid problems with Function definitions. *)
-  Set Extraction AccessOpaque.
-
   (* Go! *)
   
   Cd "extraction".
   
   (* Per Policies.md, add new policies here *)
   Separate Extraction
-           Tags NullPolicy PVI DoubleFree HeapProblem
+           Tags NullPolicy PVI DoubleFree Initializers
            Allocator
-           Extracted
            Ctypes.merge_attributes Ctypes.remove_attributes
            Ctypes.build_composite_env Ctypes.signature_of_type Ctypes.typlist_of_typelist
            Cabs

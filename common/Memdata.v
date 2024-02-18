@@ -293,9 +293,10 @@ Proof.
   intros. unfold encode_int. decEq. apply bytes_of_int_mod. auto.
 Qed.
 
-Module Memdata (P: Policy).
-  Module TLib := TagLib P.
-  Import TLib.
+Module Memdata (T: Tags) (P: Policy T).
+  Import P.
+  Module TLib := TagLib T.
+  Export TLib.
 
 (** * Memory values *)
 

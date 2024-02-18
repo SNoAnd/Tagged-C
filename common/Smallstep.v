@@ -31,11 +31,15 @@ Require Import Tags.
 
 Set Implicit Arguments.
 
-Module Smallstep (P:Policy) (A:Allocator P).
-  Module TLib := TagLib P.
+Module Smallstep (T: Tags) (P: Policy T) (A: Allocator T P).
+  Module Events := Events T P A.
+  Import Events.
+  Import Genv.
+  Import A.
+  Import P.
+  Import Mem.
+  Import MD.
   Import TLib.
-  Module Events := Events P A.
-  Export Events.
   
 (** * Closures of transitions relations *)
 

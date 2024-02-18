@@ -32,9 +32,9 @@ Notation " 'check' A ; B" := (if A then B else None)
   (at level 200, A at level 100, B at level 200)
   : option_monad_scope.
 
-Module InterpreterEvents (P:Policy) (A:Allocator P).
-  Module Cstrategy := Cstrategy P A.
-  Export Cstrategy.
+Module InterpreterEvents (T: Tags) (P: Policy T) (A: Allocator T P).
+  Module Cstrategy := Cstrategy T P A.
+  Import Cstrategy.
   Import Ctyping.
   Import Csem.
   Import Csyntax.
@@ -47,7 +47,7 @@ Module InterpreterEvents (P:Policy) (A:Allocator P).
   Import A.
   Import Mem.MD.
   Import P.
-  Import Csem.TLib.
+  Import TLib.
 
   Notation "'do_mem' X <- A ; B" := (match A with
                                      | MemorySuccess X => B

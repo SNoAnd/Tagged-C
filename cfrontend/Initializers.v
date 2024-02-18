@@ -19,11 +19,9 @@ Require Import Cexec Tags.
 
 Open Scope error_monad_scope.
 
-Module Initializers (P:Policy) (A:Allocator P).
-  Module TLib := TagLib P.
-  Import TLib.
-  Module Cexec := Cexec P A.
-  Export Cexec.
+Module Initializers (T: Tags) (P: Policy T) (A: Allocator T P).
+  Module Cexec := Cexec T P A.
+  Import Cexec.
   Import InterpreterEvents.
   Import Cstrategy.
   Import Ctyping.  
@@ -36,6 +34,7 @@ Module Initializers (P:Policy) (A:Allocator P).
   Import Events.
   Import Genv.
   Import P.
+  Import TLib.
 
 (** * Evaluation of compile-time constant expressions *)
 

@@ -29,13 +29,13 @@ Require Import Globalenvs.
 Require Import Builtins.
 Require Import Tags.
 
-Module Events (P:Policy) (A:Allocator P).
-  Module TLib := TagLib P.
-  Export TLib.
-  Module Genv := Genv P A.
-  Export Genv.
-  Export A.
-
+Module Events (T: Tags) (P: Policy T) (A: Allocator T P).
+  Module Genv := Genv T P A.
+  Import Genv.
+  Import A.
+  Import P.
+  Import TLib.
+  
 (** * Events and traces *)
 
 (** The observable behaviour of programs is stated in terms of

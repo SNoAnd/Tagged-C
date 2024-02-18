@@ -23,10 +23,8 @@ Require Import Smallstep.
 Require Import List. Import ListNotations.
 Require Import String.
 
-Module Csem (P: Policy) (A: Allocator P).
-  Module TLib := TagLib P.
-  Import TLib.
-  Module Csyntax := Csyntax P A.
+Module Csem (T: Tags) (P: Policy T) (A: Allocator T P).
+  Module Csyntax := Csyntax T P A.
   Import Csyntax.
   Import Cop.
   Import Deterministic.
@@ -35,8 +33,8 @@ Module Csem (P: Policy) (A: Allocator P).
   Import Events.
   Import Genv.
   Import A.
-
   Import P.
+  Import TLib.
   
   (** * Operational semantics *)
 

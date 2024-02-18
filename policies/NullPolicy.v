@@ -10,8 +10,7 @@ Require Import Tags.
 
 Require Import List. Import ListNotations.
 
-Module NullPolicy <: Policy.
-
+Module NullTags <: Tags.
   Definition val_tag := unit.
   Definition control_tag := unit.
   Definition loc_tag := unit.
@@ -20,26 +19,19 @@ Module NullPolicy <: Policy.
   Theorem ct_eq_dec : forall (t1 t2:control_tag), {t1 = t2} + {t1 <> t2}. Proof. decide equality. Qed.
   Theorem lt_eq_dec : forall (t1 t2:loc_tag), {t1 = t2} + {t1 <> t2}. Proof. decide equality. Qed.
 
-  Inductive tag : Type :=
-  | VT : val_tag -> tag
-  | CT : control_tag -> tag
-  | LT : loc_tag -> tag
-  .
+  Definition print_vt (t:val_tag) : string := "tt".
+  Definition print_ct (t:control_tag) : string := "tt".
+  Definition print_lt (t:loc_tag) : string := "tt".
+End NullTags.
+
+Module NullPolicy : Policy NullTags.
+  Module TLib := TagLib NullTags.
+  Include TLib.
   
   Definition def_tag : val_tag := tt.
   Definition InitPCT : control_tag := tt.
   Definition DefLT   : loc_tag := tt.
-  Definition InitT   : val_tag := tt.
-  
-  Definition print_tag (t:tag) : string := "tt".
-  
-  (* anaaktge does not inherit, more like impersonates *)
-  Inductive PolicyResult (A: Type) :=
-  | PolicySuccess (res: A)
-  | PolicyFail (r: string) (params: list tag).
-
-  Arguments PolicySuccess {_} _. 
-  Arguments PolicyFail {_} _ _.
+  Definition InitT   : val_tag := tt.  
 
   Definition CallT (l:loc) (pct: control_tag) (pt: val_tag) : PolicyResult control_tag :=
     PolicySuccess tt.

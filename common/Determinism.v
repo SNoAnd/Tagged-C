@@ -28,9 +28,13 @@ Require Import Smallstep.
 Require Import Behaviors.
 Require Import Tags.
 
-Module Deterministic (P:Policy) (A:Allocator P).
-  Module Behaviors := Behaviors P A.
-  Export Behaviors.
+Module Deterministic (T: Tags) (P: Policy T) (A: Allocator T P).
+  Module Behaviors := Behaviors T P A.
+  Import Behaviors.
+  Import Smallstep.
+  Import Events.
+  Import Genv.
+  Import A.
   
 (** * Deterministic worlds *)
 
