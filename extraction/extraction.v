@@ -26,9 +26,9 @@ Require Parser.
 Require Initializers.
 Require Import Tags NullPolicy PVI PNVI DoubleFree Allocator Initializers Csem.
 
-Module Extracted (P : Policy) (A : Allocator P).
+Module Extracted (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Allocator Ptr Pol M).
 
-  Module I := Initializers P A.
+  Module I := Initializers Ptr Pol M A.
   Import I.
   Import Cexec.
   Import InterpreterEvents.

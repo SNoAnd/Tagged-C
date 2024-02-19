@@ -32,8 +32,8 @@ Notation " 'check' A ; B" := (if A then B else None)
   (at level 200, A at level 100, B at level 200)
   : option_monad_scope.
 
-Module InterpreterEvents (P:Policy) (A:Allocator P).
-  Module Cstrategy := Cstrategy P A.
+Module InterpreterEvents (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Allocator Ptr Pol M).
+  Module Cstrategy := Cstrategy Ptr Pol M A.
   Export Cstrategy.
   Import Ctyping.
   Import Csem.

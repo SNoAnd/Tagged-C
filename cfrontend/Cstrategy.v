@@ -37,10 +37,10 @@ Require Import Csem.
 Require Import Ctyping.
 Require Import Tags.
 
-Module Cstrategy (P: Policy) (A: Allocator P).
+Module Cstrategy (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Allocator Ptr Pol M).
   Module TLib := TagLib P.
   Import TLib.
-  Module Ctyping := Ctyping P A.
+  Module Ctyping := Ctyping Ptr Pol M A.
   Import Ctyping.
   Import Csem.
   Import Csyntax.

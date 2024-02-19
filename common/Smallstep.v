@@ -24,17 +24,18 @@ Require Import Relations.
 Require Import Wellfounded.
 Require Import Coqlib.
 Require Import Allocator.
+Require Import Memory.
 Require Import Events.
 Require Import Globalenvs.
 Require Import Integers.
 Require Import Tags.
+Require Import Values.
 
 Set Implicit Arguments.
 
-Module Smallstep (P:Policy) (A:Allocator P).
-  Module TLib := TagLib P.
-  Import TLib.
-  Module Events := Events P A.
+Module Smallstep (Ptr: Pointer) (Pol: Policy)
+       (M: Memory Ptr Pol) (A:Allocator Ptr Pol M).
+  Module Events := Events Ptr Pol M A.
   Export Events.
   
 (** * Closures of transitions relations *)
@@ -104,8 +105,8 @@ Lemma star_trans:
   forall t2 s3 t, star ge s2 t2 s3 -> t = t1 ** t2 -> star ge s1 t s3.
 Proof.
   induction 1; intros.
-  rewrite H0. simpl. auto.
-  eapply star_step; eauto. traceEq.
+  - rewrite H0. simpl. auto.
+  - eapply star_step; eauto. subst. traceEq.
 Qed.
 
 Lemma star_left:

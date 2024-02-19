@@ -20,6 +20,12 @@ Require Import String Coqlib.
 Require Import AST Integers Floats Values.
 Require Export Builtins0 Builtins1.
 
+Module Builtins (Ptr: Pointer).
+  Module BI1 := Builtins1 Ptr.
+  Export BI1.
+  Export BI0.
+  Export Values.
+
 Inductive builtin_function : Type :=
   | BI_standard (b: standard_builtin)
   | BI_platform (b: platform_builtin).
@@ -55,3 +61,5 @@ Proof.
   inv H. simpl. eapply lookup_builtin_sig; eauto.
   discriminate.
 Qed.
+
+End Builtins.

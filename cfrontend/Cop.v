@@ -25,13 +25,16 @@ Require Import Allocator.
 Require Import Ctypes.
 Require Import Tags.
 Require Import Determinism.
+Require Import Values.
 Require Archi.
 
-Module Cop (P:Policy) (A:Allocator P).
-  Module TLib := TagLib P.
-  Import TLib.
-  Module Deterministic := Deterministic P A.
+Module Cop (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Allocator Ptr Pol M).
+  Module Deterministic := Deterministic Ptr Pol M A.
   Export Deterministic.
+  Import M.
+  Import TLib.
+  Import Values.
+  Import Genv.
 
 Inductive incr_or_decr : Type := Incr | Decr.
 
@@ -409,7 +412,7 @@ Definition bool_val (v: val) (t: type) (m: mem) : option bool :=
 (** *** Boolean negation *)
 
 Definition sem_notbool (v: val) (ty: type) (m: mem): option val :=
-  option_map (fun b => Val.of_bool (negb b)) (bool_val v ty m).
+  option_map (fun b => Values.of_bool (negb b)) (bool_val v ty m).
 
 (** *** Opposite and absolute value *)
 
@@ -891,9 +894,9 @@ Definition classify_cmp (ty1: type) (ty2: type) :=
 
 Definition cmp_ptr (m: mem) (c: comparison) (v1 v2: val): option val :=
   match v1, v2 with
-  | Vint _, Vint _ => option_map Val.of_bool (Val.cmpu_bool c v1 v2)
-  | Vlong _, Vlong _ => option_map Val.of_bool (Val.cmplu_bool c v1 v2)
-  | Vfptr _, Vfptr _ => option_map Val.of_bool (Val.cmplu_bool c v1 v2)
+  | Vint _, Vint _ => option_map Values.of_bool (Values.cmpu_bool c v1 v2)
+  | Vlong _, Vlong _ => option_map Values.of_bool (Values.cmplu_bool c v1 v2)
+  | Vfptr _, Vfptr _ => option_map Values.of_bool (Values.cmplu_bool c v1 v2)
   | _, _ => None
   end.
 
@@ -910,13 +913,13 @@ Definition sem_cmp (c:comparison)
   | cmp_default =>
       sem_binarith
         (fun sg n1 n2 =>
-            Some(Val.of_bool(match sg with Signed => Int.cmp c n1 n2 | Unsigned => Int.cmpu c n1 n2 end)))
+            Some(Values.of_bool(match sg with Signed => Int.cmp c n1 n2 | Unsigned => Int.cmpu c n1 n2 end)))
         (fun sg n1 n2 =>
-            Some(Val.of_bool(match sg with Signed => Int64.cmp c n1 n2 | Unsigned => Int64.cmpu c n1 n2 end)))
+            Some(Values.of_bool(match sg with Signed => Int64.cmp c n1 n2 | Unsigned => Int64.cmpu c n1 n2 end)))
         (fun n1 n2 =>
-            Some(Val.of_bool(Float.cmp c n1 n2)))
+            Some(Values.of_bool(Float.cmp c n1 n2)))
         (fun n1 n2 =>
-            Some(Val.of_bool(Float32.cmp c n1 n2)))
+            Some(Values.of_bool(Float32.cmp c n1 n2)))
         v1 t1 v2 t2 m
   end.
 
@@ -1043,55 +1046,55 @@ Definition bitfield_normalize (sz: intsize) (sg: signedness) (width: Z) (n: int)
   then Int.zero_ext width n
   else Int.sign_ext width n.
 
-Inductive load_bitfield: type -> intsize -> signedness -> Z -> Z -> mem -> Z ->
+Inductive load_bitfield: type -> intsize -> signedness -> Z -> Z -> mem -> ptr ->
                          MemoryResult (atom * list tag) -> Prop :=
-  | load_bitfield_intro: forall sz sg1 attr sg pos width m addr c vt lts,
+  | load_bitfield_intro: forall sz sg1 attr sg pos width m p c vt lts,
       0 <= pos -> 0 < width <= bitsize_intsize sz -> pos + width <= bitsize_carrier sz ->
       sg1 = (if zlt width (bitsize_intsize sz) then Signed else sg) ->
-      load_all (chunk_for_carrier sz) m addr = MemorySuccess (Vint c, vt, lts) ->
-      load_bitfield (Tint sz sg1 attr) sz sg pos width m addr
+      load_all (chunk_for_carrier sz) m p = MemorySuccess (Vint c, vt, lts) ->
+      load_bitfield (Tint sz sg1 attr) sz sg pos width m p
                     (MemorySuccess ((Vint (bitfield_extract sz sg pos width c), vt), lts))
-  | load_bitfield_fail: forall sz sg1 attr sg pos width m addr msg failure,
+  | load_bitfield_fail: forall sz sg1 attr sg pos width m p msg failure,
       0 <= pos -> 0 < width <= bitsize_intsize sz -> pos + width <= bitsize_carrier sz ->
       sg1 = (if zlt width (bitsize_intsize sz) then Signed else sg) ->
-      load_all (chunk_for_carrier sz) m addr = MemoryFail msg failure ->
-      load_bitfield (Tint sz sg1 attr) sz sg pos width m addr
+      load_all (chunk_for_carrier sz) m p = MemoryFail msg failure ->
+      load_bitfield (Tint sz sg1 attr) sz sg pos width m p
                     (MemoryFail msg failure).
 
 
 Inductive store_bitfield: type -> intsize -> signedness -> Z -> Z -> mem ->
-                          Z -> tag -> atom -> list tag ->
+                          ptr -> tag -> atom -> list tag ->
                           MemoryResult (mem * atom) -> Prop :=
-  | store_bitfield_intro: forall sz sg1 attr sg pos width m addr pt c n vt ovt lts m',
+  | store_bitfield_intro: forall sz sg1 attr sg pos width m p pt c n vt ovt lts m',
       0 <= pos -> 0 < width <= bitsize_intsize sz -> pos + width <= bitsize_carrier sz ->
       sg1 = (if zlt width (bitsize_intsize sz) then Signed else sg) ->
-      load (chunk_for_carrier sz) m addr = MemorySuccess (Vint c, ovt) ->
-      store (chunk_for_carrier sz) m addr
+      load (chunk_for_carrier sz) m p = MemorySuccess (Vint c, ovt) ->
+      store (chunk_for_carrier sz) m p
                  (Vint (Int.bitfield_insert (first_bit sz pos width) width c n), vt) lts = MemorySuccess m' ->
-      store_bitfield (Tint sz sg1 attr) sz sg pos width m addr pt (Vint n,vt) lts
+      store_bitfield (Tint sz sg1 attr) sz sg pos width m p pt (Vint n,vt) lts
                      (MemorySuccess (m', (Vint (bitfield_normalize sz sg width n),vt)))
-  | store_bitfield_fail_0: forall sz sg1 attr sg pos width m addr pt n vt lts msg failure,
+  | store_bitfield_fail_0: forall sz sg1 attr sg pos width m p pt n vt lts msg failure,
       0 <= pos -> 0 < width <= bitsize_intsize sz -> pos + width <= bitsize_carrier sz ->
       sg1 = (if zlt width (bitsize_intsize sz) then Signed else sg) ->
-      load (chunk_for_carrier sz) m addr = MemoryFail msg failure ->
-      store_bitfield (Tint sz sg1 attr) sz sg pos width m addr pt (Vint n,vt) lts
+      load (chunk_for_carrier sz) m p = MemoryFail msg failure ->
+      store_bitfield (Tint sz sg1 attr) sz sg pos width m p pt (Vint n,vt) lts
                      (MemoryFail msg failure)
-  | store_bitfield_fail_1: forall sz sg1 attr sg pos width m addr pt c n vt ovt lts msg failure,
+  | store_bitfield_fail_1: forall sz sg1 attr sg pos width m p pt c n vt ovt lts msg failure,
       0 <= pos -> 0 < width <= bitsize_intsize sz -> pos + width <= bitsize_carrier sz ->
       sg1 = (if zlt width (bitsize_intsize sz) then Signed else sg) ->
-      load (chunk_for_carrier sz) m addr = MemorySuccess (Vint c, ovt) ->
-      store (chunk_for_carrier sz) m addr
+      load (chunk_for_carrier sz) m p = MemorySuccess (Vint c, ovt) ->
+      store (chunk_for_carrier sz) m p
             (Vint (Int.bitfield_insert (first_bit sz pos width) width c n), vt)
             lts = MemoryFail msg failure ->
-      store_bitfield (Tint sz sg1 attr) sz sg pos width m addr pt (Vint n,vt) lts
+      store_bitfield (Tint sz sg1 attr) sz sg pos width m p pt (Vint n,vt) lts
                      (MemoryFail msg failure).
 
 (*Lemma sem_cast_inject:
   forall f v1 ty1 ty m v tv1 tm,
   sem_cast v1 ty1 ty m = Some v ->
-  Val.inject f v1 tv1 ->
+  Values.inject f v1 tv1 ->
   Mem.inject f m tm ->
-  exists tv, sem_cast tv1 ty1 ty tm = Some tv /\ Val.inject f v tv.
+  exists tv, sem_cast tv1 ty1 ty tm = Some tv /\ Values.inject f v tv.
 Proof.
   intros. eapply sem_cast_inj; eauto.
   intros; eapply Mem.weak_valid_pointer_inject_val; eauto.
@@ -1100,9 +1103,9 @@ Qed.
 Lemma sem_unary_operation_inject:
   forall f m m' op v1 ty1 v tv1,
   sem_unary_operation op v1 ty1 m = Some v ->
-  Val.inject f v1 tv1 ->
+  Values.inject f v1 tv1 ->
   Mem.inject f m m' ->
-  exists tv, sem_unary_operation op tv1 ty1 m' = Some tv /\ Val.inject f v tv.
+  exists tv, sem_unary_operation op tv1 ty1 m' = Some tv /\ Values.inject f v tv.
 Proof.
   intros. eapply sem_unary_operation_inj; eauto.
   intros; eapply Mem.weak_valid_pointer_inject_val; eauto.
@@ -1111,9 +1114,9 @@ Qed.
 Lemma sem_binary_operation_inject:
   forall f m m' cenv op v1 ty1 v2 ty2 v tv1 tv2,
   sem_binary_operation cenv op v1 ty1 v2 ty2 m = Some v ->
-  Val.inject f v1 tv1 -> Val.inject f v2 tv2 ->
+  Values.inject f v1 tv1 -> Values.inject f v2 tv2 ->
   Mem.inject f m m' ->
-  exists tv, sem_binary_operation cenv op tv1 ty1 tv2 ty2 m' = Some tv /\ Val.inject f v tv.
+  exists tv, sem_binary_operation cenv op tv1 ty1 tv2 ty2 m' = Some tv /\ Values.inject f v tv.
 Proof.
   intros. eapply sem_binary_operation_inj; eauto.
   intros; eapply Mem.valid_pointer_inject_val; eauto.
@@ -1125,7 +1128,7 @@ Qed.
 Lemma bool_val_inject:
   forall f m m' v ty b tv,
   bool_val v ty m = Some b ->
-  Val.inject f v tv ->
+  Values.inject f v tv ->
   Mem.inject f m m' ->
   bool_val tv ty m' = Some b.
 Proof.
@@ -1145,7 +1148,7 @@ Qed.*)
 (*Lemma cast_bool_bool_val:
   forall v t m,
     sem_cast v t (Tint IBool Signed noattr) m =
-      match bool_val v t m with None => None | Some b => Some(Val.of_bool b) end.
+      match bool_val v t m with None => None | Some b => Some(Values.of_bool b) end.
   intros.
   assert (A: classify_bool t0 =
     match t0 with
@@ -1203,7 +1206,7 @@ Qed.*)
 Lemma notbool_bool_val:
   forall v t m,
   sem_notbool v t m =
-  match bool_val v t m with None => None | Some b => Some(Val.of_bool (negb b)) end.
+  match bool_val v t m with None => None | Some b => Some(Values.of_bool (negb b)) end.
 Proof.
   intros. unfold sem_notbool. destruct (bool_val v t0 m) as [[] | ]; reflexivity.
 Qed.

@@ -17,27 +17,23 @@
 (** Abstract syntax for the Compcert C language *)
 
 Require Import Coqlib Maps Integers Floats Errors.
-Require Import AST Linking Values Tags Allocator.
+Require Import AST Linking Values Tags Memory Allocator.
 Require Import Cabs Ctypes Cop.
 
-Module Csyntax (P:Policy) (A:Allocator P).
-  Module TLib := TagLib P.
+Module Csyntax (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Allocator Ptr Pol M).
+  Module Cop := Cop Ptr Pol M A.
+  Export Cop.
+  Import A.
+  Import M.
   Import TLib.
-  Module Cop := Cop P A.
-  Import Cop.
-  Import Deterministic.
-  Import Behaviors.
-  Import Smallstep.
-  Import Events.
-  Import Genv.
-
+  
   (** ** Location Kinds *)
 
   (** A Tagged C location can be a memory location, a temporary variable
       id, or a function pointer *)
 
   Inductive loc_kind : Type :=
-  | Lmem (ofs: int64) (pt: tag) (bf: bitfield)
+  | Lmem (p: ptr) (pt: tag) (bf: bitfield)
   | Ltmp (b: block)
   | Lifun (b: block) (pt: tag)
   | Lefun (ef: external_function) (tyargs: typelist) (tyres:rettype) (cconv: calling_convention) (pt: tag)

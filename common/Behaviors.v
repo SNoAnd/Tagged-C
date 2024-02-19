@@ -25,6 +25,8 @@ Require Import Globalenvs.
 Require Import Integers.
 Require Import Smallstep.
 Require Import Tags.
+Require Import Values.
+Require Import Memory.
 
 Set Implicit Arguments.
 Set Asymmetric Patterns.
@@ -44,8 +46,8 @@ Set Asymmetric Patterns.
   performed before the program gets stuck.
 *)
 
-Module Behaviors (P:Policy) (A:Allocator P).
-  Module Smallstep := Smallstep P A.
+Module Behaviors (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Allocator Ptr Pol M).
+  Module Smallstep := Smallstep Ptr Pol M A.
   Export Smallstep.
   
 Inductive program_behavior: Type :=

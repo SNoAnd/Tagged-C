@@ -23,6 +23,28 @@ Require Import Floats.
 Require Import Ctypes.
 Require Import AST.
 
+Module Type Pointer.
+  Parameter ptr : Type.
+  
+  Parameter concretize : ptr -> int64.
+  Parameter off : ptr -> int64 -> ptr.
+  
+  Parameter align : ptr -> Z.
+
+  Parameter lt : ptr -> ptr -> Prop.
+  Parameter ltb : ptr -> ptr -> bool.
+  
+  Parameter le : ptr -> ptr -> Prop.
+  Parameter leb : ptr -> ptr -> bool.
+
+  Parameter twixt : ptr -> ptr -> ptr -> Prop.  
+  Parameter twixtb : ptr -> ptr -> ptr -> bool.
+  Parameter twixt_correct : forall p1 p2 p3,
+      twixt p1 p2 p3 <-> twixtb p1 p2 p3 = true.
+  
+  Parameter ptr_eq_dec : forall (p1 p2:ptr), {p1 = p2} + {p1 <> p2}.
+End Pointer.
+  
 Definition block : Type := positive.
 Definition eq_block := peq.
 
@@ -35,12 +57,16 @@ Definition eq_block := peq.
   value of an uninitialized variable.
 *)
 
+Module Val (Ptr:Pointer).
+  Import Ptr.
+
 Inductive val: Type :=
 | Vundef: val
 | Vint: int -> val
 | Vlong: int64 -> val
 | Vfloat: float -> val
 | Vsingle: float32 -> val
+| Vptr: ptr -> val
 | Vfptr: block -> val
 | Vefptr: external_function -> typelist -> rettype -> calling_convention -> val
 .
@@ -61,8 +87,6 @@ Definition Vofptrsize (z:Z) := Vlong (Int64.repr z).
   over type [val].  Most of these operations are straightforward extensions
   of the corresponding integer or floating-point operations. *)
 
-Module Val.
-
 Definition eq (x y: val): {x=y} + {x<>y}.
 Proof.
   decide equality.
@@ -70,6 +94,7 @@ Proof.
   apply Int64.eq_dec.
   apply Float.eq_dec.
   apply Float32.eq_dec.
+  apply ptr_eq_dec.
   apply eq_block.
   repeat decide equality.
   repeat decide equality.
@@ -87,6 +112,7 @@ Definition has_type (v: val) (t: typ) : Prop :=
   | Vlong _, Tlong => True
   | Vfloat _, Tfloat => True
   | Vsingle _, Tsingle => True
+  | Vptr _, Tlong => True
   | Vfptr _, Tlong => True
   | Vefptr _ _ _ _, Tlong => True
   | (Vint _ | Vsingle _), Tany32 => True
@@ -133,20 +159,9 @@ Proof.
 - destruct t; auto.
 - destruct t; auto.
 - destruct t; auto.
-- destruct t.
-  right; auto.
-  right; auto.
-  left; auto.
-  right; auto.
-  right; auto.
-  left; auto.
-- destruct t.
-  right; auto.
-  right; auto.
-  left; auto.
-  right; auto.
-  right; auto.
-  left; auto.
+- destruct t; try (left; auto; fail); try (right; auto; fail).
+- destruct t; try (left; auto; fail); try (right; auto; fail).
+- destruct t; try (left; auto; fail); try (right; auto; fail).
 Defined.
 
 Definition has_rettype (v: val) (r: rettype) : Prop :=
@@ -899,6 +914,7 @@ Definition normalize (v: val) (ty: typ) : val :=
   | Vlong _, Tlong => v
   | Vfloat _, Tfloat => v
   | Vsingle _, Tsingle => v
+  | Vptr _, Tlong => v
   | Vfptr _, Tlong => v
   | Vefptr _ _ _ _, Tlong => v
   | (Vint _ | Vsingle _), Tany32 => v
@@ -917,6 +933,7 @@ Proof.
 - destruct ty; exact I.
 - unfold has_type; destruct ty; auto.
 - destruct ty; exact I.
+- destruct ty; exact I.
 Qed.
 
 Lemma normalize_idem:
@@ -924,6 +941,7 @@ Lemma normalize_idem:
 Proof.
   unfold has_type, normalize; intros. destruct v.
 - auto.
+- destruct ty; intuition auto.
 - destruct ty; intuition auto.
 - destruct ty; intuition auto.
 - destruct ty; intuition auto.
@@ -958,6 +976,7 @@ Definition load_result (chunk: memory_chunk) (v: val) :=
   | Mint32, Vint n => Vint n
   | Mint64, Vlong _
   | Mint64, Vfptr _
+  | Mint64, Vptr _
   | Mint64, Vefptr _ _ _ _ => v 
   | Mfloat32, Vsingle f => Vsingle f
   | Mfloat64, Vfloat f => Vfloat f
@@ -2029,6 +2048,7 @@ Lemma lessdef_normalize:
 Proof.
   intros. destruct v; simpl.
   - auto.
+  - destruct ty; auto.
   - destruct ty; auto.
   - destruct ty; auto.
   - destruct ty; auto.

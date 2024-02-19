@@ -20,6 +20,10 @@ Require Import String Coqlib.
 Require Import AST Integers Floats Values.
 Require Import Builtins0.
 
+Module Builtins1 (Ptr: Pointer).
+  Module BI0 := Builtins0 Ptr.
+  Import BI0.
+  
 Inductive platform_builtin : Type :=
   | BI_fmin
   | BI_fmax.
@@ -52,4 +56,4 @@ Definition platform_builtin_sem (b: platform_builtin) : builtin_sem (sig_res (pl
                       | Some Eq | Some Lt | None => f2
                       end)
   end.
-
+End Builtins1.

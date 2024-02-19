@@ -27,10 +27,13 @@ Require Import Globalenvs.
 Require Import Smallstep.
 Require Import Behaviors.
 Require Import Tags.
+Require Import Values.
+Require Import Memory.
 
-Module Deterministic (P:Policy) (A:Allocator P).
-  Module Behaviors := Behaviors P A.
+Module Deterministic (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Allocator Ptr Pol M).
+  Module Behaviors := Behaviors Ptr Pol M A.
   Export Behaviors.
+  Import Ptr.
   
 (** * Deterministic worlds *)
 
@@ -49,20 +52,20 @@ Module Deterministic (P:Policy) (A:Allocator P).
 
 CoInductive world: Type :=
   World (io: string -> list eventval -> option (eventval * world))
-        (vload: memory_chunk -> ident -> int64 -> option (eventval * world))
-        (vstore: memory_chunk -> ident -> int64 -> eventval -> option world).
+        (vload: memory_chunk -> ident -> ptr -> option (eventval * world))
+        (vstore: memory_chunk -> ident -> ptr -> eventval -> option world).
 
 Definition nextworld_io (w: world) (evname: string) (evargs: list eventval) :
                      option (eventval * world) :=
   match w with World io vl vs => io evname evargs end.
 
-Definition nextworld_vload (w: world) (chunk: memory_chunk) (id: ident) (ofs: int64) :
+Definition nextworld_vload (w: world) (chunk: memory_chunk) (id: ident) (p: ptr) :
                      option (eventval * world) :=
-  match w with World io vl vs => vl chunk id ofs end.
+  match w with World io vl vs => vl chunk id p end.
 
-Definition nextworld_vstore (w: world) (chunk: memory_chunk) (id: ident) (ofs: int64) (v: eventval):
+Definition nextworld_vstore (w: world) (chunk: memory_chunk) (id: ident) (p: ptr) (v: eventval):
                      option world :=
-  match w with World io vl vs => vs chunk id ofs v end.
+  match w with World io vl vs => vs chunk id p v end.
 
 (** A trace is possible in a given world if all events correspond
   to non-stuck external calls according to the given world.
@@ -78,12 +81,12 @@ Inductive possible_event: world -> event -> world -> Prop :=
   | possible_event_syscall: forall w1 evname evargs evres w2,
       nextworld_io w1 evname evargs = Some (evres, w2) ->
       possible_event w1 (Event_syscall evname evargs evres) w2
-  | possible_event_vload: forall w1 chunk id ofs evres w2,
-      nextworld_vload w1 chunk id ofs = Some (evres, w2) ->
-      possible_event w1 (Event_vload chunk id ofs evres) w2
-  | possible_event_vstore: forall w1 chunk id ofs evarg w2,
-      nextworld_vstore w1 chunk id ofs evarg = Some w2 ->
-      possible_event w1 (Event_vstore chunk id ofs evarg) w2
+  | possible_event_vload: forall w1 chunk id p evres w2,
+      nextworld_vload w1 chunk id p = Some (evres, w2) ->
+      possible_event w1 (Event_vload chunk id p evres) w2
+  | possible_event_vstore: forall w1 chunk id p evarg w2,
+      nextworld_vstore w1 chunk id p evarg = Some w2 ->
+      possible_event w1 (Event_vstore chunk id p evarg) w2
   | possible_event_annot: forall w1 id args,
       possible_event w1 (Event_annot id args) w1.
 

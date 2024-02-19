@@ -58,8 +58,8 @@ Notation " 'check' A ; B" := (if A then B else nil)
   (at level 200, A at level 100, B at level 200)
   : list_monad_scope.
 
-Module Cexec (P:Policy) (A:Allocator P).
-  Module InterpreterEvents := InterpreterEvents P A.
+Module Cexec (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Allocator Ptr Pol M).
+  Module InterpreterEvents := InterpreterEvents Ptr Pol M A.
   Import InterpreterEvents.
   Import Cstrategy.
   Import Ctyping.

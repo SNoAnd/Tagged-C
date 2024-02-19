@@ -38,7 +38,8 @@ Require Import Integers.
 Require Import Floats.
 Require Import Values.
 Require Import Tags.
-Require Export Memdata.
+Require Import Memdata.
+Require Import Builtins.
 
 Require Import List. Import ListNotations.
 
@@ -64,21 +65,20 @@ Inductive MemoryResult (A:Type) : Type :=
 Arguments MemorySuccess {_} _.
 Arguments MemoryFail {_} _.
 
-Module Type Memory (P:Policy).
-  Module TLib := TagLib P.
+Module Type Memory (Ptr: Pointer) (Pol:Policy).
+  Module BI := Builtins Ptr.
+  Export BI.
+  Module MD := Memdata Ptr Pol.
+  Export MD.
   Import TLib.
-  Module MD := Memdata P.
-  Import MD.
+  Export Ptr.
 
-  Parameter addr : Type.
   Parameter mem : Type.
-
-  Parameter off : addr -> Z -> addr.
   
   (** Permissions *)
   
-  Parameter allowed_access : mem -> memory_chunk -> addr -> Prop.
-  Parameter aligned_access : memory_chunk -> addr -> Prop.
+  Parameter allowed_access : mem -> memory_chunk -> ptr -> Prop.
+  Parameter aligned_access : memory_chunk -> ptr -> Prop.
   
   Parameter allowed_access_dec:
     forall m chunk a,
@@ -100,11 +100,11 @@ Module Type Memory (P:Policy).
       [a].  It returns the value of the memory chunk
       at that address.  [None] is returned if the accessed bytes
       are not readable. *)
-  Parameter load : memory_chunk -> mem -> addr -> MemoryResult atom.
+  Parameter load : memory_chunk -> mem -> ptr -> MemoryResult atom.
 
-  Parameter load_ltags : memory_chunk -> mem -> addr -> MemoryResult (list tag).
+  Parameter load_ltags : memory_chunk -> mem -> ptr -> MemoryResult (list tag).
 
-  Parameter load_all : memory_chunk -> mem -> addr -> MemoryResult (atom * list tag).
+  Parameter load_all : memory_chunk -> mem -> ptr -> MemoryResult (atom * list tag).
   
   Parameter load_all_compose :
     forall chunk m a v lts,
@@ -120,9 +120,9 @@ Module Type Memory (P:Policy).
       location [(b, ofs)].  Returns [None] if the accessed locations are
       not readable. *)
 
-  Parameter loadbytes : mem -> addr -> Z -> MemoryResult (list memval).
+  Parameter loadbytes : mem -> ptr -> Z -> MemoryResult (list memval).
 
-  Parameter loadtags : mem -> addr -> Z -> MemoryResult (list tag).
+  Parameter loadtags : mem -> ptr -> Z -> MemoryResult (list tag).
 
   (** Memory stores. *)
   
@@ -131,14 +131,14 @@ Module Type Memory (P:Policy).
       Return the updated memory store, or [None] if the accessed bytes
       are not writable. *)
   
-  Parameter store : memory_chunk -> mem -> addr -> atom -> list tag -> MemoryResult mem.
+  Parameter store : memory_chunk -> mem -> ptr -> atom -> list tag -> MemoryResult mem.
 
-  Parameter store_atom : memory_chunk -> mem -> addr -> atom -> MemoryResult mem.
+  Parameter store_atom : memory_chunk -> mem -> ptr -> atom -> MemoryResult mem.
   
   (** [storebytes m ofs bytes] stores the given list of bytes [bytes]
       starting at location [(b, ofs)].  Returns updated memory state
       or [None] if the accessed locations are not writable. *)
-  Parameter storebytes : mem -> addr -> list memval -> list tag -> MemoryResult mem.
+  Parameter storebytes : mem -> ptr -> list memval -> list tag -> MemoryResult mem.
   
   Global Opaque Memory.store Memory.load Memory.storebytes Memory.loadbytes.
 
