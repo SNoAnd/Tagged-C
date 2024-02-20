@@ -99,9 +99,9 @@ Module NullPolicy <: Policy.
     PolicyResult (control_tag * val_tag * val_tag * val_tag * loc_tag) :=
     PolicySuccess (tt, tt, tt, tt, tt).
 
-  Definition FreeT (l:loc) (pct: control_tag) (fpt pt vt: val_tag) :
-    PolicyResult (control_tag * val_tag * val_tag * val_tag) :=
-    PolicySuccess (tt, tt, tt, tt).
+  Definition FreeT (l:loc) (pct: control_tag) (fpt pt vht: val_tag) (lts: list loc_tag) :
+    PolicyResult (control_tag * val_tag * val_tag * list loc_tag) :=
+    PolicySuccess (tt, tt, tt, lts).
 
   Definition ExtCallT (l:loc) (fn : string) (pct: control_tag) (args : list val_tag) :
     PolicyResult (control_tag * val_tag) := PolicySuccess (tt,tt).

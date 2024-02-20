@@ -150,10 +150,10 @@ Definition print_tag (t : tag) : string :=
     - tag on the pointer passed to free
     - tag on the "header" 
  *)
- Definition FreeT (l:loc) (pct: control_tag) (fptrt pt vht : val_tag) :
-   PolicyResult (control_tag * val_tag * val_tag * loc_tag) :=
+ Definition FreeT (l:loc) (pct: control_tag) (fptrt pt vht : val_tag) (lts : list loc_tag) :
+   PolicyResult (control_tag * val_tag * val_tag * list loc_tag) :=
   match vht with 
-    | Alloc => PolicySuccess(pct, N, (FreeColor l), tt) (* was allocated then freed, assign free color from pct *)
+    | Alloc => PolicySuccess(pct, N, (FreeColor l), lts) (* was allocated then freed, assign free color from pct *)
     | N (* trying to free unallocated memory at this location *)
       => PolicyFail (inj_loc "DoubleFree||FreeT detects free of unallocated memory| " l)
                     [CT pct;VT fptrt;VT pt;VT vht]

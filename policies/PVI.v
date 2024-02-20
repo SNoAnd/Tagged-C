@@ -112,9 +112,9 @@ Module PVI <: Policy.
     let c := pct in
     PolicySuccess (S c, Dyn c, N, Dyn c, Dyn c).
 
-  Definition FreeT (l:loc) (pct: control_tag) (pt1 pt2 vt: val_tag) :
-    PolicyResult (control_tag * val_tag * val_tag * val_tag) :=
-    PolicySuccess (pct, N, N, N).
+  Definition FreeT (l:loc) (pct: control_tag) (pt1 pt2 vht: val_tag) (lts: list loc_tag) :
+    PolicyResult (control_tag * val_tag * val_tag * list loc_tag) :=
+    PolicySuccess (pct, N, N, lts).
 
   (* Passthrough rules *)  
   Definition CallT := (fun l pct fpt => PolicySuccess (Passthrough.CallT val_tag control_tag l pct fpt)).  

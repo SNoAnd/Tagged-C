@@ -80,9 +80,10 @@ Module Type Allocator (P : Policy).
   Parameter heapfree : mem
                        -> Z (* address *)
                        ->
-                       (*partially applied tag rule, waiting for val tag on head *)
-                         (val_tag (* val (head) *)
-                          -> PolicyResult (control_tag * val_tag * val_tag * loc_tag))
+                       (*partially applied tag rule, waiting for val tag on head
+                         and all tags on freed locations *)
+                         (val_tag (* val (head) *) -> list loc_tag (* locs *)
+                          -> PolicyResult (control_tag * val_tag * val_tag * list loc_tag))
                        -> MemoryResult
                             (PolicyResult
                                (control_tag (* pc tag *)
@@ -219,20 +220,29 @@ Module ConcreteAllocator (P : Policy) : Allocator P.
     | None => MemoryFail "Failure in find_free" OtherFailure
     end.
 
-  Definition heapfree (m: mem) (addr: Z) (rule : val_tag -> PolicyResult (control_tag*val_tag*val_tag*loc_tag))
+  Definition heapfree (m: mem) (addr: Z) (rule : val_tag -> list loc_tag -> PolicyResult (control_tag*val_tag*val_tag*list loc_tag))
     : MemoryResult (PolicyResult (control_tag * mem)) :=
     let (m, sp) := m in
     match check_header m (addr-header_size) with
     | Some (live, sz, vt) =>
-        match rule vt with
-        | PolicySuccess (PCT', vt1, vt2, lt) =>
-            match update_header m (addr-header_size) false sz vt2 lt with
-            | Some m' =>
-                MemorySuccess (PolicySuccess (PCT', (m', sp)))
-            | None => MemoryFail "Free failing" OtherFailure
+        match loadbytes m addr sz, loadtags m addr sz with
+        | MemorySuccess mvs, MemorySuccess lts =>
+            match rule vt lts with
+            | PolicySuccess (PCT', vt1, vt2, lts') =>
+                match update_header m (addr-header_size) false sz vt2 DefLT with
+                | Some m' =>
+                    match storebytes m addr mvs lts' with
+                    | MemorySuccess m'' =>
+                        MemorySuccess (PolicySuccess (PCT', (m'', sp)))
+                    | MemoryFail msg failure => MemoryFail msg failure
+                    end
+                | None => MemoryFail "Free failing" OtherFailure
+                end
+            | PolicyFail msg params =>
+                MemorySuccess (PolicyFail msg params)
             end
-        | PolicyFail msg params =>
-            MemorySuccess (PolicyFail msg params)
+        | _, MemoryFail msg failure => MemoryFail msg failure
+        | MemoryFail msg failure, _ => MemoryFail msg failure
         end
     | None => MemoryFail "Free failing" OtherFailure
     end.
@@ -343,18 +353,28 @@ Module FLAllocator (P : Policy) : Allocator P.
     | None => MemoryFail "Out of memory" OtherFailure
     end.
 
-  Definition heapfree (m : mem) (base : Z) (rule : val_tag -> PolicyResult (control_tag*val_tag*val_tag*loc_tag))
+  Definition heapfree (m : mem) (base : Z) (rule : val_tag -> list loc_tag -> PolicyResult (control_tag*val_tag*val_tag*list loc_tag))
     : MemoryResult (PolicyResult (control_tag*mem)) :=
     let '(m, (sp,heap)) := m in
     match ZMap.get base heap.(regions) with
     | Some (bound,vt) =>
-        match rule vt with
-        | PolicySuccess (pct',vt_head,vt_body,lt) =>
-            let heap' := (mkheap (ZMap.set base None heap.(regions))
-                                 ((base,bound,vt_head)::heap.(fl))) in
-            MemorySuccess (PolicySuccess (pct', (m, (sp,heap'))))
-        | PolicyFail msg params =>
-            MemorySuccess (PolicyFail msg params)
+        let sz := bound - base in
+        match loadbytes m base sz, loadtags m base sz with
+        | MemorySuccess mvs, MemorySuccess lts =>
+            match rule vt lts with
+            | PolicySuccess (pct',vt_head,vt_body,lts') =>
+                let heap' := (mkheap (ZMap.set base None heap.(regions))
+                                     ((base,bound,vt_head)::heap.(fl))) in
+                match storebytes m base mvs lts' with
+                | MemorySuccess m' =>
+                    MemorySuccess (PolicySuccess (pct', (m', (sp,heap'))))
+                | MemoryFail msg failure => MemoryFail msg failure
+                end
+            | PolicyFail msg params =>
+                MemorySuccess (PolicyFail msg params)
+            end
+        | _, MemoryFail msg failure => MemoryFail msg failure
+        | MemoryFail msg failure, _ => MemoryFail msg failure
         end
     | None => MemoryFail "Bad free" OtherFailure
     end.

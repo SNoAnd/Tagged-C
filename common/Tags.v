@@ -209,11 +209,12 @@ Module Type Policy. (* anaaktge this is the interface for rules
                     -> val_tag              (* Function pointer tag *)
                     -> val_tag              (* Tag on parameter *)
                     -> val_tag              (* Tag on value in the block's header *)
+                    -> list loc_tag         (* Tags on the memory being freed *)
                     -> PolicyResult
                          (control_tag       (* New PC tag *)
                           * val_tag         (* Tag for values in cleared block *)
                           * val_tag         (* Tag on the value in the block's header *)
-                          * loc_tag)        (* Tag to be copied over all memory locations *).
+                          * list loc_tag)   (* New tags for freed memory *).
 
   Parameter ExtCallT : loc                  (* Inputs: *)
                        -> string            (* External function name *)
