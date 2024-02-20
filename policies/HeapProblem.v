@@ -7,17 +7,18 @@
  *      or overwritten so the secret can be recovered by the next legal owner. 
  *  This policy operates very similiarly to the one discussed in "Micro-Policies: Formally Verified, Tag-Based Security Monitors"
  *      https://ieeexplore.ieee.org/document/7163062 , with an additional feature of tagging memory that has been 
+ * 
  * Problem: 
  *   A "heap leak" is very ambigous. There are at least 5 types, 3 of which this policy covers:
  *   (1) heap buffer overwrite (RCE)
  *   (2) heap buffer overread (heartbleed)
  *   (3) heap address leak (defeat ASLR in an exploit chain)
  *         EDIT: We are not covering this one in HeapProblem.v
- *         See HeapAddressSIF.v 
+ *         See HeapAddressSIF.v for this one. 
  *   (4) heap secret recovery from dirty memory (steal keys that were correctly
  *          freed but not overwritten before being reused)
  *   (5) heap resource exhaustion/resource leak through memory (DOS by OOM)
- *          We are not including this one. It is a bad fit for tags
+ *          We are not covering this case. It is a bad fit for tags
  * 
  * Current Solutions: 
  *   (1)(2) are things that SOTA fuzzers can reasonably detect when augmented with 
@@ -27,10 +28,78 @@
  *   (4) No fuzzer currently detects secret recovery from dirty heap memory as far as I know.
  * 
  * Related Work:
- *    -       there is also a lazy version, but its aimed at performance, and i want to know exactly is happening
-          https://ic.ese.upenn.edu/pdf/stack_ieeesp2018.pdf points out that sometimes big chunks get alloced but not used
+ *    - We will eagerly color memory. However, there is a lazy algorithm, based on the observation that
+ *        memory is sometimes allocated in large chunks & never used. However, it is aimed at performance
+ *        and this is aimed at diagnostic information to feed a fuzzer.
+ *        See https://ic.ese.upenn.edu/pdf/stack_ieeesp2018.pdf 
+ * 
+ * 
+ * Overall Policy Algorithm to detect heap problems (1),(2),(4):
+ *  - Starting state:
+ *      - PC counter is set to 0, nothing's been malloc'ed yet
+ *      - heap mem is all set to L_UnallocatedHeap
+ *      - stack mem et al. is set to L_NotHeap
+ *      - data, globals, etc set to N  
+ *      - The allocator is the concrete one. The intent is to
+ *        emulate the real, nontagged system as closely as possible.
+ *  - When memory is allocated via MallocT
+ *      - the value tag on the pointer is colored with the location of the malloc and the current color from the pc tag
+ *      - the location tags on the block are marked with the same location + color, marked AllocatedDirty (to detect Heap Problem #4)
+ *      - color counter is increased
+ *  - When memory is written via StoreT
+ *      - If pt is not a pointer tag, error
+ *      - If pt is a ptr tag, but the location+color does not match, that is heap problem #1 
+ *      - If pt is a ptr tag and the location+color in the pointer match those of the block..
+ *        - and if the tags on teh block are L_AllocatedWithColor, nothing happens. Program goes on its merry way
+ *        - and if the tags on the block are L_AllocatedDirty, we swap them to L_AllocatedWithColor and rule 
+ *            out Heap Problem #4. This should only happen on the first write. 
+ *        - and if any of the tags are L_UnallocatedHeap, that's trying to overwrite heap you don't own,
+ *             a heap problem #1! 
+ *        - and if any of the tags are L_NotHeap, or N, there's a pointer corruption problem.
+ *        - [debug] if any of the block tags are PC_Extra or pointers, that's most likely a policy bug
+ *  - When memory is read via LoadT
+ *      - If pt is not a pointer tag, error
+ *      - Recurse on lts
+ *        - If the block tag is allocated & match the location+color of the ptr, ok
+ *        - If the block tag is allocated, but has the wrong color, that's a heap problem
+ *        - If the block tag is N, error. pointer might be corrupted
+ *        - If the block tag is L_AllocatedDirty, then its reading memory it shouldn't. 
+ *            Then it's possible to have heap problem #4
+ *            Log it, and let it continue. The fuzzer will decide if a secret was recovered this way.
+ *        - If the block tag is L_NotHeap, L_UnallocatedHeap, that is heap problem #2 (overread)
+ *        - [debug] if the tag's PC or pointer, then there is a policy error
+ *  - When memory is freed via FreeT
+ *      - If the pt is not a pointer tag, auto fail. 
+ *      - If the header tag is N, L_NotHeap, or L_UnallocatedHeap, fail
+ *      - If the header tag is AllocatedDirty, or AllocatedwithColor and the location+color are the same, success
+ *      - If the header tag is Allocated, but the location+color do not match, that is heap corruption.
+ *  - Binary Operations & Unary Operations
+ *      - most of the unary ones don't make a lot of sense with pointers 
+ *      - classic arthimetic ops that make sense with ptrs preserve pointerness
+ *      - bitwise operations preserve pointerness 
+ *      - comparisons with pointers are UB unless the color matches.
+ *          We will allow the pointerness to propagate, but will log
+ *          the suspicious operation.
+ *
+ * Assumptions:
+ *  - colors (Z) is infinite.
+ *  - running in a relatively trustworthy test environment (for fuzzing most likely) 
+ *  - Needs the concrete allocator to emulate a realistic malloc that does not zero memory
+ *  - Implements Policy Interface.
+ * 
+ * TaggedC Interpreter Notes:
+ *  - in this version of PIPE there is a tag on the value and one on byte memory. 
+ *  - This is an abstraction of spliting them up to make reasoning easier. 
+ *       In hardware it is all together.
+ *  - For example on an int: 
+ *    - 1 tag on int value
+ *    - 4 location tags, one per byte.
+ *  - Can be used to catch misaligned loads and stores, in theory.
+ * 
  * Future Work (?):
  *  - HeapAddressSIF.v 
+ *  - @TODO there are some questions throughout
+ *  - @TODO test that the failures have _enough_ information, but not too much
  *  - @TODO heap tests are not hooked into run all tests.py
  *  - @TODO alter concrete allocator to not clear memory
  *  - @WAITING - Sean is working on logging, which should emit the bytes not the tags.
@@ -38,31 +107,7 @@
  *      - Hack up whatever kinda works, and may also support different ways of initing bytes,
  *         then try to exatract a more principled approach later 
  * 
- * Overall Algorithm:
- *  - 
- *  - 
- *  - 
- *  - 
- *
- *
- * Assumptions:
- *  - colors (Z) is infinite.
- *  - running in a relatively trustworthy test environment (for fuzzing most likely) 
- *  - Implements Policy Interface.
- *
- * General Notes:
- *  -  I'm looking to emulate the real, nontagged system as closely as possible, and i want the failstops
- *      to reflect that. 
- * 
- * TaggedC Interpreter Notes:
- *    - in this version of PIPE there is a tag on the value and one on byte memory. 
-      - This is an abstraction of spliting them up to make reasoning easier. 
-        In hardware it is all together.
-      - For example on an int: 
-          - 1 tag on int value
-          - 4 location tags, one per byte.
-      - Can be used to catch misaligned loads and stores, in theory.
-*)
+ *)
 Require Import Coqlib.
 Require Import AST.
 Require Import Integers.
@@ -80,22 +125,38 @@ Require Import List. Import ListNotations.
 Module HeapProblem <: Policy.
 
  (* tags for value, location (memory tags), and pc tags are all in one type
-    will probably be helpful to indicate which types are meant for which set
-    - unalloc, allocdirt, allocwithcolor  are mem/location tag
-    - pointerwithcolor is a value tag 
-    - the pc tag is its own thing
+    L_ = location or memory tag on bytes
+    V_ = value tag 
+    PC_ = pc tag
+    N = is the special unit or NA tag
   *)
- Inductive myTag :=
- | N 
-        (* in the paper, _|_ , N for NonApplicable?, this is a nonpointer/nonheap thing. 
-            keeping N to align with other policies. *)
- | L_NotHeap 
+ Inductive myValTag :=
+ | N    (* in the paper, _|_ , N for NonApplicable?, this is a nonpointer thing. 
+          keeping N to align with other policies. *)
+ | PointerWithColor (l:loc)(color: Z) 
+        (* Value type. should be N or pointerwithcolor
+          needs the color to 
+          should match the AllocatedWithColor of the block
+          not totally sure if I need a seperate type,
+          but i think i need to know when its the block and
+          when its the pointer
+          loc is the location of hte malloc *)
+ .                
+
+ Inductive myControlTag :=
+ | PC_Extra(colorcounter: Z) 
+   (* the "exta" is the paper, we carry it aorund in the pc tag. 
+      In this case, the only extra state we need to carry around is the counter*)
+ .
+ Inductive myLocTag :=
+ (* Use tt for unit? in place of N ?*)
+ | NotHeap 
         (* this location is not heap memory. Heap pointers should not touch this *)
- | L_UnallocatedHeap 
+ | UnallocatedHeap 
         (* Freed memory, may be dirty/containing secret 
                   in the paper's micropolicy this is F *)
                   (* if we rolled DoubleFree in here, this would need to keep a color *)
- | L_AllocatedDirty(l:loc)(color: Z) 
+ | AllocatedDirty(l:loc)(color: Z) 
         (* mem has been allocated, but not yet written to. 
                           Do not allow reads before the first write. 
                           During the first write, convert to AllocatedWithColor
@@ -103,37 +164,37 @@ Module HeapProblem <: Policy.
                           dump +/- 50ish bytes for auth tokens (usually 20-30 bytes)
                           secret keys are often 2-4k bytes. Thats probably too ßbig
                           for our little system *)
- | L_AllocatedWithColor (l:loc)(color: Z) 
+ | Allocated (l:loc)(color: Z) 
         (* AllocatedDirty has been written.
                             carrying the free site unique color (location)
                             + counter in pc tag *)
- | V_PointerWithColor (l:loc)(color: Z) 
-        (* Value type. should be N or pointerwithcolor
-          needs the color to 
-                            should match the AllocatedWithColor of the block
-                            not totally sure if I need a seperate type,
-                            but i think i need to know when its the block and
-                            when its the pointer
-                            loc is the location of hte malloc *)
-                
-  | PC_Extra(colorcounter: Z) 
-        (* the "exta" is the paper, we carry it aorund in the pc tag. *)
  .
 
- Definition tag := myTag.
- (* Note that this proof looks a little different than the others *)
- Theorem tag_eq_dec : forall (t1 t2:tag), {t1 = t2} + {t1 <> t2}.
- Proof.
-  unfold tag. intros. repeat (decide equality; try (apply eqdec_loc)).
- Qed.
+ Definition val_tag := myValTag.
+ Definition control_tag := myControlTag.
+ Definition loc_tag := myLocTag.
+
+ Theorem vt_eq_dec : forall (t1 t2:val_tag), {t1 = t2} + {t1 <> t2}.
+ Proof. repeat decide equality. apply eqdec_loc. Qed.
+ Theorem ct_eq_dec : forall (t1 t2:control_tag), {t1 = t2} + {t1 <> t2}.
+ Proof. repeat decide equality. Qed.
+ Theorem lt_eq_dec : forall (t1 t2:loc_tag), {t1 = t2} + {t1 <> t2}.
+ Proof. repeat decide equality. Qed.
+
+ Inductive tag : Type :=
+ | VT : val_tag -> tag
+ | CT : control_tag -> tag
+ | LT : loc_tag -> tag
+ .
 
  Definition def_tag := N.
-
 (* Initialize color counter to 0. Using Integers (Z) because gallina's repsentation
     of nats is expensive.
     It's good for proofs, bad for us. 
 *)
- Definition InitPCT := PC_Extra 0.
+ Definition InitPCT : control_tag := PC_Extra 0.
+ Definition DefLT   : loc_tag := tt.
+ Definition InitT   : val_tag := N.
 
 (* This is a helper to print locations for human & fuzzer ingestion *)
  Definition inj_loc (s:string) (l:loc) : string :=
@@ -141,15 +202,15 @@ Module HeapProblem <: Policy.
 
 Definition print_tag (t : tag) : string :=
     match t with
-    | N => "NonApplicable for heap"
-    | L_NotHeap  => "Not heap memory"
-    | L_UnallocatedHeap => "F, Unallocated heap memory"
+    | VT N => "Not a heap pointer"
+    | VT (PointerWithColor l color) => (inj_loc "pointer to heap at location, malloc'ed at " l)    
+    | LT NotHeap  => "Not heap memory"
+    | LT UnallocatedHeap => "F, Unallocated heap memory"
     (* I don't think the fuzzer should know the color. They can change between runs *)
-    | L_AllocatedDirty l color => (inj_loc "allocated dirty memory at location " l)
-    | L_AllocatedWithColor l color => (inj_loc "allocated memory at location " l)
-    | V_PointerWithColor l color => (inj_loc "pointer to heap at location " l)        
+    | LT (AllocatedDirty l color) => (inj_loc "allocated dirty memory at  " l)
+    | LT (Allocated l color) => (inj_loc "allocated memory at " l)    
     (* @TODO maybe it would be nice to know the color for debugging the policy? *)
-    | PC_Extra colorcounter => "PC tag"
+    | PT (PC_Extra _ ) => "PC tag"
     end.
 
 (* boilerplate. Has to be reimplemented in each policy.
@@ -164,16 +225,6 @@ Definition print_tag (t : tag) : string :=
 
  (* Beginning of Policy Rules *)
 
- (* Required for policy interface. Not relevant to this particular policy, pass values through *)
- Definition CallT (l:loc) (pct pt: tag) : PolicyResult tag := PolicySuccess pct.
-
- (* Required for policy interface. Not relevant to this particular policy, pass values through *)
- Definition ArgT (l:loc) (pct pft vt : tag) (idx:nat) (ty: type) : PolicyResult (tag * tag) := PolicySuccess (pct, vt).
-
- (* Required for policy interface. Not relevant to this particular policy, pass values through *)
- (* pct_clr is pct of caller, pct_cle is callee *)
- Definition RetT (l:loc) (pct_clr pct_cle vt : tag) : PolicyResult (tag * tag) := 
-  PolicySuccess (pct_clr,vt).
 
 (* load == read
   Notes:
@@ -202,45 +253,38 @@ Definition print_tag (t : tag) : string :=
 
   *)
  (* Helper function for StoreT. Recursing over the tags in teh block *)
-  Fixpoint CheckforColorMatchOnLoad (ptr_color: Z) (ptr_l load_l:loc) (vt : tag) (lts : list tag) : PolicyResult tag :=
+  Fixpoint CheckforColorMatchOnLoad (ptr_color: Z) (ptr_l load_l:loc) (vt : val_tag) (lts : list loc_tag) : PolicyResult val_tag :=
   match lts with
   (* bc. hit end of list and all the tags are correct. Return success (based on pass through) *)
   | []   => (PolicySuccess vt)
   (* ic. recurse on a perfect match only  *)
   | h::t => (
     match h with 
-    (* the pointer points to something that is not memory, or *)
-    | N => PolicyFail (inj_loc "HeapProblem|| Pointer corruption|LoadT tried to read NA" load_l) lts
-    | L_NotHeap => PolicyFail (inj_loc "HeapProblem|| Pointer corruption|LoadT tried to read nonheap memory|" load_l) [h]
-    | L_UnallocatedHeap => PolicyFail (inj_loc "HeapProblem|| Pointer corruption|LoadT tried to read unallocated heap memory|" load_l) [h]
+    | NotHeap => PolicyFail (inj_loc "HeapProblem|| Pointer corruption|LoadT tried to read nonheap memory|" load_l) [h]
+    | UnallocatedHeap => PolicyFail (inj_loc "HeapProblem|| Pointer corruption|LoadT tried to read unallocated heap memory|" load_l) [h]
     (* @TODO when we have "log with success" it will go here. 
         We also need to be able to write out the contents of memory to that log
         For now, we fail *)
-    | L_AllocatedDirty l2 c2 => PolicyFail (inj_loc "HeapProblem|| potential secret disclosure| Memory not yet written to is read" load_l) [h]
-    | L_AllocatedWithColor l2 c2  => (
+    | AllocatedDirty l2 c2 => PolicyFail (inj_loc "HeapProblem|| potential secret disclosure| Memory not yet written to is read" load_l) [h]
+    | Allocated l2 c2  => (
         (* if the color & the locations match, recurse on tail (caled t)*)
         if (Z.eqb c2 ptr_color) && (Cabs.loc_eqb l2 ptr_l)
         then (CheckforColorMatchOnLoad ptr_color ptr_l load_l vt t )
         (* right kind of tag, but this memory belongs to someone else *)
         else PolicyFail (inj_loc "HeapProblem|| Pointer corruption|LoadT tried to read memory with a different color|" load_l) [h]
       )
-    (* These should never be on a location tag. If they are, the policy writer has screwed up somewhere >.> *)
-    | (V_PointerWithColor l2 c2) => PolicyFail (inj_loc "HeapProblem|| LoadT Impossible case| Mem has ptr tag?! : " l2) [h]
-    | (PC_Extra _) => PolicyFail (inj_loc "HeapProblem|| LoadT Impossible case| Mem has PC tag : " load_l) [h]
     end
   )
   end.
 
- Definition LoadT (l:loc) (pct pt vt: tag) (lts : list tag) : PolicyResult tag := 
+ Definition LoadT (l:loc) (pct : control_tag) (pt vt: val_tag) (lts : list loc_tag) : PolicyResult val_tag := 
   match pt with 
   (* location the ptr was assigned memory != location of this load *)
-  | V_PointerWithColor ptr_l ptr_color => (CheckforColorMatchOnLoad ptr_color ptr_l l vt lts)
+  | PointerWithColor ptr_l ptr_color => (CheckforColorMatchOnLoad ptr_color ptr_l l vt lts)
   | _ => PolicyFail (inj_loc "HeapProblem|| LoadT tried to load an invalid pointer tag " l) [pct;pt;vt] 
   end.
   
-
-(* Store == write
-    base on policy in the paper 
+(* Store == write. based on policy in the paper 
     l - loc 
     pct - pc tag
     pt - the value on the pointer that youre storing to
@@ -253,42 +297,10 @@ Definition print_tag (t : tag) : string :=
     lts should be the same color, either dirty or clean, 
     if its not the same color 
       actively detect 
-      there is also a lazy version, but its aimed at performance, and i want to know exactly is happening
-          https://ic.ese.upenn.edu/pdf/stack_ieeesp2018.pdf points out that sometimes big chunks get alloced but not used
     *)
  
- Fixpoint CheckforColorMatchOnStore (ptr_color: Z) (ptr_l store_l :loc) (pct vt : tag) (lts : list tag) : PolicyResult (tag * tag * list tag) :=
-  match lts with
-    (* this case is not quite correct, but it will be overwritten by ConvertDirtyAllocOnStore*)
-  | [] => PolicySuccess (pct,vt,lts)
-  | h::t => (
-      match h with
-      | N => PolicyFail (inj_loc "HeapProblem|| Pointer corruption |StoreT tried to write to an NA. Nonsense pointer?" store_l) lts
-      | L_NotHeap => PolicyFail (inj_loc "HeapProblem|| Pointer corruption |StoreT tried to write nonheap memory|" store_l) [h]
-      | L_UnallocatedHeap => PolicyFail (inj_loc "HeapProblem|| Pointer corruption|StoreT tried to write unallocated heap memory|" store_l) [h]
-    
-      | (L_AllocatedDirty l2 c2) => (
-        (* sigh. pure languages are a bad fit for impure problems *)
-        if (Z.eqb c2 ptr_color) && (Cabs.loc_eqb l2 ptr_l)
-        then (CheckforColorMatchOnStore ptr_color ptr_l store_l pct vt t)
-        else PolicyFail (inj_loc "HeapProblem|| Pointer corruption |StoreT tried to write (dirty) memory with a different color|" store_l) [h]
-        )
-      | (L_AllocatedWithColor l2 c2)  => (
-          (* if the color & the locations match, recurse on tail (caled t)*)
-          if (Z.eqb c2 ptr_color) && (Cabs.loc_eqb l2 ptr_l)
-          then (CheckforColorMatchOnStore ptr_color ptr_l store_l pct vt t )
-          (* right kind of tag, but this memory belongs to someone else *)
-          else PolicyFail (inj_loc "HeapProblem|| Pointer corruption |StoreT tried to write memory with a different color|" store_l) [h]
-        )
-      (* These should never be on a location tag. If they are, the policy writer has screwed up somewhere >.> *)
-      | (V_PointerWithColor l2 c2) => PolicyFail (inj_loc "HeapProblem|| StoreT Impossible case| Mem has ptr tag?! : " l2) [h]
-      | (PC_Extra _) => PolicyFail (inj_loc "HeapProblem|| StoreT Impossible case| Mem has PC tag : " store_l) [h]
-      end   
-  ) 
-  end. 
-
- (* assumes the CheckforColorMatch on Store *)
- Fixpoint ConvertDirtyAllocOnStore (pct vt : tag) (cur_lts new_lts : list tag) (checkres : PolicyResult (tag * tag * list tag)) 
+(* Helper function for StoreT. Assumes the CheckforColorMatch has already been called *)
+Fixpoint ConvertDirtyAllocOnStore (pct vt : tag) (cur_lts new_lts : list tag) (checkres : PolicyResult (tag * tag * list tag)) 
     : PolicyResult (tag * tag * list tag) 
     :=
     match checkres with
@@ -305,29 +317,67 @@ Definition print_tag (t : tag) : string :=
     )
     | PolicyFail _ _ => checkres (* if we already failed, pass it on *)
     end. 
+(* Helper function for StoreT. Checks that the tags in lts are the right type & color *) 
+Fixpoint CheckforColorMatchOnStore (ptr_color: Z) (ptr_l store_l :loc) (pct : control_tag) (vt : val_tag) (lts : list loc_tag) : PolicyResult (control_tag * val_tag * list loc_tag):=
+  match lts with
+    (* this case is not quite correct, but it will be overwritten by ConvertDirtyAllocOnStore*)
+  | [] => PolicySuccess (pct,vt,lts)
+  | h::t => (
+      match h with
+      | NotHeap => PolicyFail (inj_loc "HeapProblem|| Pointer corruption |StoreT tried to write nonheap memory|" store_l) [h]
+      | UnallocatedHeap => PolicyFail (inj_loc "HeapProblem|| Pointer corruption|StoreT tried to write unallocated heap memory|" store_l) [h]
+    
+      | (AllocatedDirty l2 c2) => (
+        (* sigh. pure languages are a bad fit for impure problems *)
+        if (Z.eqb c2 ptr_color) && (Cabs.loc_eqb l2 ptr_l)
+        then (CheckforColorMatchOnStore ptr_color ptr_l store_l pct vt t)
+        else PolicyFail (inj_loc "HeapProblem|| Pointer corruption |StoreT tried to write (dirty) memory with a different color|" store_l) [h]
+        )
+      | (Allocated l2 c2)  => (
+          (* if the color & the locations match, recurse on tail (caled t)*)
+          if (Z.eqb c2 ptr_color) && (Cabs.loc_eqb l2 ptr_l)
+          then (CheckforColorMatchOnStore ptr_color ptr_l store_l pct vt t )
+          (* right kind of tag, but this memory belongs to someone else *)
+          else PolicyFail (inj_loc "HeapProblem|| Pointer corruption |StoreT tried to write memory with a different color|" store_l) [h]
+        )
+      end   
+  ) 
+  end. 
 
- Definition StoreT (l:loc) (pct pt vt : tag) (lts : list tag) : PolicyResult (tag * tag * list tag) := 
+ (* assumes the CheckforColorMatch on Store *)
+ Fixpoint ConvertDirtyAllocOnStore (pct: control_tag) (vt : val_tag) (cur_lts new_lts : list loc_tag) (checkres : PolicyResult (control_tag * val_tag * list loc_tag)) 
+    : PolicyResult (control_tag * val_tag * list loc_tag)
+    :=
+    match checkres with
+    | PolicySuccess _ => (
+      match cur_lts with
+      | [] => PolicySuccess (pct, vt, new_lts)
+      | h::t => (
+        match h with
+        | (AllocatedDirty l2 c2) => ConvertDirtyAllocOnStore pct vt t (new_lts ++ [(L_Allocated l2 c2)]) checkres
+        | _ => ConvertDirtyAllocOnStore pct vt t (new_lts ++ [h]) checkres
+        end
+        )
+      end
+    )
+    | PolicyFail _ _ => checkres (* if we already failed, pass it on *)
+    end. 
+
+ Definition StoreT (l:loc) (pct : control_tag) (pt vt : val_tag) (lts : list loc_tag) : PolicyResult (control_tag * val_tag * list loc_tag) := 
   match pt with 
   (* we need to know the pointer's location and the store operations location if something goes wrong *)
-  | V_PointerWithColor ptr_l ptr_color => (
+  | PointerWithColor ptr_l ptr_color => (
       ConvertDirtyAllocOnStore pct vt lts [] (CheckforColorMatchOnStore ptr_color ptr_l l pct vt lts)
     )
-  | _ => PolicyFail (inj_loc "HeapProblem|| StoreT tried to write through an invalid pointer tag " l) [pct;pt;vt] 
+  (*probably shouldn't write through an N *)
+  | N => PolicyFail (inj_loc "HeapProblem|| StoreT tried to write through an invalid pointer tag " l) [pct;pt;vt] 
   end.
 
- (* Required for policy interface. Not relevant to this particular policy, pass values through *)
- Definition AccessT (l:loc) (pct vt : tag) : PolicyResult tag := 
-  PolicySuccess vt.
-
- (* Required for policy interface. Not relevant to this particular policy, pass values through *)
- (* vt1 is lhs, vt2 is rhs *)
- Definition AssignT (l:loc) (pct vt1 vt2 : tag) : PolicyResult (tag * tag) := 
-  PolicySuccess (pct,vt2).
 
  (*
   There is only one unary operation that is reasonably applied to pointers
  *)
- Definition UnopT (l:loc) (op : unary_operation) (pct vt : tag) : PolicyResult (tag * tag) := 
+ Definition UnopT (l:loc) (op : unary_operation) (pct: control_tag) (vt : val_tag) : PolicyResult (control_tagtag * val_tag) := 
   match op with
     | Onotbool (* boolean negation ([!] in C) *)
         (* used sometimes to convert pointer into a bool 
@@ -339,7 +389,7 @@ Definition print_tag (t : tag) : string :=
           pointers and leave everything else alone *)
         => (
           match vt with
-          | V_PointerWithColor _ _ => PolicySuccess (pct, N)
+          | PointerWithColor _ _ => PolicySuccess (pct, N)
           | _ => PolicySuccess (pct, vt)
           end
         )
@@ -348,7 +398,7 @@ Definition print_tag (t : tag) : string :=
           pointers and leave everything else alone *)
         => (
           match vt with
-          | V_PointerWithColor _ _ => PolicySuccess (pct, N)
+          | PointerWithColor _ _ => PolicySuccess (pct, N)
           | _ => PolicySuccess (pct, vt)
           end
         )
@@ -357,15 +407,15 @@ Definition print_tag (t : tag) : string :=
           pointers and leave everything else alone *)
         => (
           match vt with
-          | V_PointerWithColor _ _ => PolicySuccess (pct, N)
+          | PointerWithColor _ _ => PolicySuccess (pct, N)
           | _ => PolicySuccess (pct, vt)
           end
         )
   end.
   
-  (* @TODO  propagate mem tags 
-    the paper heap policy propagates colors of pointers. 
-    The exact rules aren't clear. 
+(* @TODO WIP propagate mem tags 
+the paper heap policy propagates colors of pointers. 
+The exact rules aren't clear. 
 
     Guidelines
     PC, L tags should never show up in the bin ops 
@@ -373,50 +423,79 @@ Definition print_tag (t : tag) : string :=
     Allow lots of things but turn nonsense into Ns
     
     *)
- Definition BinopT (l:loc) (op : binary_operation) (pct vt1 vt2 : tag) : PolicyResult (tag * tag) := 
+ Definition BinopT (l:loc) (op : binary_operation) (pct: control_tag) (vt1 vt2 : val_tag) : PolicyResult (control_tag * val_tag) := 
  (*
   match op with
+    (* classic arthimetic ops *)
     | Oadd (* addition (binary [+]) *)
-        (* should preserve. additions of num+pointer = pointer *)
-        => 
+           (* should preserve pointerness *)
+        => (
+          match vt1, vt2 with 
+          | (V_PointerWithColor _ _), N => PolicySuccess (pct, vt1) (* ptr + num = ptr*)
+          |  N, (V_PointerWithColor _ _) => PolicySuccess (pct, vt2) (* num + ptr = ptr*)
+          |  _ , _ => PolicySuccess (pct, vt2) (* anything else, default behavior*)
+          end
+        )
     | Osub (* subtraction (binary [-]) *)
-        (* pointer - pointer = N
-           pointer - number = number 
-           number - pointer = nonsense? N ? *)
-        => 
+           (* some should preserve pointerness *)
+        => (
+          match vt1, vt2 with 
+          | (V_PointerWithColor _ _), (V_PointerWithColor _ _) => PolicySuccess (pct, N) (*ptr - ptr = num (N) *)
+          | (V_PointerWithColor _ _), N => PolicySuccess (pct, vt1) (* ptr - num = ptr *)
+          |  N, (V_PointerWithColor _ _) => PolicySuccess(pct, N) (* num - ptr = num (N)*)
+          |  _ , _ => PolicySuccess (pct, vt2) (*anything else, default behavior*)
+          end
+        )
     | Omul (* multiplication (binary [*]) *)
-        (* multiplication with a ptr is nonsense. turn nonsense into Ns *)
-        => 
+           (* multiplication with a ptr is nonsense. turn nonsense into Ns *)
     | Odiv (* division ([/]) *)
-        (* division with a ptr is nonsense. turn nonsense into Ns *)
-        => 
+           (* division anything with a ptr is nonsense. turn nonsense into Ns *)
+           =>  (
+            match vt1, vt2 with 
+            | (V_PointerWithColor _ _), (V_PointerWithColor _ _) => PolicySuccess (pct, N) 
+            | (V_PointerWithColor _ _), N => PolicySuccess (pct, N)
+            |  N, (V_PointerWithColor _ _) => PolicySuccess(pct, N)
+            |  _ , _ => PolicySuccess (pct, vt2) (*anything else, default behavior*)
+            end
+          )
     | Omod (* remainder ([%]) *)
-        => 
+           (* I think I've seen code mask off bits using % 8 to grab flags in the lower order. 
+              good idea? no. legal? yes.
+              don't throw a tantrum, but strip pointerness *)
+        =>  (
+          match vt1, vt2 with 
+          | (V_PointerWithColor _ _), (V_PointerWithColor _ _) => PolicySuccess (pct, N) (* ptr % ptr = nonsense N*)
+          | (V_PointerWithColor _ _), N => PolicySuccess (pct, N) (* ptr % 8 = bit flag ? stil nums *)
+          |  N, (V_PointerWithColor _ _) => PolicySuccess(pct, N) (* num % ptr = nonsense *)
+          |  _ , _ => PolicySuccess (pct, vt2) (*anything else, default behavior*)
+          end
+        )
+    
+    (* bit arthemetic, often used with pointers *)
+    (* if one is pointer, and the other is not, stay pointer. if both are pointers, should become N *)
     | Oand (* bitwise and ([&]) *)
-        => 
     | Oor  (* bitwise or ([|]) *)
-        => 
     | Oxor (* bitwise xor ([^]) *)
-        => 
     | Oshl (* left shift ([<<]) *)
-        => 
     | Oshr (* right shift ([>>]) *)
-        => 
+        =>  (
+          match vt1, vt2 with 
+          | (V_PointerWithColor _ _), (V_PointerWithColor _ _) => PolicySuccess (pct, N) 
+          | (V_PointerWithColor _ _), N => PolicySuccess (pct, vt1)
+          |  N, (V_PointerWithColor _ _) => PolicySuccess(pct, vt2)
+          |  _ , _ => PolicySuccess (pct, vt2) (*anything else, default behavior*)
+          end
+        )
+    
+    (* Comparisons bin ops: ptr comparison is UB unless two pointers in same color *) 
+           (* keep pointerness in case they do dumb things 
+            with it.  TaggedC & ConcreteC would allow this.
+            *)
     | Oeq  (* comparison ([==]) *)
-        (* ==, !=, comparison is UB unless in same color *)
-        => 
     | One  (* comparison ([!=]) *)
-        (* ==, !=, comparison is UB unless in same color *) 
-        => 
     | Olt  (* comparison ([<]) *)
-        (* ==, !=, comparison is UB unless in same color *)
-        => 
     | Ogt  (* comparison ([>]) *)
-        (* ==, !=, comparison is UB unless in same color *)
-        => 
     | Ole  (* comparison ([<=]) *)
-        (* ==, !=, comparison is UB unless in same color *)
-        => 
     | Oge  (* comparison ([>=]) *)
         (* ==, !=, comparison is UB unless in same color *)
         => 
@@ -424,46 +503,6 @@ Definition print_tag (t : tag) : string :=
 
  *) 
  PolicySuccess (pct, vt2).
-
- (* Constants are never pointers to malloced memory. *)
- Definition ConstT (l:loc) (pct : tag) : PolicyResult tag := 
-  PolicySuccess N.
-
- (* Before pointer gets its value, it's not allocated *) 
- Definition InitT (l:loc) (pct : tag) : PolicyResult tag := 
-  PolicySuccess N.
-
- (* Required for policy interface. Not relevant to this particular policy, pass pct through *)
- Definition SplitT (l:loc) (pct vt : tag) (id : option ident) : PolicyResult tag := 
-  PolicySuccess pct.
-
- (* Required for policy interface. Not relevant to this particular policy, pass pct through *)
- Definition LabelT (l:loc) (pct : tag) (id : ident) : PolicyResult tag := 
-  PolicySuccess pct.
-
- (* Required for policy interface. Not relevant to this particular policy, pass pct through *)
- Definition ExprSplitT (l:loc) (pct vt : tag) : PolicyResult tag := 
-  PolicySuccess pct.
-
- (* Required for policy interface. Not relevant to this particular policy, pass pct through *)
- Definition ExprJoinT (l:loc) (pct vt : tag) : PolicyResult (tag * tag) := 
-  PolicySuccess (pct,vt).
-
- (* Required for policy interface. Not relevant to this particular policy, pass values through *)
- Definition GlobalT (ce : composite_env) (id : ident) (ty : type) : tag * tag * tag := 
-  (N, N, N).
- 
- (* Required for policy interface. Not relevant to this particular policy, pass values through *)
- Definition FunT (id : ident) (ty : type) :tag := N.
- 
- (* Required for policy interface. Not relevant to this particular policy, pass values through *)
- Definition LocalT (l:loc) (ce : composite_env) (pct : tag) (ty : type) : PolicyResult (tag * tag * (list tag))%type :=
-   PolicySuccess (N, N, [N]).
-
- (* Required for policy interface. Not relevant to this particular policy, pass values through *)
- (* NB this is for stack allocated variables. Not relevant to dynamic memory *)
- Definition DeallocT (l:loc) (ce : composite_env) (pct : tag) (ty : type) : PolicyResult (tag * tag * list tag) :=
-   PolicySuccess (pct, N, [N]).
 
  (* 
     MallocT uses the current counter to color the allocation, marking it as belonging to color currcolor.
@@ -479,7 +518,7 @@ Definition print_tag (t : tag) : string :=
       - pct is program counter tag
       - fptrt is the tag on the function pointer that is being called, often left defT
           In a world with multiple mallocs (like compartments) this is useful.
-      - st is the tag on the size
+      - st is the tag on the size, we don't use it 
     
       In the return tuple
       - pct' new program counter tag, counter increased
@@ -491,12 +530,12 @@ Definition print_tag (t : tag) : string :=
            Free in this policy does not look at these at all, so it does not really
            matter was value goes here. 
   *)
-  Definition MallocT (l:loc) (pct fptrt st : tag) : PolicyResult (tag * tag * tag * tag * tag) :=
+  Definition MallocT (l:loc) (pct: control_tag)  (fptrt st : val_tag) : PolicyResult (control_tag * val_tag * val_tag * val_tag * loc_tag) :=
    match pct with
    | PC_Extra currcolor => (
       (* PolicySuccess (pct', pt, vtb, vht', lt) *)
-      PolicySuccess ((PC_Extra (currcolor +1 )), (V_PointerWithColor l currcolor), N, 
-          (L_AllocatedDirty l currcolor), (L_AllocatedDirty l currcolor))
+      PolicySuccess ((PC_Extra (currcolor +1 )), (VT PointerWithColor l currcolor), N, 
+          (LT AllocatedDirty l currcolor), (LT AllocatedDirty l currcolor))
    )
    | _ => PolicyFail (inj_loc "HeapProblem|| MallocT Impossible case| Something bad has gotten into the pc tag: " l) [pct;fptrt;st]
    end.
@@ -527,72 +566,74 @@ Definition print_tag (t : tag) : string :=
     - pct is the color of the 2nd/current free
  *)
  Definition FreeT (l:loc) (pct fptrt pt vht : tag) : PolicyResult (tag * tag * tag * tag) :=
-  match vht with 
+  match pt, vht with 
     (* code probably did something wrong *)
-    | N => PolicyFail (inj_loc "HeapProblem||FreeT detects free of nonmemory | " l) [pct;fptrt;pt;vht]
-    | L_NotHeap => PolicyFail (inj_loc "HeapProblem||FreeT detects free of memory not in the heap| " l) [pct;fptrt;pt;vht]
-    | L_UnallocatedHeap => PolicyFail (inj_loc "HeapProblem||FreeT detects free of unallocated heap memory| " l) [pct;fptrt;pt;vht]
+    | V_PointerWithColor _ _, N => PolicyFail (inj_loc "HeapProblem||FreeT detects free of nonmemory | " l) [pct;fptrt;pt;vht]
+    | V_PointerWithColor _ _, L_NotHeap => PolicyFail (inj_loc "HeapProblem||FreeT detects free of memory not in the heap| " l) [pct;fptrt;pt;vht]
+    | V_PointerWithColor _ _, L_UnallocatedHeap => PolicyFail (inj_loc "HeapProblem||FreeT detects free of unallocated heap memory| " l) [pct;fptrt;pt;vht]
 
     (* You can legally malloc, never use it and free, though it is a waste *)
-    | L_AllocatedDirty l mem_c => (
-      match pt with
-      | V_PointerWithColor l ptr_c => (
-          if (Z.eqb ptr_c mem_c) then
-                          (* (pct', vtb, vth', lt) *)
-            PolicySuccess (pct, N, L_UnallocatedHeap, L_UnallocatedHeap)
-          else 
-            PolicyFail (inj_loc "HeapProblem|| FreeT tried to free someone else's allocated memory" l) [pct;fptrt;pt;vht]
-      )
-      | _ => PolicyFail (inj_loc "HeapProblem|| FreeT tried to free a nonpointer " l) [pct;fptrt;pt;vht]
-      end
-    )
-    
-    | L_AllocatedWithColor l mem_c => (
-      match pt with
-      | V_PointerWithColor l ptr_c => (
-          if (Z.eqb ptr_c mem_c) then
-                          (* (pct', vtb, vth', lt) *)
-            PolicySuccess (pct, N, L_UnallocatedHeap, L_UnallocatedHeap)
-          else 
-            PolicyFail (inj_loc "HeapProblem|| FreeT tried to free someone else's allocated memory " l) [pct;fptrt;pt;vht]
-      )
-      | _ => PolicyFail (inj_loc "HeapProblem|| FreeT tried to free a nonpointer " l) [pct;fptrt;pt;vht]
-      end
-    )
+    | V_PointerWithColor ptr_l ptr_c, L_AllocatedDirty mem_l mem_c => 
+        if ((Z.eqb ptr_c mem_c) && (Cabs.loc_eqb ptr_l mem_l)) then
+                        (* (pct', vtb, vth', lt) *)
+          PolicySuccess (pct, N, L_UnallocatedHeap, L_UnallocatedHeap)
+        else 
+          (* @TODO this one could probably use all 3 locations printed eventually *)
+          PolicyFail (inj_loc "HeapProblem|| FreeT tried to free someone else's allocated memory " l) [pct;fptrt;pt;vht]
 
+    | V_PointerWithColor ptr_l ptr_c, L_AllocatedWithColor mem_l mem_c => (
+        if ((Z.eqb ptr_c mem_c) && (Cabs.loc_eqb ptr_l mem_l)) then
+                        (* (pct', vtb, vth', lt) *)
+          PolicySuccess (pct, N, L_UnallocatedHeap, L_UnallocatedHeap)
+        else 
+          (* @TODO this one could probably use all 3 locations printed eventually *)
+          PolicyFail (inj_loc "HeapProblem|| FreeT tried to free someone else's allocated memory " l) [pct;fptrt;pt;vht]
+        )
     (* I probably did something wrong. PC_Extra, V_PointerWithColor should never be in vht*)
-    | _ =>  PolicyFail (inj_loc "HeapProblem|| FreeT Impossible case| Something bad has gotten into the block header: " l) [pct;fptrt;pt;vht]
+    | _ , _ =>  PolicyFail (inj_loc "HeapProblem|| FreeT Misuse| FreeT tried to free a nonpointer : " l) [pct;fptrt;pt;vht]
   end.
 
- (* Required for policy interface. Not relevant to this particular policy, pass values through *)
- Definition BuiltinT (l:loc) (fn : string) (pct : tag) (args : list tag) : PolicyResult tag := 
-  PolicySuccess pct.
 
- (* Required for policy interface. Not relevant to this particular policy, pass values through *)
- Definition FieldT (l:loc) (ce : composite_env) (pct vt : tag) (ty : type) (id : ident) : PolicyResult tag := 
-  PolicySuccess vt.
+ (* These are required, but cannot pass through because they don't get tags to start with.
+    In other words, they have to make tags out of thin air. *)
+ 
+ (* Constants are never pointers to malloced memory. *)
+ Definition ConstT (l:loc) (pct : control_tag) : PolicyResult val_tag := PolicySuccess N.
 
- (* 
-    I think we should not strip pointness during casting for now. 
-   Be wary of the lessons of coverity and not lose the
-        vulnerabilites in a haystack of errors.
- *)
+ (* NB this is for stack allocated variables. Not relevant to dynamic memory *)
+ Definition DeallocT (l:loc) (ce : composite_env) (pct : control_tag) (ty : type) :
+    PolicyResult (control_tag * val_tag * loc_tag) := PolicySuccess (pct, N, tt).
+
+ Definition GlobalT (ce : composite_env) (id : ident) (ty : type) :
+   val_tag * val_tag * loc_tag := (N, N, tt).
  
  (* Required for policy interface. Not relevant to this particular policy, pass values through *)
- Definition PICastT (l:loc) (pct pt : tag)  (lts : list tag) (ty : type) : PolicyResult tag := 
-  PolicySuccess pt.
+ Definition FunT (ce: composite_env) (id : ident) (ty : type) : val_tag := N.
 
  (* Required for policy interface. Not relevant to this particular policy, pass values through *)
- Definition IPCastT (l:loc) (pct vt : tag)  (lts : list tag) (ty : type) : PolicyResult tag := 
-  PolicySuccess vt.
+ Definition LocalT (l:loc) (ce : composite_env) (pct : control_tag) (ty : type) :
+   PolicyResult (control_tag * val_tag * (list loc_tag))%type :=
+   PolicySuccess (tt, N, []).
+
+ Definition ExtCallT (l:loc) (fn : string) (pct : control_tag) (args : list val_tag)
+   : PolicyResult (control_tag*val_tag) :=
+   PolicySuccess (pct,N).
  
- (* Required for policy interface. Not relevant to this particular policy, pass values through *)
- Definition PPCastT (l:loc) (pct vt : tag) (lts1 lts2 : list tag) (ty : type) : PolicyResult tag := 
-  PolicySuccess vt.
+   (* Passthrough rules *)
+  Definition CallT := (fun l pct fpt => PolicySuccess (Passthrough.CallT val_tag control_tag l pct fpt)).  
+  Definition ArgT := (fun l pct fpt vt idx ty => PolicySuccess (Passthrough.ArgT val_tag control_tag l pct fpt vt idx ty)).
+  Definition RetT := (fun l pct1 pct2 vt => PolicySuccess (Passthrough.RetT val_tag control_tag l pct1 pct2 vt)).
+  Definition AccessT := (fun l pct vt => PolicySuccess (Passthrough.AccessT val_tag control_tag l pct vt)).
+  Definition AssignT := (fun l pct vt1 vt2 => PolicySuccess (Passthrough.AssignT val_tag control_tag l pct vt1 vt2)).
+  Definition LoadT := (fun l pct pt vt lts => PolicySuccess (Passthrough.LoadT val_tag control_tag loc_tag l pct pt vt lts)).
+  Definition StoreT := (fun l pct pt vt lts => PolicySuccess (Passthrough.StoreT val_tag control_tag loc_tag l pct pt vt lts)).
+  Definition SplitT := (fun lldT := (fun l ce pct vt id ty => PolicySuccess (Passthrough.FieldT val_tag control_tag l ce pct vt id ty))).
+  (* Allowing these to pass through for now *)
+  Definition PICastT := (fun l pct pt lts ty => PolicySuccess (Passthrough.PICastT val_tag control_tag loc_tag l pct pt lts ty)).
+  Definition IPCastT := (fun l pct vt lts ty => PolicySuccess (Passthrough.IPCastT val_tag control_tag loc_tag l pct vt lts ty)).
+  Definition PPCastT := (fun l pct pt lts1 lts2 ty => PolicySuccess (Passthrough.PPCastT val_tag control_tag loc_tag l pct pt lts1 lts2 ty)).
+  Definition IICastT := (fun l pct vt ty => PolicySuccess (Passthrough.IICastT val_tag control_tag l pct vt ty)).
 
- (* Required for policy interface. Not relevant to this particular policy, pass values through *)
- Definition IICastT (l:loc) (pct vt : tag) (ty : type) : PolicyResult tag := 
-  PolicySuccess vt.
 
 End HeapProblem
 .
