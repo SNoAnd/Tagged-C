@@ -6,7 +6,7 @@
  *      overwrites, and secret recovery from memory that has been correctly freed but not cleaned
  *      or overwritten so the secret can be recovered by the next legal owner. 
  *  This policy operates very similiarly to the one discussed in "Micro-Policies: Formally Verified, Tag-Based Security Monitors"
- *      https://ieeexplore.ieee.org/document/7163062 , with an additional feature of tagging memory that has been 
+ *      https://ieeexplore.ieee.org/document/7163062 , with an additional feature of tagging memory that has been  APT:???
  * 
  * Problem: 
  *   A "heap leak" is very ambigous. There are at least 5 types, 3 of which this policy covers:
@@ -24,7 +24,7 @@
  *   (1)(2) are things that SOTA fuzzers can reasonably detect when augmented with 
  *         sanitizers like ASAN. However they cannot usually tell (1) and (2) apart from
  *         each other or from other segfaulting conditions. 
- *         Santitizers are not always availabe either.
+ *         Santitizers are not always available either.
  *   (4) No fuzzer currently detects secret recovery from dirty heap memory as far as I know.
  * 
  * Related Work:
@@ -45,6 +45,7 @@
  *  - When memory is allocated via MallocT
  *      - the value tag on the pointer is colored with the location of the malloc and the current color from the pc tag
  *      - the location tags on the block are marked with the same location + color, marked AllocatedDirty (to detect Heap Problem #4)
+ *     APT: Including the header location tag??
  *      - color counter is increased
  *  - When memory is written via StoreT
  *      - If pt is not a pointer tag, error
@@ -73,6 +74,7 @@
  *      - If the header tag is N, L_NotHeap, or L_UnallocatedHeap, fail
  *      - If the header tag is AllocatedDirty, or AllocatedwithColor and the location+color are the same, success
  *      - If the header tag is Allocated, but the location+color do not match, that is heap corruption.
+ *      APT: What happens to the location tags on the header and data? 
  *  - Binary Operations & Unary Operations
  *      - most of the unary ones don't make a lot of sense with pointers 
  *      - classic arthimetic ops that make sense with ptrs preserve pointerness
@@ -157,8 +159,8 @@ Module HeapProblem <: Policy.
           needs the color to 
                             should match the AllocatedWithColor of the block
                             not totally sure if I need a seperate type,
-                            but i think i need to know when its the block and
-                            when its the pointer
+                            but i think i need to know when its the block and   
+                            when its the pointer    APT:??
                             loc is the location of hte malloc *)
                 
   | PC_Extra(colorcounter: Z) 
@@ -184,6 +186,8 @@ Module HeapProblem <: Policy.
  Definition inj_loc (s:string) (l:loc) : string :=
   s ++ " " ++ (print_loc l).
 
+ (* APT: Maybe good to say "code location" or "source location" to avoid confusion
+    with the *memory* location of the allocation/read/write. *)
 Definition print_tag (t : tag) : string :=
     match t with
     | N => "NonApplicable for heap"
@@ -241,12 +245,12 @@ Definition print_tag (t : tag) : string :=
     - lts - tags on bytes in memory
 
   Upon success, returns 
-  - vt', new value tag on the memory being loaded 
+  - vt', new value tag on the memory (APT: no, value)  being loaded 
 
   Failures, except for N, will include the h node
 
   *)
- (* Helper function for StoreT. Recursing over the tags in teh block, checkinf for type & color *)
+ (* Helper function for StoreT. (APT: LoadT)  Recursing over the tags in the block, checking for type & color *)
   Fixpoint CheckforColorMatchOnLoad (ptr_color: Z) (ptr_l load_l:loc) (vt : tag) (lts : list tag) : PolicyResult tag :=
   match lts with
   (* bc. hit end of list and all the tags are correct. Return success (based on pass through) *)
@@ -262,9 +266,10 @@ Definition print_tag (t : tag) : string :=
         We also need to be able to write out the contents of memory to that log
         For now, we fail *)
     | L_AllocatedDirty l2 c2 => PolicyFail (inj_loc "HeapProblem|| potential secret disclosure| Memory not yet written to is read" load_l) [h]
+                                                          (* APT: ^ a little misleading: this is a almost certainly a bug even if there is no secret involved *)                                           
     | L_AllocatedWithColor l2 c2  => (
-        (* if the color & the locations match, recurse on tail (caled t)*)
-        if (Z.eqb c2 ptr_color) && (Cabs.loc_eqb l2 ptr_l)
+        (* if the color & the locations match, recurse on tail (called t)*)
+        if (Z.eqb c2 ptr_color) && (Cabs.loc_eqb l2 ptr_l)    (* APT: Why match on location too? If colors are equal, locations must be, right? Same question throughout...*)
         then (CheckforColorMatchOnLoad ptr_color ptr_l load_l vt t )
         (* right kind of tag, but this memory belongs to someone else *)
         else PolicyFail (inj_loc "HeapProblem|| Pointer corruption|LoadT tried to read memory with a different color|" load_l) [h]
@@ -329,13 +334,14 @@ Fixpoint CheckforColorMatchOnStore (ptr_color: Z) (ptr_l store_l :loc) (pct vt :
     
       | (L_AllocatedDirty l2 c2) => (
         (* sigh. pure languages are a bad fit for impure problems *)
-        if (Z.eqb c2 ptr_color) && (Cabs.loc_eqb l2 ptr_l)
+        if (Z.eqb c2 ptr_color) && (Cabs.loc_eqb l2 ptr_l)  (* APT: again, why check loc too? *)
         then (CheckforColorMatchOnStore ptr_color ptr_l store_l pct vt t)
         else PolicyFail (inj_loc "HeapProblem|| Pointer corruption |StoreT tried to write (dirty) memory with a different color|" store_l) [h]
         )
       | (L_AllocatedWithColor l2 c2)  => (
-          (* if the color & the locations match, recurse on tail (caled t)*)
-          if (Z.eqb c2 ptr_color) && (Cabs.loc_eqb l2 ptr_l)
+          (* APT: could share this case arm with the previous one *)                                          
+          (* if the color & the locations match, recurse on tail (called t)*)
+          if (Z.eqb c2 ptr_color) && (Cabs.loc_eqb l2 ptr_l)   (* APT: ditto above *)
           then (CheckforColorMatchOnStore ptr_color ptr_l store_l pct vt t )
           (* right kind of tag, but this memory belongs to someone else *)
           else PolicyFail (inj_loc "HeapProblem|| Pointer corruption |StoreT tried to write memory with a different color|" store_l) [h]
@@ -349,6 +355,7 @@ Fixpoint CheckforColorMatchOnStore (ptr_color: Z) (ptr_l store_l :loc) (pct vt :
 
  Definition StoreT (l:loc) (pct pt vt : tag) (lts : list tag) : PolicyResult (tag * tag * list tag) := 
   match pt with 
+    (* APT: I think there are better ways to structure this code. Let's discuss. *)
   (* we need to know the pointer's location and the store operations location if something goes wrong *)
   | V_PointerWithColor ptr_l ptr_color => (
       ConvertDirtyAllocOnStore pct vt lts [] (CheckforColorMatchOnStore ptr_color ptr_l l pct vt lts)
@@ -413,7 +420,7 @@ Allow lots of things but turn nonsense into Ns
           match vt1, vt2 with 
           | (V_PointerWithColor _ _), N => PolicySuccess (pct, vt1) (* ptr + num = ptr*)
           |  N, (V_PointerWithColor _ _) => PolicySuccess (pct, vt2) (* num + ptr = ptr*)
-          |  _ , _ => PolicySuccess (pct, vt2) (* anything else, default behavior*)
+          |  _ , _ => PolicySuccess (pct, vt2) (* anything else, default behavior*)  (* APT: I think it would be better to strip pointerness on ptr + ptr *)
           end
         )
     | Osub (* subtraction (binary [-]) *)
@@ -423,7 +430,7 @@ Allow lots of things but turn nonsense into Ns
           | (V_PointerWithColor _ _), (V_PointerWithColor _ _) => PolicySuccess (pct, N) (*ptr - ptr = num (N) *)
           | (V_PointerWithColor _ _), N => PolicySuccess (pct, vt1) (* ptr - num = ptr *)
           |  N, (V_PointerWithColor _ _) => PolicySuccess(pct, N) (* num - ptr = num (N)*)
-          |  _ , _ => PolicySuccess (pct, vt2) (*anything else, default behavior*)
+          |  _ , _ => PolicySuccess (pct, vt2) (*anything else, default behavior*)  (* APT: but necessarily vt2 = N here, right? *)
           end
         )
     | Omul (* multiplication (binary [*]) *)
@@ -445,7 +452,7 @@ Allow lots of things but turn nonsense into Ns
         =>  (
           match vt1, vt2 with 
           | (V_PointerWithColor _ _), (V_PointerWithColor _ _) => PolicySuccess (pct, N) (* ptr % ptr = nonsense N*)
-          | (V_PointerWithColor _ _), N => PolicySuccess (pct, N) (* ptr % 8 = bit flag ? stil nums *)
+          | (V_PointerWithColor _ _), N => PolicySuccess (pct, N) (* ptr % 8 = bit flag ? stil nums *) 
           |  N, (V_PointerWithColor _ _) => PolicySuccess(pct, N) (* num % ptr = nonsense *)
           |  _ , _ => PolicySuccess (pct, vt2) (*anything else, default behavior*)
           end
@@ -456,7 +463,7 @@ Allow lots of things but turn nonsense into Ns
     | Oand (* bitwise and ([&]) *)
     | Oor  (* bitwise or ([|]) *)
     | Oxor (* bitwise xor ([^]) *)
-    | Oshl (* left shift ([<<]) *)
+    | Oshl (* left shift ([<<]) *)   (* APT: For shifts, if second arg is pointer, this is nonsense and should become N *)
     | Oshr (* right shift ([>>]) *)
         =>  (
           match vt1, vt2 with 
@@ -468,9 +475,11 @@ Allow lots of things but turn nonsense into Ns
         )
     
     (* Comparisons bin ops: ptr comparison is UB unless two pointers in same color *) 
+              (* APT: no: eq and ne are never UB *)
            (* keep pointerness in case they do dumb things 
             with it.  TaggedC & ConcreteC would allow this.
             *)
+  (* APT: Result of all of these is always N (encoding a boolean) *)
     | Oeq  (* comparison ([==]) *)
     | One  (* comparison ([!=]) *)
     | Olt  (* comparison ([<]) *)
@@ -484,8 +493,9 @@ Allow lots of things but turn nonsense into Ns
               then PolicySuccess (pct, vt1)
               else (
                 (* @TODO this is very suss, UB, when there is a log, log it *)
-                (* choice of color to pass on is arbitrary *)
-                PolicySuccess (pct, vt2)
+                  (* APT: not as suspect as all that. Not sure worth logging this case *)
+                (* choice of color to pass on is arbitrary APT: no: see above *)
+                PolicySuccess (pct, vt2) 
               )
             )
             (* @TODO this is very suss, UB, when there is a log, log it *)
@@ -557,6 +567,7 @@ Allow lots of things but turn nonsense into Ns
       - pct' new program counter tag, counter increased
       - pt new tag on the pointer returned from malloc, colored.
       - vtb - vt body - tag on values written, 00s usually. These won't tell you if something is alloc
+        (APT: this needs to synch with the concrete allocator code, which (I think) shouldn't be writing anything to the body)
       - vth - vt header - tag on "header" or index -1, above what pointer points to 
       - lt new location (in memory) tag, this now painted as allocated memory across
            whole region. Even though it's 1 tag, it affects all tags in the buffer.
@@ -607,7 +618,7 @@ Allow lots of things but turn nonsense into Ns
 
     (* You can legally malloc, never use it and free, though it is a waste *)
     | V_PointerWithColor ptr_l ptr_c, L_AllocatedDirty mem_l mem_c => 
-        if ((Z.eqb ptr_c mem_c) && (Cabs.loc_eqb ptr_l mem_l)) then
+        if ((Z.eqb ptr_c mem_c) && (Cabs.loc_eqb ptr_l mem_l)) then 
                         (* (pct', vtb, vth', lt) *)
           PolicySuccess (pct, N, L_UnallocatedHeap, L_UnallocatedHeap)
         else 
@@ -615,6 +626,7 @@ Allow lots of things but turn nonsense into Ns
           PolicyFail (inj_loc "HeapProblem|| FreeT tried to free someone else's allocated memory " l) [pct;fptrt;pt;vht]
 
     | V_PointerWithColor ptr_l ptr_c, L_AllocatedWithColor mem_l mem_c => (
+        (* APT: can merge with case above *)                                                                           
         if ((Z.eqb ptr_c mem_c) && (Cabs.loc_eqb ptr_l mem_l)) then
                         (* (pct', vtb, vth', lt) *)
           PolicySuccess (pct, N, L_UnallocatedHeap, L_UnallocatedHeap)
