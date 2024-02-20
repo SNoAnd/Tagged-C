@@ -7,6 +7,7 @@ Require Import String.
 
 Module PolicyInsensitivity (Ptr: Pointer) (Pol1: Policy) (Pol2: Policy)
        (M: Memory Ptr) (A: Allocator Ptr).
+  Module Ctop := Ctop Ptr.
   Module M1 := M Pol1.
   Module M2 := M Pol2.
   Module A1 := A Pol1 M1.
@@ -15,6 +16,7 @@ Module PolicyInsensitivity (Ptr: Pointer) (Pol1: Policy) (Pol2: Policy)
   Import Csem1.
   Module Csem2 := Csem Ptr Pol2 M2 A2.
   Import Csem2.
-
-  Variable prog1 : Csem1.Csyntax.program.
+  
+  Variable prog : Ctop.program.
+  Definition prog1 : Csem1.Csyntax.program := Csem1.Csyntax.prog2prog prog.
   Variable prog2 : Csem2.Csyntax.program.

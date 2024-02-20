@@ -20,12 +20,122 @@ Require Import Coqlib Maps Integers Floats Errors.
 Require Import AST Linking Values Tags Memory Allocator.
 Require Import Cabs Ctypes Cop.
 
-Module Csyntax (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Allocator Ptr Pol M).
+Module Ctop (Ptr: Pointer).
+  Module Values := Val Ptr.
+  Import Values.
+
+  Inductive incr_or_decr :=
+  | Incr | Decr.
+  
+  Inductive expr : Type :=
+  | Evar (x: ident) (ty: type)                                                 (**r variable *)
+  | Econst (v: val) (ty: type)                                                 (**r constant *)
+  | Efield (l: expr) (f: ident) (ty: type)      (**r access to a member of a struct or union *)
+  | Evalof (l: expr) (ty: type)                               (**r l-value used as a r-value *)
+  | Ederef (r: expr) (ty: type)                         (**r pointer dereference (unary [*]) *)
+  | Eaddrof (l: expr) (ty: type)                             (**r address-of operators ([&]) *)
+  | Eunop (op: unary_operation) (r: expr) (ty: type)         (**r unary arithmetic operation *)
+  | Ebinop (op: binary_operation) (r1 r2: expr) (ty: type)  (**r binary arithmetic operation *)
+  | Ecast (r: expr) (ty: type)                                        (**r type cast [(ty)r] *)
+  | Eseqand (r1 r2: expr) (ty: type)                        (**r sequential "and" [r1 && r2] *)
+  | Eseqor (r1 r2: expr) (ty: type)                          (**r sequential "or" [r1 || r2] *)
+  | Econdition (r1 r2 r3: expr) (ty: type)                   (**r conditional [r1 ? r2 : r3] *)
+  | Esizeof (ty': type) (ty: type)                                       (**r size of a type *)
+  | Ealignof (ty': type) (ty: type)                         (**r natural alignment of a type *)
+  | Eassign (l: expr) (r: expr) (ty: type)                           (**r assignment [l = r] *)
+  | Eassignop (op: binary_operation) (l: expr) (r: expr) (tyres ty: type)
+                                                   (**r assignment with arithmetic [l op= r] *)
+  | Epostincr (id: incr_or_decr) (l: expr) (ty: type)
+                                          (**r post-increment [l++] and post-decrement [l--] *)
+  | Ecomma (r1 r2: expr) (ty: type)                        (**r sequence expression [r1, r2] *)
+  | Ecall (r1: expr) (rargs: exprlist) (ty: type)             (**r function call [r1(rargs)] *)
+  | Ebuiltin (ef: external_function) (tyargs: typelist) (cc: calling_convention) (ty: type)
+                                                                  (**r builtin function name *)
+
+  with exprlist : Type :=
+  | Enil
+  | Econs (r1: expr) (rl: exprlist).
+
+  Definition Eindex (r1 r2: expr) (ty: type) :=
+  Ederef (Ebinop Oadd r1 r2 (Tpointer ty noattr)) ty.
+
+  Definition Epreincr (id: incr_or_decr) (l: expr) (ty: type) :=
+    Eassignop (match id with Incr => Oadd | Decr => Osub end)
+              l (Econst (Vint Int.one) type_int32s) (typeconv ty) ty.
+
+Definition label := ident.
+
+Inductive statement : Type :=
+  | Sskip : statement                   (**r do nothing *)
+  | Sdo : expr -> Cabs.loc -> statement            (**r evaluate expression for side effects *)
+  | Ssequence : statement -> statement -> statement  (**r sequence *)
+  | Sifthenelse : expr  -> statement -> statement -> option label -> Cabs.loc -> statement (**r conditional *)
+  | Swhile : expr -> statement -> option label -> Cabs.loc -> statement   (**r [while] loop *)
+  | Sdowhile : expr -> statement -> option label -> Cabs.loc -> statement (**r [do] loop *)
+  | Sfor: statement -> expr -> statement -> statement -> option label -> Cabs.loc -> statement (**r [for] loop *)
+  | Sbreak : Cabs.loc -> statement                      (**r [break] statement *)
+  | Scontinue : Cabs.loc -> statement                   (**r [continue] statement *)
+  | Sreturn : option expr -> Cabs.loc -> statement     (**r [return] statement *)
+  | Sswitch : expr -> labeled_statements -> Cabs.loc -> statement  (**r [switch] statement *)
+  | Slabel : label -> statement -> statement
+  | Sgoto : label -> Cabs.loc -> statement
+
+with labeled_statements : Type :=            (**r cases of a [switch] *)
+  | LSnil: labeled_statements
+  | LScons: option Z -> statement -> labeled_statements -> labeled_statements.
+                      (**r [None] is [default], [Some x] is [case x] *)
+
+Fixpoint loc_of (s : statement) : Cabs.loc :=
+  match s with
+  | Sskip => no_loc
+  | Sdo _ l => l
+  | Ssequence s1 _ => loc_of s1
+  | Sifthenelse _ _ _ _ l => l
+  | Swhile _ _ _ l => l
+  | Sdowhile _ _ _ l => l
+  | Sfor _ _ _ _ _ l => l
+  | Sbreak l => l
+  | Scontinue l => l
+  | Sreturn _ l => l
+  | Sswitch _ _ l => l
+  | Slabel _ s => loc_of s
+  | Sgoto _ l => l
+  end.
+
+Record function : Type := mkfunction {
+  fn_return: type;
+  fn_callconv: calling_convention;
+  fn_params: list (ident * type);
+  fn_vars: list (ident * type);
+  fn_body: statement
+}.
+
+Definition var_names (vars: list(ident * type)) : list ident :=
+  List.map (@fst ident type) vars.
+
+Definition fundef := Ctypes.fundef function.
+
+Definition type_of_function (f: function) : type :=
+  Tfunction (type_of_params (fn_params f)) (fn_return f) (fn_callconv f).
+
+Definition type_of_fundef (f: fundef) : type :=
+  match f with
+  | Internal fd => type_of_function fd
+  | External id args res cc => Tfunction args res cc
+  end.
+
+Definition program := Ctypes.program function.
+
+End Ctop.
+
+Module Csyntax (Ptr: Pointer) (Pol: Policy)
+       (M: Memory Ptr Pol) (A: Allocator Ptr Pol M).
   Module Cop := Cop Ptr Pol M A.
   Export Cop.
   Import A.
   Import M.
   Import TLib.
+  Module Ctop := Ctop Ptr.
   
   (** ** Location Kinds *)
 
@@ -259,4 +369,85 @@ Definition type_of_fundef (f: fundef) : type :=
 
 Definition program := Ctypes.program function.
 
+Section FROM_TOP.
+
+  Parameter val_coerce : Ctop.Values.val -> val.
+  
+  Fixpoint e2e (e:Ctop.expr) : expr :=
+    match e with
+    | Ctop.Evar x ty => Evar x ty
+    | Ctop.Econst v ty => Econst (val_coerce v) ty
+    | Ctop.Efield e' id ty => Efield (e2e e') id ty
+    | Ctop.Evalof e' ty => Evalof (e2e e') ty
+    | Ctop.Ederef e' ty => Ederef (e2e e') ty
+    | Ctop.Eaddrof e' ty => Eaddrof (e2e e') ty
+    | Ctop.Eunop op e' ty => Eunop op (e2e e') ty
+    | Ctop.Ebinop op e1 e2 ty => Ebinop op (e2e e1) (e2e e2) ty
+    | Ctop.Ecast e' ty => Ecast (e2e e') ty
+    | Ctop.Eseqand e1 e2 ty => Eseqand (e2e e1) (e2e e2) ty
+    | Ctop.Eseqor e1 e2 ty => Eseqor (e2e e1) (e2e e2) ty
+    | Ctop.Econdition e1 e2 e3 ty => Econdition (e2e e1) (e2e e2) (e2e e3) ty
+    | Ctop.Esizeof ty1 ty2 => Esizeof ty1 ty2
+    | Ctop.Ealignof ty1 ty2 => Ealignof ty1 ty2
+    | Ctop.Eassign e1 e2 ty => Eassign (e2e e1) (e2e e2) ty
+    | Ctop.Eassignop op e1 e2 ty1 ty2 => Eassignop op (e2e e1) (e2e e2) ty1 ty2
+    | Ctop.Epostincr (Ctop.Incr) e' ty => Epostincr Incr (e2e e') ty
+    | Ctop.Epostincr (Ctop.Decr) e' ty => Epostincr Decr (e2e e') ty
+    | Ctop.Ecomma e1 e2 ty => Ecomma (e2e e1) (e2e e2) ty
+    | Ctop.Ecall e' es ty => Ecall (e2e e') (es2es es) ty
+    | Ctop.Ebuiltin ef tys cc ty => Ebuiltin ef tys cc ty 
+    end with es2es (es: Ctop.exprlist) : exprlist :=
+               match es with
+               | Ctop.Enil => Enil
+               | Ctop.Econs e es' => Econs (e2e e) (es2es es')
+               end.
+
+  Fixpoint s2s (s: Ctop.statement) : statement :=
+    match s with
+    | Ctop.Sskip => Sskip
+    | Ctop.Sdo e l => Sdo (e2e e) l
+    | Ctop.Ssequence s1 s2 => Ssequence (s2s s1) (s2s s2)
+    | Ctop.Sifthenelse e s1 s2 l1 l2 => Sifthenelse (e2e e) (s2s s1) (s2s s2) l1 l2
+    | Ctop.Swhile e s' l1 l2 => Swhile (e2e e) (s2s s') l1 l2
+    | Ctop.Sdowhile e s' l1 l2 => Sdowhile (e2e e) (s2s s') l1 l2
+    | Ctop.Sfor s1 e s2 s3 l1 l2 => Sfor (s2s s1) (e2e e) (s2s s2) (s2s s3) l1 l2
+    | Ctop.Sbreak l => Sbreak l
+    | Ctop.Scontinue l => Scontinue l
+    | Ctop.Sreturn e l => Sreturn (option_map e2e e) l
+    | Ctop.Sswitch e ls l => Sswitch (e2e e) (ls2ls ls) l
+    | Ctop.Slabel id s' => Slabel id (s2s s')
+    | Ctop.Sgoto id l => Sgoto id l
+    end with ls2ls (ls: Ctop.labeled_statements) : labeled_statements :=
+               match ls with
+               | Ctop.LSnil => LSnil
+               | Ctop.LScons z s ls' => LScons z (s2s s) (ls2ls ls')
+               end.
+
+  Definition f2f (f: Ctop.function) : function.
+    destruct f eqn:?.
+    constructor; auto. apply (s2s fn_body0).
+  Defined.
+  
+  Definition fd2fd (fd: Ctop.fundef) : fundef.
+    destruct fd.
+    - constructor. apply (f2f f).
+    - eapply External; eauto.
+  Defined.
+    
+  Definition prog2prog (prog: Ctop.program) : program.
+    destruct prog.
+    econstructor; eauto.
+    induction prog_defs.
+    - apply nil.
+    - apply cons.
+      + intuition. destruct b.
+        * constructor. apply fd2fd. auto.
+        * apply Gvar. auto.
+      + apply IHprog_defs.
+  Defined.
+  
+End FROM_TOP.
+  
 End Csyntax.
+
+

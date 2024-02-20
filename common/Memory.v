@@ -40,6 +40,8 @@ Require Import Values.
 Require Import Tags.
 Require Import Memdata.
 Require Import Builtins.
+Require Import ExtLib.Structures.Monads. Import MonadNotation.
+Global Open Scope monad_scope.
 
 Require Import List. Import ListNotations.
 
@@ -65,6 +67,12 @@ Inductive MemoryResult (A:Type) : Type :=
 Arguments MemorySuccess {_} _.
 Arguments MemoryFail {_} _.
 
+Instance MRMonad : Monad MemoryResult :=
+  {| ret T a := MemorySuccess a; bind T1 T2 res f := match res with
+                                         | MemorySuccess a => f a
+                                         | MemoryFail msg params => MemoryFail msg params
+                                         end |}.
+
 Module Type Memory (Ptr: Pointer) (Pol:Policy).
   Module BI := Builtins Ptr.
   Export BI.
@@ -76,7 +84,6 @@ Module Type Memory (Ptr: Pointer) (Pol:Policy).
   Parameter mem : Type.
   
   (** Permissions *)
-  
   Parameter allowed_access : mem -> memory_chunk -> ptr -> Prop.
   Parameter aligned_access : memory_chunk -> ptr -> Prop.
   
@@ -143,3 +150,176 @@ Module Type Memory (Ptr: Pointer) (Pol:Policy).
   Global Opaque Memory.store Memory.load Memory.storebytes Memory.loadbytes.
 
 End Memory.
+
+Module ConcMem (Ptr: Pointer) (Pol:Policy).
+  Module BI := Builtins Ptr.
+  Export BI.
+  Module MD := Memdata Ptr Pol.
+  Export MD.
+  Import TLib.
+  Export Ptr.
+
+  Parameter mem : Type.
+  
+  Parameter allowed_access : mem -> memory_chunk -> ptr -> Prop.
+  Parameter aligned_access : memory_chunk -> ptr -> Prop.
+  
+  Parameter allowed_access_dec:
+    forall m chunk a,
+      {allowed_access m chunk a} + {~ allowed_access m chunk a}.
+
+  Parameter aligned_access_dec:
+    forall chunk a,
+      {aligned_access chunk a} + {~ aligned_access chunk a}.
+  
+  Parameter empty : mem.
+
+  Parameter load : memory_chunk -> mem -> ptr -> MemoryResult atom.
+
+  Parameter load_ltags : memory_chunk -> mem -> ptr -> MemoryResult (list tag).
+
+  Parameter load_all : memory_chunk -> mem -> ptr -> MemoryResult (atom * list tag).
+  
+  Parameter load_all_compose :
+    forall chunk m a v lts,
+      load_all chunk m a = MemorySuccess (v,lts) <->
+        load chunk m a = MemorySuccess v /\ load_ltags chunk m a = MemorySuccess lts.
+
+  Parameter load_all_fail :
+    forall chunk m a msg failure,
+      load_all chunk m a = MemoryFail msg failure <->
+        load chunk m a = MemoryFail msg failure /\ load_ltags chunk m a = MemoryFail msg failure.
+  
+  Parameter loadbytes : mem -> ptr -> Z -> MemoryResult (list memval).
+
+  Parameter loadtags : mem -> ptr -> Z -> MemoryResult (list tag).
+
+  Parameter store : memory_chunk -> mem -> ptr -> atom -> list tag ->
+                    MemoryResult mem.
+
+  Parameter store_atom : memory_chunk -> mem -> ptr -> atom -> MemoryResult mem.
+  
+  Parameter storebytes : mem -> ptr -> list memval -> list tag -> MemoryResult mem.
+  
+End ConcMem.
+
+Module MultiMem (Pol: Policy) : Memory SemiconcretePointer Pol.
+  Module CM := ConcMem SemiconcretePointer Pol.
+  Export CM.
+  Module BI := BI.
+  Export BI.
+  Module MD := MD.
+  Export MD.
+  Export TLib.
+  Export SemiconcretePointer.
+
+  Record myMem := mkMem
+    {
+      comp_locals : PMap.t CM.mem;
+      shares : PMap.t CM.mem;
+    }.
+  
+  Definition mem : Type := myMem.
+  
+  Definition allowed_access (m: mem) (chunk: memory_chunk) (p: ptr) : Prop :=
+    match p with
+    | (LocInd C, i) => CM.allowed_access (m.(comp_locals)#C) chunk p
+    | (ShareInd b _, i) => CM.allowed_access (m.(comp_locals)#b) chunk p
+    end.
+    
+  Parameter aligned_access : memory_chunk -> ptr -> Prop.
+  
+  Parameter allowed_access_dec:
+    forall m chunk a,
+      {allowed_access m chunk a} + {~ allowed_access m chunk a}.
+
+  Parameter aligned_access_dec:
+    forall chunk a,
+      {aligned_access chunk a} + {~ aligned_access chunk a}.
+  
+  Definition empty : mem :=
+    mkMem (PMap.init CM.empty) (PMap.init CM.empty).
+  
+  Definition load (chunk: memory_chunk) (m: mem) (p: ptr) : MemoryResult atom :=
+    match p with
+    | (LocInd C, i) => CM.load chunk (m.(comp_locals)#C) p
+    | (ShareInd b _, i) => CM.load chunk (m.(comp_locals)#b) p
+    end.
+
+  Definition load_ltags (chunk: memory_chunk) (m: mem) (p: ptr) : MemoryResult (list tag) :=
+    match p with
+    | (LocInd C, i) => CM.load_ltags chunk (m.(comp_locals)#C) p
+    | (ShareInd b _, i) => CM.load_ltags chunk (m.(comp_locals)#b) p
+    end.
+  
+  Definition load_all (chunk: memory_chunk) (m: mem) (p: ptr) : MemoryResult (atom * list tag) :=
+    match p with
+    | (LocInd C, i) => CM.load_all chunk (m.(comp_locals)#C) p
+    | (ShareInd b _, i) => CM.load_all chunk (m.(comp_locals)#b) p
+    end.
+  
+  Lemma load_all_compose :
+    forall chunk m a v lts,
+      load_all chunk m a = MemorySuccess (v,lts) <->
+        load chunk m a = MemorySuccess v /\ load_ltags chunk m a = MemorySuccess lts.
+  Proof.
+    unfold load, load_ltags, load_all. intros until a.
+    destruct a; destruct i; apply CM.load_all_compose.
+  Qed.
+    
+  Lemma load_all_fail :
+    forall chunk m a msg failure,
+      load_all chunk m a = MemoryFail msg failure <->
+        load chunk m a = MemoryFail msg failure /\ load_ltags chunk m a = MemoryFail msg failure.
+  Proof.
+    unfold load, load_ltags, load_all. intros until a.
+    destruct a; destruct i; apply CM.load_all_fail.
+  Qed.
+  
+  Definition loadbytes (m: mem) (p: ptr) (num: Z) : MemoryResult (list memval) :=
+    match p with
+    | (LocInd C, i) => CM.loadbytes (m.(comp_locals)#C) p num
+    | (ShareInd b _, i) => CM.loadbytes (m.(comp_locals)#b) p num
+    end.    
+
+  Definition loadtags (m: mem) (p: ptr) (num: Z) : MemoryResult (list tag) :=
+    match p with
+    | (LocInd C, i) => CM.loadtags (m.(comp_locals)#C) p num
+    | (ShareInd b _, i) => CM.loadtags (m.(comp_locals)#b) p num
+    end.    
+
+  Definition store (chunk: memory_chunk) (m: mem) (p: ptr) (v: atom) (lts: list tag)
+    : MemoryResult mem :=
+    match p with
+    | (LocInd C, i) =>
+        cm <- CM.store chunk (m.(comp_locals)#C) p v lts;;
+        ret (mkMem (PMap.set C cm m.(comp_locals)) m.(shares))
+    | (ShareInd b _, i) =>
+        cm <- CM.store chunk (m.(shares)#b) p v lts;;
+        ret (mkMem (PMap.set b cm m.(shares)) m.(comp_locals))
+    end.
+    
+  Definition store_atom (chunk: memory_chunk) (m: mem) (p: ptr) (v: atom)
+    : MemoryResult mem :=
+    match p with
+    | (LocInd C, i) =>
+        cm <- CM.store_atom chunk (m.(comp_locals)#C) p v;;
+        ret (mkMem (PMap.set C cm m.(comp_locals)) m.(shares))
+    | (ShareInd b _, i) =>
+        cm <- CM.store_atom chunk (m.(shares)#b) p v;;
+        ret (mkMem (PMap.set b cm m.(shares)) m.(comp_locals))
+    end.
+  
+  Definition storebytes (m: mem) (p: ptr) (mvs: list memval) (lts: list tag) :
+    MemoryResult mem :=
+    match p with
+    | (LocInd C, i) =>
+        cm <- CM.store_atom chunk (m.(comp_locals)#C) p v;;
+        ret (mkMem (PMap.set C cm m.(comp_locals)) m.(shares))
+    | (ShareInd b _, i) =>
+        cm <- CM.store_atom chunk (m.(shares)#b) p v;;
+        ret (mkMem (PMap.set b cm m.(shares)) m.(comp_locals))
+    end.
+    
+
+End MultiMem.

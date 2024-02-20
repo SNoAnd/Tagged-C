@@ -44,7 +44,96 @@ Module Type Pointer.
   
   Parameter ptr_eq_dec : forall (p1 p2:ptr), {p1 = p2} + {p1 <> p2}.
 End Pointer.
+
+Module ConcretePointer <: Pointer.
+  Definition ptr : Type := int64.
   
+  Definition concretize (p: ptr) : int64 := p.
+  Definition off (p: ptr) (i: int64) : ptr := Int64.add p i.
+  Definition align (p: ptr) : Z := 8.
+
+  Definition lt (p1 p2: ptr) := Int64.lt p1 p2 = true.
+  Definition ltb := Int64.lt.
+
+  Definition le (p1 p2: ptr) := (Int64.lt p1 p2) || (Int64.eq p1 p2) = true.
+  Definition leb (p1 p2: ptr) := (Int64.lt p1 p2) || (Int64.eq p1 p2).
+
+  Definition twixt (p1 p2 p3: ptr) := le p1 p2 /\ le p2 p3.  
+  Definition twixtb (p1 p2 p3: ptr) := leb p1 p2 && leb p2 p3.
+  Lemma twixt_correct : forall p1 p2 p3,
+      twixt p1 p2 p3 <-> twixtb p1 p2 p3 = true.
+  Proof.
+    intros. unfold twixt. unfold twixtb. split.
+    - intuition.
+    - intuition; unfold le; unfold leb in H;
+        destruct (Int64.lt p1 p2); destruct (Int64.eq p1 p2); simpl in *; auto.
+      discriminate.
+  Qed.
+      
+  Lemma ptr_eq_dec : forall (p1 p2:ptr), {p1 = p2} + {p1 <> p2}.
+  Proof. intros. destruct (Int64.eq p1 p2) eqn:?.
+         - left. apply Int64.same_if_eq; auto.
+         - right. intro. subst.
+           rewrite Int64.eq_true in Heqb. discriminate.
+  Qed.
+End ConcretePointer.
+
+Module SemiconcretePointer <: Pointer.
+  Definition Comp := ident.
+  Definition block := ident.
+  
+  Inductive index : Type :=
+  | LocInd (C:Comp)
+  | ShareInd (b:block) (base:int64)
+  .
+  
+  Definition ptr : Type := (index * int64).
+  
+  Lemma ptr_eq_dec : forall (p1 p2:ptr), {p1 = p2} + {p1 <> p2}.
+  Proof. repeat decide equality.
+         - destruct (Int64.eq b i0) eqn:?.
+           + left. apply Int64.same_if_eq; auto.
+           + right. intro. subst.
+           rewrite Int64.eq_true in Heqb0. discriminate.
+         - destruct (Int64.eq base base0) eqn:?.
+           + left. apply Int64.same_if_eq; auto.
+           + right. intro. subst.
+             rewrite Int64.eq_true in Heqb2. discriminate.
+  Qed.
+
+  Definition concretize (p: ptr) : int64 := snd p.
+  Definition off (p: ptr) (i: int64) : ptr :=
+    let (ind, pos) := p in (ind, Int64.add pos i).
+
+  Definition align (p: ptr) : Z := 8.
+
+  Definition ltb (p1 p2: ptr) :=
+    match p1, p2 with
+    | (LocInd C1, i1), (LocInd C2, i2) => peq C1 C2 && Int64.lt i1 i2
+    | (ShareInd b1 _, i1), (ShareInd b2 _, i2) => peq b1 b2 && Int64.lt i1 i2
+    | _, _ => false
+    end.
+
+  Definition lt (p1 p2: ptr) := ltb p1 p2 = true.
+
+  Definition leb (p1 p2: ptr) := ltb p1 p2 || ptr_eq_dec p1 p2.
+  Definition le (p1 p2: ptr) := leb p1 p2 = true.
+
+  Definition twixt (p1 p2 p3: ptr) := le p1 p2 /\ le p2 p3.  
+  Definition twixtb (p1 p2 p3: ptr) := leb p1 p2 && leb p2 p3.
+  Lemma twixt_correct : forall p1 p2 p3,
+      twixt p1 p2 p3 <-> twixtb p1 p2 p3 = true.
+  Proof.
+    intros. unfold twixt. unfold twixtb. split.
+    - intuition.
+    - intuition; unfold le in *; unfold leb in *;
+        destruct (ltb p1 p2); destruct (ptr_eq_dec p1 p2);
+        destruct (ltb p2 p3); destruct (ptr_eq_dec p2 p3);
+        simpl in *; auto.
+  Qed.
+      
+End SemiconcretePointer.
+
 Definition block : Type := positive.
 Definition eq_block := peq.
 
