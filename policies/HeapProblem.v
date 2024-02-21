@@ -6,7 +6,7 @@
  *      overwrites, and secret recovery from memory that has been correctly freed but not cleaned
  *      or overwritten so the secret can be recovered by the next legal owner. 
  *  This policy operates very similiarly to the one discussed in "Micro-Policies: Formally Verified, Tag-Based Security Monitors"
- *      https://ieeexplore.ieee.org/document/7163062 , with an additional feature of tagging memory that has been 
+ *      https://ieeexplore.ieee.org/document/7163062 , with an additional feature of tagging memory that has been  APT:???
  * 
  * Problem: 
  *   A "heap leak" is very ambigous. There are at least 5 types, 3 of which this policy covers:
@@ -24,7 +24,7 @@
  *   (1)(2) are things that SOTA fuzzers can reasonably detect when augmented with 
  *         sanitizers like ASAN. However they cannot usually tell (1) and (2) apart from
  *         each other or from other segfaulting conditions. 
- *         Santitizers are not always availabe either.
+ *         Santitizers are not always available either.
  *   (4) No fuzzer currently detects secret recovery from dirty heap memory as far as I know.
  * 
  * Related Work:
@@ -45,6 +45,7 @@
  *  - When memory is allocated via MallocT
  *      - the value tag on the pointer is colored with the location of the malloc and the current color from the pc tag
  *      - the location tags on the block are marked with the same location + color, marked AllocatedDirty (to detect Heap Problem #4)
+ *     APT: Including the header location tag??
  *      - color counter is increased
  *  - When memory is written via StoreT
  *      - If pt is not a pointer tag, error
@@ -73,6 +74,7 @@
  *      - If the header tag is N, L_NotHeap, or L_UnallocatedHeap, fail
  *      - If the header tag is AllocatedDirty, or AllocatedwithColor and the location+color are the same, success
  *      - If the header tag is Allocated, but the location+color do not match, that is heap corruption.
+ *      APT: What happens to the location tags on the header and data? 
  *  - Binary Operations & Unary Operations
  *      - most of the unary ones don't make a lot of sense with pointers 
  *      - classic arthimetic ops that make sense with ptrs preserve pointerness
@@ -197,6 +199,8 @@ Module HeapProblem <: Policy.
  Definition inj_loc (s:string) (l:loc) : string :=
   s ++ " " ++ (print_loc l).
 
+ (* APT: Maybe good to say "code location" or "source location" to avoid confusion
+    with the *memory* location of the allocation/read/write. *)
 Definition print_tag (t : tag) : string :=
     match t with
     | VT N => "Not a heap pointer"
@@ -245,7 +249,7 @@ Definition print_tag (t : tag) : string :=
     - lts - tags on bytes in memory
 
   Upon success, returns 
-  - vt', new value tag on the memory being loaded 
+  - vt', new value tag on the memory (APT: no, value)  being loaded 
 
   Failures, except for N, will include the h node
 
@@ -344,6 +348,7 @@ Fixpoint CheckforColorMatchOnStore (ptr_color: Z) (ptr_l store_l :loc) (pct : co
 
  Definition StoreT (l:loc) (pct : control_tag) (pt vt : val_tag) (lts : list loc_tag) : PolicyResult (control_tag * val_tag * list loc_tag) := 
   match pt with 
+    (* APT: I think there are better ways to structure this code. Let's discuss. *)
   (* we need to know the pointer's location and the store operations location if something goes wrong *)
   | PointerWithColor ptr_l ptr_color => (
       ConvertDirtyAllocOnStore pct vt lts [] (CheckforColorMatchOnStore ptr_color ptr_l l pct vt lts)
@@ -453,7 +458,7 @@ Fixpoint CheckforColorMatchOnStore (ptr_color: Z) (ptr_l store_l :loc) (pct : co
     | Oand (* bitwise and ([&]) *)
     | Oor  (* bitwise or ([|]) *)
     | Oxor (* bitwise xor ([^]) *)
-    | Oshl (* left shift ([<<]) *)
+    | Oshl (* left shift ([<<]) *)  (* APT: For shifts, if second arg is pointer, this is nonsense and should become N *)
     | Oshr (* right shift ([>>]) *)
         =>  (
           match vt1, vt2 with 
@@ -465,9 +470,11 @@ Fixpoint CheckforColorMatchOnStore (ptr_color: Z) (ptr_l store_l :loc) (pct : co
         )
     
     (* Comparisons bin ops: ptr comparison is UB unless two pointers in same color *) 
+              (* APT: no: eq and ne are never UB *)
            (* keep pointerness in case they do dumb things 
             with it.  TaggedC & ConcreteC would allow this.
             *)
+  (* APT: Result of all of these is always N (encoding a boolean) *)
     | Oeq  (* comparison ([==]) *)
     | One  (* comparison ([!=]) *)
     | Olt  (* comparison ([<]) *)
@@ -516,6 +523,7 @@ Fixpoint CheckforColorMatchOnStore (ptr_color: Z) (ptr_l store_l :loc) (pct : co
       - pct' new program counter tag, counter increased
       - pt new tag on the pointer returned from malloc, colored.
       - vtb - vt body - tag on values written, 00s usually. These won't tell you if something is alloc
+        (APT: this needs to synch with the concrete allocator code, which (I think) shouldn't be writing anything to the body)
       - vth - vt header - tag on "header" or index -1, above what pointer points to 
       - lt new location (in memory) tag, this now painted as allocated memory across
            whole region. Even though it's 1 tag, it affects all tags in the buffer.
@@ -603,8 +611,6 @@ Fixpoint CheckforColorMatchOnStore (ptr_color: Z) (ptr_l store_l :loc) (pct : co
   *)
   PolicySuccess (pct, N, N, lts).
 
-
-
  (* These are required, but cannot "passthrough" because they don't get tags to start with.
     In other words, they have to make tags out of thin air. *)
  
@@ -623,7 +629,7 @@ Fixpoint CheckforColorMatchOnStore (ptr_color: Z) (ptr_l store_l :loc) (pct : co
   Definition FunT (ce: composite_env) (id : ident) (ty : type) : val_tag := N.
 
   (* Required for policy interface. Not relevant to this particular policy, pass values through *)
-Definition LocalT (l:loc) (ce : composite_env) (pct : control_tag) (ty : type) :
+  Definition LocalT (l:loc) (ce : composite_env) (pct : control_tag) (ty : type) :
     PolicyResult (control_tag * val_tag * (list loc_tag))%type :=
     PolicySuccess (pct, N, []).  
 
@@ -641,8 +647,7 @@ Definition LocalT (l:loc) (ce : composite_env) (pct : control_tag) (ty : type) :
   Definition LabelT := (fun l pct lbl => PolicySuccess (Passthrough.LabelT control_tag l pct lbl)).
   Definition ExprSplitT := (fun l pct vt => PolicySuccess (Passthrough.ExprSplitT val_tag control_tag l pct vt)).
   Definition ExprJoinT := (fun l pct vt => PolicySuccess (Passthrough.ExprJoinT val_tag control_tag l pct vt)).
-  Definition FieldT := (fun l ce pct vt id ty => PolicySuccess (Passthrough.FieldT val_tag control_tag l ce pct vt id ty)).
- 
+  Definition FieldT := (fun l ce pct vt id ty => PolicySuccess (Passthrough.FieldT val_tag control_tag l ce pct vt id ty)). 
 
   (* Allowing these to pass through for now *)
   Definition PICastT := (fun l pct pt lts ty => PolicySuccess (Passthrough.PICastT val_tag control_tag loc_tag l pct pt lts ty)).
