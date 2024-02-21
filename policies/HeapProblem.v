@@ -124,12 +124,6 @@ Require Import List. Import ListNotations.
 
 Module HeapProblem <: Policy.
 
- (* tags for value, location (memory tags), and pc tags are all in one type
-    L_ = location or memory tag on bytes
-    V_ = value tag 
-    PC_ = pc tag
-    N = is the special unit or NA tag
-  *)
  Inductive myValTag :=
  | N    (* in the paper, _|_ , N for NonApplicable?, this is a nonpointer thing. 
           keeping N to align with other policies. *)
@@ -141,6 +135,7 @@ Module HeapProblem <: Policy.
           but i think i need to know when its the block and
           when its the pointer
           loc is the location of hte malloc *)
+  | AllocatedHeader (l:loc)(color: Z) 
  .                
 
  Inductive myControlTag :=
@@ -424,15 +419,14 @@ The exact rules aren't clear.
     
     *)
  Definition BinopT (l:loc) (op : binary_operation) (pct: control_tag) (vt1 vt2 : val_tag) : PolicyResult (control_tag * val_tag) := 
- (*
   match op with
     (* classic arthimetic ops *)
     | Oadd (* addition (binary [+]) *)
            (* should preserve pointerness *)
         => (
           match vt1, vt2 with 
-          | (V_PointerWithColor _ _), N => PolicySuccess (pct, vt1) (* ptr + num = ptr*)
-          |  N, (V_PointerWithColor _ _) => PolicySuccess (pct, vt2) (* num + ptr = ptr*)
+          | (PointerWithColor _ _), N => PolicySuccess (pct, vt1) (* ptr + num = ptr*)
+          |  N, (PointerWithColor _ _) => PolicySuccess (pct, vt2) (* num + ptr = ptr*)
           |  _ , _ => PolicySuccess (pct, vt2) (* anything else, default behavior*)
           end
         )
@@ -440,9 +434,9 @@ The exact rules aren't clear.
            (* some should preserve pointerness *)
         => (
           match vt1, vt2 with 
-          | (V_PointerWithColor _ _), (V_PointerWithColor _ _) => PolicySuccess (pct, N) (*ptr - ptr = num (N) *)
-          | (V_PointerWithColor _ _), N => PolicySuccess (pct, vt1) (* ptr - num = ptr *)
-          |  N, (V_PointerWithColor _ _) => PolicySuccess(pct, N) (* num - ptr = num (N)*)
+          | (PointerWithColor _ _), (PointerWithColor _ _) => PolicySuccess (pct, N) (*ptr - ptr = num (N) *)
+          | (PointerWithColor _ _), N => PolicySuccess (pct, vt1) (* ptr - num = ptr *)
+          |  N, (PointerWithColor _ _) => PolicySuccess(pct, N) (* num - ptr = num (N)*)
           |  _ , _ => PolicySuccess (pct, vt2) (*anything else, default behavior*)
           end
         )
@@ -452,9 +446,9 @@ The exact rules aren't clear.
            (* division anything with a ptr is nonsense. turn nonsense into Ns *)
            =>  (
             match vt1, vt2 with 
-            | (V_PointerWithColor _ _), (V_PointerWithColor _ _) => PolicySuccess (pct, N) 
-            | (V_PointerWithColor _ _), N => PolicySuccess (pct, N)
-            |  N, (V_PointerWithColor _ _) => PolicySuccess(pct, N)
+            | (PointerWithColor _ _), (PointerWithColor _ _) => PolicySuccess (pct, N) 
+            | (PointerWithColor _ _), N => PolicySuccess (pct, N)
+            |  N, (PointerWithColor _ _) => PolicySuccess(pct, N)
             |  _ , _ => PolicySuccess (pct, vt2) (*anything else, default behavior*)
             end
           )
@@ -464,9 +458,9 @@ The exact rules aren't clear.
               don't throw a tantrum, but strip pointerness *)
         =>  (
           match vt1, vt2 with 
-          | (V_PointerWithColor _ _), (V_PointerWithColor _ _) => PolicySuccess (pct, N) (* ptr % ptr = nonsense N*)
-          | (V_PointerWithColor _ _), N => PolicySuccess (pct, N) (* ptr % 8 = bit flag ? stil nums *)
-          |  N, (V_PointerWithColor _ _) => PolicySuccess(pct, N) (* num % ptr = nonsense *)
+          | (PointerWithColor _ _), (PointerWithColor _ _) => PolicySuccess (pct, N) (* ptr % ptr = nonsense N*)
+          | (PointerWithColor _ _), N => PolicySuccess (pct, N) (* ptr % 8 = bit flag ? stil nums *)
+          |  N, (PointerWithColor _ _) => PolicySuccess(pct, N) (* num % ptr = nonsense *)
           |  _ , _ => PolicySuccess (pct, vt2) (*anything else, default behavior*)
           end
         )
@@ -480,9 +474,9 @@ The exact rules aren't clear.
     | Oshr (* right shift ([>>]) *)
         =>  (
           match vt1, vt2 with 
-          | (V_PointerWithColor _ _), (V_PointerWithColor _ _) => PolicySuccess (pct, N) 
-          | (V_PointerWithColor _ _), N => PolicySuccess (pct, vt1)
-          |  N, (V_PointerWithColor _ _) => PolicySuccess(pct, vt2)
+          | (PointerWithColor _ _), (PointerWithColor _ _) => PolicySuccess (pct, N) 
+          | (PointerWithColor _ _), N => PolicySuccess (pct, vt1)
+          |  N, (PointerWithColor _ _) => PolicySuccess(pct, vt2)
           |  _ , _ => PolicySuccess (pct, vt2) (*anything else, default behavior*)
           end
         )
@@ -498,11 +492,26 @@ The exact rules aren't clear.
     | Ole  (* comparison ([<=]) *)
     | Oge  (* comparison ([>=]) *)
         (* ==, !=, comparison is UB unless in same color *)
-        => 
+        => (
+        match vt1, vt2 with 
+        | (PointerWithColor l1 c1), (PointerWithColor l2 c2) => (
+            if (Z.eqb c1 c2) && (Cabs.loc_eqb l1 l2)
+            then PolicySuccess (pct, vt1)
+            else (
+              (* @TODO this is very suss, UB, when there is a log, log it *)
+                (* APT: not as suspect as all that. Not sure worth logging this case *)
+              (* choice of color to pass on is arbitrary APT: no: see above *)
+              PolicySuccess (pct, vt2) 
+            )
+          )
+          (* @TODO this is very suss, UB, when there is a log, log it *)
+        | (PointerWithColor l1 c1), N => PolicySuccess (pct, vt1)
+          (* @TODO this is very suss, UB, when there is a log, log it *)
+        |  N, (PointerWithColor l2 c2) => PolicySuccess(pct, vt2)
+        |  _ , _ => PolicySuccess (pct, vt2) (*anything else, default behavior*)
+        end
+      )
   end.
-
- *) 
- PolicySuccess (pct, vt2).
 
  (* 
     MallocT uses the current counter to color the allocation, marking it as belonging to color currcolor.
@@ -564,31 +573,43 @@ The exact rules aren't clear.
   If rule fails, the return tuple's most important members are:
     - vht is the color of previous free
     - pct is the color of the 2nd/current free
+
+  is vht is itself a val tag, but our usuage was much like a location...
+
+  FreeT should take lts, and it can write it...or not
+    check that instead of the value tag (optional update vht)
+    can we trust the system to give us the right size lts?
+    can we trust it in the concrete allocator? 
+        header lives in memory, call to free at arbitrary word, check that its a real header
+        check pt for ptr, check vht for valid header
+          then its safe to look at lts 
+    add header ctype to val tags
+
  *)
- Definition FreeT (l:loc) (pct fptrt pt vht : tag) : PolicyResult (tag * tag * tag * tag) :=
+ Definition FreeT (l:loc) (pct: control_tag) (fptrt pt vht : val_tag) : PolicyResult (control_tag * val_tag * val_tag * loc_tag) :=
   match pt, vht with 
     (* code probably did something wrong *)
-    | V_PointerWithColor _ _, N => PolicyFail (inj_loc "HeapProblem||FreeT detects free of nonmemory | " l) [pct;fptrt;pt;vht]
-    | V_PointerWithColor _ _, L_NotHeap => PolicyFail (inj_loc "HeapProblem||FreeT detects free of memory not in the heap| " l) [pct;fptrt;pt;vht]
-    | V_PointerWithColor _ _, L_UnallocatedHeap => PolicyFail (inj_loc "HeapProblem||FreeT detects free of unallocated heap memory| " l) [pct;fptrt;pt;vht]
+    | PointerWithColor _ _, NotHeap => PolicyFail (inj_loc "HeapProblem||FreeT detects free of memory not in the heap| " l) [pct;fptrt;pt;vht]
+    | PointerWithColor _ _, UnallocatedHeap => PolicyFail (inj_loc "HeapProblem||FreeT detects free of unallocated heap memory| " l) [pct;fptrt;pt;vht]
 
     (* You can legally malloc, never use it and free, though it is a waste *)
-    | V_PointerWithColor ptr_l ptr_c, L_AllocatedDirty mem_l mem_c => 
+    | PointerWithColor ptr_l ptr_c, AllocatedDirty mem_l mem_c => 
         if ((Z.eqb ptr_c mem_c) && (Cabs.loc_eqb ptr_l mem_l)) then
                         (* (pct', vtb, vth', lt) *)
-          PolicySuccess (pct, N, L_UnallocatedHeap, L_UnallocatedHeap)
+          PolicySuccess (pct, N, UnallocatedHeap, UnallocatedHeap)
         else 
           (* @TODO this one could probably use all 3 locations printed eventually *)
           PolicyFail (inj_loc "HeapProblem|| FreeT tried to free someone else's allocated memory " l) [pct;fptrt;pt;vht]
 
-    | V_PointerWithColor ptr_l ptr_c, L_AllocatedWithColor mem_l mem_c => (
+    | PointerWithColor ptr_l ptr_c, Allocated mem_l mem_c => (
         if ((Z.eqb ptr_c mem_c) && (Cabs.loc_eqb ptr_l mem_l)) then
                         (* (pct', vtb, vth', lt) *)
-          PolicySuccess (pct, N, L_UnallocatedHeap, L_UnallocatedHeap)
+          PolicySuccess (pct, N, UnallocatedHeap, UnallocatedHeap)
         else 
           (* @TODO this one could probably use all 3 locations printed eventually *)
           PolicyFail (inj_loc "HeapProblem|| FreeT tried to free someone else's allocated memory " l) [pct;fptrt;pt;vht]
         )
+    | PointerWithColor _ _, _ => 
     (* I probably did something wrong. PC_Extra, V_PointerWithColor should never be in vht*)
     | _ , _ =>  PolicyFail (inj_loc "HeapProblem|| FreeT Misuse| FreeT tried to free a nonpointer : " l) [pct;fptrt;pt;vht]
   end.
