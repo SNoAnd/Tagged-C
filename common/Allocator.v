@@ -68,30 +68,31 @@ Module Type Allocator (Ptr: Pointer) (Pol : Policy) (M : Memory Ptr Pol).
   Parameter heap_base : ptr.
   Parameter heap_size : Z.
   
-  Definition load (chunk:memory_chunk) (m:mem) (p:ptr) := M.load chunk (fst m) p.
+  Definition load (chunk:memory_chunk) (m:mem) (p:ptr) :=
+    M.load chunk (fst m) (of_ptr p).
   Definition load_ltags (chunk:memory_chunk) (m:mem) (p:ptr) :=
-    M.load_ltags chunk (fst m) p.
+    M.load_ltags chunk (fst m) (of_ptr p).
   Definition load_all (chunk:memory_chunk) (m:mem) (p:ptr) :=
-    M.load_all chunk (fst m) p.
-  Definition loadbytes (m:mem) (p:ptr) (n:Z) := M.loadbytes (fst m) p n.
+    M.load_all chunk (fst m) (of_ptr p).
+  Definition loadbytes (m:mem) (p:ptr) (n:Z) := M.loadbytes (fst m) (of_ptr p) n.
   
   Definition store (chunk:memory_chunk) (m:mem) (p:ptr) (v:TLib.atom) (lts:list tag) :=
     let (m,st) := m in
-    match M.store chunk m p v lts with
+    match M.store chunk m (of_ptr p) v lts with
     | MemorySuccess m' => MemorySuccess (m',st)
     | MemoryFail msg failure => MemoryFail msg failure
     end.
 
   Definition store_atom (chunk:memory_chunk) (m:mem) (p:ptr) (v:TLib.atom) :=
     let (m,st) := m in
-    match M.store_atom chunk m p v with
+    match M.store_atom chunk m (of_ptr p) v with
     | MemorySuccess m' => MemorySuccess (m',st)
     | MemoryFail msg failure => MemoryFail msg failure
     end.
   
   Definition storebytes (m:mem) (p:ptr) (bytes:list memval) (lts:list tag) :=
     let (m,st) := m in
-    match M.storebytes m p bytes lts with
+    match M.storebytes m (of_ptr p) bytes lts with
     | MemorySuccess m' => MemorySuccess (m',st)
     | MemoryFail msg failure => MemoryFail msg failure
     end.
