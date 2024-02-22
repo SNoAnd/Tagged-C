@@ -19,12 +19,6 @@ Module NullPolicy <: Policy.
   Theorem vt_eq_dec : forall (t1 t2:val_tag), {t1 = t2} + {t1 <> t2}. Proof. decide equality. Qed.
   Theorem ct_eq_dec : forall (t1 t2:control_tag), {t1 = t2} + {t1 <> t2}. Proof. decide equality. Qed.
   Theorem lt_eq_dec : forall (t1 t2:loc_tag), {t1 = t2} + {t1 <> t2}. Proof. decide equality. Qed.
-
-  Inductive tag : Type :=
-  | VT : val_tag -> tag
-  | CT : control_tag -> tag
-  | LT : loc_tag -> tag
-  .
   
   Definition def_tag : val_tag := tt.
   Definition InitPCT : control_tag := tt.
@@ -97,9 +91,9 @@ Module NullPolicy <: Policy.
     PolicyResult (control_tag * val_tag * val_tag * val_tag * loc_tag) :=
     Success (tt, tt, tt, tt, tt).
 
-  Definition FreeT (l:loc) (pct: control_tag) (fpt pt vt: val_tag) :
-    PolicyResult (control_tag * val_tag * val_tag * val_tag) :=
-    Success (tt, tt, tt, tt).
+  Definition FreeT (l:loc) (pct: control_tag) (fpt pt vht: val_tag) (lts: list loc_tag) :
+    PolicyResult (control_tag * val_tag * val_tag * list loc_tag) :=
+    Success (tt, tt, tt, lts).
 
   Definition ExtCallT (l:loc) (fn : string) (pct: control_tag) (args : list val_tag) :
     PolicyResult (control_tag * val_tag) := Success (tt,tt).

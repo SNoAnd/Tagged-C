@@ -43,8 +43,8 @@ Module Extracted (P : Policy) (A : Allocator P).
   Import Smallstep.
   Import Events.
   Import Genv.
-  Import Mem.
   Import A.
+  Import Mem.
   
 End Extracted.
   

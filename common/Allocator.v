@@ -83,9 +83,10 @@ Module Type Allocator (P : Policy).
   Parameter heapfree : mem
                        -> Z (* address *)
                        ->
-                       (*partially applied tag rule, waiting for val tag on head *)
-                         (val_tag (* val (head) *)
-                          -> PolicyResult (control_tag * val_tag * val_tag * loc_tag))
+                       (*partially applied tag rule, waiting for val tag on head
+                         and all tags on freed locations *)
+                         (val_tag (* val (head) *)  -> list loc_tag (* locs *)
+                          -> PolicyResult (control_tag * val_tag * val_tag * list loc_tag))
                        -> PolicyResult
                             (control_tag (* pc tag *)
                              * mem).
@@ -212,15 +213,18 @@ Module ConcreteAllocator (P : Policy) : Allocator P.
     | None => Fail "Failure in find_free" OtherFailure
     end.
 
-  Definition heapfree (m: mem) (addr: Z) (rule : val_tag -> PolicyResult (control_tag*val_tag*val_tag*loc_tag))
+  Definition heapfree (m: mem) (addr: Z) (rule : val_tag -> list loc_tag -> PolicyResult (control_tag*val_tag*val_tag*list loc_tag))
     : PolicyResult (control_tag * mem) :=
     let (m, sp) := m in
     match check_header m (addr-header_size) with
     | Some (live, sz, vt) =>
-        '(PCT', vt1, vt2, lt) <- rule vt;;
-        match update_header m (addr-header_size) false sz vt2 lt with
+        mvs <- loadbytes m addr sz;;
+        lts <- loadtags m addr sz;;
+        '(PCT', vt1, vt2, lts') <- rule vt lts;;
+        match update_header m (addr-header_size) false sz vt2 DefLT with
         | Some m' =>
-            Success (PCT', (m', sp))
+            m'' <- storebytes m addr mvs lts';;
+            ret (PCT', (m'', sp))
         | None => Fail "Free failing" OtherFailure
         end
     | None => Fail "Free failing" OtherFailure
@@ -323,17 +327,21 @@ Module FLAllocator (P : Policy) : Allocator P.
     | None => Fail "Out of memory" OtherFailure
     end.
 
-  Definition heapfree (m : mem) (base : Z) (rule : val_tag -> PolicyResult (control_tag*val_tag*val_tag*loc_tag))
+  Definition heapfree (m : mem) (base : Z) (rule : val_tag -> list loc_tag -> PolicyResult (control_tag*val_tag*val_tag*list loc_tag))
     : PolicyResult (control_tag*mem) :=
     let '(m, (sp,heap)) := m in
     match ZMap.get base heap.(regions) with
     | Some (bound,vt) =>
-        '(pct',vt_head,vt_body,lt) <- rule vt;;
+        let sz := bound - base in
+        mvs <- loadbytes m base sz;;
+        lts <- loadtags m base sz;;
+        '(pct',vt_head,vt_body,lts') <- rule vt lts;;
         let heap' := (mkheap (ZMap.set base None heap.(regions))
                              ((base,bound,vt_head)::heap.(fl))) in
-        ret (pct', (m, (sp,heap')))
+        m' <- storebytes m base mvs lts';;
+        ret (pct', (m', (sp,heap')))
     | None => Fail "Bad free" OtherFailure
-    end.
+   end.
 
   Fixpoint globals (m : Mem.mem) (gs : list (ident*Z)) (next : Z) : (Mem.mem * PTree.t (Z*Z)) :=
     match gs with

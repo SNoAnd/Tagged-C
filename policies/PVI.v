@@ -29,12 +29,6 @@ Module PVI <: Policy.
   Proof. repeat decide equality. Qed.
   Theorem lt_eq_dec : forall (t1 t2:loc_tag), {t1 = t2} + {t1 <> t2}.
   Proof. repeat decide equality. Qed.
-  
-  Inductive tag : Type :=
-  | VT : val_tag -> tag
-  | CT : control_tag -> tag
-  | LT : loc_tag -> tag
-  .
 
   Definition def_tag : val_tag := N.
   Definition InitPCT : control_tag := O.
@@ -114,9 +108,9 @@ Module PVI <: Policy.
     let c := pct in
     Success (S c, Dyn c, N, Dyn c, Dyn c).
 
-  Definition FreeT (l:loc) (pct: control_tag) (pt1 pt2 vt: val_tag) :
-    PolicyResult (control_tag * val_tag * val_tag * val_tag) :=
-    Success (pct, N, N, N).
+  Definition FreeT (l:loc) (pct: control_tag) (pt1 pt2 vht: val_tag) (lts: list loc_tag) :
+    PolicyResult (control_tag * val_tag * val_tag * list loc_tag) :=
+    Success (pct, N, N, lts).
 
   Definition ExtCallT (l:loc) (fn: string) (pct: control_tag) (args: list val_tag) :
     PolicyResult (control_tag * val_tag) :=
