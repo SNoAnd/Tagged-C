@@ -23,25 +23,23 @@ Inductive FailureClass : Type :=
 
 Inductive PolicyResult (A: Type) :=
 | Success (res: A)
-| Log (res: A) (msg: string)
 | Fail (msg: string) (failure: FailureClass)
 .
 
 Arguments Success {_} _.
-Arguments Log {_} _ _.
 Arguments Fail {_} _ _.
 
-Definition bind_bin (A B:Type) (res: PolicyResult A) (f: A -> PolicyResult B) :=
+Definition bind_res (A B:Type) (res: PolicyResult A) (f: A -> PolicyResult B) :=
   match res with
   | Success a => f a
-  | Log _ msg => Fail msg OtherFailure
-  | Fail msg failure => Fail msg failure
+  | Fail msgs failure => Fail msgs failure
   end.
 
 Instance PolicyResultMonad : Monad PolicyResult :=
-  {| bind := bind_bin; ret := @Success |}.
+  {| bind := bind_res; ret := @Success |}.
 
 Module Type Policy.
+  
   Parameter val_tag : Type.
   Parameter control_tag : Type.
   Parameter loc_tag : Type.
@@ -53,6 +51,10 @@ Module Type Policy.
   Parameter print_vt : val_tag -> string.
   Parameter print_ct : control_tag -> string.
   Parameter print_lt : loc_tag -> string.
+
+  Parameter policy_state : Type.
+  Parameter log : policy_state -> string -> policy_state.
+  Parameter dump : policy_state -> string.
   
   Parameter def_tag : val_tag.
   Parameter InitPCT : control_tag.

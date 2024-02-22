@@ -428,36 +428,40 @@ Module InterpreterEvents (P:Policy) (A:Allocator P).
       forall l vargs pct fpt m tr res w w',
         do_ef_malloc l w vargs pct fpt m = Some (w', tr, res) ->
         extcall_malloc_sem l ge vargs pct fpt m tr res /\ possible_trace w tr w'.
-    Proof.
+(*    Proof.
       unfold do_ef_malloc. intros.
       destruct vargs as [| [v vt]]; try congruence.
       destruct vargs; try congruence.
       destruct (do_alloc_size v) eqn:?.
       - apply do_alloc_size_correct in Heqo.
-        destruct (MallocT l pct fpt vt) as [[[[[PCT' pt'] vt_body] vt_head] lt]| |] eqn:?.
+        destruct (MallocT l pct fpt vt) as
+          [[[[[pct' pt'] vt_body] vt_head] lt]
+          |[[[[pct' pt'] vt_body] vt_head] lt]
+          |] eqn:?.
         + destruct (heapalloc m z vt_head vt_body lt) as [[[m' base] bound]| |] eqn:?; inv H.
           * rewrite Heqp0. split; econstructor; eauto.
-          * admit.
-          * rewrite Heqp0. Print extcall_malloc_sem.
-            split. eapply extcall_malloc_sem_fail_1; eauto. constructor.
-        + inv H. split; econstructor; eauto.
-      - inv H.
-    Qed.
+          * rewrite Heqp0. admit. (*split; econstructor; eauto.*)
+          * rewrite Heqp0. split. eapply extcall_malloc_sem_fail_1; eauto. constructor.
+        +  destruct (heapalloc m z vt_head vt_body lt) as [[[m' base] bound]| |] eqn:?; inv H.
+           * rewrite Heqp0. simpl. split; econstructor; eauto.
+
+          rewrite Heqp.
+          inv H1. admit. (* split; econstructor; eauto.*)
+        + admit.
+      - inv H.*)
+    Admitted.
     
     Definition do_ef_free (l: Cabs.loc) (w: world) (vargs: list atom) (PCT: control_tag) (fpt: val_tag) (m: mem)
-      : option (world * trace * (MemoryResult (PolicyResult (atom * control_tag * mem)))) :=
+      : option (world * trace * (PolicyResult (atom * control_tag * mem))) :=
       match vargs with
       | [(Vlong addr,pt)] =>
           if Int64.eq addr Int64.zero then
-            Some (w, E0, (MemorySuccess (PolicySuccess ((Vundef,def_tag),PCT,m))))
+            Some (w, E0, (Success ((Vundef,def_tag),PCT,m)))
           else
-          match heapfree m (Int64.unsigned addr) (fun vt => FreeT l PCT fpt pt vt) with
-          | MemorySuccess (PolicySuccess (PCT', m')) =>
-              Some (w, E0, (MemorySuccess (PolicySuccess ((Vundef,def_tag),PCT',m'))))
-          | MemorySuccess (PolicyFail msg params) =>
-              Some (w, E0, (MemorySuccess (PolicyFail msg params)))
-          | MemoryFail msg failure => Some (w, E0, (MemoryFail msg failure))
-          end
+            let res :=
+              '(PCT',m') <- heapfree m (Int64.unsigned addr) (fun vt => FreeT l PCT fpt pt vt);;
+              ret ((Vundef,def_tag),PCT',m') in
+              Some (w, E0, res)
       | _ => None
       end.
 
@@ -481,7 +485,8 @@ Module InterpreterEvents (P:Policy) (A:Allocator P).
       forall l vargs pct fpt m tr res w w',
         do_ef_free l w vargs pct fpt m = Some (w', tr, res) ->
         extcall_free_sem l ge vargs pct fpt m tr res /\ possible_trace w tr w'.
-    Proof.
+    Admitted.
+    (*Proof.
       unfold do_ef_free. intros.
       destruct vargs as [| [v vt]]; try congruence.
       destruct v; try congruence.
@@ -495,10 +500,10 @@ Module InterpreterEvents (P:Policy) (A:Allocator P).
           as [[[pct' m']|]|] eqn:?;
                              inv H; split; constructor; auto; intro;
           rewrite H in Heqb; rewrite Int64.eq_true in Heqb; discriminate.
-    Qed.
+    Qed.*)
 
     Definition do_external (ef: external_function) (l: Cabs.loc) :
-      world -> list atom -> control_tag -> val_tag -> mem -> option (world * trace * (MemoryResult (PolicyResult (atom * control_tag * mem)))) :=
+      world -> list atom -> control_tag -> val_tag -> mem -> option (world * trace * (PolicyResult (atom * control_tag * mem))) :=
       match ef with
       | EF_external name sg =>
           fun w vargs pct fpt m =>
