@@ -439,34 +439,34 @@ Inductive volatile_store (ge: Genv.t F V):
 *)
 
 Definition extcall_sem : Type :=
-  Genv.t F V -> list atom -> control_tag (* PC *) -> val_tag (* function ptr *) -> mem -> trace ->
+  Genv.t F V -> list atom -> policy_state -> control_tag (* PC *) -> val_tag (* function ptr *) -> mem -> trace ->
   (PolicyResult (atom * control_tag * mem)) -> Prop.
 
 (** ** Semantics of volatile loads *)
 
 Inductive volatile_load_sem (l:Cabs.loc) (chunk: memory_chunk) (ge: Genv.t F V):
-  list atom -> control_tag -> val_tag -> mem -> trace ->
-  PolicyResult (PolicyResult (atom * control_tag * mem)) -> Prop :=
-| volatile_load_sem_intro: forall ofs pt m pct fpt t v vt vt' vt'' lts,
+  list atom -> policy_state -> control_tag -> val_tag -> mem -> trace ->
+  PolicyResult (atom * control_tag * mem) -> Prop :=
+| volatile_load_sem_intro: forall ofs pt m pstate pct fpt t v vt vt' vt'' lts,
     load_ltags chunk m (Int64.unsigned ofs) = Success lts ->
-    LoadT l pct pt vt lts = Success vt' ->
-    AccessT l pct vt' = Success vt'' ->
+    LoadT l pstate pct pt vt lts = Success vt' ->
+    AccessT l pstate pct vt' = Success vt'' ->
     volatile_load ge chunk m ofs t (Success (v,vt)) ->
-    volatile_load_sem l chunk ge ((Vlong ofs, pt) :: nil) pct fpt m t
-                      (Success (Success ((v,vt), pct, m))).
+    volatile_load_sem l chunk ge ((Vlong ofs, pt) :: nil) pstate pct fpt m t
+                      (Success ((v,vt), pct, m)).
 
 (** ** Semantics of volatile stores *)
 
 Inductive volatile_store_sem (l:Cabs.loc) (chunk: memory_chunk) (ge: Genv.t F V):
   list atom -> control_tag -> val_tag -> mem -> trace ->
-  (PolicyResult (PolicyResult (atom * control_tag * mem))) -> Prop :=
-  | volatile_store_sem_intro: forall ofs pt m1 pct pct' pct'' fpt v0 vt0 v vt vt' vt'' lts lts' t m2,
+  PolicyResult (atom * control_tag * mem) -> Prop :=
+  | volatile_store_sem_intro: forall ofs pt m1 pstate pct pct' pct'' fpt v0 vt0 v vt vt' vt'' lts lts' t m2,
       load_all chunk m1 (Int64.unsigned ofs) = Success (v0,vt0,lts) -> 
-      AssignT l pct vt0 vt = Success (pct', vt') ->
-      StoreT l pct' pt vt' lts = Success (pct'',vt'',lts') ->
+      AssignT l pstate pct vt0 vt = Success (pct', vt') ->
+      StoreT l pstate pct' pt vt' lts = Success (pct'',vt'',lts') ->
       volatile_store ge chunk m1 ofs (v,vt) lts t (Success m2) ->
       volatile_store_sem l chunk ge ((Vlong ofs,pt) :: (v,vt) :: nil) pct fpt m1 t
-                         (Success (Success ((Vundef,InitT), pct'', m2))).
+                         (Success ((Vundef,InitT), pct'', m2)).
 
 
 Definition alloc_size (v: val) (z:Z) : Prop :=
@@ -478,46 +478,46 @@ Definition alloc_size (v: val) (z:Z) : Prop :=
 
 (** ** Semantics of dynamic memory allocation (malloc) *)
 Inductive extcall_malloc_sem (l:Cabs.loc) (ge: Genv.t F V):
-  list atom -> control_tag -> val_tag -> mem -> trace ->
+  list atom -> policy_state -> control_tag -> val_tag -> mem -> trace ->
   (PolicyResult (atom * control_tag * mem)) -> Prop :=
-| extcall_malloc_sem_intro: forall v sz st pct fpt m m' lo hi vt_body vt_head lt pt pct',
+| extcall_malloc_sem_intro: forall v sz st pstate pct fpt m m' lo hi vt_body vt_head lt pt pct',
     alloc_size v sz ->
-    MallocT l pct fpt st = Success (pct', pt, vt_body, vt_head, lt) ->
+    MallocT l pstate pct fpt st = Success (pct', pt, vt_body, vt_head, lt) ->
     heapalloc m sz vt_head vt_body lt = Success (m', lo, hi) ->
-    extcall_malloc_sem l ge ((v,st) :: nil) pct fpt m E0
+    extcall_malloc_sem l ge ((v,st) :: nil) pstate pct fpt m E0
                        (Success ((Vlong (Int64.repr lo), pt), pct', m'))
-| extcall_malloc_sem_fail_0: forall v sz st pct fpt m msg failure,
+| extcall_malloc_sem_fail_0: forall v sz st pstate pct fpt m msg failure,
     alloc_size v sz ->
-    MallocT l pct fpt st = Fail msg failure ->
-    extcall_malloc_sem l ge ((v,st) :: nil) pct fpt m E0
+    MallocT l pstate pct fpt st = Fail msg failure ->
+    extcall_malloc_sem l ge ((v,st) :: nil) pstate pct fpt m E0
                        (Fail msg failure)
-| extcall_malloc_sem_fail_1: forall v sz st pct fpt m vt_body vt_head lt pt pct' msg failure,
+| extcall_malloc_sem_fail_1: forall v sz st pstate pct fpt m vt_body vt_head lt pt pct' msg failure,
     alloc_size v sz ->
-    MallocT l pct fpt st = Success (pct', pt, vt_body, vt_head, lt) ->
+    MallocT l pstate pct fpt st = Success (pct', pt, vt_body, vt_head, lt) ->
     heapalloc m sz vt_head vt_body lt = Fail msg failure ->
-    extcall_malloc_sem l ge ((v,st) :: nil) pct fpt m E0
+    extcall_malloc_sem l ge ((v,st) :: nil) pstate pct fpt m E0
                        (Fail msg failure).
 
 Inductive extcall_free_sem (l:Cabs.loc) (ge: Genv.t F V) :
-  list atom -> control_tag -> val_tag -> mem -> trace ->
+  list atom -> policy_state -> control_tag -> val_tag -> mem -> trace ->
   (PolicyResult (atom * control_tag * mem)) -> Prop :=
-| extcall_free_sem_ptr: forall addr fpt pt pct pct' m m',
+| extcall_free_sem_ptr: forall addr pstate pct pct' fpt pt  m m',
     addr <> Int64.zero ->
-    heapfree m (Int64.unsigned addr) (fun vt => FreeT l pct fpt pt vt) = Success (pct', m') ->
-    extcall_free_sem l ge ((Vlong addr,pt) :: nil) pct fpt m E0
+    heapfree m (Int64.unsigned addr) (fun vt => FreeT l pstate pct fpt pt vt) = Success (pct', m') ->
+    extcall_free_sem l ge ((Vlong addr,pt) :: nil) pstate pct fpt m E0
                      (Success ((Vundef,def_tag), pct', m'))
-| extcall_free_sem_ptr_fail_0: forall addr fpt pt pct m msg failure,
+| extcall_free_sem_ptr_fail_0: forall addr pstate pct fpt pt m msg failure,
     addr <> Int64.zero ->
-    heapfree m (Int64.unsigned addr) (fun vt => FreeT l pct fpt pt vt) = Fail msg failure ->
-    extcall_free_sem l ge ((Vlong addr,pt) :: nil) pct fpt m E0
+    heapfree m (Int64.unsigned addr) (fun vt => FreeT l pstate pct fpt pt vt) = Fail msg failure ->
+    extcall_free_sem l ge ((Vlong addr,pt) :: nil) pstate pct fpt m E0
                      (Fail msg failure)
-| extcall_free_sem_ptr_fail_1: forall addr fpt pt pct m msg failure,
+| extcall_free_sem_ptr_fail_1: forall addr pstate pct fpt pt m msg failure,
     addr <> Int64.zero ->
-    heapfree m (Int64.unsigned addr) (fun vt => FreeT l pct fpt pt vt) = Fail msg failure ->
-    extcall_free_sem l ge ((Vlong addr,pt) :: nil) pct fpt m E0
+    heapfree m (Int64.unsigned addr) (fun vt => FreeT l pstate pct fpt pt vt) = Fail msg failure ->
+    extcall_free_sem l ge ((Vlong addr,pt) :: nil) pstate pct fpt m E0
                      (Fail msg failure)
-| extcall_free_sem_null: forall pct fpt m pt,
-    extcall_free_sem l ge ((Vlong Int64.zero,pt) :: nil) pct fpt m E0
+| extcall_free_sem_null: forall pstate pct fpt m pt,
+    extcall_free_sem l ge ((Vlong Int64.zero,pt) :: nil) pstate pct fpt m E0
                      (Success ((Vundef,def_tag), pct, m)).
 
 (** ** Semantics of [memcpy] operations. *)
@@ -693,11 +693,11 @@ Inductive extcall_debug_sem (ge: Genv.t F V):
   These built-in functions have no observable effects and do not access memory. *)
 
 Inductive known_builtin_sem (bf: builtin_function) (ge: Genv.t F V):
-  list atom -> control_tag -> val_tag -> mem -> trace ->
+  list atom -> policy_state -> control_tag -> val_tag -> mem -> trace ->
   PolicyResult (atom * control_tag * mem) -> Prop :=
-  | known_builtin_sem_intro: forall vargs vres pct fpt m,
+  | known_builtin_sem_intro: forall vargs vres pstate pct fpt m,
       builtin_function_sem bf vargs = Some vres ->
-      known_builtin_sem bf ge (map (fun v => (v,def_tag)) vargs) pct fpt m E0
+      known_builtin_sem bf ge (map (fun v => (v,def_tag)) vargs) pstate pct fpt m E0
                         (Success ((vres,InitT), pct, m)).
 
 (** ** Semantics of external functions. *)

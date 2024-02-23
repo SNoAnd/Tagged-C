@@ -53,8 +53,9 @@ Module Type Policy.
   Parameter print_lt : loc_tag -> string.
 
   Parameter policy_state : Type.
+  Parameter init_state : policy_state.
   Parameter log : policy_state -> string -> policy_state.
-  Parameter dump : policy_state -> string.
+  Parameter dump : policy_state -> list string.
   
   Parameter def_tag : val_tag.
   Parameter InitPCT : control_tag.
@@ -63,6 +64,7 @@ Module Type Policy.
   
   (* CallT executes at the transition from an expression state to a call state. *)
   Parameter CallT : loc                     (* Inputs: *)
+                    -> policy_state         (* Policy State *)
                     -> control_tag          (* PC tag *)
                     -> val_tag              (* Tag on function pointer being called *)
                     -> PolicyResult         (* Outputs: *)
@@ -71,6 +73,7 @@ Module Type Policy.
   (* ArgT executes at the transition from an expression state to a call state,
      once for each argument being passed. *)
   Parameter ArgT : loc                      (* Inputs: *)
+                   -> policy_state          (* Policy State *)
                    -> control_tag           (* PC tag *)
                    -> val_tag               (* Tag on function pointer being called *)
                    -> val_tag               (* Tag on value being passed *)
@@ -82,6 +85,7 @@ Module Type Policy.
                          * val_tag)         (* New tag on argument value *).
 
   Parameter RetT : loc                      (* Inputs: *)
+                   -> policy_state          (* Policy State *)
                    -> control_tag           (* PC tag at return time *)
                    -> control_tag           (* Prior PC tag from before call *)
                    -> val_tag               (* Tag on return value *)
@@ -90,6 +94,7 @@ Module Type Policy.
                          * val_tag)         (* New tag on return value *).
   
   Parameter LoadT : loc                     (* Inputs: *)
+                    -> policy_state         (* Policy State *)
                     -> control_tag          (* PC tag *)
                     -> val_tag              (* Pointer tag *)
                     -> val_tag              (* Tag on value in memory *)
@@ -98,6 +103,7 @@ Module Type Policy.
                          val_tag            (* Tag on result value *).
 
   Parameter StoreT : loc                    (* Inputs: *)
+                     -> policy_state        (* Policy State *)
                      -> control_tag         (* PC tag *)
                      -> val_tag             (* Pointer tag *)
                      -> val_tag             (* Tag on value to be stored *)
@@ -108,12 +114,14 @@ Module Type Policy.
                            * list loc_tag)  (* New location tags *).
 
   Parameter AccessT : loc                   (* Inputs: *)
+                      -> policy_state       (* Policy State *)
                       -> control_tag        (* PC tag *)
                       -> val_tag            (* Tag on read value *)
                       -> PolicyResult       (* Outputs: *)
                            val_tag          (* Tag on result value *).
 
   Parameter AssignT : loc                   (* Inputs: *)
+                      -> policy_state       (* Policy State *)
                       -> control_tag        (* PC tag *)
                       -> val_tag            (* Tag on value to be overwritten *)
                       -> val_tag            (* Tag on value to be written *)
@@ -122,6 +130,7 @@ Module Type Policy.
                             * val_tag)      (* Tag on written value *).
 
   Parameter UnopT : loc                     (* Inputs: *)
+                    -> policy_state         (* Policy State *)
                     -> unary_operation      (* Operator *)
                     -> control_tag          (* PC tag *)
                     -> val_tag              (* Tag on input value *)
@@ -130,6 +139,7 @@ Module Type Policy.
                           * val_tag)        (* Tag on result value *).
 
   Parameter BinopT : loc                    (* Inputs: *)
+                     -> policy_state        (* Policy State *)
                      -> binary_operation    (* Operator *)
                      -> control_tag         (* PC tag *)
                      -> val_tag             (* Tag on left input value *)
@@ -139,11 +149,13 @@ Module Type Policy.
                            * val_tag)       (* Tag on result value *).
 
   Parameter ConstT : loc                    (* Inputs: *)
+                     -> policy_state        (* Policy State *)
                      -> control_tag         (* PC tag *)
                      -> PolicyResult        (* Outputs: *)
                           val_tag           (* Tag on new value *).
   
   Parameter SplitT : loc                    (* Inputs: *)
+                     -> policy_state        (* Policy State *)
                      -> control_tag         (* PC tag *)
                      -> val_tag             (* Tag on value of branch conditional *)
                      -> option ident        (* Label of join point, if known. *)
@@ -151,18 +163,21 @@ Module Type Policy.
                           control_tag       (* New PC tag *).
 
   Parameter LabelT : loc                    (* Inputs: *)
+                     -> policy_state        (* Policy State *)
                      -> control_tag         (* PC tag *)
                      -> ident               (* Label name *)
                      -> PolicyResult        (* Outputs: *)
                           control_tag       (* New PC tag *).
 
   Parameter ExprSplitT : loc                (* Inputs: *)
+                         -> policy_state    (* Policy State *)
                          -> control_tag     (* PC tag *)
                          -> val_tag         (* Tag on value of branch condition *)
                          -> PolicyResult    (* Outputs: *)
                               control_tag   (* New PC tag *).
 
   Parameter ExprJoinT : loc                 (* Inputs: *)
+                        -> policy_state     (* Policy State *)
                         -> control_tag      (* PC tag *)
                         -> val_tag          (* Tag on conditional expression result *)
                         -> PolicyResult     (* Outputs: *)
@@ -184,6 +199,7 @@ Module Type Policy.
   
   Parameter LocalT : loc
                      -> composite_env       (* Inputs: *)
+                     -> policy_state        (* Policy State *)
                      -> control_tag         (* PC tag *)
                      -> type                (* Variable type *)
                      -> PolicyResult        (* Outputs: *)
@@ -193,6 +209,7 @@ Module Type Policy.
 
   Parameter DeallocT : loc
                        -> composite_env     (* Inputs: *)
+                       -> policy_state      (* Policy State *)
                        -> control_tag       (* PC tag *)
                        -> type              (* Variable type *)
                        -> PolicyResult      (* Outputs: *)
@@ -201,6 +218,7 @@ Module Type Policy.
                              * loc_tag)     (* Tag to be copied over all memory locations *).
 
   Parameter MallocT : loc                   (* Inputs: *)
+                      -> policy_state       (* Policy State *)
                       -> control_tag        (* PC tag *)
                       -> val_tag            (* Function pointer tag *)
                       -> val_tag            (* Tag on 'size' argument *)
@@ -212,6 +230,7 @@ Module Type Policy.
                             * loc_tag)      (* Tag to be copied over all memory locations *).
 
   Parameter FreeT : loc                     (* Inputs: *)
+                    -> policy_state         (* Policy State *)
                     -> control_tag          (* PC tag *)
                     -> val_tag              (* Function pointer tag *)
                     -> val_tag              (* Tag on parameter *)
@@ -224,6 +243,7 @@ Module Type Policy.
                           * list loc_tag)   (* New tags for freed memory *).
 
   Parameter ExtCallT : loc                  (* Inputs: *)
+                       -> policy_state      (* Policy State *)
                        -> string            (* External function name *)
                        -> control_tag       (* PC tag *)
                        -> list val_tag      (* Tags on all arguments *)
@@ -233,6 +253,7 @@ Module Type Policy.
   
   Parameter FieldT : loc
                      -> composite_env       (* Inputs: *)
+                     -> policy_state        (* Policy State *)
                      -> control_tag         (* PC tag *)
                      -> val_tag             (* Tag on base pointer *)
                      -> type                (* Type of object *)
@@ -241,6 +262,7 @@ Module Type Policy.
                           val_tag           (* Tag on resulting pointer *).
 
   Parameter PICastT : loc                   (* Inputs: *)
+                      -> policy_state       (* Policy State *)
                       -> control_tag        (* PC tag *)
                       -> val_tag            (* Tag on pointer value *)
                       -> list loc_tag       (* Tags on memory at pointer location *)
@@ -249,6 +271,7 @@ Module Type Policy.
                            val_tag          (* Tag on resulting integer *).
 
   Parameter IPCastT : loc                   (* Inputs: *)
+                      -> policy_state       (* Policy State *)
                       -> control_tag        (* PC tag *)
                       -> val_tag            (* Tag on integer value *)
                       -> list loc_tag       (* Tags on memory at pointer location *)
@@ -257,6 +280,7 @@ Module Type Policy.
                            val_tag          (* Tag on resulting pointer *).
 
   Parameter PPCastT : loc                   (* Inputs: *)
+                      -> policy_state       (* Policy State *)
                       -> control_tag        (* PC tag *)
                       -> val_tag            (* Tag on pointer value *)
                       -> list loc_tag       (* Tags on memory at pointer location *)
@@ -267,6 +291,7 @@ Module Type Policy.
                            val_tag          (* Tag on resulting pointer *).
     
   Parameter IICastT : loc                   (* Inputs: *)
+                      -> policy_state       (* Policy State *)
                       -> control_tag        (* PC tag *)
                       -> val_tag            (* Tag on value *)
                       -> type               (* Type cast to *)
@@ -307,61 +332,61 @@ End TagLib.
 
 Module Passthrough.
   Section WITH_TAGS.
-    Variable val_tag control_tag loc_tag : Type.
-        
-  Definition CallT (l:loc) (pct:control_tag) (pt: val_tag) :
+    Variable policy_state val_tag control_tag loc_tag : Type.
+  
+  Definition CallT (l:loc) (pstate: policy_state) (pct:control_tag) (pt: val_tag) :
     PolicyResult control_tag := Success pct.
 
-  Definition ArgT (l:loc) (pct:control_tag) (fpt vt: val_tag) (idx:nat) (ty: type) :
+  Definition ArgT (l:loc) (pstate: policy_state) (pct:control_tag) (fpt vt: val_tag) (idx:nat) (ty: type) :
     PolicyResult (control_tag * val_tag) := Success (pct,vt).
 
-  Definition RetT (l:loc) (pct_clr pct_cle: control_tag) (vt: val_tag) :
+  Definition RetT (l:loc) (pstate: policy_state) (pct_clr pct_cle: control_tag) (vt: val_tag) :
     PolicyResult (control_tag * val_tag) := Success (pct_cle,vt).
 
-  Definition AccessT (l:loc) (pct: control_tag) (vt: val_tag) :
+  Definition AccessT (l:loc) (pstate: policy_state) (pct: control_tag) (vt: val_tag) :
     PolicyResult val_tag := Success vt.
 
-  Definition AssignT (l:loc) (pct: control_tag) (vt1 vt2: val_tag) :
+  Definition AssignT (l:loc) (pstate: policy_state) (pct: control_tag) (vt1 vt2: val_tag) :
     PolicyResult (control_tag * val_tag) := Success (pct,vt2).
 
-  Definition LoadT (l:loc) (pct: control_tag) (pt vt: val_tag) (lts: list loc_tag) :
+  Definition LoadT (l:loc) (pstate: policy_state) (pct: control_tag) (pt vt: val_tag) (lts: list loc_tag) :
     PolicyResult val_tag := Success vt.
 
-  Definition StoreT (l:loc) (pct: control_tag) (pt vt: val_tag) (lts: list loc_tag) :
+  Definition StoreT (l:loc) (pstate: policy_state) (pct: control_tag) (pt vt: val_tag) (lts: list loc_tag) :
     PolicyResult (control_tag * val_tag * list loc_tag) :=
     Success (pct, vt, lts).
     
-  Definition UnopT (l:loc) (op : unary_operation) (pct: control_tag) (vt: val_tag) :
+  Definition UnopT (l:loc) (pstate: policy_state) (op : unary_operation) (pct: control_tag) (vt: val_tag) :
     PolicyResult (control_tag * val_tag) := Success (pct, vt).
 
-  Definition BinopT (l:loc) (op : binary_operation) (pct: control_tag) (vt1 vt2: val_tag) :
+  Definition BinopT (l:loc) (pstate: policy_state) (op : binary_operation) (pct: control_tag) (vt1 vt2: val_tag) :
     PolicyResult (control_tag * val_tag) := Success (pct, vt1).
 
-  Definition SplitT (l:loc) (pct: control_tag) (vt: val_tag) (id : option ident) :
+  Definition SplitT (l:loc) (pstate: policy_state) (pct: control_tag) (vt: val_tag) (id : option ident) :
     PolicyResult control_tag := Success pct.
 
-  Definition LabelT (l:loc) (pct : control_tag) (id : ident) :
+  Definition LabelT (l:loc) (pstate: policy_state) (pct : control_tag) (id : ident) :
     PolicyResult control_tag := Success pct.
 
-  Definition ExprSplitT (l:loc) (pct: control_tag) (vt: val_tag) :
+  Definition ExprSplitT (l:loc) (pstate: policy_state) (pct: control_tag) (vt: val_tag) :
     PolicyResult control_tag := Success pct.
 
-  Definition ExprJoinT (l:loc) (pct: control_tag) (vt: val_tag) :
+  Definition ExprJoinT (l:loc) (pstate: policy_state) (pct: control_tag) (vt: val_tag) :
     PolicyResult (control_tag * val_tag) := Success (pct,vt).
     
-  Definition FieldT (l:loc) (ce : composite_env) (pct: control_tag) (vt: val_tag)
+  Definition FieldT (l:loc) (ce : composite_env) (pstate: policy_state) (pct: control_tag) (vt: val_tag)
              (ty : type) (id : ident) : PolicyResult val_tag := Success vt.
 
-  Definition PICastT (l:loc) (pct: control_tag) (pt: val_tag)  (lts : list loc_tag) (ty : type) :
+  Definition PICastT (l:loc) (pstate: policy_state) (pct: control_tag) (pt: val_tag)  (lts : list loc_tag) (ty : type) :
     PolicyResult val_tag := Success pt.
     
-  Definition IPCastT (l:loc) (pct: control_tag) (vt: val_tag)  (lts : list loc_tag) (ty : type) :
+  Definition IPCastT (l:loc) (pstate: policy_state) (pct: control_tag) (vt: val_tag)  (lts : list loc_tag) (ty : type) :
     PolicyResult val_tag := Success vt.
 
-  Definition PPCastT (l:loc) (pct: control_tag) (vt: val_tag) (lts1 lts2 : list loc_tag)
+  Definition PPCastT (l:loc) (pstate: policy_state) (pct: control_tag) (vt: val_tag) (lts1 lts2 : list loc_tag)
              (ty : type) : PolicyResult val_tag := Success vt.
 
-  Definition IICastT (l:loc) (pct: control_tag) (vt: val_tag) (ty : type) :
+  Definition IICastT (l:loc) (pstate: policy_state) (pct: control_tag) (vt: val_tag) (ty : type) :
     PolicyResult val_tag := Success vt.
 
   End WITH_TAGS.

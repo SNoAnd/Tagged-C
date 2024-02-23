@@ -182,8 +182,9 @@ Module HeapProblem <: Policy.
  Proof. unfold loc_tag. intros. repeat (decide equality; try (apply eqdec_loc)). Qed.
 
  Definition policy_state : Type := unit.
+ Definition init_state : policy_state := tt.
  Definition log (pstate: policy_state) (msg: string) : policy_state := tt.
- Definition dump (pstate: policy_state) : string := "".
+ Definition dump (pstate: policy_state) : list string := [].
  
  Definition def_tag := N.
 (* Initialize color counter to 0. Using Integers (Z) because gallina's repsentation
@@ -270,7 +271,7 @@ Module HeapProblem <: Policy.
   )
   end.
 
- Definition LoadT (l:loc) (pct : control_tag) (pt vt: val_tag) (lts : list loc_tag) : PolicyResult val_tag := 
+ Definition LoadT (l:loc) (pstate: policy_state) (pct : control_tag) (pt vt: val_tag) (lts : list loc_tag) : PolicyResult val_tag := 
   match pt with 
   (* location the ptr was assigned memory != location of this load *)
   | PointerWithColor ptr_l ptr_color => (CheckforColorMatchOnLoad ptr_color ptr_l l vt lts)
@@ -337,7 +338,7 @@ Fixpoint CheckforColorMatchOnStore (ptr_color: Z) (ptr_l store_l :loc) (pct : co
   ) 
   end. 
 
- Definition StoreT (l:loc) (pct : control_tag) (pt vt : val_tag) (lts : list loc_tag) : PolicyResult (control_tag * val_tag * list loc_tag) := 
+ Definition StoreT (l:loc) (pstate: policy_state) (pct : control_tag) (pt vt : val_tag) (lts : list loc_tag) : PolicyResult (control_tag * val_tag * list loc_tag) := 
   match pt with 
     (* APT: I think there are better ways to structure this code. Let's discuss. *)
   (* we need to know the pointer's location and the store operations location if something goes wrong *)
@@ -354,7 +355,7 @@ Fixpoint CheckforColorMatchOnStore (ptr_color: Z) (ptr_l store_l :loc) (pct : co
  (*
   There is only one unary operation that is reasonably applied to pointers
  *)
- Definition UnopT (l:loc) (op : unary_operation) (pct: control_tag) (vt : val_tag) : PolicyResult (control_tag * val_tag) := 
+ Definition UnopT (l:loc) (pstate: policy_state) (op : unary_operation) (pct: control_tag) (vt : val_tag) : PolicyResult (control_tag * val_tag) := 
   match op with
     | Onotbool (* boolean negation ([!] in C) *)
         (* used sometimes to convert pointer into a bool 
@@ -397,7 +398,7 @@ Fixpoint CheckforColorMatchOnStore (ptr_color: Z) (ptr_l store_l :loc) (pct : co
     Allow lots of things but turn nonsense into Ns
     
     *)
-  Definition BinopT (l:loc) (op : binary_operation) (pct: control_tag) (vt1 vt2 : val_tag) : PolicyResult (control_tag * val_tag) := 
+  Definition BinopT (l:loc) (pstate: policy_state) (op : binary_operation) (pct: control_tag) (vt1 vt2 : val_tag) : PolicyResult (control_tag * val_tag) := 
     match op with
     (* classic arthimetic ops *)
     | Oadd (* addition (binary [+]) *)
@@ -521,7 +522,7 @@ Fixpoint CheckforColorMatchOnStore (ptr_color: Z) (ptr_l store_l :loc) (pct : co
            Free in this policy does not look at these at all, so it does not really
            matter was value goes here. 
   *)
-  Definition MallocT (l:loc) (pct: control_tag)  (fptrt st : val_tag) : PolicyResult (control_tag * val_tag * val_tag * val_tag * loc_tag) :=
+  Definition MallocT (l:loc) (pstate: policy_state) (pct: control_tag)  (fptrt st : val_tag) : PolicyResult (control_tag * val_tag * val_tag * val_tag * loc_tag) :=
    match pct with
    | PC_Extra currcolor => (
       (* Success (pct', pt, vtb, vht', lt) *)
@@ -570,7 +571,7 @@ Fixpoint CheckforColorMatchOnStore (ptr_color: Z) (ptr_l store_l :loc) (pct : co
  *)
  (* @TODO - need helpder function to loop over lts here stubbing this out so we can get a merge 
     will need to make a list of same length as lts in the success case*)
- Definition FreeT (l:loc) (pct: control_tag) (fptrt pt vht : val_tag) (lts: list loc_tag) : 
+ Definition FreeT (l:loc) (pstate: policy_state) (pct: control_tag) (fptrt pt vht : val_tag) (lts: list loc_tag) : 
   PolicyResult (control_tag * val_tag * val_tag * list loc_tag) :=
   (*
   match pt, lts with 
@@ -606,10 +607,10 @@ Fixpoint CheckforColorMatchOnStore (ptr_color: Z) (ptr_l store_l :loc) (pct : co
     In other words, they have to make tags out of thin air. *)
  
   (* Constants are never pointers to malloced memory. *)
-  Definition ConstT (l:loc) (pct : control_tag) : PolicyResult val_tag := Success N.
+  Definition ConstT (l:loc) (pstate: policy_state) (pct : control_tag) : PolicyResult val_tag := Success N.
 
   (* NB this is for stack allocated variables. Not relevant to dynamic memory. Tag as "Not Heap" *)
-  Definition DeallocT (l:loc) (ce : composite_env) (pct : control_tag) (ty : type) :
+  Definition DeallocT (l:loc) (ce : composite_env) (pstate: policy_state) (pct : control_tag) (ty : type) :
     PolicyResult (control_tag * val_tag * loc_tag) := Success (pct, N, NotHeap).
 
   (* Globals are "Not Heap" either *)
@@ -620,31 +621,31 @@ Fixpoint CheckforColorMatchOnStore (ptr_color: Z) (ptr_l store_l :loc) (pct : co
   Definition FunT (ce: composite_env) (id : ident) (ty : type) : val_tag := N.
 
   (* Required for policy interface. Not relevant to this particular policy, pass values through *)
-  Definition LocalT (l:loc) (ce : composite_env) (pct : control_tag) (ty : type) :
+  Definition LocalT (l:loc) (ce : composite_env) (pstate: policy_state) (pct : control_tag) (ty : type) :
     PolicyResult (control_tag * val_tag * (list loc_tag))%type :=
     Success (pct, N, []).  
 
-  Definition ExtCallT (l:loc) (fn : string) (pct : control_tag) (args : list val_tag)
+  Definition ExtCallT (l:loc) (pstate: policy_state) (fn : string) (pct : control_tag) (args : list val_tag)
     : PolicyResult (control_tag*val_tag) :=
     Success (pct,N).
  
    (* Passthrough rules *)
-  Definition CallT := Passthrough.CallT val_tag control_tag.  
-  Definition ArgT := Passthrough.ArgT val_tag control_tag.
-  Definition RetT := Passthrough.RetT val_tag control_tag.
-  Definition AccessT := Passthrough.AccessT val_tag control_tag.
-  Definition AssignT := Passthrough.AssignT val_tag control_tag.
-  Definition SplitT := Passthrough.SplitT val_tag control_tag.
-  Definition LabelT := Passthrough.LabelT control_tag.
-  Definition ExprSplitT := Passthrough.ExprSplitT val_tag control_tag.
-  Definition ExprJoinT := Passthrough.ExprJoinT val_tag control_tag.
-  Definition FieldT := Passthrough.FieldT val_tag control_tag. 
+  Definition CallT := Passthrough.CallT policy_state val_tag control_tag.  
+  Definition ArgT := Passthrough.ArgT policy_state val_tag control_tag.
+  Definition RetT := Passthrough.RetT policy_state val_tag control_tag.
+  Definition AccessT := Passthrough.AccessT policy_state val_tag control_tag.
+  Definition AssignT := Passthrough.AssignT policy_state val_tag control_tag.
+  Definition SplitT := Passthrough.SplitT policy_state val_tag control_tag.
+  Definition LabelT := Passthrough.LabelT policy_state control_tag.
+  Definition ExprSplitT := Passthrough.ExprSplitT policy_state val_tag control_tag.
+  Definition ExprJoinT := Passthrough.ExprJoinT policy_state val_tag control_tag.
+  Definition FieldT := Passthrough.FieldT policy_state val_tag control_tag. 
 
   (* Allowing these to pass through for now *)
-  Definition PICastT := Passthrough.PICastT val_tag control_tag loc_tag.
-  Definition IPCastT := Passthrough.IPCastT val_tag control_tag loc_tag.
-  Definition PPCastT := Passthrough.PPCastT val_tag control_tag loc_tag.
-  Definition IICastT := Passthrough.IICastT val_tag control_tag.
+  Definition PICastT := Passthrough.PICastT policy_state val_tag control_tag loc_tag.
+  Definition IPCastT := Passthrough.IPCastT policy_state val_tag control_tag loc_tag.
+  Definition PPCastT := Passthrough.PPCastT policy_state val_tag control_tag loc_tag.
+  Definition IICastT := Passthrough.IICastT policy_state val_tag control_tag.
 
 End HeapProblem
 .

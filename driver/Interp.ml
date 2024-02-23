@@ -185,25 +185,25 @@ let print_failure failure =
 
 let print_state p (prog, ge, s) =
   match s with
-  | Csem.State(f, pct, s, k, e, te, m) ->
+  | Csem.State(f, pstate, pct, s, k, e, te, m) ->
       Printing.print_pointer_hook := print_pointer (fst ge) e;
       fprintf p "in function %s, pct %s, statement@ @[<hv 0>%a@] \n"
               (name_of_function prog f)
 	      (print_ct pct)
               Printing.print_stmt s;
               if !trace > 2 then print_mem p (fst m) else ()
-  | Csem.ExprState(f, l, pct, r, k, e, te, m) ->
+  | Csem.ExprState(f, l, pstate, pct, r, k, e, te, m) ->
       Printing.print_pointer_hook := print_pointer (fst ge) e;
       fprintf p "in function %s, pct %s, expression@ @[<hv 0>%a@]"
               (name_of_function prog f)
 	      (print_ct pct)
               Printing.print_expr r
-  | Csem.Callstate(fd, l, pct, fpt, args, k, m) ->
+  | Csem.Callstate(fd, l, pstate, pct, fpt, args, k, m) ->
       Printing.print_pointer_hook := print_pointer (fst ge) Maps.PTree.empty;
       fprintf p "calling@ @[<hov 2>%s(%a)@]"
               (name_of_fundef prog fd)
               print_val_list (List.map fst args)
-  | Csem.Returnstate(pct, fd, l, res, k, m) ->
+  | Csem.Returnstate(pstate, pct, fd, l, res, k, m) ->
       Printing.print_pointer_hook := print_pointer (fst ge) Maps.PTree.empty;
       fprintf p "returning@ %a"
               print_val (fst res)
@@ -530,7 +530,7 @@ let rec convert_external_args ge vl tl =
       convert_external_args ge vl tyl >>= fun el -> Some (e1 :: el)
   | _, _ -> None
 
-let do_external_function id sg ge w args pct fpt m =
+let do_external_function id sg ge w args pstate pct fpt m =
   match camlstring_of_coqstring id, args with
   | "printf", (Vlong ofs,pt) :: args' ->
       extract_string m ofs >>= fun fmt ->
@@ -610,7 +610,7 @@ let is_stuck r =
   | Cexec.Stuckred msg -> true
   | _ -> false
 
-let diagnose_stuck_expr p ge ce w f a kont pct l e te m =
+let diagnose_stuck_expr p ge ce w f a kont pstate pct l e te m =
   let rec diagnose k a =
   (* diagnose subexpressions first *)
   let found =
@@ -631,7 +631,7 @@ let diagnose_stuck_expr p ge ce w f a kont pct l e te m =
     | Csem.RV, Csyntax.Ecall(r1, rargs, ty) -> diagnose Csem.RV r1 ||| diagnose_list rargs
     | _, _ -> false in
   if found then true else begin
-    let l = Cexec.step_expr ge ce (*do_inline_assembly*) e w k pct l a te m in
+    let l = Cexec.step_expr ge ce (*do_inline_assembly*) e w k pstate pct l a te m in
     if List.exists (fun (ctx,red) -> is_stuck red) l then begin
       Printing.print_pointer_hook := print_pointer ge e;
       fprintf p "@[<hov 2>Stuck subexpression:@ %a@]@."
@@ -648,7 +648,7 @@ let diagnose_stuck_expr p ge ce w f a kont pct l e te m =
   in diagnose Csem.RV a
 
 let diagnose_stuck_state p ge ce w = function
-  | Csem.ExprState(f,l,pct,a,k,e,te,m) -> ignore(diagnose_stuck_expr p ge ce w f a k l pct e te m)
+  | Csem.ExprState(f,l,pstate,pct,a,k,e,te,m) -> ignore(diagnose_stuck_expr p ge ce w f a k l pstate pct e te m)
   | _ -> ()
 
 (* Execution of a single step.  Return list of triples
