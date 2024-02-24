@@ -21,11 +21,9 @@ Require Import AST Linking Values Tags Allocator.
 Require Import Cabs Ctypes Cop.
 
 Module Csyntax (P:Policy) (A:Allocator P).
-  Module TLib := TagLib P.
-  Import TLib.
   Module Cop := Cop P A.
   Export Cop.
-  Import P.
+  Import TLib.
   
   (** ** Location Kinds *)
 
