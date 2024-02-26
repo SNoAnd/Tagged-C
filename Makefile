@@ -110,8 +110,7 @@ COMMON=Errors.v AST.v Linking.v \
 
 # C front-end modules (in cfrontend/)
 
-CFRONTEND=Ctypes.v Cop.v Csyntax.v Csem.v Ctyping.v Cstrategy.v Cexec.v \
-  Initializers.v InterpreterEvents.v \
+CFRONTEND=Ctypes.v Cop.v Csyntax.v Csem.v 
 
 # Policy definitions (in policies/)
 
