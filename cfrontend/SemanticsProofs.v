@@ -5,8 +5,6 @@ Require Import Smallstep.
 Require Import List. Import ListNotations.
 Require Import String.
 
-
-
 Module PolicyInsensitivity (Ptr: Pointer) (Pol1: Policy) (Pol2: Policy)
        (M: Memory Ptr) (A: Allocator Ptr).
   Module M1 := M Pol1.
@@ -17,13 +15,17 @@ Module PolicyInsensitivity (Ptr: Pointer) (Pol1: Policy) (Pol2: Policy)
   Module Csem2 := Csem Ptr Pol2 M2 A2.
 
   Module PE := ProgEquiv Ptr Pol1 M1 A1
-            Ptr2 Pol2 M2 A2.
-
+                         Ptr Pol2 M2 A2.
+  Import PE.
   
-  Variable prog1 : Csem1.Csyntax.program.
-  Variable prog2 : Csem2.Csyntax.program.
+  Variable prog1 : CS1.program.
+  Variable prog2 : CS2.program.
+  
+  Axiom same_prog : prog_match prog1 prog2.
 
-  Axiom same_prog := program_match prog1 prog2.
+  Print Csem1.semantics.
+  
+  Theorem PolicyInsensitive :
   
 End PolicyInsensitivity.
 

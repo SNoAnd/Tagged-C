@@ -29,6 +29,8 @@ Module Csem (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Allocator Ptr P
   Import M.
   Import TLib.
   Import A.
+  Module Smallstep := Smallstep Ptr Pol M A.
+  Export Smallstep.
   
   (** * Operational semantics *)
 

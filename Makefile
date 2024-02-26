@@ -105,8 +105,9 @@ VLIB=Axioms.v Coqlib.v Intv.v Maps.v Heaps.v Lattice.v Ordered.v \
 
 COMMON=Errors.v AST.v Linking.v \
   Events.v Globalenvs.v Encoding.v Memdata.v Memory.v Allocator.v \
-  Values.v Tags.v Smallstep.v Behaviors.v Switch.v Determinism.v Unityping.v \
-  Builtins0.v Builtins.v
+  Values.v Tags.v Smallstep.v Behaviors.v Switch.v \
+  Unityping.v Builtins0.v Builtins.v
+  #Determinism.v
 
 # C front-end modules (in cfrontend/)
 

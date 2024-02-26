@@ -24,13 +24,13 @@ Require Import Memory.
 Require Import Allocator.
 Require Import Ctypes.
 Require Import Tags.
-Require Import Determinism.
 Require Import Values.
+Require Import Events.
 Require Archi.
 
 Module Cop (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Allocator Ptr Pol M).
-  Module Deterministic := Deterministic Ptr Pol M A.
-  Export Deterministic.
+  Module Events := Events Ptr Pol M A.
+  Export Events.
   Import M.
   Import TLib.
   Import Values.

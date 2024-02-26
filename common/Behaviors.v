@@ -175,7 +175,7 @@ Qed.
 (** The most difficult part of the proof is to show the existence
   of an infinite trace in the case of reactive divergence. *)
 
-(*Section TRACEINF_REACTS.
+Section TRACEINF_REACTS.
 
 Variable s0: state L.
 
@@ -283,7 +283,7 @@ Proof.
 (* 2. Initial state is undefined *)
   exists (Goes_wrong E0). apply program_goes_initially_wrong.
   intros. eapply not_ex_all_not; eauto.
-Qed.*)
+Qed.
 
 End PROGRAM_BEHAVIORS.
 

@@ -38,529 +38,567 @@ Module Smallstep (Ptr: Pointer) (Pol: Policy)
   Module Events := Events Ptr Pol M A.
   Export Events.
   
-(** * Closures of transitions relations *)
-
-Section CLOSURES.
-
-Variable genv: Type.
-Variable state: Type.
-
-(** A one-step transition relation has the following signature.
-  It is parameterized by a global environment, which does not
-  change during the transition.  It relates the initial state
-  of the transition with its final state.  The [trace] parameter
-  captures the observable events possibly generated during the
-  transition. *)
-
-Variable step: genv -> state -> trace -> state -> Prop.
-
-(** No transitions: stuck state *)
-
-Definition nostep (ge: genv) (s: state) : Prop :=
-  forall t s', ~(step ge s t s').
-
-(** Zero, one or several transitions.  Also known as Kleene closure,
-    or reflexive transitive closure. *)
-
-Inductive star (ge: genv): state -> trace -> state -> Prop :=
-  | star_refl: forall s,
-      star ge s E0 s
-  | star_step: forall s1 t1 s2 t2 s3 t,
-      step ge s1 t1 s2 -> star ge s2 t2 s3 -> t = t1 ** t2 ->
-      star ge s1 t s3.
-
-Lemma star_one:
-  forall ge s1 t s2, step ge s1 t s2 -> star ge s1 t s2.
-Proof.
-  intros. eapply star_step; eauto. apply star_refl. traceEq.
-Qed.
-
-Lemma star_two:
-  forall ge s1 t1 s2 t2 s3 t,
-  step ge s1 t1 s2 -> step ge s2 t2 s3 -> t = t1 ** t2 ->
-  star ge s1 t s3.
-Proof.
-  intros. eapply star_step; eauto. apply star_one; auto.
-Qed.
-
-Lemma star_three:
-  forall ge s1 t1 s2 t2 s3 t3 s4 t,
-  step ge s1 t1 s2 -> step ge s2 t2 s3 -> step ge s3 t3 s4 -> t = t1 ** t2 ** t3 ->
-  star ge s1 t s4.
-Proof.
-  intros. eapply star_step; eauto. eapply star_two; eauto.
-Qed.
-
-Lemma star_four:
-  forall ge s1 t1 s2 t2 s3 t3 s4 t4 s5 t,
-  step ge s1 t1 s2 -> step ge s2 t2 s3 ->
-  step ge s3 t3 s4 -> step ge s4 t4 s5 -> t = t1 ** t2 ** t3 ** t4 ->
-  star ge s1 t s5.
-Proof.
-  intros. eapply star_step; eauto. eapply star_three; eauto.
-Qed.
-
-Lemma star_trans:
-  forall ge s1 t1 s2, star ge s1 t1 s2 ->
-  forall t2 s3 t, star ge s2 t2 s3 -> t = t1 ** t2 -> star ge s1 t s3.
-Proof.
-  induction 1; intros.
-  - rewrite H0. simpl. auto.
-  - eapply star_step; eauto. subst. traceEq.
-Qed.
-
-Lemma star_left:
-  forall ge s1 t1 s2 t2 s3 t,
-  step ge s1 t1 s2 -> star ge s2 t2 s3 -> t = t1 ** t2 ->
-  star ge s1 t s3.
-Proof star_step.
-
-Lemma star_right:
-  forall ge s1 t1 s2 t2 s3 t,
-  star ge s1 t1 s2 -> step ge s2 t2 s3 -> t = t1 ** t2 ->
-  star ge s1 t s3.
-Proof.
-  intros. eapply star_trans. eauto. apply star_one. eauto. auto.
-Qed.
-
-Lemma star_E0_ind:
-  forall ge (P: state -> state -> Prop),
-  (forall s, P s s) ->
-  (forall s1 s2 s3, step ge s1 E0 s2 -> P s2 s3 -> P s1 s3) ->
-  forall s1 s2, star ge s1 E0 s2 -> P s1 s2.
-Proof.
-  intros ge P BASE REC.
-  assert (forall s1 t s2, star ge s1 t s2 -> t = E0 -> P s1 s2).
-    induction 1; intros; subst.
-    auto.
-    destruct (Eapp_E0_inv _ _ H2). subst. eauto.
-  eauto.
-Qed.
-
-(** One or several transitions.  Also known as the transitive closure. *)
-
-Inductive plus (ge: genv): state -> trace -> state -> Prop :=
-  | plus_left: forall s1 t1 s2 t2 s3 t,
-      step ge s1 t1 s2 -> star ge s2 t2 s3 -> t = t1 ** t2 ->
-      plus ge s1 t s3.
-
-Lemma plus_one:
-  forall ge s1 t s2,
-  step ge s1 t s2 -> plus ge s1 t s2.
-Proof.
-  intros. econstructor; eauto. apply star_refl. traceEq.
-Qed.
-
-Lemma plus_two:
-  forall ge s1 t1 s2 t2 s3 t,
-  step ge s1 t1 s2 -> step ge s2 t2 s3 -> t = t1 ** t2 ->
-  plus ge s1 t s3.
-Proof.
-  intros. eapply plus_left; eauto. apply star_one; auto.
-Qed.
-
-Lemma plus_three:
-  forall ge s1 t1 s2 t2 s3 t3 s4 t,
-  step ge s1 t1 s2 -> step ge s2 t2 s3 -> step ge s3 t3 s4 -> t = t1 ** t2 ** t3 ->
-  plus ge s1 t s4.
-Proof.
-  intros. eapply plus_left; eauto. eapply star_two; eauto.
-Qed.
-
-Lemma plus_four:
-  forall ge s1 t1 s2 t2 s3 t3 s4 t4 s5 t,
-  step ge s1 t1 s2 -> step ge s2 t2 s3 ->
-  step ge s3 t3 s4 -> step ge s4 t4 s5 -> t = t1 ** t2 ** t3 ** t4 ->
-  plus ge s1 t s5.
-Proof.
-  intros. eapply plus_left; eauto. eapply star_three; eauto.
-Qed.
-
-Lemma plus_star:
-  forall ge s1 t s2, plus ge s1 t s2 -> star ge s1 t s2.
-Proof.
-  intros. inversion H; subst.
-  eapply star_step; eauto.
-Qed.
-
-Lemma plus_right:
-  forall ge s1 t1 s2 t2 s3 t,
-  star ge s1 t1 s2 -> step ge s2 t2 s3 -> t = t1 ** t2 ->
-  plus ge s1 t s3.
-Proof.
-  intros. inversion H; subst. simpl. apply plus_one. auto.
-  rewrite Eapp_assoc. eapply plus_left; eauto.
-  eapply star_right; eauto.
-Qed.
-
-Lemma plus_left':
-  forall ge s1 t1 s2 t2 s3 t,
-  step ge s1 t1 s2 -> plus ge s2 t2 s3 -> t = t1 ** t2 ->
-  plus ge s1 t s3.
-Proof.
-  intros. eapply plus_left; eauto. apply plus_star; auto.
-Qed.
-
-Lemma plus_right':
-  forall ge s1 t1 s2 t2 s3 t,
-  plus ge s1 t1 s2 -> step ge s2 t2 s3 -> t = t1 ** t2 ->
-  plus ge s1 t s3.
-Proof.
-  intros. eapply plus_right; eauto. apply plus_star; auto.
-Qed.
-
-Lemma plus_star_trans:
-  forall ge s1 t1 s2 t2 s3 t,
-  plus ge s1 t1 s2 -> star ge s2 t2 s3 -> t = t1 ** t2 -> plus ge s1 t s3.
-Proof.
-  intros. inversion H; subst.
-  econstructor; eauto. eapply star_trans; eauto.
-  traceEq.
-Qed.
-
-Lemma star_plus_trans:
-  forall ge s1 t1 s2 t2 s3 t,
-  star ge s1 t1 s2 -> plus ge s2 t2 s3 -> t = t1 ** t2 -> plus ge s1 t s3.
-Proof.
-  intros. inversion H; subst.
-  simpl; auto.
-  rewrite Eapp_assoc.
-  econstructor. eauto. eapply star_trans. eauto.
-  apply plus_star. eauto. eauto. auto.
-Qed.
-
-Lemma plus_trans:
-  forall ge s1 t1 s2 t2 s3 t,
-  plus ge s1 t1 s2 -> plus ge s2 t2 s3 -> t = t1 ** t2 -> plus ge s1 t s3.
-Proof.
-  intros. eapply plus_star_trans. eauto. apply plus_star. eauto. auto.
-Qed.
-
-Lemma plus_inv:
-  forall ge s1 t s2,
-  plus ge s1 t s2 ->
-  step ge s1 t s2 \/ exists s', exists t1, exists t2, step ge s1 t1 s' /\ plus ge s' t2 s2 /\ t = t1 ** t2.
-Proof.
-  intros. inversion H; subst. inversion H1; subst.
-  left. rewrite E0_right. auto.
-  right. exists s3; exists t1; exists (t0 ** t3); split. auto.
-  split. econstructor; eauto. auto.
-Qed.
-
-Lemma star_inv:
-  forall ge s1 t s2,
-  star ge s1 t s2 ->
-  (s2 = s1 /\ t = E0) \/ plus ge s1 t s2.
-Proof.
-  intros. inv H. left; auto. right; econstructor; eauto.
-Qed.
-
-Lemma plus_ind2:
-  forall ge (P: state -> trace -> state -> Prop),
-  (forall s1 t s2, step ge s1 t s2 -> P s1 t s2) ->
-  (forall s1 t1 s2 t2 s3 t,
-   step ge s1 t1 s2 -> plus ge s2 t2 s3 -> P s2 t2 s3 -> t = t1 ** t2 ->
-   P s1 t s3) ->
-  forall s1 t s2, plus ge s1 t s2 -> P s1 t s2.
-Proof.
-  intros ge P BASE IND.
-  assert (forall s1 t s2, star ge s1 t s2 ->
-         forall s0 t0, step ge s0 t0 s1 ->
-         P s0 (t0 ** t) s2).
-  induction 1; intros.
-  rewrite E0_right. apply BASE; auto.
-  eapply IND. eauto. econstructor; eauto. subst t0. eapply IHstar; eauto. auto.
-
-  intros. inv H0. eauto.
-Qed.
-
-Lemma plus_E0_ind:
-  forall ge (P: state -> state -> Prop),
-  (forall s1 s2 s3, step ge s1 E0 s2 -> star ge s2 E0 s3 -> P s1 s3) ->
-  forall s1 s2, plus ge s1 E0 s2 -> P s1 s2.
-Proof.
-  intros. inv H0. exploit Eapp_E0_inv; eauto. intros [A B]; subst. eauto.
-Qed.
-
-(** Counted sequences of transitions *)
-
-Inductive starN (ge: genv): nat -> state -> trace -> state -> Prop :=
-  | starN_refl: forall s,
-      starN ge O s E0 s
-  | starN_step: forall n s t t1 s' t2 s'',
-      step ge s t1 s' -> starN ge n s' t2 s'' -> t = t1 ** t2 ->
-      starN ge (S n) s t s''.
-
-Remark starN_star:
-  forall ge n s t s', starN ge n s t s' -> star ge s t s'.
-Proof.
-  induction 1; econstructor; eauto.
-Qed.
-
-Remark star_starN:
-  forall ge s t s', star ge s t s' -> exists n, starN ge n s t s'.
-Proof.
-  induction 1.
-  exists O; constructor.
-  destruct IHstar as [n P]. exists (S n); econstructor; eauto.
-Qed.
-
-(** Infinitely many transitions *)
-
-CoInductive forever (ge: genv): state -> traceinf -> Prop :=
-  | forever_intro: forall s1 t s2 T,
-      step ge s1 t s2 -> forever ge s2 T ->
-      forever ge s1 (t *** T).
-
-Lemma star_forever:
-  forall ge s1 t s2, star ge s1 t s2 ->
-  forall T, forever ge s2 T ->
-  forever ge s1 (t *** T).
-Proof.
-  induction 1; intros. simpl. auto.
-  subst t0. rewrite Eappinf_assoc.
-  econstructor; eauto.
-Qed.
-
-(** An alternate, equivalent definition of [forever] that is useful
-    for coinductive reasoning. *)
-
-Variable A: Type.
-Variable order: A -> A -> Prop.
-
-CoInductive forever_N (ge: genv) : A -> state -> traceinf -> Prop :=
-  | forever_N_star: forall s1 t s2 a1 a2 T1 T2,
-      star ge s1 t s2 ->
-      order a2 a1 ->
-      forever_N ge a2 s2 T2 ->
-      T1 = t *** T2 ->
-      forever_N ge a1 s1 T1
-  | forever_N_plus: forall s1 t s2 a1 a2 T1 T2,
-      plus ge s1 t s2 ->
-      forever_N ge a2 s2 T2 ->
-      T1 = t *** T2 ->
-      forever_N ge a1 s1 T1.
-
-Hypothesis order_wf: well_founded order.
-
-Lemma forever_N_inv:
-  forall ge a s T,
-  forever_N ge a s T ->
-  exists t, exists s', exists a', exists T',
-  step ge s t s' /\ forever_N ge a' s' T' /\ T = t *** T'.
-Proof.
-  intros ge a0. pattern a0. apply (well_founded_ind order_wf).
-  intros. inv H0.
-  (* star case *)
-  inv H1.
-  (* no transition *)
-  change (E0 *** T2) with T2. apply H with a2. auto. auto.
-  (* at least one transition *)
-  exists t1; exists s0; exists x; exists (t2 *** T2).
-  split. auto. split. eapply forever_N_star; eauto.
-  apply Eappinf_assoc.
-  (* plus case *)
-  inv H1.
-  exists t1; exists s0; exists a2; exists (t2 *** T2).
-  split. auto.
-  split. inv H3. auto.
-  eapply forever_N_plus. econstructor; eauto. eauto. auto.
-  apply Eappinf_assoc.
-Qed.
-
-Lemma forever_N_forever:
-  forall ge a s T, forever_N ge a s T -> forever ge s T.
-Proof.
-  cofix COINDHYP; intros.
-  destruct (forever_N_inv H) as [t [s' [a' [T' [P [Q R]]]]]].
-  rewrite R. apply forever_intro with s'. auto.
-  apply COINDHYP with a'; auto.
-Qed.
-
-(** Yet another alternative definition of [forever]. *)
-
-CoInductive forever_plus (ge: genv) : state -> traceinf -> Prop :=
-  | forever_plus_intro: forall s1 t s2 T1 T2,
-      plus ge s1 t s2 ->
-      forever_plus ge s2 T2 ->
-      T1 = t *** T2 ->
-      forever_plus ge s1 T1.
-
-Lemma forever_plus_inv:
-  forall ge s T,
-  forever_plus ge s T ->
-  exists s', exists t, exists T',
-  step ge s t s' /\ forever_plus ge s' T' /\ T = t *** T'.
-Proof.
-  intros. inv H. inv H0. exists s0; exists t1; exists (t2 *** T2).
-  split. auto.
-  split. exploit star_inv; eauto. intros [[P Q] | R].
-    subst. simpl. auto. econstructor; eauto.
-  traceEq.
-Qed.
-
-Lemma forever_plus_forever:
-  forall ge s T, forever_plus ge s T -> forever ge s T.
-Proof.
-  cofix COINDHYP; intros.
-  destruct (forever_plus_inv H) as [s' [t [T' [P [Q R]]]]].
-  subst. econstructor; eauto.
-Qed.
-
-(** Infinitely many silent transitions *)
-
-CoInductive forever_silent (ge: genv): state -> Prop :=
-  | forever_silent_intro: forall s1 s2,
-      step ge s1 E0 s2 -> forever_silent ge s2 ->
-      forever_silent ge s1.
-
-(** An alternate definition. *)
-
-CoInductive forever_silent_N (ge: genv) : A -> state -> Prop :=
-  | forever_silent_N_star: forall s1 s2 a1 a2,
-      star ge s1 E0 s2 ->
-      order a2 a1 ->
-      forever_silent_N ge a2 s2 ->
-      forever_silent_N ge a1 s1
-  | forever_silent_N_plus: forall s1 s2 a1 a2,
-      plus ge s1 E0 s2 ->
-      forever_silent_N ge a2 s2 ->
-      forever_silent_N ge a1 s1.
-
-Lemma forever_silent_N_inv:
-  forall ge a s,
-  forever_silent_N ge a s ->
-  exists s', exists a',
-  step ge s E0 s' /\ forever_silent_N ge a' s'.
-Proof.
-  intros ge a0. pattern a0. apply (well_founded_ind order_wf).
-  intros. inv H0.
-  (* star case *)
-  inv H1.
-  (* no transition *)
-  apply H with a2. auto. auto.
-  (* at least one transition *)
-  exploit Eapp_E0_inv; eauto. intros [P Q]. subst.
-  exists s0; exists x.
-  split. auto. eapply forever_silent_N_star; eauto.
-  (* plus case *)
-  inv H1. exploit Eapp_E0_inv; eauto. intros [P Q]. subst.
-  exists s0; exists a2.
-  split. auto. inv H3. auto.
-  eapply forever_silent_N_plus. econstructor; eauto. eauto.
-Qed.
-
-Lemma forever_silent_N_forever:
-  forall ge a s, forever_silent_N ge a s -> forever_silent ge s.
-Proof.
-  cofix COINDHYP; intros.
-  destruct (forever_silent_N_inv H) as [s' [a' [P Q]]].
-  apply forever_silent_intro with s'. auto.
-  apply COINDHYP with a'; auto.
-Qed.
-
-(** Infinitely many non-silent transitions *)
-
-CoInductive forever_reactive (ge: genv): state -> traceinf -> Prop :=
-  | forever_reactive_intro: forall s1 s2 t T,
-      star ge s1 t s2 -> t <> E0 -> forever_reactive ge s2 T ->
-      forever_reactive ge s1 (t *** T).
-
-Lemma star_forever_reactive:
-  forall ge s1 t s2 T,
-  star ge s1 t s2 -> forever_reactive ge s2 T ->
-  forever_reactive ge s1 (t *** T).
-Proof.
-  intros. inv H0. rewrite <- Eappinf_assoc. econstructor.
-  eapply star_trans; eauto.
-  red; intro. exploit Eapp_E0_inv; eauto. intros [P Q]. contradiction.
-  auto.
-Qed.
-
-End CLOSURES.
-
-(** * Transition semantics *)
-
-(** The general form of a transition semantics. *)
-
-Record semantics : Type := Semantics_gen {
-  state: Type;
-  funtype: Type;
-  vartype: Type;                            
-  step : Genv.t funtype vartype -> state -> trace -> state -> Prop;
-  initial_state: state -> Prop;
-  final_state: state -> int -> Prop;
-  globalenv: Genv.t funtype vartype;
-}.
-
-(** The form used in earlier CompCert versions, for backward compatibility. *)
-
-Definition Semantics {state funtype vartype: Type}
-                     (step: Genv.t funtype vartype -> state -> trace -> state -> Prop)
-                     (initial_state: state -> Prop)
-                     (final_state: state -> int -> Prop)
-                     (globalenv: Genv.t funtype vartype) :=
-  {| state := state;
-     funtype := funtype;
-     vartype := vartype;
-     step := step;
-     initial_state := initial_state;
-     final_state := final_state;
-     globalenv := globalenv |}.
-
-(** Handy notations. *)
-
-Notation " 'Step' L " := (step L (globalenv L)) (at level 1) : smallstep_scope.
-Notation " 'Star' L " := (star (step L) (globalenv L)) (at level 1) : smallstep_scope.
-Notation " 'Plus' L " := (plus (step L) (globalenv L)) (at level 1) : smallstep_scope.
-Notation " 'Forever_silent' L " := (forever_silent (step L) (globalenv L)) (at level 1) : smallstep_scope.
-Notation " 'Forever_reactive' L " := (forever_reactive (step L) (globalenv L)) (at level 1) : smallstep_scope.
-Notation " 'Nostep' L " := (nostep (step L) (globalenv L)) (at level 1) : smallstep_scope.
-
-Open Scope smallstep_scope.
+  (** * Closures of transitions relations *)
+
+  Section CLOSURES.
+
+    Variable genv: Type.
+    Variable state: Type.
+
+    (** A one-step transition relation has the following signature.
+        It is parameterized by a global environment, which does not
+        change during the transition.  It relates the initial state
+        of the transition with its final state.  The [trace] parameter
+        captures the observable events possibly generated during the
+        transition. *)
+
+    Variable step: genv -> state -> trace -> state -> Prop.
+
+    (** No transitions: stuck state *)
+
+    Definition nostep (ge: genv) (s: state) : Prop :=
+      forall t s', ~(step ge s t s').
+
+    (** Zero, one or several transitions.  Also known as Kleene closure,
+        or reflexive transitive closure. *)
+
+    Inductive star (ge: genv): state -> trace -> state -> Prop :=
+    | star_refl: forall s,
+        star ge s E0 s
+    | star_step: forall s1 t1 s2 t2 s3 t,
+        step ge s1 t1 s2 -> star ge s2 t2 s3 -> t = t1 ** t2 ->
+        star ge s1 t s3.
+
+    Lemma star_one:
+      forall ge s1 t s2, step ge s1 t s2 -> star ge s1 t s2.
+    Proof.
+      intros. eapply star_step; eauto. apply star_refl. traceEq.
+    Qed.
+
+    Lemma star_two:
+      forall ge s1 t1 s2 t2 s3 t,
+        step ge s1 t1 s2 -> step ge s2 t2 s3 -> t = t1 ** t2 ->
+        star ge s1 t s3.
+    Proof.
+      intros. eapply star_step; eauto. apply star_one; auto.
+    Qed.
+    
+    Lemma star_three:
+      forall ge s1 t1 s2 t2 s3 t3 s4 t,
+        step ge s1 t1 s2 -> step ge s2 t2 s3 -> step ge s3 t3 s4 -> t = t1 ** t2 ** t3 ->
+        star ge s1 t s4.
+    Proof.
+      intros. eapply star_step; eauto. eapply star_two; eauto.
+    Qed.
+
+    Lemma star_four:
+      forall ge s1 t1 s2 t2 s3 t3 s4 t4 s5 t,
+        step ge s1 t1 s2 -> step ge s2 t2 s3 ->
+        step ge s3 t3 s4 -> step ge s4 t4 s5 -> t = t1 ** t2 ** t3 ** t4 ->
+        star ge s1 t s5.
+    Proof.
+      intros. eapply star_step; eauto. eapply star_three; eauto.
+    Qed.
+
+    Lemma star_trans:
+      forall ge s1 t1 s2, star ge s1 t1 s2 ->
+                          forall t2 s3 t, star ge s2 t2 s3 -> t = t1 ** t2 -> star ge s1 t s3.
+    Proof.
+      induction 1; intros.
+      - rewrite H0. simpl. auto.
+      - eapply star_step; eauto. subst. traceEq.
+    Qed.
+
+    Lemma star_left:
+      forall ge s1 t1 s2 t2 s3 t,
+        step ge s1 t1 s2 -> star ge s2 t2 s3 -> t = t1 ** t2 ->
+        star ge s1 t s3.
+    Proof star_step.
+
+    Lemma star_right:
+      forall ge s1 t1 s2 t2 s3 t,
+        star ge s1 t1 s2 -> step ge s2 t2 s3 -> t = t1 ** t2 ->
+        star ge s1 t s3.
+    Proof.
+      intros. eapply star_trans. eauto. apply star_one. eauto. auto.
+    Qed.
+
+    Lemma star_E0_ind:
+      forall ge (P: state -> state -> Prop),
+        (forall s, P s s) ->
+        (forall s1 s2 s3, step ge s1 E0 s2 -> P s2 s3 -> P s1 s3) ->
+        forall s1 s2, star ge s1 E0 s2 -> P s1 s2.
+    Proof.
+      intros ge P BASE REC.
+      assert (forall s1 t s2, star ge s1 t s2 -> t = E0 -> P s1 s2).
+      induction 1; intros; subst.
+      auto.
+      destruct (Eapp_E0_inv _ _ H2). subst. eauto.
+      eauto.
+    Qed.
+    
+    (** One or several transitions.  Also known as the transitive closure. *)
+
+    Inductive plus (ge: genv): state -> trace -> state -> Prop :=
+    | plus_left: forall s1 t1 s2 t2 s3 t,
+        step ge s1 t1 s2 -> star ge s2 t2 s3 -> t = t1 ** t2 ->
+        plus ge s1 t s3.
+
+    Lemma plus_one:
+      forall ge s1 t s2,
+        step ge s1 t s2 -> plus ge s1 t s2.
+    Proof.
+      intros. econstructor; eauto. apply star_refl. traceEq.
+    Qed.
+
+    Lemma plus_two:
+      forall ge s1 t1 s2 t2 s3 t,
+        step ge s1 t1 s2 -> step ge s2 t2 s3 -> t = t1 ** t2 ->
+        plus ge s1 t s3.
+    Proof.
+      intros. eapply plus_left; eauto. apply star_one; auto.
+    Qed.
+
+    Lemma plus_three:
+      forall ge s1 t1 s2 t2 s3 t3 s4 t,
+        step ge s1 t1 s2 -> step ge s2 t2 s3 -> step ge s3 t3 s4 -> t = t1 ** t2 ** t3 ->
+        plus ge s1 t s4.
+    Proof.
+      intros. eapply plus_left; eauto. eapply star_two; eauto.
+    Qed.
+
+    Lemma plus_four:
+      forall ge s1 t1 s2 t2 s3 t3 s4 t4 s5 t,
+        step ge s1 t1 s2 -> step ge s2 t2 s3 ->
+        step ge s3 t3 s4 -> step ge s4 t4 s5 -> t = t1 ** t2 ** t3 ** t4 ->
+        plus ge s1 t s5.
+    Proof.
+      intros. eapply plus_left; eauto. eapply star_three; eauto.
+    Qed.
+
+    Lemma plus_star:
+      forall ge s1 t s2, plus ge s1 t s2 -> star ge s1 t s2.
+    Proof.
+      intros. inversion H; subst.
+      eapply star_step; eauto.
+    Qed.
+
+    Lemma plus_right:
+      forall ge s1 t1 s2 t2 s3 t,
+        star ge s1 t1 s2 -> step ge s2 t2 s3 -> t = t1 ** t2 ->
+        plus ge s1 t s3.
+    Proof.
+      intros. inversion H; subst. simpl. apply plus_one. auto.
+      rewrite Eapp_assoc. eapply plus_left; eauto.
+      eapply star_right; eauto.
+    Qed.
+
+    Lemma plus_left':
+      forall ge s1 t1 s2 t2 s3 t,
+        step ge s1 t1 s2 -> plus ge s2 t2 s3 -> t = t1 ** t2 ->
+        plus ge s1 t s3.
+    Proof.
+      intros. eapply plus_left; eauto. apply plus_star; auto.
+    Qed.
+
+    Lemma plus_right':
+      forall ge s1 t1 s2 t2 s3 t,
+        plus ge s1 t1 s2 -> step ge s2 t2 s3 -> t = t1 ** t2 ->
+        plus ge s1 t s3.
+    Proof.
+      intros. eapply plus_right; eauto. apply plus_star; auto.
+    Qed.
+
+    Lemma plus_star_trans:
+      forall ge s1 t1 s2 t2 s3 t,
+        plus ge s1 t1 s2 -> star ge s2 t2 s3 -> t = t1 ** t2 -> plus ge s1 t s3.
+    Proof.
+      intros. inversion H; subst.
+      econstructor; eauto. eapply star_trans; eauto.
+      traceEq.
+    Qed.
+
+    Lemma star_plus_trans:
+      forall ge s1 t1 s2 t2 s3 t,
+        star ge s1 t1 s2 -> plus ge s2 t2 s3 -> t = t1 ** t2 -> plus ge s1 t s3.
+    Proof.
+      intros. inversion H; subst.
+      simpl; auto.
+      rewrite Eapp_assoc.
+      econstructor. eauto. eapply star_trans. eauto.
+      apply plus_star. eauto. eauto. auto.
+    Qed.
+
+    Lemma plus_trans:
+      forall ge s1 t1 s2 t2 s3 t,
+        plus ge s1 t1 s2 -> plus ge s2 t2 s3 -> t = t1 ** t2 -> plus ge s1 t s3.
+    Proof.
+      intros. eapply plus_star_trans. eauto. apply plus_star. eauto. auto.
+    Qed.
+
+    Lemma plus_inv:
+      forall ge s1 t s2,
+        plus ge s1 t s2 ->
+        step ge s1 t s2 \/ exists s', exists t1, exists t2, step ge s1 t1 s' /\ plus ge s' t2 s2 /\ t = t1 ** t2.
+    Proof.
+      intros. inversion H; subst. inversion H1; subst.
+      left. rewrite E0_right. auto.
+      right. exists s3; exists t1; exists (t0 ** t3); split. auto.
+      split. econstructor; eauto. auto.
+    Qed.
+
+    Lemma star_inv:
+      forall ge s1 t s2,
+        star ge s1 t s2 ->
+        (s2 = s1 /\ t = E0) \/ plus ge s1 t s2.
+    Proof.
+      intros. inv H. left; auto. right; econstructor; eauto.
+    Qed.
+
+    Lemma plus_ind2:
+      forall ge (P: state -> trace -> state -> Prop),
+        (forall s1 t s2, step ge s1 t s2 -> P s1 t s2) ->
+        (forall s1 t1 s2 t2 s3 t,
+            step ge s1 t1 s2 -> plus ge s2 t2 s3 -> P s2 t2 s3 -> t = t1 ** t2 ->
+            P s1 t s3) ->
+        forall s1 t s2, plus ge s1 t s2 -> P s1 t s2.
+    Proof.
+      intros ge P BASE IND.
+      assert (forall s1 t s2, star ge s1 t s2 ->
+                              forall s0 t0, step ge s0 t0 s1 ->
+                                            P s0 (t0 ** t) s2).
+      induction 1; intros.
+      rewrite E0_right. apply BASE; auto.
+      eapply IND. eauto. econstructor; eauto. subst t0. eapply IHstar; eauto. auto.
+      
+      intros. inv H0. eauto.
+    Qed.
+
+    Lemma plus_E0_ind:
+      forall ge (P: state -> state -> Prop),
+        (forall s1 s2 s3, step ge s1 E0 s2 -> star ge s2 E0 s3 -> P s1 s3) ->
+        forall s1 s2, plus ge s1 E0 s2 -> P s1 s2.
+    Proof.
+      intros. inv H0. exploit Eapp_E0_inv; eauto. intros [A B]; subst. eauto.
+    Qed.
+
+    (** Counted sequences of transitions *)
+    
+    Inductive starN (ge: genv): nat -> state -> trace -> state -> Prop :=
+    | starN_refl: forall s,
+        starN ge O s E0 s
+    | starN_step: forall n s t t1 s' t2 s'',
+        step ge s t1 s' -> starN ge n s' t2 s'' -> t = t1 ** t2 ->
+        starN ge (S n) s t s''.
+    
+    Remark starN_star:
+      forall ge n s t s', starN ge n s t s' -> star ge s t s'.
+    Proof.
+      induction 1; econstructor; eauto.
+    Qed.
+
+    Remark star_starN:
+      forall ge s t s', star ge s t s' -> exists n, starN ge n s t s'.
+    Proof.
+      induction 1.
+      exists O; constructor.
+      destruct IHstar as [n P]. exists (S n); econstructor; eauto.
+    Qed.
+
+    (** Infinitely many transitions *)
+    
+    CoInductive forever (ge: genv): state -> traceinf -> Prop :=
+    | forever_intro: forall s1 t s2 T,
+        step ge s1 t s2 -> forever ge s2 T ->
+        forever ge s1 (t *** T).
+    
+    Lemma star_forever:
+      forall ge s1 t s2, star ge s1 t s2 ->
+                         forall T, forever ge s2 T ->
+                                   forever ge s1 (t *** T).
+    Proof.
+      induction 1; intros. simpl. auto.
+      subst t0. rewrite Eappinf_assoc.
+      econstructor; eauto.
+    Qed.
+
+    (** An alternate, equivalent definition of [forever] that is useful
+        for coinductive reasoning. *)
+
+    Variable A: Type.
+    Variable order: A -> A -> Prop.
+
+    CoInductive forever_N (ge: genv) : A -> state -> traceinf -> Prop :=
+    | forever_N_star: forall s1 t s2 a1 a2 T1 T2,
+        star ge s1 t s2 ->
+        order a2 a1 ->
+        forever_N ge a2 s2 T2 ->
+        T1 = t *** T2 ->
+        forever_N ge a1 s1 T1
+    | forever_N_plus: forall s1 t s2 a1 a2 T1 T2,
+        plus ge s1 t s2 ->
+        forever_N ge a2 s2 T2 ->
+        T1 = t *** T2 ->
+        forever_N ge a1 s1 T1.
+
+    Hypothesis order_wf: well_founded order.
+
+    Lemma forever_N_inv:
+      forall ge a s T,
+        forever_N ge a s T ->
+        exists t, exists s', exists a', exists T',
+          step ge s t s' /\ forever_N ge a' s' T' /\ T = t *** T'.
+    Proof.
+      intros ge a0. pattern a0. apply (well_founded_ind order_wf).
+      intros. inv H0.
+      (* star case *)
+      inv H1.
+      (* no transition *)
+      change (E0 *** T2) with T2. apply H with a2. auto. auto.
+      (* at least one transition *)
+      exists t1; exists s0; exists x; exists (t2 *** T2).
+      split. auto. split. eapply forever_N_star; eauto.
+      apply Eappinf_assoc.
+      (* plus case *)
+      inv H1.
+      exists t1; exists s0; exists a2; exists (t2 *** T2).
+      split. auto.
+      split. inv H3. auto.
+      eapply forever_N_plus. econstructor; eauto. eauto. auto.
+      apply Eappinf_assoc.
+    Qed.
+
+    Lemma forever_N_forever:
+      forall ge a s T, forever_N ge a s T -> forever ge s T.
+    Proof.
+      cofix COINDHYP; intros.
+      destruct (forever_N_inv H) as [t [s' [a' [T' [P [Q R]]]]]].
+      rewrite R. apply forever_intro with s'. auto.
+      apply COINDHYP with a'; auto.
+    Qed.
+    
+    (** Yet another alternative definition of [forever]. *)
+
+    CoInductive forever_plus (ge: genv) : state -> traceinf -> Prop :=
+    | forever_plus_intro: forall s1 t s2 T1 T2,
+        plus ge s1 t s2 ->
+        forever_plus ge s2 T2 ->
+        T1 = t *** T2 ->
+        forever_plus ge s1 T1.
+    
+    Lemma forever_plus_inv:
+      forall ge s T,
+        forever_plus ge s T ->
+        exists s', exists t, exists T',
+          step ge s t s' /\ forever_plus ge s' T' /\ T = t *** T'.
+    Proof.
+      intros. inv H. inv H0. exists s0; exists t1; exists (t2 *** T2).
+      split. auto.
+      split. exploit star_inv; eauto. intros [[P Q] | R].
+      subst. simpl. auto. econstructor; eauto.
+      traceEq.
+    Qed.
+
+    Lemma forever_plus_forever:
+      forall ge s T, forever_plus ge s T -> forever ge s T.
+    Proof.
+      cofix COINDHYP; intros.
+      destruct (forever_plus_inv H) as [s' [t [T' [P [Q R]]]]].
+      subst. econstructor; eauto.
+    Qed.
+    
+    (** Infinitely many silent transitions *)
+    
+    CoInductive forever_silent (ge: genv): state -> Prop :=
+    | forever_silent_intro: forall s1 s2,
+        step ge s1 E0 s2 -> forever_silent ge s2 ->
+        forever_silent ge s1.
+    
+    (** An alternate definition. *)
+    
+    CoInductive forever_silent_N (ge: genv) : A -> state -> Prop :=
+    | forever_silent_N_star: forall s1 s2 a1 a2,
+        star ge s1 E0 s2 ->
+        order a2 a1 ->
+        forever_silent_N ge a2 s2 ->
+        forever_silent_N ge a1 s1
+    | forever_silent_N_plus: forall s1 s2 a1 a2,
+        plus ge s1 E0 s2 ->
+        forever_silent_N ge a2 s2 ->
+        forever_silent_N ge a1 s1.
+
+    Lemma forever_silent_N_inv:
+      forall ge a s,
+        forever_silent_N ge a s ->
+        exists s', exists a',
+          step ge s E0 s' /\ forever_silent_N ge a' s'.
+    Proof.
+      intros ge a0. pattern a0. apply (well_founded_ind order_wf).
+      intros. inv H0.
+      (* star case *)
+      inv H1.
+      (* no transition *)
+      apply H with a2. auto. auto.
+      (* at least one transition *)
+      exploit Eapp_E0_inv; eauto. intros [P Q]. subst.
+      exists s0; exists x.
+      split. auto. eapply forever_silent_N_star; eauto.
+      (* plus case *)
+      inv H1. exploit Eapp_E0_inv; eauto. intros [P Q]. subst.
+      exists s0; exists a2.
+      split. auto. inv H3. auto.
+      eapply forever_silent_N_plus. econstructor; eauto. eauto.
+    Qed.
+    
+    Lemma forever_silent_N_forever:
+      forall ge a s, forever_silent_N ge a s -> forever_silent ge s.
+    Proof.
+      cofix COINDHYP; intros.
+      destruct (forever_silent_N_inv H) as [s' [a' [P Q]]].
+      apply forever_silent_intro with s'. auto.
+      apply COINDHYP with a'; auto.
+    Qed.
+    
+    (** Infinitely many non-silent transitions *)
+    
+    CoInductive forever_reactive (ge: genv): state -> traceinf -> Prop :=
+    | forever_reactive_intro: forall s1 s2 t T,
+        star ge s1 t s2 -> t <> E0 -> forever_reactive ge s2 T ->
+        forever_reactive ge s1 (t *** T).
+    
+    Lemma star_forever_reactive:
+      forall ge s1 t s2 T,
+        star ge s1 t s2 -> forever_reactive ge s2 T ->
+        forever_reactive ge s1 (t *** T).
+    Proof.
+      intros. inv H0. rewrite <- Eappinf_assoc. econstructor.
+      eapply star_trans; eauto.
+      red; intro. exploit Eapp_E0_inv; eauto. intros [P Q]. contradiction.
+      auto.
+    Qed.
+
+  End CLOSURES.
+
+  (** * Transition semantics *)
+
+  (** The general form of a transition semantics. *)
+
+  Record semantics : Type :=
+    Semantics_gen {
+        state: Type;
+        funtype: Type;
+        vartype: Type;                            
+        step : Genv.t funtype vartype -> state -> trace -> state -> Prop;
+        initial_state: state -> Prop;
+        final_state: state -> int -> Prop;
+        globalenv: Genv.t funtype vartype;
+      }.
+
+  (** The form used in earlier CompCert versions, for backward compatibility. *)
+
+  Definition Semantics {state funtype vartype: Type}
+             (step: Genv.t funtype vartype -> state -> trace -> state -> Prop)
+             (initial_state: state -> Prop)
+             (final_state: state -> int -> Prop)
+             (globalenv: Genv.t funtype vartype) :=
+    {| state := state;
+      funtype := funtype;
+      vartype := vartype;
+      step := step;
+      initial_state := initial_state;
+      final_state := final_state;
+      globalenv := globalenv |}.
+  
+  (** Handy notations. *)
+
+  Notation " 'Step' L " := (step L (globalenv L)) (at level 1) : smallstep_scope.
+  Notation " 'Star' L " := (star (step L) (globalenv L)) (at level 1) : smallstep_scope.
+  Notation " 'Plus' L " := (plus (step L) (globalenv L)) (at level 1) : smallstep_scope.
+  Notation " 'Forever_silent' L " := (forever_silent (step L) (globalenv L)) (at level 1) : smallstep_scope.
+  Notation " 'Forever_reactive' L " := (forever_reactive (step L) (globalenv L)) (at level 1) : smallstep_scope.
+  Notation " 'Nostep' L " := (nostep (step L) (globalenv L)) (at level 1) : smallstep_scope.
+
+  Open Scope smallstep_scope.
+
+End Smallstep.
 
 (** * Forward simulations between two transition semantics. *)
 
 (** The general form of a forward simulation. *)
 
-Record fsim_properties (L1 L2: semantics) (index: Type)
-                       (order: index -> index -> Prop)
-                       (match_states: index -> state L1 -> state L2 -> Prop) : Prop := {
-    fsim_order_wf: well_founded order;
-    fsim_match_initial_states:
-      forall s1, initial_state L1 s1 ->
-      exists i, exists s2, initial_state L2 s2 /\ match_states i s1 s2;
-    fsim_match_final_states:
+Module FSIM (Ptr1: Pointer) (Pol1: Policy)
+       (M1: Memory Ptr1 Pol1) (A1: Allocator Ptr1 Pol1 M1)
+       (Ptr2: Pointer) (Pol2: Policy)
+       (M2: Memory Ptr2 Pol2) (A2: Allocator Ptr2 Pol2 M2).
+  Module S1 := Smallstep Ptr1 Pol1 M1 A1.
+  Module E1 := S1.Events.
+  Module GV1 := E1.Genv.
+  Module S2 := Smallstep Ptr2 Pol2 M2 A2.
+  Module E2 := S2.Events.
+  Module GV2 := E2.Genv.
+  Module EM := Event_Match Ptr1 Pol1 M1 A1
+                           Ptr2 Pol2 M2 A2.
+  Import EM.
+  
+  (** Handy notations, now for both! *)
+
+  Notation " 'S1.Step' L " := (S1.step L (S1.globalenv L)) (at level 1) : smallstep_scope.
+  Notation " 'S1.Star' L " := (S1.star (S1.step L) (S1.globalenv L)) (at level 1) : smallstep_scope.
+  Notation " 'S1.Plus' L " := (S1.plus (S1.step L) (S1.globalenv L)) (at level 1) : smallstep_scope.
+  Notation " 'S1.Forever_silent' L " := (S1.forever_silent (S1.step L) (S1.globalenv L)) (at level 1) : smallstep_scope.
+  Notation " 'S1.Forever_reactive' L " := (S1.forever_reactive (S1.step L) (S1.globalenv L)) (at level 1) : smallstep_scope.
+  Notation " 'S1.Nostep' L " := (S1.nostep (S1.step L) (S1.globalenv L)) (at level 1) : smallstep_scope.
+
+  Notation " 'S2.Step' L " := (S2.step L (S2.globalenv L)) (at level 1) : smallstep_scope.
+  Notation " 'S2.Star' L " := (S2.star (S2.step L) (S2.globalenv L)) (at level 1) : smallstep_scope.
+  Notation " 'S2.Plus' L " := (S2.plus (S2.step L) (S2.globalenv L)) (at level 1) : smallstep_scope.
+  Notation " 'S2.Forever_silent' L " := (S2.forever_silent (S2.step L) (S2.globalenv L)) (at level 1) : smallstep_scope.
+  Notation " 'S2.Forever_reactive' L " := (S2.forever_reactive (S2.step L) (S2.globalenv L)) (at level 1) : smallstep_scope.
+  Notation " 'S2.Nostep' L " := (S2.nostep (S2.step L) (S2.globalenv L)) (at level 1) : smallstep_scope.
+  
+  Open Scope smallstep_scope.
+  
+  Record fsim_properties (L1: S1.semantics) (L2: S2.semantics) (index: Type)
+         (order: index -> index -> Prop)
+         (match_states: index -> S1.state L1 -> S2.state L2 -> Prop) : Prop := {
+      fsim_order_wf: well_founded order;
+      fsim_match_initial_states:
+      forall s1, S1.initial_state L1 s1 ->
+                 exists i, exists s2, S2.initial_state L2 s2 /\ match_states i s1 s2;
+      fsim_match_final_states:
       forall i s1 s2 r,
-      match_states i s1 s2 -> final_state L1 s1 r -> final_state L2 s2 r;
-    fsim_simulation:
-      forall s1 t s1', Step L1 s1 t s1' ->
-      forall i s2, match_states i s1 s2 ->
-      exists i', exists s2',
-         (Plus L2 s2 t s2' \/ (Star L2 s2 t s2' /\ order i' i))
-      /\ match_states i' s1' s2';
-    fsim_public_preserved:
-      forall id, public_symbol (globalenv L2) id = public_symbol (globalenv L1) id
-  }.
+        match_states i s1 s2 -> S1.final_state L1 s1 r -> S2.final_state L2 s2 r;
+      fsim_simulation:
+      forall s1 t1 s1', S1.Step L1 s1 t1 s1' ->
+                       forall i s2, match_states i s1 s2 ->
+                                    exists i', exists s2', exists t2,
+                                      (S2.Plus L2 s2 t2 s2' \/
+                                         (S2.Star L2 s2 t2 s2' /\ order i' i))
+                                      /\ match_states i' s1' s2' /\ EM.trace_match t1 t2;
+      fsim_public_preserved:
+      forall id, GV2.public_symbol L2.(S2.globalenv) id = GV1.public_symbol L1.(S1.globalenv) id
+    }.
 
 Arguments fsim_properties: clear implicits.
 
-Inductive forward_simulation (L1 L2: semantics) : Prop :=
+Inductive forward_simulation (L1: S1.semantics) (L2: S2.semantics) : Prop :=
   Forward_simulation (index: Type)
                      (order: index -> index -> Prop)
-                     (match_states: index -> state L1 -> state L2 -> Prop)
+                     (match_states: index -> S1.state L1 -> S2.state L2 -> Prop)
                      (props: fsim_properties L1 L2 index order match_states).
 
 Arguments Forward_simulation {L1 L2 index} order match_states props.
 
+End FSIM.
+
 (** An alternate form of the simulation diagram *)
 
-Lemma fsim_simulation':
+(*Lemma fsim_simulation':
   forall L1 L2 index order match_states, fsim_properties L1 L2 index order match_states ->
-  forall i s1 t s1', Step L1 s1 t s1' ->
+  forall i s1 t1 t2 s1', S1.Step L1 s1 t1 s1' ->
   forall s2, match_states i s1 s2 ->
-  (exists i', exists s2', Plus L2 s2 t s2' /\ match_states i' s1' s2')
-  \/ (exists i', order i' i /\ t = E0 /\ match_states i' s1' s2).
+  (exists i', exists s2', S2.Plus L2 s2 t2 s2' /\ match_states i' s1' s2')
+  \/ (exists i', order i' i /\ t1 = E1.E0 /\ match_states i' s1' s2).
 Proof.
   intros. exploit fsim_simulation; eauto.
   intros [i' [s2' [A B]]]. intuition.
@@ -576,148 +614,148 @@ Qed.
 
 Section FORWARD_SIMU_DIAGRAMS.
 
-Variable L1: semantics.
-Variable L2: semantics.
+  Variable L1: semantics.
+  Variable L2: semantics.
+  
+  Hypothesis public_preserved:
+    forall id, public_symbol (globalenv L2) id = public_symbol (globalenv L1) id.
 
-Hypothesis public_preserved:
-  forall id, public_symbol (globalenv L2) id = public_symbol (globalenv L1) id.
+  Variable match_states: state L1 -> state L2 -> Prop.
 
-Variable match_states: state L1 -> state L2 -> Prop.
+  Hypothesis match_initial_states:
+    forall s1, initial_state L1 s1 ->
+               exists s2, initial_state L2 s2 /\ match_states s1 s2.
 
-Hypothesis match_initial_states:
-  forall s1, initial_state L1 s1 ->
-  exists s2, initial_state L2 s2 /\ match_states s1 s2.
+  Hypothesis match_final_states:
+    forall s1 s2 r,
+      match_states s1 s2 ->
+      final_state L1 s1 r ->
+      final_state L2 s2 r.
 
-Hypothesis match_final_states:
-  forall s1 s2 r,
-  match_states s1 s2 ->
-  final_state L1 s1 r ->
-  final_state L2 s2 r.
+  (** Simulation when one transition in the first program
+      corresponds to zero, one or several transitions in the second program.
+      However, there is no stuttering: infinitely many transitions
+      in the source program must correspond to infinitely many
+      transitions in the second program. *)
 
-(** Simulation when one transition in the first program
-    corresponds to zero, one or several transitions in the second program.
-    However, there is no stuttering: infinitely many transitions
-    in the source program must correspond to infinitely many
-    transitions in the second program. *)
+  Section SIMULATION_STAR_WF.
 
-Section SIMULATION_STAR_WF.
+    (** [order] is a well-founded ordering associated with states
+        of the first semantics.  Stuttering steps must correspond
+        to states that decrease w.r.t. [order]. *)
 
-(** [order] is a well-founded ordering associated with states
-  of the first semantics.  Stuttering steps must correspond
-  to states that decrease w.r.t. [order]. *)
+    Variable order: state L1 -> state L1 -> Prop.
+    Hypothesis order_wf: well_founded order.
 
-Variable order: state L1 -> state L1 -> Prop.
-Hypothesis order_wf: well_founded order.
+    Hypothesis simulation:
+      forall s1 t s1', Step L1 s1 t s1' ->
+                       forall s2, match_states s1 s2 ->
+                                  exists s2',
+                                    (Plus L2 s2 t s2' \/ (Star L2 s2 t s2' /\ order s1' s1))
+                                    /\ match_states s1' s2'.
 
-Hypothesis simulation:
-  forall s1 t s1', Step L1 s1 t s1' ->
-  forall s2, match_states s1 s2 ->
-  exists s2',
-  (Plus L2 s2 t s2' \/ (Star L2 s2 t s2' /\ order s1' s1))
-  /\ match_states s1' s2'.
+    Lemma forward_simulation_star_wf: forward_simulation L1 L2.
+    Proof.
+      apply Forward_simulation with order (fun idx s1 s2 => idx = s1 /\ match_states s1 s2);
+        constructor.
+      - auto.
+      - intros. exploit match_initial_states; eauto. intros [s2 [A B]].
+        exists s1; exists s2; auto.
+      - intros. destruct H. eapply match_final_states; eauto.
+      - intros. destruct H0. subst i. exploit simulation; eauto. intros [s2' [A B]].
+        exists s1'; exists s2'; intuition auto.
+      - auto.
+    Qed.
 
-Lemma forward_simulation_star_wf: forward_simulation L1 L2.
-Proof.
-  apply Forward_simulation with order (fun idx s1 s2 => idx = s1 /\ match_states s1 s2);
-  constructor.
-- auto.
-- intros. exploit match_initial_states; eauto. intros [s2 [A B]].
-    exists s1; exists s2; auto.
-- intros. destruct H. eapply match_final_states; eauto.
-- intros. destruct H0. subst i. exploit simulation; eauto. intros [s2' [A B]].
-  exists s1'; exists s2'; intuition auto.
-- auto.
-Qed.
+  End SIMULATION_STAR_WF.
 
-End SIMULATION_STAR_WF.
+  Section SIMULATION_STAR.
 
-Section SIMULATION_STAR.
+    (** We now consider the case where we have a nonnegative integer measure
+        associated with states of the first semantics.  It must decrease when we take
+        a stuttering step. *)
 
-(** We now consider the case where we have a nonnegative integer measure
-  associated with states of the first semantics.  It must decrease when we take
-  a stuttering step. *)
+    Variable measure: state L1 -> nat.
 
-Variable measure: state L1 -> nat.
+    Hypothesis simulation:
+      forall s1 t s1', Step L1 s1 t s1' ->
+                       forall s2, match_states s1 s2 ->
+                                  (exists s2', Plus L2 s2 t s2' /\ match_states s1' s2')
+                                  \/ (measure s1' < measure s1 /\ t = E0 /\ match_states s1' s2)%nat.
 
-Hypothesis simulation:
-  forall s1 t s1', Step L1 s1 t s1' ->
-  forall s2, match_states s1 s2 ->
-  (exists s2', Plus L2 s2 t s2' /\ match_states s1' s2')
-  \/ (measure s1' < measure s1 /\ t = E0 /\ match_states s1' s2)%nat.
+    Lemma forward_simulation_star: forward_simulation L1 L2.
+    Proof.
+      apply forward_simulation_star_wf with (ltof _ measure).
+      apply well_founded_ltof.
+      intros. exploit simulation; eauto. intros [[s2' [A B]] | [A [B C]]].
+      exists s2'; auto.
+      exists s2; split. right; split. rewrite B. apply star_refl. auto. auto.
+    Qed.
 
-Lemma forward_simulation_star: forward_simulation L1 L2.
-Proof.
-  apply forward_simulation_star_wf with (ltof _ measure).
-  apply well_founded_ltof.
-  intros. exploit simulation; eauto. intros [[s2' [A B]] | [A [B C]]].
-  exists s2'; auto.
-  exists s2; split. right; split. rewrite B. apply star_refl. auto. auto.
-Qed.
+  End SIMULATION_STAR.
 
-End SIMULATION_STAR.
+  (** Simulation when one transition in the first program corresponds
+      to one or several transitions in the second program. *)
 
-(** Simulation when one transition in the first program corresponds
-    to one or several transitions in the second program. *)
+  Section SIMULATION_PLUS.
 
-Section SIMULATION_PLUS.
+    Hypothesis simulation:
+      forall s1 t s1', Step L1 s1 t s1' ->
+                       forall s2, match_states s1 s2 ->
+                                  exists s2', Plus L2 s2 t s2' /\ match_states s1' s2'.
 
-Hypothesis simulation:
-  forall s1 t s1', Step L1 s1 t s1' ->
-  forall s2, match_states s1 s2 ->
-  exists s2', Plus L2 s2 t s2' /\ match_states s1' s2'.
+    Lemma forward_simulation_plus: forward_simulation L1 L2.
+    Proof.
+      apply forward_simulation_star with (measure := fun _ => O).
+      intros. exploit simulation; eauto.
+    Qed.
 
-Lemma forward_simulation_plus: forward_simulation L1 L2.
-Proof.
-  apply forward_simulation_star with (measure := fun _ => O).
-  intros. exploit simulation; eauto.
-Qed.
+  End SIMULATION_PLUS.
 
-End SIMULATION_PLUS.
+  (** Lock-step simulation: each transition in the first semantics
+      corresponds to exactly one transition in the second semantics. *)
+  
+  Section SIMULATION_STEP.
 
-(** Lock-step simulation: each transition in the first semantics
-    corresponds to exactly one transition in the second semantics. *)
+    Hypothesis simulation:
+      forall s1 t s1', Step L1 s1 t s1' ->
+                       forall s2, match_states s1 s2 ->
+                                  exists s2', Step L2 s2 t s2' /\ match_states s1' s2'.
 
-Section SIMULATION_STEP.
+    Lemma forward_simulation_step: forward_simulation L1 L2.
+    Proof.
+      apply forward_simulation_plus.
+      intros. exploit simulation; eauto. intros [s2' [A B]].
+      exists s2'; split; auto. apply plus_one; auto.
+    Qed.
 
-Hypothesis simulation:
-  forall s1 t s1', Step L1 s1 t s1' ->
-  forall s2, match_states s1 s2 ->
-  exists s2', Step L2 s2 t s2' /\ match_states s1' s2'.
+  End SIMULATION_STEP.
 
-Lemma forward_simulation_step: forward_simulation L1 L2.
-Proof.
-  apply forward_simulation_plus.
-  intros. exploit simulation; eauto. intros [s2' [A B]].
-  exists s2'; split; auto. apply plus_one; auto.
-Qed.
+  (** Simulation when one transition in the first program
+      corresponds to zero or one transitions in the second program.
+      However, there is no stuttering: infinitely many transitions
+      in the source program must correspond to infinitely many
+      transitions in the second program. *)
 
-End SIMULATION_STEP.
+  Section SIMULATION_OPT.
 
-(** Simulation when one transition in the first program
-    corresponds to zero or one transitions in the second program.
-    However, there is no stuttering: infinitely many transitions
-    in the source program must correspond to infinitely many
-    transitions in the second program. *)
+    Variable measure: state L1 -> nat.
 
-Section SIMULATION_OPT.
+    Hypothesis simulation:
+      forall s1 t s1', Step L1 s1 t s1' ->
+                       forall s2, match_states s1 s2 ->
+                                  (exists s2', Step L2 s2 t s2' /\ match_states s1' s2')
+                                  \/ (measure s1' < measure s1 /\ t = E0 /\ match_states s1' s2)%nat.
 
-Variable measure: state L1 -> nat.
+    Lemma forward_simulation_opt: forward_simulation L1 L2.
+    Proof.
+      apply forward_simulation_star with measure.
+      intros. exploit simulation; eauto. intros [[s2' [A B]] | [A [B C]]].
+      left; exists s2'; split; auto. apply plus_one; auto.
+      right; auto.
+    Qed.
 
-Hypothesis simulation:
-  forall s1 t s1', Step L1 s1 t s1' ->
-  forall s2, match_states s1 s2 ->
-  (exists s2', Step L2 s2 t s2' /\ match_states s1' s2')
-  \/ (measure s1' < measure s1 /\ t = E0 /\ match_states s1' s2)%nat.
-
-Lemma forward_simulation_opt: forward_simulation L1 L2.
-Proof.
-  apply forward_simulation_star with measure.
-  intros. exploit simulation; eauto. intros [[s2' [A B]] | [A [B C]]].
-  left; exists s2'; split; auto. apply plus_one; auto.
-  right; auto.
-Qed.
-
-End SIMULATION_OPT.
+  End SIMULATION_OPT.
 
 End FORWARD_SIMU_DIAGRAMS.
 
@@ -1095,7 +1133,7 @@ Qed.
 
 (** The general form of a backward simulation. *)
 
-Record bsim_properties (L1 L2: semantics) (index: Type)
+Record bsim_properties (L1: S1.semantics) (L2: S2.semantics) (index: Type)
                        (order: index -> index -> Prop)
                        (match_states: index -> state L1 -> state L2 -> Prop) : Prop := {
     bsim_order_wf: well_founded order;
@@ -1125,7 +1163,7 @@ Record bsim_properties (L1 L2: semantics) (index: Type)
 
 Arguments bsim_properties: clear implicits.
 
-Inductive backward_simulation (L1 L2: semantics) : Prop :=
+Inductive backward_simulation (L1: S1.semantics) (L2: S2.semantics) : Prop :=
   Backward_simulation (index: Type)
                       (order: index -> index -> Prop)
                       (match_states: index -> state L1 -> state L2 -> Prop)
@@ -1437,3 +1475,4 @@ Record bigstep_sound (B: bigstep_semantics) (L: semantics) : Prop :=
 }.
 
 End Smallstep.
+*)
