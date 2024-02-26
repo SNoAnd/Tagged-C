@@ -128,86 +128,86 @@ as shown in Figure \ref{subfigs:alloc}.
 \begin{figure}
   \begin{minipage}{0.33\textwidth}
     \[\begin{split}
-    \mathbf{A} ::= & ! \alpha ~ m ~ a ~ v \\
-    |& ? \alpha ~ m ~ (a_1,a_2) \\
+    \mathbf{A} ::= & ! I ~ \alpha ~ m ~ a ~ v \\
+    |& ? I ~ \alpha ~ m ~ (a_1,a_2) \\
     \end{split}\]
   \end{minipage}
   \begin{minipage}{0.33\textwidth}
     \judgment{\(\mathit{write} ~ \alpha ~ m ~ a ~ v = m'\)}
-             {\(! \alpha ~ m' ~ a ~ v\)}
+             {\(! I ~ \alpha ~ m' ~ a ~ v\)}
   \end{minipage}
   \begin{minipage}{0.33\textwidth}
-    \judgment{\(! \alpha ~ m ~ a ~ v\)}
+    \judgment{\(! I ~ \alpha ~ m ~ a ~ v\)}
              {\(\mathit{read} ~ \alpha ~ m ~ a = v\)}
   \end{minipage}
   \begin{minipage}{0.33\textwidth}
-    \judgmenttwo{\(? \alpha ~ m ~ (a_1, a_2)\)}
+    \judgmenttwo{\(? I ~ \alpha ~ m ~ (a_1, a_2)\)}
                 {\(a_1 \leq a < a_2\)}
                 {\(\exists v . \mathit{read} ~ \alpha ~ m ~ a = v\)}
   \end{minipage}
   \begin{minipage}{0.33\textwidth}
-    \judgmenttwo{\(? \alpha ~ m ~ (a_1, a_2)\)}
+    \judgmenttwo{\(? I ~ \alpha ~ m ~ (a_1, a_2)\)}
                 {\(a_1 \leq a < a_2\)}
                 {\(\exists m' . \mathit{write} ~ \alpha ~ m ~ a ~ v = m'\)}
   \end{minipage}
   \begin{minipage}{0.33\textwidth}
     \judgment{\(\mathit{read} ~ \alpha ~ m ~ a = v\)}
-             {\(! \alpha ~ m ~ a ~ v\)}
+             {\(! I ~ \alpha ~ m ~ a ~ v\)}
   \end{minipage}
   \begin{minipage}{0.33\textwidth}
-    \judgmenttwobrlong{\(!\alpha ~ m ~ a ~ v\)}
+    \judgmenttwobrlong{\(! I ~ \alpha ~ m ~ a ~ v\)}
                       {\(a \not = a'\)}
                       {\(\mathit{write} ~ \alpha ~ m ~ a' ~ v' = m'\)}
-                      {\(!\alpha ~ m' ~ a ~ v\)}
+                      {\(! I ~ \alpha ~ m' ~ a ~ v\)}
   \end{minipage}
   \begin{minipage}{0.33\textwidth}
-    \judgmentbr{\(?\alpha ~ m ~ (a_1,a_2)\)}
+    \judgmentbr{\(? I ~ \alpha ~ m ~ (a_1,a_2)\)}
                {\(\mathit{write} ~ \alpha ~ m ~ a ~ v = m'\)}
-               {\(?\alpha ~ m' ~ (a_1,a_2)\)}
+               {\(? I ~ \alpha ~ m' ~ (a_1,a_2)\)}
   \end{minipage}
   \begin{minipage}{0.33\textwidth}
     \judgment{\(\mathit{alloc} ~ \alpha ~ I ~ s = (i, \alpha')\)}
-             {\(?\alpha' ~ m ~ (i,i+s)\)}
+             {\(? I ~ \alpha' ~ m ~ (i,i+s)\)}
   \end{minipage}
   \begin{minipage}{0.33\textwidth}
-    \judgmenttwobrlong{\(!\alpha ~ m ~ a ~ v\)} 
+    \judgmenttwobrlong{\(! I ~ \alpha ~ m ~ a ~ v\)} 
                       {\(a < i\) or \(a \leq i+s\)}
                       {\(\mathit{alloc} ~ \alpha ~ I ~ s = (i, \alpha')\)}
-                      {\(!\alpha' ~ m ~ a ~ v\)}
+                      {\(! I ~ \alpha' ~ m ~ a ~ v\)}
   \end{minipage}
   \begin{minipage}{0.33\textwidth}
-    \judgmentbr{\(?\alpha ~ m ~ (a_1,a_2)\)} 
+    \judgmentbr{\(? I ~ \alpha ~ m ~ (a_1,a_2)\)} 
                {\(\mathit{alloc} ~ \alpha ~ I ~ s = (i, \alpha')\)}
                {\(i+s < a_1\) or \(a_2 \leq i\)}
   \end{minipage}
   \begin{minipage}{0.33\textwidth}
-    \judgmentbr{\(?\alpha ~ m ~ (a_1,a_2)\)} 
+    \judgmentbr{\(? I ~ \alpha ~ m ~ (a_1,a_2)\)} 
                {\(\mathit{alloc} ~ \alpha ~ I ~ s ~ m = (i, \alpha')\)}
-               {\(?\alpha' ~ m ~ (a_1,a_2)\)}
+               {\(? I ~ \alpha' ~ m ~ (a_1,a_2)\)}
   \end{minipage}
   \begin{minipage}{0.33\textwidth}
-    \judgmenttwobrlong{\(?\alpha ~ m ~ (a_1,a_2)\)}
+    \judgmenttwobrlong{\(? I ~ \alpha ~ m ~ (a_1,a_2)\)}
                       {\(a < a_1\)}
                       {\(\mathit{free} ~ \alpha ~ I ~ a = \alpha'\)}
-                      {\(?\alpha' ~ m ~ (a_1,a_2)\)}
+                      {\(? I ~ \alpha' ~ m ~ (a_1,a_2)\)}
   \end{minipage}
   \begin{minipage}{0.33\textwidth}
-    \judgmenttwobrlong{\(?\alpha ~ m ~ (a_1,a_2)\)}
+    \judgmenttwobrlong{\(? I ~ \alpha ~ m ~ (a_1,a_2)\)}
                       {\(a_2 \leq a\)}
                       {\(\mathit{free} ~ \alpha ~ I ~ a = \alpha'\)}
-                      {\(?\alpha' ~ m ~ (a_1,a_2)\)}
+                      {\(? I ~ \alpha' ~ m ~ (a_1,a_2)\)}
   \end{minipage}
   \begin{minipage}{0.33\textwidth}
-    \judgmentbr{\(?\alpha ~ m ~ (a_1,a_2)\)}
+    \judgmentbr{\(? I ~ \alpha ~ m ~ (a_1,a_2)\)}
                {\(\mathit{perturb} ~ \alpha ~ m = (\alpha', m')\)}
-               {\(?\alpha' ~ m' ~ (a_1,a_2)\)}
+               {\(? I ~ \alpha' ~ m' ~ (a_1,a_2)\)}
   \end{minipage}
   \begin{minipage}{0.33\textwidth}
-    \judgmentthreebrlong{\(?\alpha ~ m ~ (a_1,a_2)\)}
-                        {\(!\alpha ~ m ~ a ~ v\)}
+    \judgmentthreebrlong{\(? I ~ \alpha ~ m ~ (a_1,a_2)\)}
+                        {\(! I ~ \alpha ~ m ~ a ~ v\)}
                         {\(a_1 \leq a < a_2\)}
                         {\(\mathit{perturb} ~ \alpha ~ m = (\alpha', m')\)}
-                        {\(!\alpha' ~ m' ~ a ~ v\)}
+                        {\(! I ~ \alpha' ~ m' ~ a ~ v\)}
   \end{minipage}
 
   \caption{Assertion Rules}
@@ -216,8 +216,8 @@ as shown in Figure \ref{subfigs:alloc}.
 
 To simplify the expression of these axioms, we define a small assertion language within
 which we can express facts about the values of addresses in memory. We write
-\(!\alpha ~ m ~ a ~ v\) to indicate that, in memory \(m\), address \(a\) is expected
-to contain value \(v\). We write \(?\alpha ~ m ~ (a_1,a_2)\) to indicate that the range
+\(! I ~ \alpha ~ m ~ a ~ v\) to indicate that, in memory \(m\), address \(a\) is expected
+to contain value \(v\). We write \(? I ~ \alpha ~ m ~ (a_1,a_2)\) to indicate that the range
 of addresses from \(a_1\) to \(a_2\) are allocated as a block, so operations will not failstop
 (i.e., they will produce some value, but which value may be unknown).
 Finally, we write \(\mathbf{A}[\alpha,m,a]\) to represent the set of assertions binding \(\alpha\),
@@ -230,10 +230,10 @@ Such assertions are naturally related to the behavior of the system:
 
 \begin{minipage}[t]{0.25\textwidth}
   \judgment{\(\mathit{write} ~ \alpha ~ m ~ a ~ v = m'\)}
-           {\(! \alpha ~ m' ~ a ~ v\)}
+           {\(! I ~ \alpha ~ m' ~ a ~ v\)}
 \end{minipage}
 \begin{minipage}[t]{0.25\textwidth}
-  \judgment{\(! \alpha ~ m ~ a ~ v\)}
+  \judgment{\(! I ~ \alpha ~ m ~ a ~ v\)}
            {\(\mathit{read} ~ \alpha ~ m ~ a = v\)}
 \end{minipage}
 
