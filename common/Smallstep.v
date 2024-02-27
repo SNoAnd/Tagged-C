@@ -536,10 +536,61 @@ Module FSIM (Ptr1: Pointer) (Pol1: Policy)
   Module S2 := Smallstep Ptr2 Pol2 M2 A2.
   Module E2 := S2.Events.
   Module GV2 := E2.Genv.
-  Module EM := Event_Match Ptr1 Pol1 M1 A1
-                           Ptr2 Pol2 M2 A2.
-  Import EM.
   
+  Inductive eventval_match: E1.eventval -> E2.eventval -> Prop :=
+  | MEVint: forall i,
+      eventval_match (E1.EVint i) (E2.EVint i)
+  | MEVlong: forall i,
+      eventval_match (E1.EVlong i) (E2.EVlong i)
+  | MEVfloat: forall f,
+      eventval_match (E1.EVfloat f) (E2.EVfloat f)
+  | MEVsingle: forall f,
+      eventval_match (E1.EVfloat f) (E2.EVfloat f)
+  | MEVptr_global: forall id p1 p2,
+      (Ptr1.concretize p1) = (Ptr2.concretize p2) ->
+      eventval_match (E1.EVptr_global id p1) (E2.EVptr_global id p2)
+  | MEVptr_fun: forall id,
+      eventval_match (E1.EVptr_fun id) (E2.EVptr_fun id)      
+  .
+
+  Inductive ev_list_match: list E1.eventval -> list E2.eventval -> Prop :=
+  | MEVLnil: ev_list_match nil nil
+  | MEVLcons: forall ev1 ev2 evs1 evs2,
+      eventval_match ev1 ev2 ->
+      ev_list_match evs1 evs2 ->
+      ev_list_match (ev1::evs1) (ev2::evs2)
+  .
+  
+  Inductive event_match: E1.event -> E2.event -> Prop :=
+  | MEvent_syscall: forall s evs1 evs2 ev1 ev2,
+      ev_list_match evs1 evs2 ->
+      eventval_match ev1 ev2 ->
+      event_match (E1.Event_syscall s evs1 ev1) (E2.Event_syscall s evs2 ev2)
+  | MEvent_vload: forall chunk id p1 p2 ev1 ev2,
+      (Ptr1.concretize p1) = (Ptr2.concretize p2) ->
+      eventval_match ev1 ev2 ->
+      event_match (E1.Event_vload chunk id p1 ev1) (E2.Event_vload chunk id p2 ev2)
+  | MEvent_vstore: forall chunk id p1 p2 ev1 ev2,
+      (Ptr1.concretize p1) = (Ptr2.concretize p2) ->
+      eventval_match ev1 ev2 ->
+      event_match (E1.Event_vstore chunk id p1 ev1) (E2.Event_vstore chunk id p2 ev2)
+  | MEvent_annot: forall s evs1 evs2,
+      ev_list_match evs1 evs2 ->
+      event_match (E1.Event_annot s evs1) (E2.Event_annot s evs2).
+
+  Inductive match_traces : E1.trace -> E2.trace -> Prop :=
+  | MTnil: match_traces nil nil
+  | MTcons: forall e1 e2 t1 t2,
+      event_match e1 e2 ->
+      match_traces t1 t2 ->
+      match_traces (e1::t1) (e2::t2).
+
+  CoInductive traceinf_match : E1.traceinf -> E2.traceinf -> Prop :=
+  | MEconsinf: forall e1 e2 t1 t2,
+      event_match e1 e2 ->
+      traceinf_match t1 t2 ->
+      traceinf_match (E1.Econsinf e1 t1) (E2.Econsinf e2 t2).
+
   (** Handy notations, now for both! *)
 
   Notation " 'S1.Step' L " := (S1.step L (S1.globalenv L)) (at level 1) : smallstep_scope.
@@ -574,7 +625,7 @@ Module FSIM (Ptr1: Pointer) (Pol1: Policy)
                                     exists i', exists s2', exists t2,
                                       (S2.Plus L2 s2 t2 s2' \/
                                          (S2.Star L2 s2 t2 s2' /\ order i' i))
-                                      /\ match_states i' s1' s2' /\ EM.trace_match t1 t2;
+                                      /\ match_states i' s1' s2' /\ match_traces t1 t2;
       fsim_public_preserved:
       forall id, GV2.public_symbol L2.(S2.globalenv) id = GV1.public_symbol L1.(S1.globalenv) id
     }.
@@ -589,23 +640,21 @@ Inductive forward_simulation (L1: S1.semantics) (L2: S2.semantics) : Prop :=
 
 Arguments Forward_simulation {L1 L2 index} order match_states props.
 
-End FSIM.
-
 (** An alternate form of the simulation diagram *)
 
-(*Lemma fsim_simulation':
+Lemma fsim_simulation':
   forall L1 L2 index order match_states, fsim_properties L1 L2 index order match_states ->
-  forall i s1 t1 t2 s1', S1.Step L1 s1 t1 s1' ->
+  forall i s1 t1 s1', S1.Step L1 s1 t1 s1' ->
   forall s2, match_states i s1 s2 ->
-  (exists i', exists s2', S2.Plus L2 s2 t2 s2' /\ match_states i' s1' s2')
+  (exists i', exists s2', exists t2, S2.Plus L2 s2 t2 s2' /\ match_states i' s1' s2' /\ match_traces t1 t2)
   \/ (exists i', order i' i /\ t1 = E1.E0 /\ match_states i' s1' s2).
 Proof.
   intros. exploit fsim_simulation; eauto.
-  intros [i' [s2' [A B]]]. intuition.
-  left; exists i'; exists s2'; auto.
-  inv H3.
+  intros [i' [s2' [t2 [A [B C]]]]]. intuition.
+  left; exists i'; exists s2'; exists t2; auto.
+  inv H3. inv C.
   right; exists i'; auto.
-  left; exists i'; exists s2'; split; auto. econstructor; eauto.
+  left; exists i'; exists s2'; exists (S2.Events.Eapp t0 t3); split; auto. econstructor; eauto.
 Qed.
 
 (** ** Forward simulation diagrams. *)
@@ -614,23 +663,23 @@ Qed.
 
 Section FORWARD_SIMU_DIAGRAMS.
 
-  Variable L1: semantics.
-  Variable L2: semantics.
+  Variable L1: S1.semantics.
+  Variable L2: S2.semantics.
   
   Hypothesis public_preserved:
-    forall id, public_symbol (globalenv L2) id = public_symbol (globalenv L1) id.
+    forall id, GV2.public_symbol (S2.globalenv L2) id = GV1.public_symbol (S1.globalenv L1) id.
 
-  Variable match_states: state L1 -> state L2 -> Prop.
+  Variable match_states: S1.state L1 -> S2.state L2 -> Prop.
 
   Hypothesis match_initial_states:
-    forall s1, initial_state L1 s1 ->
-               exists s2, initial_state L2 s2 /\ match_states s1 s2.
+    forall s1, S1.initial_state L1 s1 ->
+               exists s2, S2.initial_state L2 s2 /\ match_states s1 s2.
 
   Hypothesis match_final_states:
     forall s1 s2 r,
       match_states s1 s2 ->
-      final_state L1 s1 r ->
-      final_state L2 s2 r.
+      S1.final_state L1 s1 r ->
+      S2.final_state L2 s2 r.
 
   (** Simulation when one transition in the first program
       corresponds to zero, one or several transitions in the second program.
@@ -644,15 +693,15 @@ Section FORWARD_SIMU_DIAGRAMS.
         of the first semantics.  Stuttering steps must correspond
         to states that decrease w.r.t. [order]. *)
 
-    Variable order: state L1 -> state L1 -> Prop.
+    Variable order: S1.state L1 -> S1.state L1 -> Prop.
     Hypothesis order_wf: well_founded order.
 
     Hypothesis simulation:
-      forall s1 t s1', Step L1 s1 t s1' ->
+      forall s1 t1 s1', S1.Step L1 s1 t1 s1' ->
                        forall s2, match_states s1 s2 ->
-                                  exists s2',
-                                    (Plus L2 s2 t s2' \/ (Star L2 s2 t s2' /\ order s1' s1))
-                                    /\ match_states s1' s2'.
+                                  exists s2' t2,
+                                    (S2.Plus L2 s2 t2 s2' \/ (S2.Star L2 s2 t2 s2' /\ order s1' s1))
+                                    /\ match_states s1' s2' /\ match_traces t1 t2.
 
     Lemma forward_simulation_star_wf: forward_simulation L1 L2.
     Proof.
@@ -662,8 +711,8 @@ Section FORWARD_SIMU_DIAGRAMS.
       - intros. exploit match_initial_states; eauto. intros [s2 [A B]].
         exists s1; exists s2; auto.
       - intros. destruct H. eapply match_final_states; eauto.
-      - intros. destruct H0. subst i. exploit simulation; eauto. intros [s2' [A B]].
-        exists s1'; exists s2'; intuition auto.
+      - intros. destruct H0. subst i. exploit simulation; eauto. intros [s2' [t2 [A [B C]]]].
+        exists s1'; exists s2'; exists t2; intuition auto.
       - auto.
     Qed.
 
@@ -675,21 +724,21 @@ Section FORWARD_SIMU_DIAGRAMS.
         associated with states of the first semantics.  It must decrease when we take
         a stuttering step. *)
 
-    Variable measure: state L1 -> nat.
+    Variable measure: S1.state L1 -> nat.
 
     Hypothesis simulation:
-      forall s1 t s1', Step L1 s1 t s1' ->
+      forall s1 t1 s1', S1.Step L1 s1 t1 s1' ->
                        forall s2, match_states s1 s2 ->
-                                  (exists s2', Plus L2 s2 t s2' /\ match_states s1' s2')
-                                  \/ (measure s1' < measure s1 /\ t = E0 /\ match_states s1' s2)%nat.
+                                  (exists s2', exists t2, S2.Plus L2 s2 t2 s2' /\ match_states s1' s2' /\ match_traces t1 t2)
+                                  \/ (measure s1' < measure s1 /\ t1 = E1.E0 /\ match_states s1' s2)%nat.
 
     Lemma forward_simulation_star: forward_simulation L1 L2.
     Proof.
       apply forward_simulation_star_wf with (ltof _ measure).
       apply well_founded_ltof.
-      intros. exploit simulation; eauto. intros [[s2' [A B]] | [A [B C]]].
-      exists s2'; auto.
-      exists s2; split. right; split. rewrite B. apply star_refl. auto. auto.
+      intros. exploit simulation; eauto. intros [[s2' [t2 [A B]]] | [A [B C]]].
+      exists s2', t2; auto.
+      exists s2, E2.E0; split. right; split. constructor. rewrite B. apply star_refl. auto. auto.
     Qed.
 
   End SIMULATION_STAR.
@@ -700,9 +749,9 @@ Section FORWARD_SIMU_DIAGRAMS.
   Section SIMULATION_PLUS.
 
     Hypothesis simulation:
-      forall s1 t s1', Step L1 s1 t s1' ->
+      forall s1 t s1', S1.Step L1 s1 t s1' ->
                        forall s2, match_states s1 s2 ->
-                                  exists s2', Plus L2 s2 t s2' /\ match_states s1' s2'.
+                                  exists s2', S2.Plus L2 s2 t s2' /\ match_states s1' s2'.
 
     Lemma forward_simulation_plus: forward_simulation L1 L2.
     Proof.
@@ -711,16 +760,16 @@ Section FORWARD_SIMU_DIAGRAMS.
     Qed.
 
   End SIMULATION_PLUS.
-
+*)
   (** Lock-step simulation: each transition in the first semantics
       corresponds to exactly one transition in the second semantics. *)
   
   Section SIMULATION_STEP.
 
     Hypothesis simulation:
-      forall s1 t s1', Step L1 s1 t s1' ->
+      forall s1 t1 s1', S1.Step L1 s1 t1 s1' ->
                        forall s2, match_states s1 s2 ->
-                                  exists s2', Step L2 s2 t s2' /\ match_states s1' s2'.
+                                  exists s2' t2, S2.Step L2 s2 t2 s2' /\ match_states s1' s2'.
 
     Lemma forward_simulation_step: forward_simulation L1 L2.
     Proof.
@@ -739,10 +788,10 @@ Section FORWARD_SIMU_DIAGRAMS.
 
   Section SIMULATION_OPT.
 
-    Variable measure: state L1 -> nat.
+    Variable measure: S1.state L1 -> nat.
 
     Hypothesis simulation:
-      forall s1 t s1', Step L1 s1 t s1' ->
+      forall s1 t s1', S1.Step L1 s1 t s1' ->
                        forall s2, match_states s1 s2 ->
                                   (exists s2', Step L2 s2 t s2' /\ match_states s1' s2')
                                   \/ (measure s1' < measure s1 /\ t = E0 /\ match_states s1' s2)%nat.
@@ -768,7 +817,7 @@ Context L1 L2 index order match_states (S: fsim_properties L1 L2 index order mat
 Lemma simulation_star:
   forall s1 t s1', Star L1 s1 t s1' ->
   forall i s2, match_states i s1 s2 ->
-  exists i', exists s2', Star L2 s2 t s2' /\ match_states i' s1' s2'.
+  exists i', exists s2', S2.Star L2 s2 t s2' /\ match_states i' s1' s2'.
 Proof.
   induction 1; intros.
   exists i; exists s2; split; auto. apply star_refl.
@@ -781,7 +830,7 @@ Qed.
 Lemma simulation_plus:
   forall s1 t s1', Plus L1 s1 t s1' ->
   forall i s2, match_states i s1 s2 ->
-  (exists i', exists s2', Plus L2 s2 t s2' /\ match_states i' s1' s2')
+  (exists i', exists s2', S2.Plus L2 s2 t s2' /\ match_states i' s1' s2')
   \/ (exists i', clos_trans _ order i' i /\ t = E0 /\ match_states i' s1' s2).
 Proof.
   induction 1 using plus_ind2; intros.
@@ -840,7 +889,7 @@ Proof.
 
   set (ff_index := (index' * index)%type).
   set (ff_order := lex_ord (clos_trans _ order') order).
-  set (ff_match_states := fun (i: ff_index) (s1: state L1) (s3: state L3) =>
+  set (ff_match_states := fun (i: ff_index) (s1: S1.state L1) (s3: state L3) =>
                              exists s2, match_states (snd i) s1 s2 /\ match_states' (fst i) s2 s3).
   apply Forward_simulation with ff_order ff_match_states; constructor.
 - (* well founded *)
@@ -964,34 +1013,34 @@ Variable index: Type.
 Variable order: index -> index -> Prop.
 Hypothesis wf_order: well_founded order.
 
-Variable match_states: index -> state L1 -> state L2 -> Prop.
+Variable match_states: index -> S1.state L1 -> S2.state L2 -> Prop.
 
 Hypothesis match_initial_states:
-  forall s1, initial_state L1 s1 ->
-  exists i s2, initial_state L2 s2 /\ match_states i s1 s2.
+  forall s1, initial_S1.state L1 s1 ->
+  exists i s2, S2.initial_state L2 s2 /\ match_states i s1 s2.
 
 Hypothesis match_final_states:
   forall i s1 s2 r,
   match_states i s1 s2 ->
-  final_state L1 s1 r ->
-  final_state L2 s2 r.
+  final_S1.state L1 s1 r ->
+  S2.final_state L2 s2 r.
 
 Hypothesis simulation:
-  forall s1 t s1', Step L1 s1 t s1' ->
+  forall s1 t s1', S1.Step L1 s1 t s1' ->
   forall i s2, match_states i s1 s2 ->
   exists s1'' i' s2',
       Star L1 s1' E0 s1''
-   /\ (Plus L2 s2 t s2' \/ (Star L2 s2 t s2' /\ order i' i))
+   /\ (S2.Plus L2 s2 t s2' \/ (S2.Star L2 s2 t s2' /\ order i' i))
    /\ match_states i' s1'' s2'.
 
 Hypothesis public_preserved:
   forall id, public_symbol (globalenv L2) id = public_symbol (globalenv L1) id.
 
-Inductive match_states_later: index * nat -> state L1 -> state L2 -> Prop :=
+Inductive match_states_later: index * nat -> S1.state L1 -> S2.state L2 -> Prop :=
 | msl_now: forall i s1 s2,
     match_states i s1 s2 -> match_states_later (i, O) s1 s2
 | msl_later: forall i n s1 s1' s2,
-    Step L1 s1 E0 s1' -> match_states_later (i, n) s1' s2 -> match_states_later (i, S n) s1 s2.
+    S1.Step L1 s1 E0 s1' -> match_states_later (i, n) s1' s2 -> match_states_later (i, S n) s1 s2.
 
 Lemma star_match_states_later:
   forall s1 s1', Star L1 s1 E0 s1' ->
@@ -1037,31 +1086,31 @@ Variable L2: semantics.
 
 Hypothesis L1det: determinate L1.
 
-Variable match_states: state L1 -> state L2 -> Prop.
+Variable match_states: S1.state L1 -> S2.state L2 -> Prop.
 
 Hypothesis public_preserved:
   forall id, public_symbol (globalenv L2) id = public_symbol (globalenv L1) id.
 
 Hypothesis match_initial_states:
-  forall s1, initial_state L1 s1 ->
-  exists s2, initial_state L2 s2 /\ match_states s1 s2.
+  forall s1, initial_S1.state L1 s1 ->
+  exists s2, S2.initial_state L2 s2 /\ match_states s1 s2.
 
 Hypothesis match_final_states:
   forall s1 s2 r,
   match_states s1 s2 ->
-  final_state L1 s1 r ->
-  final_state L2 s2 r.
+  final_S1.state L1 s1 r ->
+  S2.final_state L2 s2 r.
 
 Section SIMU_DETERM_STAR.
 
-Variable measure: state L1 -> nat.
+Variable measure: S1.state L1 -> nat.
 
 Hypothesis simulation:
-  forall s1 t s1', Step L1 s1 t s1' ->
+  forall s1 t s1', S1.Step L1 s1 t s1' ->
   forall s2, match_states s1 s2 ->
   exists s1'' s2',
       Star L1 s1' E0 s1''
-   /\ (Plus L2 s2 t s2' \/ (Star L2 s2 t s2' /\ measure s1'' < measure s1))%nat
+   /\ (S2.Plus L2 s2 t s2' \/ (S2.Star L2 s2 t s2' /\ measure s1'' < measure s1))%nat
    /\ match_states s1'' s2'.
 
 Lemma forward_simulation_determ_star: forward_simulation L1 L2.
@@ -1085,9 +1134,9 @@ End SIMU_DETERM_STAR.
 Section SIMU_DETERM_PLUS.
 
 Hypothesis simulation:
-  forall s1 t s1', Step L1 s1 t s1' ->
+  forall s1 t s1', S1.Step L1 s1 t s1' ->
   forall s2, match_states s1 s2 ->
-  exists s1'' s2', Star L1 s1' E0 s1'' /\ Plus L2 s2 t s2' /\ match_states s1'' s2'.
+  exists s1'' s2', Star L1 s1' E0 s1'' /\ S2.Plus L2 s2 t s2' /\ match_states s1'' s2'.
 
 Lemma forward_simulation_determ_plus: forward_simulation L1 L2.
 Proof.
@@ -1101,7 +1150,7 @@ End SIMU_DETERM_PLUS.
 Section SIMU_DETERM_ONE.
 
 Hypothesis simulation:
-  forall s1 t s1', Step L1 s1 t s1' ->
+  forall s1 t s1', S1.Step L1 s1 t s1' ->
   forall s2, match_states s1 s2 ->
   exists s1'' s2', Star L1 s1' E0 s1'' /\ Step L2 s2 t s2' /\ match_states s1'' s2'.
 
@@ -1135,21 +1184,21 @@ Qed.
 
 Record bsim_properties (L1: S1.semantics) (L2: S2.semantics) (index: Type)
                        (order: index -> index -> Prop)
-                       (match_states: index -> state L1 -> state L2 -> Prop) : Prop := {
+                       (match_states: index -> S1.state L1 -> S2.state L2 -> Prop) : Prop := {
     bsim_order_wf: well_founded order;
     bsim_initial_states_exist:
-      forall s1, initial_state L1 s1 -> exists s2, initial_state L2 s2;
+      forall s1, S1.initial_state L1 s1 -> exists s2, S2.initial_state L2 s2;
     bsim_match_initial_states:
-      forall s1 s2, initial_state L1 s1 -> initial_state L2 s2 ->
-      exists i, exists s1', initial_state L1 s1' /\ match_states i s1' s2;
+      forall s1 s2, S1.initial_state L1 s1 -> S2.initial_state L2 s2 ->
+      exists i, exists s1', S1.initial_state L1 s1' /\ match_states i s1' s2;
     bsim_match_final_states:
       forall i s1 s2 r,
-      match_states i s1 s2 -> safe L1 s1 -> final_state L2 s2 r ->
-      exists s1', Star L1 s1 E0 s1' /\ final_state L1 s1' r;
+      match_states i s1 s2 -> safe L1 s1 -> S2.final_state L2 s2 r ->
+      exists s1', Star L1 s1 E0 s1' /\ S1.final_state L1 s1' r;
     bsim_progress:
       forall i s1 s2,
       match_states i s1 s2 -> safe L1 s1 ->
-      (exists r, final_state L2 s2 r) \/
+      (exists r, S2.final_state L2 s2 r) \/
       (exists t, exists s2', Step L2 s2 t s2');
     bsim_simulation:
       forall s2 t s2', Step L2 s2 t s2' ->
@@ -1166,7 +1215,7 @@ Arguments bsim_properties: clear implicits.
 Inductive backward_simulation (L1: S1.semantics) (L2: S2.semantics) : Prop :=
   Backward_simulation (index: Type)
                       (order: index -> index -> Prop)
-                      (match_states: index -> state L1 -> state L2 -> Prop)
+                      (match_states: index -> S1.state L1 -> S2.state L2 -> Prop)
                       (props: bsim_properties L1 L2 index order match_states).
 
 Arguments Backward_simulation {L1 L2 index} order match_states props.
@@ -1200,23 +1249,23 @@ Variable L2: semantics.
 Hypothesis public_preserved:
   forall id, public_symbol (globalenv L2) id = public_symbol (globalenv L1) id.
 
-Variable match_states: state L1 -> state L2 -> Prop.
+Variable match_states: S1.state L1 -> S2.state L2 -> Prop.
 
 Hypothesis initial_states_exist:
-  forall s1, initial_state L1 s1 -> exists s2, initial_state L2 s2.
+  forall s1, S1.initial_state L1 s1 -> exists s2, S2.initial_state L2 s2.
 
 Hypothesis match_initial_states:
-  forall s1 s2, initial_state L1 s1 -> initial_state L2 s2 ->
-  exists s1', initial_state L1 s1' /\ match_states s1' s2.
+  forall s1 s2, S1.initial_state L1 s1 -> S2.initial_state L2 s2 ->
+  exists s1', S1.initial_state L1 s1' /\ match_states s1' s2.
 
 Hypothesis match_final_states:
   forall s1 s2 r,
-  match_states s1 s2 -> final_state L2 s2 r -> final_state L1 s1 r.
+  match_states s1 s2 -> S2.final_state L2 s2 r -> S1.final_state L1 s1 r.
 
 Hypothesis progress:
   forall s1 s2,
   match_states s1 s2 -> safe L1 s1 ->
-  (exists r, final_state L2 s2 r) \/
+  (exists r, S2.final_state L2 s2 r) \/
   (exists t, exists s2', Step L2 s2 t s2').
 
 Section BACKWARD_SIMULATION_PLUS.
@@ -1250,7 +1299,7 @@ Section BACKWARD_SIMULATION_SEQUENCES.
 Context L1 L2 index order match_states (S: bsim_properties L1 L2 index order match_states).
 
 Lemma bsim_E0_star:
-  forall s2 s2', Star L2 s2 E0 s2' ->
+  forall s2 s2', S2.Star L2 s2 E0 s2' ->
   forall i s1, match_states i s1 s2 -> safe L1 s1 ->
   exists i', exists s1', Star L1 s1 E0 s1' /\ match_states i' s1' s2'.
 Proof.
@@ -1274,7 +1323,7 @@ Proof.
 Qed.
 
 Lemma bsim_E0_plus:
-  forall s2 t s2', Plus L2 s2 t s2' -> t = E0 ->
+  forall s2 t s2', S2.Plus L2 s2 t s2' -> t = E0 ->
   forall i s1, match_states i s1 s2 -> safe L1 s1 ->
      (exists i', exists s1', Plus L1 s1 E0 s1' /\ match_states i' s1' s2')
   \/ (exists i', clos_trans _ order i' i /\ match_states i' s1 s2').
@@ -1296,8 +1345,8 @@ Proof.
 Qed.
 
 Lemma star_non_E0_split:
-  forall s2 t s2', Star L2 s2 t s2' -> (length t = 1)%nat ->
-  exists s2x, exists s2y, Star L2 s2 E0 s2x /\ Step L2 s2x t s2y /\ Star L2 s2y E0 s2'.
+  forall s2 t s2', S2.Star L2 s2 t s2' -> (length t = 1)%nat ->
+  exists s2x, exists s2y, S2.Star L2 s2 E0 s2x /\ Step L2 s2x t s2y /\ S2.Star L2 s2y E0 s2'.
 Proof.
   induction 1; intros.
   simpl in H; discriminate.
@@ -1328,9 +1377,9 @@ Let bb_index : Type := (index * index')%type.
 
 Definition bb_order : bb_index -> bb_index -> Prop := lex_ord (clos_trans _ order) order'.
 
-Inductive bb_match_states: bb_index -> state L1 -> state L3 -> Prop :=
+Inductive bb_match_states: bb_index -> S1.state L1 -> state L3 -> Prop :=
   | bb_match_later: forall i1 i2 s1 s3 s2x s2y,
-      match_states i1 s1 s2x -> Star L2 s2x E0 s2y -> match_states' i2 s2y s3 ->
+      match_states i1 s1 s2x -> S2.Star L2 s2x E0 s2y -> match_states' i2 s2y s3 ->
       bb_match_states (i1, i2) s1 s3.
 
 Lemma bb_match_at: forall i1 i2 s1 s3 s2,
