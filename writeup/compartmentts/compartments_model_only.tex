@@ -5,13 +5,40 @@
 \usepackage[most]{tcolorbox}
 \usepackage{amsmath, amssymb, stmaryrd}
 \usepackage{subcaption}
+\usepackage{multirow}
+
+\title{An Abstract Model of Compartmentalization with Sharing}
+\author{Sean Anderson}
 
 \begin{document}
+\maketitle
 
 \input{macros.tex}
 \input{tagrules.tex}
 
-\section{Abstract Sharing Semantics}
+\section{Introduction}
+
+This document describes the desired behavior of a compartmentalized C system in terms
+of a correct-by-construction abstract machine. The model aims to fulfill a few key
+criteria:
+
+\begin{itemize}
+\item Compartments are obviously and intuitively isolated from one another
+  by construction
+\item It is suitable for hardware enforcement without placing intensive constraints
+  on the target
+\item Inter-compartment interactions via shared memory are possible and conform
+  to the C standard
+\end{itemize}
+
+To this last case: we don't necessarily care that compartments' internal behavior
+conforms to the C standard. In fact the model explicitly gives compartments
+a concrete view of memory, giving definition to code that would be undefined behavior
+in the standard. But when it comes to shared memory, the standard has a clear
+implication that the memory accessible to a piece of code is determined by
+the provenance of pointers that code can access. This model embraces that principle.
+
+\section{Abstract Semantics}
 
 \begin{figure}
   \begin{subfigure}{0.4\textwidth}
@@ -19,7 +46,7 @@
     \[\begin{aligned}
     \mathcal{C}^+ & ::= \mathbf{L}(C) \mid \mathbf{S}(b, \mathit{base}) &
     \mathit{base} \in \mathit{int} \\
-    \mathit{val} & ::= \ldots \mid \mathit{ptr} ~ c ~ a &
+    \mathit{val} & ::= \ldots \mid \mathit{Vptr} ~ c ~ a &
     c \in \mathcal{C}^+, a \in \mathit{int}
     \end{aligned}\]
     %
@@ -27,55 +54,64 @@
     \mathit{read} \in ~ & \mathit{oracle} \rightarrow \mathit{mem} \rightarrow
     \mathit{int} \rightharpoonup \mathit{val} \\
     \mathit{write} \in ~ & \mathit{oracle} \rightarrow \mathit{mem} \rightarrow
-    \mathit{int} \rightarrow \mathit{val} \rightharpoonup \mathit{mem} \\
+    \mathit{int} \rightarrow \\
+    & \mathit{val} \rightharpoonup \mathit{mem} \\
     M \in ~ & \mathcal{M} \subseteq \mathcal{C}^+ \rightarrow \mathit{mem} \\
-    \mathit{alloc} \in ~ & \mathit{oracle} \rightarrow
-    \mathcal{C} + \mathit{block} \rightarrow \mathit{int} \rightharpoonup \\
-    & (\mathit{int} \times \mathit{oracle}) \\
-    \mathit{free} \in ~ & \mathit{oracle} \rightarrow \mathcal{C}+\mathit{block} \rightarrow
-    \mathit{int} \rightharpoonup \mathit{oracle} \\
+    \mathit{heap\_alloc} \in ~ & \mathit{oracle} \rightarrow
+    \mathcal{C} + \mathit{block} \rightarrow \\
+    & \mathit{int} \rightharpoonup (\mathit{int} \times \mathit{oracle}) \\
+    \mathit{heap\_free} \in ~ & \mathit{oracle} \rightarrow \mathcal{C}+\mathit{block} \rightarrow \\
+    & \mathit{int} \rightharpoonup \mathit{oracle} \\
+    \mathit{stk\_alloc} \in ~ & \mathit{oracle} \rightarrow
+    \mathcal{C} + \mathit{block} \rightarrow \\
+    & \mathit{int} \rightharpoonup (\mathit{int} \times \mathit{oracle}) \\
+    \mathit{stk\_free} \in ~ & \mathit{oracle} \rightarrow \mathcal{C}+\mathit{block} \rightarrow \\
+    & \mathit{int} \rightharpoonup \mathit{oracle} \\
 %    \mathit{baseof} \in ~ & \mathit{oracle} \rightarrow \mathit{block} \rightharpoonup \mathit{int} \\
     \end{split}\]
 
     \caption{Definitions}
     \label{subfig:defs}
   \end{subfigure}
-  \begin{subfigure}{0.55\textwidth}
+  \begin{subfigure}{0.59\textwidth}
     \judgment{\(\mathit{read} ~ (M ~ C) ~ a = v\)}
-             {\(C, \alpha, M \mid *(\mathit{ptr} ~ \mathbf{L}(C) ~ a)
+             {\(C, \alpha, M \mid *(\mathit{Vptr} ~ \mathbf{L}(C) ~ a)
                \longrightarrow C, \alpha, M \mid v\)}
 
     \judgmenttwo{\(\mathit{write} ~ (M ~ C) ~ a ~ v = m'\)}
                 {\(M' = M[C \mapsto m']\)}
-                {\(C, \alpha, M \mid *(\mathit{ptr} ~ \mathbf{L}(C) ~ a) := v
+                {\(C, \alpha, M \mid *(\mathit{Vptr} ~ \mathbf{L}(C) ~ a) := v
                   \longrightarrow C, \alpha, M' \mid v\)}
 
     \judgment{\(\mathit{read} ~ (M ~ b) ~ a = v\)}
-             {\(C, \alpha, M \mid *(\mathit{ptr} ~ \mathbf{S}(b, \mathit{base}) ~ a)
+             {\(C, \alpha, M \mid *(\mathit{Vptr} ~ \mathbf{S}(b, \mathit{base}) ~ a)
                \longrightarrow C, \alpha, M \mid v\)}
 
     \judgmenttwo{\(\mathit{write} ~ (M ~ b) ~ a ~ v = m'\)}
                 {\(M' = M[b \mapsto m']\)}
-                {\(C, \alpha, M \mid *(\mathit{ptr} ~ \mathbf{S}(b, \mathit{base}) ~ a) := v
+                {\(C, \alpha, M \mid *(\mathit{Vptr} ~ \mathbf{S}(b, \mathit{base}) ~ a) := v
                   \longrightarrow C, \alpha, M' \mid v\)}
 
-    \caption{Reads and writes}
-    \label{subfig:rnw}
-  \end{subfigure}
-  \begin{subfigure}{\textwidth}
-    \judgment{\(\mathit{alloc} ~ \alpha ~ C ~ sz = (p, \alpha')\)}
-             {\(C, \alpha, M \mid \mathtt{malloc}(\mathit{int} ~ sz) \longrightarrow
-               C, \alpha', M \mid \mathit{ptr} ~ \mathbf{L}(C) ~ p\)}
+    \judgment{\(\mathit{heap\_alloc} ~ \alpha ~ C ~ sz = (p, \alpha')\)}
+             {\(C, \alpha, M \mid \mathtt{malloc}(\mathit{Vint} ~ sz) \longrightarrow
+               C, \alpha', M \mid \mathit{Vptr} ~ \mathbf{L}(C) ~ p\)}
     \judgmenttwo{\(\mathit{fresh} ~ b\)}
-                {\(\mathit{alloc} ~ \alpha ~ b ~ sz = (p, \alpha')\)}
-                {\(C, \alpha, M \mid \mathtt{malloc}(\mathit{int} ~ sz) \longrightarrow
-                  C, \alpha', M \mid \mathit{ptr} ~ \mathbf{S}(b,p) ~ p\)}
-    \judgment{}
-             {\(C,\alpha,M \mid \mathtt{(t*)} (\mathit{int} ~ i) \longrightarrow
-               C,\alpha,M \mid \mathit{ptr} ~ \mathbf{L}(C) ~ \mathit{i}\)}
+                {\(\mathit{heap\_alloc} ~ \alpha ~ b ~ sz = (p, \alpha')\)}
+                {\begin{tabular}{l}
+                    \(C, \alpha, M \mid \mathtt{malloc\_share}(\mathit{Vint} ~ sz) \longrightarrow\) \\
+                    \(C, \alpha', M \mid \mathit{Vptr} ~ \mathbf{S}(b,p) ~ p\)
+                \end{tabular}}
 
-    \caption{Allocations and Casts}
-    \label{subfig:allocs}
+    \judgment{\(\mathit{heap\_free} ~ \alpha ~ I ~ a = \alpha'\)}
+             {\(C, \alpha, M \mid \mathtt{free}(\mathit{Vptr} ~ I ~ a) \longrightarrow
+               C, \alpha', M \mid \mathit{Vundef}\)}
+                
+    \judgment{}
+             {\(C,\alpha,M \mid \mathtt{(t*)} (\mathit{Vint} ~ i) \longrightarrow
+               C,\alpha,M \mid \mathit{Vptr} ~ \mathbf{L}(C) ~ \mathit{i}\)}
+
+    \caption{Selected Memory Steps}
+    \label{subfig:steps}
   \end{subfigure}
 
   \caption{Compartmentalized Memory Model}
@@ -83,190 +119,350 @@
 \end{figure}
 
 We define a C semantics that separates the world into compartments, ranged over by
-\(A\), \(B\), \(C\), etc., each with its own separate memory. The basics are shown in
-Figure \ref{fig:memmod}. The core of this memory model is the allocator oracle, ranged
-over by \(\alpha\); this abstract state encapsulates information about how allocations
-are arrayed inside compartments or as shared blocks.
+\(A\), \(B\), \(C\), etc., each with its own separate memory. The core memory model
+is shown in Figure \ref{fig:memmod}. The allocator oracle, ranged over by \(\alpha\),
+is an abstract state encapsulating information about how allocations
+are arrayed inside compartments or as shared blocks. From the programmer's
+perspective, \(\alpha\) should be opaque, but for purposes of proving correctness
+of a given system it is instantiated to match the actual behavior of the
+compiler-allocator-hardware combination. 
 
 The \(\mathit{read}\) and \(\mathit{write}\) operations always operate on a single
-abstract memory, which behaves as a single flat address space accessed via integers,
-except that operations that access addresses outside of previously allocated blocks
-can failstop depending on the oracle. Memories are kept totally separate, and accesses
-in one can't interact with the others.
+abstract memory, which behaves as a flat address space accessed via integers.
+Operations that access addresses outside of allocated blocks
+may or may not failstop, determined by the oracle. If they are successful, they
+behave consistently (multiple consecutive loads yield the same value, a load after
+a store yields the stored value, etc.) Memories are kept totally
+separate, fulfilling our first requirement: compartments' memories are definitely
+never accessible.
 
-Pointer values carry one of two types of indices that determine which memory they access:
-\(\mathbf{L}(C)\), for local pointers into the compartment \(C\), and
-\(\mathbf{S}(b,\mathit{base})\), where \(b\) is an abstract block identifier and
-\(\mathit{base}\) is an integer. A ``super-memory'' \(M\) is a map from such indices
-to memories. Pointers also always carry an offset. (This means that we can always convert a
-pointer to either an abstract block-offset model or to an integer.)
+Pointer values carry {\it indices} from the set \(\mathcal{C}^+\) that determine
+which memory they access: \(\mathbf{L}(C)\), for local pointers into the compartment
+\(C\), and \(\mathbf{S}(b,\mathit{base})\), where \(b\) is an abstract block
+identifier and \(\mathit{base}\) is an integer. A ``super-memory'' \(M\) is a map
+from such indices to memories. Pointers also always carry an integer address
+representing their current position.
 
-Figure \ref{subfigs:rnw} shows how loads and stores occur in this system. Shared pointers
-are converted to integer offsets, while local pointers just use their existing offsets,
-and then the \(\mathit{read}\) and \(\mathit{write}\) operations occur.
+Figure \ref{subfigs:steps} shows how loads and stores occur in this system.
+The pointer's index determines which memory it accesses, and its value is treated
+as the pointer into that memory. A pointer's index can never be changed via
+arithmetic---all operations either preserve the index, or demote their result
+to a plain integer.
 
 \paragraph{Allocation}
 
-The abstract operation, \(\mathit{alloc}\), yields an address at which to locate a new
-block, either within a compartment's memory or in its own isolated block. In the latter
-case, the address provided becomes the new base of that block. It also produces a new
-oracle that, among other things, will guarantee that loads and stores to the new block will
-not failstop. Since the \(\mathit{alloc}\) operation is parameterized by the compartment
-or block in question, it is allowed to give one compartment an address that is not currently
-allocated within it, even if other compartments might have that address allocated.
+The abstract operations, \(\mathit{heap\_alloc}\) and \(\mathit{stk\_alloc}\),
+yield addresses at which to locate a new block, either within a compartment's memory
+or in its own isolated block. In the latter case, the address provided becomes
+the new base of that block's index. It also updates the oracle to reflect that loads
+and stores to the new block will not failstop (see Section \ref{sec:axioms}). Since
+the \(\mathit{*\_alloc}\) operations are parameterized by the compartment
+or block that they allocate, they are allowed to make decisions based on that
+information, such as attempting to keep compartment-local allocations in designated
+regions. But a programmer should not rely on any such assumptions.
 
-\paragraph{Casting}
+\paragraph{Arithmetic and Integer-Pointer Casts}
 
-When a pointer is cast to an integer type, its value doesn't change---instead, certain
-integer operations applied to pointer values will demote the result to an integer value.
-If such a value is cast back to a pointer type, it retains its value. If, however, an
-integer value is cast to a pointer, the result is always a local pointer to the active compartment,
-as shown in Figure \ref{subfigs:alloc}.
-
-\section{Oracle Axioms}
+Most arithmetic operations are typical of C. The interesting operations are those
+involving integers that have been cast from pointers. We give concrete definitions
+to all such operations based on their address. If they involve only a single former
+pointer, the result will also be a pointer into the same memory; otherwise the result
+is a plain integer. If the former pointer is cast back to a pointer type,
+it retains its value and is once again a valid pointer. Otherwise, if an integer
+value is cast to a pointer, the result is always a local pointer to
+the active compartment, as shown in Figure \ref{subfig:steps}.
 
 \begin{figure}
-  \begin{minipage}{0.33\textwidth}
-    \[\begin{split}
-    \mathbf{A} ::= & ! I ~ \alpha ~ m ~ a ~ v \\
-    |& ? I ~ \alpha ~ m ~ (a_1,a_2) \\
-    \end{split}\]
-  \end{minipage}
+  \judgment{}
+           {\(C,\alpha,M,e \mid \odot (\mathit{Vptr} ~ I ~ a) \longrightarrow
+           C,\alpha,M,e \mid \mathit{Vptr} ~ I ~ (\langle \odot \rangle a)\)}
+
+  \judgment{}
+           {\(C,\alpha,M,e \mid (\mathit{Vptr} ~ I ~ a) \oplus
+             (\mathit{Vint} ~ i) \longrightarrow
+           C,\alpha,M,e \mid \mathit{Vptr} ~ I ~ (a \langle \oplus \rangle i)\)}
+  \judgment{}
+           {\(C,\alpha,M,e \mid (\mathit{Vint} ~ i) \oplus
+             (\mathit{Vptr} ~ I ~ a) \longrightarrow
+           C,\alpha,M,e \mid \mathit{Vptr} ~ I ~ (i \langle \oplus \rangle a)\)}
+  \judgment{}
+           {\(C,\alpha,M,e \mid (\mathit{Vptr} ~ I ~ a_1) \oplus
+             (\mathit{Vptr} ~ I ~ a_2) \longrightarrow
+           C,\alpha,M,e \mid \mathit{Vint} ~ (a_1 \langle \oplus \rangle a_2)\)}
+
+  \caption{Arithmetic Operations}
+  \label{fig:arith}
+\end{figure}
+
+\paragraph{Calls and Returns}
+
+There are two interesting details of the call and return semantics:
+they allocate and deallocate memory, and they can cross compartment boundaries.
+In the first case, we need to pay attention to which stack-allocated
+objects are to be shared. This can again be done using escape analysis:
+objects whose references never escape, can be allocated locally. Objects whose
+references escape to another compartment must be allocated as shared.
+Those that escape to another function in the same compartment can be treated
+in either way; if they are allocated locally but are later passed outside the
+compartment, the system will failstop at that later point
+(see Section \ref{sec:interfaces}).
+
+We assume that each local variable comes pre-annotated with how it should
+be allocated, with a simple flag \(\mathbf{L}\) or \(\mathbf{S}\), so that
+a function signature is a list of tuples \((id,\mathbf{L} \mid \mathbf{S},sz)\).
+
+\begin{figure}
+  \[e \in \mathit{ident} \rightharpoonup (\mathcal{C}^+ \times \mathit{int})\]
+  \[\mathit{alloc\_locals} ~ C ~ \alpha ~ \mathit{ls} =
+  \begin{cases}
+    (\alpha, \lambda \mathit{id}. \bot) & \textnormal{if } \mathit{ls} = [~]\\
+    (\alpha'', e[\mathit{id} \mapsto (\mathbf{L}(C),i)]) &
+    \textnormal{if } \mathit{ls} = (id,\mathbf{L},sz)::\mathit{ls}',\\
+    & \textnormal{where } \mathit{alloc\_locals} ~ C ~ \alpha ~ \mathit{ls}' =
+    (\alpha', e) \\
+    & \textnormal{and } \mathit{stk\_alloc} ~ \alpha' ~ C ~ sz = (i, \alpha'') \\
+    (\alpha'', e[\mathit{id} \mapsto (\mathbf{S}(b,i),i)]) &
+    \textnormal{if } \mathit{ls} = (id,\mathbf{S},sz)::\mathit{ls}',\\
+    & \textnormal{where } \mathit{alloc\_locals} ~ C ~ \alpha ~ \mathit{ls}' =
+    (\alpha', e) \\
+    & \textnormal{and for fresh } b, \mathit{stk\_alloc} ~ \alpha' ~ b ~ sz = (i, \alpha'') \\
+  \end{cases}\]
+
+  \[\mathit{dealloc\_locals} ~ \alpha ~ e =
+  \begin{cases}
+    \mathit{stk\_free} ~ \alpha' ~ C ~ i &
+    \textnormal{if for some } id, e ~ id = (\mathbf{L}(C),i),\\
+    & \textnormal{where } \mathit{dealloc\_locals} ~ \alpha ~ e[id \mapsto \bot] =
+    \alpha' \\
+    \mathit{stk\_free} ~ \alpha' ~ b ~ i &
+    \textnormal{if for some } id, e ~ id = (\mathbf{L}(b,i),i),\\
+    & \textnormal{where } \mathit{dealloc\_locals} ~ \alpha ~ e[id \mapsto \bot] =
+    \alpha' \\
+    \alpha & \textnormal{otherwise} \\
+  \end{cases}\]
+  \[\mathit{perturb} \in \mathit{oracle} \rightarrow \mathit{oracle}\]
+  
+  \judgmenttwo{\(f = (C,\mathit{locals},s)\)}
+              {\(\mathit{alloc\_locals} ~ C ~ \alpha ~ \mathit{locals} =
+                (\alpha',e)\)}
+              {\(\mathit{CALL}(f,\alpha,M) \longrightarrow
+                C, \mathit{perturb} ~ \alpha', M, e \mid s\)}
+
+  \judgment{\(\mathit{dealloc\_locals} ~ \alpha ~ e = \alpha'\)}
+           {\(C,\alpha,M,e \mid \mathtt{return} ~ v \longrightarrow
+             \mathit{RET}(\alpha,M,v)\)}
+           
+  \caption{Call and Return Semantics (Continuations ommitted)}
+  \label{fig:callret}
+\end{figure}
+
+\section{Axioms of the Oracle}
+\label{sec:axioms}
+
+\begin{figure}
+%  \begin{minipage}{0.33\textwidth}
+%    \[\begin{split}
+%    \mathbf{A} ::= & ! \alpha ~ I ~ m ~ a ~ v \\
+%    |& ? \alpha ~ I ~ m ~ (a_1,a_2) \\
+%    \end{split}\]
+%  \end{minipage}
   \begin{minipage}{0.33\textwidth}
     \judgment{\(\mathit{write} ~ \alpha ~ m ~ a ~ v = m'\)}
-             {\(! I ~ \alpha ~ m' ~ a ~ v\)}
+             {\(! \alpha ~ I ~ m' ~ a ~ v\)}
   \end{minipage}
   \begin{minipage}{0.33\textwidth}
-    \judgment{\(! I ~ \alpha ~ m ~ a ~ v\)}
+    \judgment{\(! \alpha ~ I ~ m ~ a ~ v\)}
              {\(\mathit{read} ~ \alpha ~ m ~ a = v\)}
   \end{minipage}
   \begin{minipage}{0.33\textwidth}
-    \judgmenttwo{\(? I ~ \alpha ~ m ~ (a_1, a_2)\)}
+    \judgmenttwo{\(? \alpha ~ I ~ m ~ (a_1, a_2)\)}
                 {\(a_1 \leq a < a_2\)}
                 {\(\exists v . \mathit{read} ~ \alpha ~ m ~ a = v\)}
   \end{minipage}
   \begin{minipage}{0.33\textwidth}
-    \judgmenttwo{\(? I ~ \alpha ~ m ~ (a_1, a_2)\)}
+    \judgmenttwo{\(? \alpha ~ I ~ m ~ (a_1, a_2)\)}
                 {\(a_1 \leq a < a_2\)}
                 {\(\exists m' . \mathit{write} ~ \alpha ~ m ~ a ~ v = m'\)}
   \end{minipage}
   \begin{minipage}{0.33\textwidth}
     \judgment{\(\mathit{read} ~ \alpha ~ m ~ a = v\)}
-             {\(! I ~ \alpha ~ m ~ a ~ v\)}
+             {\(! \alpha ~ I ~ m ~ a ~ v\)}
   \end{minipage}
   \begin{minipage}{0.33\textwidth}
-    \judgmenttwobrlong{\(! I ~ \alpha ~ m ~ a ~ v\)}
+    \judgmenttwobrlong{\(! \alpha ~ I ~ m ~ a ~ v\)}
                       {\(a \not = a'\)}
                       {\(\mathit{write} ~ \alpha ~ m ~ a' ~ v' = m'\)}
-                      {\(! I ~ \alpha ~ m' ~ a ~ v\)}
+                      {\(! \alpha ~ I ~ m' ~ a ~ v\)}
   \end{minipage}
   \begin{minipage}{0.33\textwidth}
-    \judgmentbr{\(? I ~ \alpha ~ m ~ (a_1,a_2)\)}
+    \judgmentbr{\(? \alpha ~ I ~ m ~ (a_1,a_2)\)}
                {\(\mathit{write} ~ \alpha ~ m ~ a ~ v = m'\)}
-               {\(? I ~ \alpha ~ m' ~ (a_1,a_2)\)}
+               {\(? \alpha ~ I ~ m' ~ (a_1,a_2)\)}
   \end{minipage}
   \begin{minipage}{0.33\textwidth}
-    \judgment{\(\mathit{alloc} ~ \alpha ~ I ~ s = (i, \alpha')\)}
+    \judgment{\(\mathit{*\_alloc} ~ \alpha ~ I ~ s = (i, \alpha')\)}
              {\(? I ~ \alpha' ~ m ~ (i,i+s)\)}
   \end{minipage}
   \begin{minipage}{0.33\textwidth}
-    \judgmenttwobrlong{\(! I ~ \alpha ~ m ~ a ~ v\)} 
+    \judgmenttwobrlong{\(! \alpha ~ I ~ m ~ a ~ v\)} 
                       {\(a < i\) or \(a \leq i+s\)}
-                      {\(\mathit{alloc} ~ \alpha ~ I ~ s = (i, \alpha')\)}
+                      {\(\mathit{*\_alloc} ~ \alpha ~ I ~ s = (i, \alpha')\)}
                       {\(! I ~ \alpha' ~ m ~ a ~ v\)}
   \end{minipage}
   \begin{minipage}{0.33\textwidth}
-    \judgmentbr{\(? I ~ \alpha ~ m ~ (a_1,a_2)\)} 
-               {\(\mathit{alloc} ~ \alpha ~ I ~ s = (i, \alpha')\)}
+    \judgmentbr{\(? \alpha ~ I ~ m ~ (a_1,a_2)\)} 
+               {\(\mathit{*\_alloc} ~ \alpha ~ I ~ s = (i, \alpha')\)}
                {\(i+s < a_1\) or \(a_2 \leq i\)}
   \end{minipage}
   \begin{minipage}{0.33\textwidth}
-    \judgmentbr{\(? I ~ \alpha ~ m ~ (a_1,a_2)\)} 
-               {\(\mathit{alloc} ~ \alpha ~ I ~ s ~ m = (i, \alpha')\)}
+    \judgmentbr{\(? \alpha ~ I ~ m ~ (a_1,a_2)\)} 
+               {\(\mathit{*\_alloc} ~ \alpha ~ I ~ s ~ m = (i, \alpha')\)}
                {\(? I ~ \alpha' ~ m ~ (a_1,a_2)\)}
   \end{minipage}
   \begin{minipage}{0.33\textwidth}
-    \judgmenttwobrlong{\(? I ~ \alpha ~ m ~ (a_1,a_2)\)}
+    \judgmenttwobrlong{\(? \alpha ~ I ~ m ~ (a_1,a_2)\)}
                       {\(a < a_1\)}
                       {\(\mathit{free} ~ \alpha ~ I ~ a = \alpha'\)}
                       {\(? I ~ \alpha' ~ m ~ (a_1,a_2)\)}
   \end{minipage}
   \begin{minipage}{0.33\textwidth}
-    \judgmenttwobrlong{\(? I ~ \alpha ~ m ~ (a_1,a_2)\)}
+    \judgmenttwobrlong{\(? \alpha ~ I ~ m ~ (a_1,a_2)\)}
                       {\(a_2 \leq a\)}
                       {\(\mathit{free} ~ \alpha ~ I ~ a = \alpha'\)}
                       {\(? I ~ \alpha' ~ m ~ (a_1,a_2)\)}
   \end{minipage}
   \begin{minipage}{0.33\textwidth}
-    \judgmentbr{\(? I ~ \alpha ~ m ~ (a_1,a_2)\)}
-               {\(\mathit{perturb} ~ \alpha ~ m = (\alpha', m')\)}
-               {\(? I ~ \alpha' ~ m' ~ (a_1,a_2)\)}
+    \judgmentbr{\(? \alpha ~ I ~ m ~ (a_1,a_2)\)}
+               {\(\mathit{perturb} ~ \alpha = \alpha'\)}
+               {\(? I ~ \alpha' ~ m ~ (a_1,a_2)\)}
   \end{minipage}
   \begin{minipage}{0.33\textwidth}
-    \judgmentthreebrlong{\(? I ~ \alpha ~ m ~ (a_1,a_2)\)}
-                        {\(! I ~ \alpha ~ m ~ a ~ v\)}
-                        {\(a_1 \leq a < a_2\)}
-                        {\(\mathit{perturb} ~ \alpha ~ m = (\alpha', m')\)}
-                        {\(! I ~ \alpha' ~ m' ~ a ~ v\)}
+    \judgmenttwobr{\(? \alpha ~ I ~ m ~ (a_1,a_2)\)}
+                  {\(! \alpha ~ I ~ m ~ a ~ v\)}
+                  {\(a_1 \leq a < a_2\)}
+                  {\(\mathit{perturb} ~ \alpha = \alpha'\)}
+                  {\(! I ~ \alpha' ~ m' ~ a ~ v\)}
   \end{minipage}
 
   \caption{Assertion Rules}
   \label{fig:asserts}
 \end{figure}
 
-To simplify the expression of these axioms, we define a small assertion language within
-which we can express facts about the values of addresses in memory. We write
-\(! I ~ \alpha ~ m ~ a ~ v\) to indicate that, in memory \(m\), address \(a\) is expected
-to contain value \(v\). We write \(? I ~ \alpha ~ m ~ (a_1,a_2)\) to indicate that the range
-of addresses from \(a_1\) to \(a_2\) are allocated as a block, so operations will not failstop
-(i.e., they will produce some value, but which value may be unknown).
-Finally, we write \(\mathbf{A}[\alpha,m,a]\) to represent the set of assertions binding \(\alpha\),
-\(m\), and \(a\), and \(\mathbf{a}[x/y]\) to indicate the assertion \(\mathbf{a}\) substituting
-\(y\) for \(x\).
+To simplify the expression of these axioms, we define a small assertion language
+within which we can express facts about the values of addresses in memory.
+We write \(! \alpha ~ I ~ m ~ a ~ v\) to indicate that, with oracle state \(\alpha\),
+the memory \(m\) whose index is \(I\) is known to map \(a\) to \(v\).
+We write \(? \alpha ~ I ~ m ~ (a_1,a_2)\) to indicate that the range
+of addresses from \(a_1\) to \(a_2\) are allocated as a block, so operations
+will not failstop (i.e., they will produce some value, but which value may be
+undefined).
 
-\paragraph{Local Behavior}
+Assertions are naturally related to the behavior of the system: \(! \ldots a ~ v\)
+will hold after a store of \(v\) to \(a\), and from that assertion it follows that
+a load from \(a\) yields \(v\). The full set of rules is found in
+Figure \ref{fig:asserts}.
 
-Such assertions are naturally related to the behavior of the system:
+Allocations are guaranteed to be disjoint from any prior allocations.
+In fact, because all compartments share an oracle, this is the case even for
+allocations from other compartments---convenient, because we assume that we are
+targeting a system with a single address space, and this guarantees that any valid
+allocator must be that can fit in that address space.
 
-\begin{minipage}[t]{0.25\textwidth}
-  \judgment{\(\mathit{write} ~ \alpha ~ m ~ a ~ v = m'\)}
-           {\(! I ~ \alpha ~ m' ~ a ~ v\)}
-\end{minipage}
-\begin{minipage}[t]{0.25\textwidth}
-  \judgment{\(! I ~ \alpha ~ m ~ a ~ v\)}
-           {\(\mathit{read} ~ \alpha ~ m ~ a = v\)}
-\end{minipage}
-
-The full set of rules is found in \ref{fig:asserts}. These rules encode facts like:
-a store followed by a load yields the value that was stored, two consecutive loads yield
-the same value, and so on. Allocations are guaranteed to be disjoint from any prior allocations.
-In fact, because all compartments share an oracle, this is the case even for allocations from
-other compartments---convenient, because we assume that we are targeting a system with a single
-address space, and this guarantees that our semantics only describes operations that can fit in
-that address space.
-
-Finally, we introduce the \(\mathit{perturb}\) operation. The only assertions that are maintained
-over a call to perturb are those involving addresses in allocated regions. Perturb happens during
-every function call and return, because the compiler needs to be free to reallocate memory
-during those operations.
+Finally, Figure \ref{fig:callret} introduced the \(\mathit{perturb}\) operation,
+which mutates the allocator oracle. The only assertions that are maintained over a
+call to perturb are those involving addresses in allocated regions. Perturb happens
+during every function call and return, because the compiler needs to be free to
+reallocate memory during those operations.
 
 \section{Cross-compartment interfaces}
+\label{sec:interfaces}
 
-In this system, each function is assigned to a compartment. A compartment interface is a subset
-of the functions in the compartment that are publicly accessible. At any given time, the compartment
-that contains the currently active function is considered the active compartment. It is illegal
-to call a private function in an inactive compartment.
+In this system, each function is assigned to a compartment. A compartment interface
+is a subset of the functions in the compartment that are publicly accessible.
+At any given time, the compartment that contains the currently active function is
+considered the active compartment. It is illegal to call a private function in an
+inactive compartment.
 
-Public functions are only permitted to receive pointer arguments if they are shared pointers
-(that is, they ultimately derive from a call to {\tt malloc\_share}). Private functions may take
-either kind of pointer as argument.
+Public functions may not receive \(L(\dots)\)-indexed pointer arguments.
+Private functions may take either kind of pointer as argument. \(L(\dots)\) pointers
+may also not be stored to shared memory. This guarantees that there can be no
+confusion between shared pointers and a compartment's own local pointer that
+escaped its control. Violations of a compartment interface exhibit failstop behavior.
 
-Violations of a compartment interface exhibit failstop behavior.
+As a consequence of these rules, a compartment can never obtain a
+\(\mathbf{L}(\dots)\)-indexed pointer from a compartment other than itself.
+It can recieve such a pointer if it is cast to an integer type. If the resulting
+integer is cast back into a pointer, it will have the same behavior as if it were cast
+from any other integer: accessing it may cause a failstop or else access the
+appropriate address in the active compartment's block.
 
-As a consequence of these rules, a compartment can never obtain a \(\mathbf{L}(\dots)\)-indexed pointer
-from a compartment other than itself. It can recieve such a pointer if it is cast to an integer type. If
-the resulting integer is cast back into a pointer, it will have the same behavior as if it were cast
-from any other integer: accessing it may cause a failstop or else access the appropriate address in
-the active compartment's block.
+\section{Machine Constraints}
+
+Now we consider the constraints that this system places on potential implementations.
+In particular, in a tag-based enforcemen mechanism with a limited quantity of tags,
+is this system realistic? In general it requires a unique tag per compartment,
+as well as one for each shared allocation. In the extreme, consider a system along
+the lines of ARM's MTE, which has four-bit tags. That could only enforce this
+semantics for a very small program, or one with very little shared memory (fewer than sixteen tags, so perhaps two-four compartments and around a dozen shared objects.)
+
+On the other hand, this semantics is a reasonable goal under an enforcement mechanism
+with even eight-bit tags (512 compartments and shared objects.) If we go up to sixteen
+bits, we can support programs with thousands of shared objects.
+
+That said, it only takes a minor adjustment for this model to be enforceable in even
+the smallest of tag-spaces. Instead of separate dynamic blocks for each shared
+object, we parameterize each instance of {\tt malloc} with a list of compartments
+that are allowed to use the pointers that it allocates. We write the identifiers
+for these {\tt malloc} invocations \(\mathtt{malloc}_{\overline{C}}\), where
+\(\overline{C}\) is a set of compartments. Then the relevant step rules become
+those in Figure \ref{fig:powerset}, with calls and returns changed similarly.
+
+This version can be enforced with a number of tags equal to the number of different
+sharing combinations present in the system---in the worst case this would be
+exponential in the number of compartments, but in practice it can be tuned to be
+arbitrarily small. (In extremis, all shared objects can be grouped together to run
+on a machine with only two tags.) Sadly it strays from the C standard in its
+temporal memory safety: under some circumstances a shared object can be accessed
+by a compartment that it has not (yet) been shared with.
+
+\begin{figure}
+    \[\begin{aligned}
+    \mathit{val} & ::= \ldots \mid \mathit{Vptr} ~ c ~ a &
+    c \in 2^{\mathcal{C}}
+    \end{aligned}\]
+    %
+    \[\begin{split}
+    M \in ~ & \mathcal{M} \subseteq 2^{\mathcal{C}} \rightarrow \mathit{mem} \\
+    \mathit{heap\_alloc} \in ~ & \mathit{oracle} \rightarrow
+    2^{\mathcal{C}} \rightarrow \mathit{int} \rightharpoonup
+    (\mathit{int} \times \mathit{oracle}) \\
+    \mathit{heap\_free} \in ~ & \mathit{oracle} \rightarrow 2^{\mathcal{C}} \rightarrow
+    \mathit{int} \rightharpoonup \mathit{oracle} \\
+    \mathit{stk\_alloc} \in ~ & \mathit{oracle} \rightarrow
+    2^{\mathcal{C}} \rightarrow \mathit{int} \rightharpoonup
+    (\mathit{int} \times \mathit{oracle}) \\
+    \mathit{stk\_free} \in ~ & \mathit{oracle} \rightarrow 2^{\mathcal{C}} \rightarrow
+    \mathit{int} \rightharpoonup \mathit{oracle} \\
+%    \mathit{baseof} \in ~ & \mathit{oracle} \rightarrow \mathit{block} \rightharpoonup \mathit{int} \\
+    \end{split}\]
+    \judgment{\(\mathit{read} ~ (M ~ \overline{C}) ~ a = v\)}
+             {\(C, \alpha, M \mid *(\mathit{Vptr} ~ \overline{C} ~ a)
+               \longrightarrow C, \alpha, M \mid v\)}
+
+    \judgmenttwo{\(\mathit{write} ~ (M ~ \overline{C}) ~ a ~ v = m'\)}
+                {\(M' = M[\overline{C} \mapsto m']\)}
+                {\(C, \alpha, M \mid *(\mathit{Vptr} ~ \overline{C} ~ a) := v
+                  \longrightarrow C, \alpha, M' \mid v\)}
+
+    \judgment{\(\mathit{heap\_alloc} ~ \alpha ~ C ~ sz = (p, \alpha')\)}
+             {\(C, \alpha, M \mid \mathtt{malloc}_{\overline{C}}(\mathit{Vint} ~ sz)
+               \longrightarrow C, \alpha', M \mid \mathit{Vptr} ~ \mathbf{L}(C) ~ p\)}
+    \judgment{}
+             {\(C,\alpha,M \mid \mathtt{(t*)} (\mathit{Vint} ~ i) \longrightarrow
+               C,\alpha,M \mid \mathit{Vptr} ~ \{C\} ~ \mathit{i}\)}
+
+  \caption{Memory With Explicit Sharing}
+  \label{fig:powerset}
+\end{figure}
 
 \end{document}
