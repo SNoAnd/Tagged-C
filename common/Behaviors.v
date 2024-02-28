@@ -27,6 +27,7 @@ Require Import Smallstep.
 Require Import Tags.
 Require Import Values.
 Require Import Memory.
+Require Import Ctypes.
 
 Set Implicit Arguments.
 Set Asymmetric Patterns.
@@ -132,21 +133,22 @@ Qed.
 Section PROGRAM_BEHAVIORS.
 
 Variable L: semantics.
+Variable ce: composite_env.
 
 Inductive state_behaves (s: state L): program_behavior -> Prop :=
   | state_terminates: forall t s' r,
-      Star L s t s' ->
+      Star L ce s t s' ->
       final_state L s' r ->
       state_behaves s (Terminates t r)
   | state_diverges: forall t s',
-      Star L s t s' -> Forever_silent L s' ->
+      Star L ce s t s' -> Forever_silent L ce s' ->
       state_behaves s (Diverges t)
   | state_reacts: forall T,
-      Forever_reactive L s T ->
+      Forever_reactive L ce s T ->
       state_behaves s (Reacts T)
   | state_goes_wrong: forall t s',
-      Star L s t s' ->
-      Nostep L s' ->
+      Star L ce s t s' ->
+      Nostep L ce s' ->
       (forall r, ~final_state L s' r) ->
       state_behaves s (Goes_wrong t).
 
@@ -160,7 +162,7 @@ Inductive program_behaves: program_behavior -> Prop :=
 
 Lemma state_behaves_app:
   forall s1 t s2 beh,
-  Star L s1 t s2 -> state_behaves s2 beh -> state_behaves s1 (behavior_app t beh).
+  Star L ce s1 t s2 -> state_behaves s2 beh -> state_behaves s1 (behavior_app t beh).
 Proof.
   intros. inv H0; simpl; econstructor; eauto; try (eapply star_trans; eauto).
   eapply star_forever_reactive; eauto.
@@ -180,12 +182,12 @@ Section TRACEINF_REACTS.
 Variable s0: state L.
 
 Hypothesis reacts:
-  forall s1 t1, Star L s0 t1 s1 ->
-  exists s2, exists t2, Star L s1 t2 s2 /\ t2 <> E0.
+  forall s1 t1, Star L ce s0 t1 s1 ->
+  exists s2, exists t2, Star L ce s1 t2 s2 /\ t2 <> E0.
 
 Lemma reacts':
-  forall s1 t1, Star L s0 t1 s1 ->
-                { s2 : state L & { t2 : trace | Star L s1 t2 s2 /\ t2 <> E0 } }.
+  forall s1 t1, Star L ce s0 t1 s1 ->
+                { s2 : state L & { t2 : trace | Star L ce s1 t2 s2 /\ t2 <> E0 } }.
 Proof.
   intros.
   destruct (constructive_indefinite_description _ (reacts H)) as [s2 A].
@@ -193,7 +195,7 @@ Proof.
   exists s2; exists t2; auto.
 Qed.
 
-CoFixpoint build_traceinf' (s1: state L) (t1: trace) (ST: Star L s0 t1 s1) : traceinf' :=
+CoFixpoint build_traceinf' (s1: state L) (t1: trace) (ST: Star L ce s0 t1 s1) : traceinf' :=
   match reacts' ST with
   | existT s2 (exist t2 (conj A B)) =>
       Econsinf' t2
@@ -202,8 +204,8 @@ CoFixpoint build_traceinf' (s1: state L) (t1: trace) (ST: Star L s0 t1 s1) : tra
   end.
 
 Lemma reacts_forever_reactive_rec:
-  forall s1 t1 (ST: Star L s0 t1 s1),
-  Forever_reactive L s1 (traceinf_of_traceinf' (build_traceinf' ST)).
+  forall s1 t1 (ST: Star L ce s0 t1 s1),
+  Forever_reactive L ce s1 (traceinf_of_traceinf' (build_traceinf' ST)).
 Proof.
   cofix COINDHYP; intros.
   rewrite (unroll_traceinf' (build_traceinf' ST)). simpl.
@@ -213,9 +215,9 @@ Proof.
 Qed.
 
 Lemma reacts_forever_reactive:
-  exists T, Forever_reactive L s0 T.
+  exists T, Forever_reactive L ce s0 T.
 Proof.
-  exists (traceinf_of_traceinf' (build_traceinf' (star_refl (step L) (Smallstep.globalenv L) s0))).
+  exists (traceinf_of_traceinf' (build_traceinf' (star_refl (step L) (Smallstep.globalenv L) ce s0))).
   apply reacts_forever_reactive_rec.
 Qed.
 
@@ -223,8 +225,8 @@ End TRACEINF_REACTS.
 
 Lemma diverges_forever_silent:
   forall s0,
-  (forall s1 t1, Star L s0 t1 s1 -> exists s2, Step L s1 E0 s2) ->
-  Forever_silent L s0.
+  (forall s1 t1, Star L ce s0 t1 s1 -> exists s2, Step L ce s1 E0 s2) ->
+  Forever_silent L ce s0.
 Proof.
   cofix COINDHYP; intros.
   destruct (H s0 E0) as [s1 ST]. constructor.
@@ -236,11 +238,11 @@ Lemma state_behaves_exists:
   forall s, exists beh, state_behaves s beh.
 Proof.
   intros s0.
-  destruct (classic (forall s1 t1, Star L s0 t1 s1 -> exists s2, exists t2, Step L s1 t2 s2)).
+  destruct (classic (forall s1 t1, Star L ce s0 t1 s1 -> exists s2, exists t2, Step L ce s1 t2 s2)).
 (* 1 Divergence (silent or reactive) *)
-  destruct (classic (exists s1, exists t1, Star L s0 t1 s1 /\
-                       (forall s2 t2, Star L s1 t2 s2 ->
-                        exists s3, Step L s2 E0 s3))).
+  destruct (classic (exists s1, exists t1, Star L ce s0 t1 s1 /\
+                       (forall s2 t2, Star L ce s1 t2 s2 ->
+                        exists s3, Step L ce s2 E0 s3))).
 (* 1.1 Silent divergence *)
   destruct H0 as [s1 [t1 [A B]]].
   exists (Diverges t1); econstructor; eauto.
@@ -555,7 +557,7 @@ Proof.
 Qed.
 
 Lemma step_atomic_plus:
-  forall s1 t s2, Step L s1 t s2 -> Plus (atomic L) (E0,s1) t (E0,s2).
+  forall s1 t s2, Step L ce s1 t s2 -> Plus (atomic L) (E0,s1) t (E0,s2).
 Proof.
   intros.  destruct t0.
   apply plus_one. simpl; apply atomic_step_silent; auto.
@@ -564,13 +566,13 @@ Proof.
 Qed.
 
 Lemma star_atomic_star:
-  forall s1 t s2, Star L s1 t s2 -> Star (atomic L) (E0,s1) t (E0,s2).
+  forall s1 t s2, Star L ce s1 t s2 -> Star (atomic L) (E0,s1) t (E0,s2).
 Proof.
   induction 1. apply star_refl. eapply star_trans with (s2 := (E0,s2)).
   apply plus_star. eapply step_atomic_plus; eauto. eauto. auto.
 Qed.
 
-Lemma atomic_forward_simulation: forward_simulation L (atomic L).
+Lemma atomic_forward_simulation: forward_simulation L ce (atomic L).
 Proof.
   set (ms := fun (s: state L) (ts: state (atomic L)) => ts = (E0,s)).
   apply forward_simulation_plus with ms; intros.
@@ -583,7 +585,7 @@ Qed.
 
 Lemma atomic_star_star_gen:
   forall ts1 t ts2, Star (atomic L) ts1 t ts2 ->
-  exists t', Star L (snd ts1) t' (snd ts2) /\ fst ts1 ** t' = t ** fst ts2.
+  exists t', Star L ce (snd ts1) t' (snd ts2) /\ fst ts1 ** t' = t ** fst ts2.
 Proof.
   induction 1.
   exists E0; split. apply star_refl. traceEq.
@@ -595,14 +597,14 @@ Proof.
 Qed.
 
 Lemma atomic_star_star:
-  forall s1 t s2, Star (atomic L) (E0,s1) t (E0,s2) -> Star L s1 t s2.
+  forall s1 t s2, Star (atomic L) (E0,s1) t (E0,s2) -> Star L ce s1 t s2.
 Proof.
   intros. exploit atomic_star_star_gen; eauto. intros [t' [A B]].
   simpl in *. replace t0 with t'. auto. subst; traceEq.
 Qed.
 
 Lemma atomic_forever_silent_forever_silent:
-  forall s, Forever_silent (atomic L) s -> Forever_silent L (snd s).
+  forall s, Forever_silent (atomic L) s -> Forever_silent L ce (snd s).
 Proof.
   cofix COINDHYP; intros. inv H. inv H0.
   apply forever_silent_intro with (snd (E0, s')). auto. apply COINDHYP; auto.
@@ -622,7 +624,7 @@ Proof.
 Qed.
 
 Lemma atomic_forever_reactive_forever_reactive:
-  forall s T, Forever_reactive (atomic L) (E0,s) T -> Forever_reactive L s T.
+  forall s T, Forever_reactive (atomic L) (E0,s) T -> Forever_reactive L ce s T.
 Proof.
   assert (forall t s T, Forever_reactive (atomic L) (t,s) T ->
           exists T', Forever_reactive (atomic L) (E0,s) T' /\ T = t *** T').
@@ -642,10 +644,10 @@ Proof.
 Qed.
 
 Theorem atomic_behaviors:
-  forall beh, program_behaves L beh <-> program_behaves (atomic L) beh.
+  forall beh, program_behaves L ce beh <-> program_behaves (atomic L) beh.
 Proof.
   intros; split; intros.
-- (* L -> atomic L *)
+- (* L ce -> atomic L ce *)
   exploit forward_simulation_behavior_improves. eapply atomic_forward_simulation. eauto.
   intros [beh2 [A B]]. red in B. destruct B as [EQ | [t [C D]]].
   congruence.
@@ -656,7 +658,7 @@ Proof.
   intros; red; intros. simpl in H. destruct H. eelim H4; eauto.
   apply program_goes_initially_wrong.
   intros; red; intros. simpl in H; destruct H. eelim H1; eauto.
-- (* atomic L -> L *)
+- (* atomic L ce -> L ce *)
   inv H.
 + (* initial state defined *)
   destruct s as [t s]. simpl in H0. destruct H0; subst t.
@@ -837,7 +839,7 @@ Hypothesis sound: bigstep_sound B L.
 
 Lemma behavior_bigstep_terminates:
   forall t r,
-  bigstep_terminates B t r -> program_behaves L (Terminates t r).
+  bigstep_terminates B t r -> program_behaves L ce (Terminates t r).
 Proof.
   intros. exploit (bigstep_terminates_sound sound); eauto.
   intros [s1 [s2 [P [Q R]]]].
@@ -847,8 +849,8 @@ Qed.
 Lemma behavior_bigstep_diverges:
   forall T,
   bigstep_diverges B T ->
-  program_behaves L (Reacts T)
-  \/ exists t, program_behaves L (Diverges t) /\ traceinf_prefix t T.
+  program_behaves L ce (Reacts T)
+  \/ exists t, program_behaves L ce (Diverges t) /\ traceinf_prefix t T.
 Proof.
   intros. exploit (bigstep_diverges_sound sound); eauto. intros [s1 [P Q]].
   exploit forever_silent_or_reactive; eauto. intros [X | [t [s' [T' [X [Y Z]]]]]].
