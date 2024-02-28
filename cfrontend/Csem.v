@@ -1460,11 +1460,7 @@ End SEM.
   | final_state_intro: forall fd l PCT r m t,
       final_state (Returnstate fd l PCT (Vint r, t) Kstop m) r.
   
-  Definition semantics (p: program) :=
-    match globalenv p with
-    | MemorySuccess (ge,ce,_) =>
-        MemorySuccess (Semantics_gen (fun ge => step ge ce) (initial_state p) final_state ge)
-    | MemoryFail msg failure => MemoryFail msg failure
-    end.
+  Definition semantics (p: program) (ge: Genv.t fundef type) (ce: composite_env) :=
+    Semantics_gen step (initial_state p) final_state ge ce.
 
 End Csem.
