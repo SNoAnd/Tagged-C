@@ -143,10 +143,10 @@ Module Csyntax (Ptr: Pointer) (Pol: Policy)
       id, or a function pointer *)
 
   Inductive loc_kind : Type :=
-  | Lmem (p: ptr) (pt: tag) (bf: bitfield)
+  | Lmem (p: ptr) (pt: val_tag) (bf: bitfield)
   | Ltmp (b: block)
-  | Lifun (b: block) (pt: tag)
-  | Lefun (ef: external_function) (tyargs: typelist) (tyres:rettype) (cconv: calling_convention) (pt: tag)
+  | Lifun (b: block) (pt: val_tag)
+  | Lefun (ef: external_function) (tyargs: typelist) (tyres:rettype) (cconv: calling_convention) (pt: val_tag)
   .
   
   (** ** Expressions *)
@@ -224,7 +224,7 @@ Definition Eindex (r1 r2: expr) (ty: type) :=
 
 Definition Epreincr (id: incr_or_decr) (l: expr) (ty: type) :=
   Eassignop (match id with Incr => Oadd | Decr => Osub end)
-            l (Eval (Vint Int.one, def_tag) type_int32s) (typeconv ty) ty.
+            l (Econst (Vint Int.one) type_int32s) (typeconv ty) ty.
 
 (** Selection is a conditional expression that always evaluates both arms
   and can be implemented by "conditional move" instructions.

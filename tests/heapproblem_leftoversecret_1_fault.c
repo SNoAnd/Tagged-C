@@ -1,7 +1,7 @@
 /**
  * @todo write test
- * @file heapleak_overead_1_fault.c
- * @brief Demonstrate a single conditional heap overread fault
+ * @file heapleak_leftoversecret_1_fault.c
+ * @brief Demonstrate a single conditional secret left over in the heap 
  * @note
  * "heap leak" can mean just about any problem with the heap. There are at least 5:
  *      (1) heap buffer overwrite (RCE)
@@ -23,6 +23,17 @@
 #include <stdio.h>
 #define MAX_SIZE 80
 
+/**
+ * Simulate a service that gets a secret from a vault, api, etc
+ * 
+ * return length of key, 0 if key could not be retreived 
+ * 
+ * @TODO drop in a hardcoded token 
+ * 
+*/
+int get_secret_from_vault() {
+
+}
 int main() {
     char* input = (char*) malloc(MAX_SIZE * sizeof(char));
     printf("enter some input:");

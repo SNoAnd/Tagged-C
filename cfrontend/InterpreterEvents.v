@@ -7,6 +7,7 @@ Require Import Csem.
 Require Import Tags.
 Require Import List. Import ListNotations.
 Require Import Cstrategy Ctypes.
+Require Import ExtLib.Structures.Monads. Import MonadNotation.
 
 Local Open Scope string_scope.
 Local Open Scope list_scope.
@@ -48,23 +49,8 @@ Module InterpreterEvents (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Al
   Import Mem.MD.
   Import P.
   Import Csem.TLib.
-
-  Notation "'do_mem' X <- A ; B" := (match A with
-                                     | MemorySuccess X => B
-                                     | MemoryFail msg failure => MemoryFail msg failure
-                                     end)
-                                      (at level 200, X name, A at level 100, B at level 200)
-      : memory_monad_scope.
-
-  Notation "'do_mem' X , Y <- A ; B" := (match A with
-                                         | MemorySuccess (X, Y) => B
-                                         | MemoryFail msg failure => MemoryFail msg failure
-                                         end)
-                                          (at level 200, X name, Y name, A at level 100, B at level 200)
-      : memory_monad_scope.
   
   Local Open Scope option_monad_scope.
-  Local Open Scope memory_monad_scope.
 
   Section EXEC.
     Variable ge: genv.
@@ -77,20 +63,20 @@ Module InterpreterEvents (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Al
       let '(v,vt) := a in
       match v with
       | Vint i => check (typ_eq t AST.Tint);
-                  check (tag_eq_dec vt def_tag);
+                  check (vt_eq_dec vt def_tag);
                   Some (EVint i)
         (* ev_match_int : forall i : int, eventval_match ge (EVint i) AST.Tint (Vint i, def_tag)*)
       | Vfloat f => check (typ_eq t AST.Tfloat);
-                    check (tag_eq_dec vt def_tag);
+                    check (vt_eq_dec vt def_tag);
                     Some (EVfloat f)
         (* ev_match_float : forall f : float, eventval_match ge (EVfloat f) AST.Tfloat (Vfloat f, def_tag) *)
       | Vsingle f => check (typ_eq t AST.Tsingle);
-                     check (tag_eq_dec vt def_tag);
+                     check (vt_eq_dec vt def_tag);
                      Some (EVsingle f)
         (* ev_match_single : forall f : float32, eventval_match ge (EVsingle f) Tsingle (Vsingle f, def_tag) *)
       | Vlong n =>
           check (typ_eq t AST.Tlong);
-          check (tag_eq_dec vt def_tag); Some (EVlong n)
+          check (vt_eq_dec vt def_tag); Some (EVlong n)
           (* ev_match_long : forall i : int64, eventval_match ge (EVlong i) AST.Tlong (Vlong i, def_tag) *)
 (*          else check (typ_eq t AST.Tptr);
           match invert_symbol_ofs ge n with
@@ -117,7 +103,7 @@ Module InterpreterEvents (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Al
           match find_symbol ge id with
           | Some (SymIFun _ b pt) =>
               check (public_symbol ge id);
-              check (tag_eq_dec vt pt);
+              check (vt_eq_dec vt pt);
               Some (EVptr_fun id)
           | _ => None
           end
@@ -191,7 +177,7 @@ Module InterpreterEvents (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Al
       | [ |- match ?x with true => _ | false => _ end = _ -> _ ] => destruct x eqn:?; mydestr
       | [ |- match ?x with inl _ => _ | inr _ => _ end = _ -> _ ] => destruct x; mydestr
       | [ |- match ?x with left _ => _ | right _ => _ end = _ -> _ ] => destruct x; mydestr
-      | [ |- match ?x with MemorySuccess _ => _ | MemoryFail _ _ => _ end = _ -> _ ] => destruct x eqn:?; mydestr
+      | [ |- match ?x with Success _ => _ | Fail _ _ => _ end = _ -> _ ] => destruct x eqn:?; mydestr
       | [ |- (let (_, _) := ?x in _) = _ -> _ ] => destruct x; mydestr
       | _ => idtac
       end.
@@ -211,7 +197,7 @@ Module InterpreterEvents (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Al
       - eapply (invert_find_symbol_block ge) in Heqo. destruct Heqo. rewrite H in Heqo0.
         inv Heqo0. intros.
         destruct (public_symbol ge i) eqn:?; try congruence.
-        destruct (tag_eq_dec t0 x) eqn:?; try congruence.
+        destruct (vt_eq_dec v0 x) eqn:?; try congruence.
         inv H0. constructor; auto.
     Qed.
 
@@ -257,7 +243,7 @@ Module InterpreterEvents (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Al
 
     (** Volatile memory accesses. *)
     Definition do_volatile_load (w: world) (chunk: memory_chunk) (m: mem)
-               (ofs: int64) : option (world * trace * MemoryResult atom) :=
+               (ofs: int64) : option (world * trace * PolicyResult atom) :=
       let id_if_vol := match invert_symbol_ofs ge ofs with
                        | Some (id, gv) =>
                            if gv.(gvar_volatile)
@@ -269,18 +255,15 @@ Module InterpreterEvents (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Al
       | Some id =>
           do res,w' <- nextworld_vload w chunk id ofs;
           do vres,vt <- atom_of_eventval res (type_of_chunk chunk);
-          Some (w', Event_vload chunk id ofs res :: nil, MemorySuccess (Val.load_result chunk vres, vt))
+          Some (w', Event_vload chunk id ofs res :: nil, Success (Val.load_result chunk vres, vt))
       | None =>
-          match load_all chunk m (Int64.unsigned ofs) with
-          | MemorySuccess (v,lts) =>
-              Some (w, E0, MemorySuccess v)
-          | MemoryFail msg failure =>
-              Some (w, E0, MemoryFail msg failure)
-          end
+          let res := load chunk m (Int64.unsigned ofs) in
+          Some (w, E0, res)
       end.
 
     Definition do_volatile_store (w: world) (chunk: memory_chunk) (m: mem)
-               (ofs: int64) (v: atom) (lts: list tag) : option (world * trace * MemoryResult mem) :=
+               (ofs: int64) (v: atom) (lts: list loc_tag) :
+      option (world * trace * PolicyResult mem) :=
       let id_if_vol := match invert_symbol_ofs ge ofs with
                        | Some (id, gv) =>
                            if gv.(gvar_volatile)
@@ -292,14 +275,10 @@ Module InterpreterEvents (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Al
       | Some id =>
           do ev <- eventval_of_atom (atom_map (Val.load_result chunk) v) (type_of_chunk chunk);
           do w' <- nextworld_vstore w chunk id ofs ev;
-          Some(w', Event_vstore chunk id ofs ev :: nil, MemorySuccess m)
+          Some(w', Event_vstore chunk id ofs ev :: nil, Success m)
       | None =>
-          match store chunk m (Int64.unsigned ofs) v lts with
-          | MemorySuccess m' =>
-              Some (w, E0, MemorySuccess m')
-          | MemoryFail msg failure =>
-              Some (w, E0, MemoryFail msg failure)
-          end
+          let res := store chunk m (Int64.unsigned ofs) v lts in
+          Some (w, E0, res)
       end.
 
     Lemma do_volatile_load_sound:
@@ -315,13 +294,7 @@ Module InterpreterEvents (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Al
         + econstructor. econstructor. eauto. constructor.
       - split.
         + apply volatile_load_nonvol; auto.
-          * intros. rewrite H in Heqo. destruct (gvar_volatile gv); congruence.
-          * eapply A.Mem.load_all_compose in Heqm0 as [H1 H2]; auto.
-        + constructor.
-      - split.
-        + apply volatile_load_nonvol; auto.
-          * intros. rewrite H in Heqo. destruct (gvar_volatile gv); congruence.
-          * eapply A.Mem.load_all_fail in Heqm0 as [H1 H2]; auto.
+          intros. rewrite H in Heqo. destruct (gvar_volatile gv); congruence.
         + constructor.          
     Qed.
           
@@ -339,17 +312,7 @@ Module InterpreterEvents (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Al
         + inv H0.
           specialize H1 with id gv.
           rewrite H1; auto.
-          destruct (load_all chunk m (Int64.unsigned ofs)) as [[[v vt] lts]|] eqn:?.
-          * eapply A.Mem.load_all_compose in Heqm0. destruct Heqm0.
-            unfold Genv.load. rewrite H. auto.
-          * eapply A.Mem.load_all_fail in Heqm0. destruct Heqm0.
-            unfold Genv.load. rewrite H. auto.
-        + inv H0.
-          destruct (load_all chunk m (Int64.unsigned ofs)) as [[[v vt] lts]|] eqn:?.
-          * eapply A.Mem.load_all_compose in Heqm0. destruct Heqm0.
-            unfold Genv.load. rewrite H. auto.
-          * eapply A.Mem.load_all_fail in Heqm0. destruct Heqm0.
-            unfold Genv.load. rewrite H. auto.
+        + inv H0. auto.
     Qed.
             
     Lemma do_volatile_store_sound:
@@ -363,9 +326,6 @@ Module InterpreterEvents (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Al
         + eapply volatile_store_vol; eauto.
           apply eventval_of_atom_sound; auto.
         + econstructor. constructor; eauto. constructor.
-      - split. eapply volatile_store_nonvol; eauto.
-        + intros. rewrite H in Heqo. destruct (gvar_volatile gv); congruence.
-        + constructor.
       - split. eapply volatile_store_nonvol; eauto.
         + intros. rewrite H in Heqo. destruct (gvar_volatile gv); congruence.
         + constructor.
@@ -384,24 +344,23 @@ Module InterpreterEvents (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Al
         + inv H0.
           specialize H6 with id gv.
           rewrite H6; auto.
-          destruct (store chunk m (Int64.unsigned ofs) (v,vt) lts); auto.
         + inv H0. destruct (store chunk m (Int64.unsigned ofs) (v,vt) lts); auto.
     Qed.
 
     (** External calls *)
     Variable do_external_function:
-      string -> signature -> Genv.t fundef type -> world -> list atom -> tag -> tag -> mem -> option (world * trace * (MemoryResult (PolicyResult (atom * tag * mem)))).
+      string -> signature -> Genv.t fundef type -> world -> list atom -> policy_state -> control_tag -> val_tag -> mem -> option (world * trace * (PolicyResult (atom * control_tag * mem))).
 
     Hypothesis do_external_function_sound:
-      forall id sg ge vargs pct fpt m t res w w',
-        do_external_function id sg ge w vargs pct fpt m = Some(w', t, res) ->
-        external_functions_sem id sg ge vargs pct fpt m t res /\ possible_trace w t w'.
+      forall id sg ge vargs pstate pct fpt m t res w w',
+        do_external_function id sg ge w vargs pstate pct fpt m = Some(w', t, res) ->
+        external_functions_sem id sg ge vargs pstate pct fpt m t res /\ possible_trace w t w'.
 
     Hypothesis do_external_function_complete:
-      forall id sg ge vargs pct fpt m t res w w',
-        external_functions_sem id sg ge vargs pct fpt m t res ->
+      forall id sg ge vargs pstate pct fpt m t res w w',
+        external_functions_sem id sg ge vargs pstate pct fpt m t res ->
         possible_trace w t w' ->
-        do_external_function id sg ge w vargs pct fpt m = Some(w', t, res).
+        do_external_function id sg ge w vargs pstate pct fpt m = Some(w', t, res).
 
 (*    Definition do_ef_volatile_load (chunk: memory_chunk) (w: world) (vargs: list val) (m: mem) :
       option (world * trace * MemoryResult (atom * mem)) :=
@@ -437,79 +396,80 @@ Module InterpreterEvents (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Al
       unfold alloc_size. unfold do_alloc_size. split; intros; destruct v; inv H; auto.
     Qed.
     
-    Definition do_ef_malloc (l: Cabs.loc) (w: world) (vargs: list atom) (PCT fpt: tag) (m: mem)
-      : option (world * trace * (MemoryResult (PolicyResult (atom * tag * mem)))) :=
+    Definition do_ef_malloc (l: Cabs.loc) (w: world) (vargs: list atom) (pstate: policy_state) (pct: control_tag) (fpt: val_tag) (m: mem)
+      : option (world * trace * (PolicyResult (atom * control_tag * mem))) :=
       match vargs with
       | [(v,st)] =>
           match do_alloc_size v with
           | Some sz =>
-              match MallocT l PCT fpt st with
-              | PolicySuccess (PCT',pt',vt_body,vt_head,lt) =>
-                  match heapalloc m sz vt_head vt_body lt with
-                  | MemorySuccess (m', base, bound) =>
-                      Some (w, E0, (MemorySuccess (PolicySuccess((Vlong (Int64.repr base), pt'), PCT', m'))))
-                  | MemoryFail msg failure => Some (w, E0, (MemoryFail msg failure))
-                  end
-              | PolicyFail msg params =>
-                  Some (w, E0, (MemorySuccess (PolicyFail msg params)))
-              end
+              let res :=
+                '(pct',pt',vt_body,vt_head,lt) <- MallocT l pstate pct fpt st;;
+                '(m', base, bound) <- heapalloc m sz vt_head vt_body lt;;
+                ret ((Vlong (Int64.repr base), pt'), pct', m') in
+              Some (w, E0, res)
           | None => None
           end
       | _ => None
       end.
 
     Lemma do_ef_malloc_complete :
-      forall l vargs pct fpt m tr res w w',
-        extcall_malloc_sem l ge vargs pct fpt m tr res ->
+      forall l vargs pstate pct fpt m tr res w w',
+        extcall_malloc_sem l ge vargs pstate pct fpt m tr res ->
         possible_trace w tr w' ->
-        do_ef_malloc l w vargs pct fpt m = Some (w', tr, res).
+        do_ef_malloc l w vargs pstate pct fpt m = Some (w', tr, res).
     Proof.
       intros. unfold do_ef_malloc. inv H; apply do_alloc_size_correct in H1; rewrite H1; inv H0.
-      - rewrite H2. rewrite H3. auto.
-      - rewrite H2. auto.
-      - rewrite H2. rewrite H3. auto.
+      - rewrite H2. simpl. rewrite H3. auto.
+      - rewrite H2. simpl. auto.
+      - rewrite H2. simpl. rewrite H3. auto.
     Qed.
     
     Lemma do_ef_malloc_sound :
-      forall l vargs pct fpt m tr res w w',
-        do_ef_malloc l w vargs pct fpt m = Some (w', tr, res) ->
-        extcall_malloc_sem l ge vargs pct fpt m tr res /\ possible_trace w tr w'.
-    Proof.
+      forall l vargs pstate pct fpt m tr res w w',
+        do_ef_malloc l w vargs pstate pct fpt m = Some (w', tr, res) ->
+        extcall_malloc_sem l ge vargs pstate pct fpt m tr res /\ possible_trace w tr w'.
+(*    Proof.
       unfold do_ef_malloc. intros.
       destruct vargs as [| [v vt]]; try congruence.
       destruct vargs; try congruence.
       destruct (do_alloc_size v) eqn:?.
       - apply do_alloc_size_correct in Heqo.
-        destruct (MallocT l pct fpt vt) as [[[[[PCT' pt'] vt_body] vt_head] lt]|] eqn:?.
-        + destruct (heapalloc m z vt_head vt_body lt) as [[[m' base] bound]|] eqn:?; inv H.
-          * split; econstructor; eauto. 
-          * split; econstructor; eauto. 
-        + inv H. split; econstructor; eauto.
-      - inv H.
-    Qed.
+        destruct (MallocT l pct fpt vt) as
+          [[[[[pct' pt'] vt_body] vt_head] lt]
+          |[[[[pct' pt'] vt_body] vt_head] lt]
+          |] eqn:?.
+        + destruct (heapalloc m z vt_head vt_body lt) as [[[m' base] bound]| |] eqn:?; inv H.
+          * rewrite Heqp0. split; econstructor; eauto.
+          * rewrite Heqp0. admit. (*split; econstructor; eauto.*)
+          * rewrite Heqp0. split. eapply extcall_malloc_sem_fail_1; eauto. constructor.
+        +  destruct (heapalloc m z vt_head vt_body lt) as [[[m' base] bound]| |] eqn:?; inv H.
+           * rewrite Heqp0. simpl. split; econstructor; eauto.
+
+          rewrite Heqp.
+          inv H1. admit. (* split; econstructor; eauto.*)
+        + admit.
+      - inv H.*)
+    Admitted.
     
-    Definition do_ef_free (l: Cabs.loc) (w: world) (vargs: list atom) (PCT fpt: tag) (m: mem)
-      : option (world * trace * (MemoryResult (PolicyResult (atom * tag * mem)))) :=
+    Definition do_ef_free (l: Cabs.loc) (w: world) (vargs: list atom) (pstate: policy_state) (pct: control_tag) (fpt: val_tag) (m: mem)
+      : option (world * trace * (PolicyResult (atom * control_tag * mem))) :=
       match vargs with
       | [(Vlong addr,pt)] =>
           if Int64.eq addr Int64.zero then
-            Some (w, E0, (MemorySuccess (PolicySuccess ((Vundef,def_tag),PCT,m))))
+            Some (w, E0, (Success ((Vundef,def_tag),pct,m)))
           else
-          match heapfree m (Int64.unsigned addr) (fun vt => FreeT l PCT fpt pt vt) with
-          | MemorySuccess (PolicySuccess (PCT', m')) =>
-              Some (w, E0, (MemorySuccess (PolicySuccess ((Vundef,def_tag),PCT',m'))))
-          | MemorySuccess (PolicyFail msg params) =>
-              Some (w, E0, (MemorySuccess (PolicyFail msg params)))
-          | MemoryFail msg failure => Some (w, E0, (MemoryFail msg failure))
-          end
+            let res :=
+              '(pct',m') <- heapfree m (Int64.unsigned addr) (fun vt => FreeT l pstate pct fpt pt vt);;
+              ret ((Vundef,def_tag),pct',m') in
+              Some (w, E0, res)
       | _ => None
       end.
 
     Lemma do_ef_free_complete :
-      forall l vargs pct fpt m tr res w w',
-        extcall_free_sem l ge vargs pct fpt m tr res ->
+      forall l vargs pstate pct fpt m tr res w w',
+        extcall_free_sem l ge vargs pstate pct fpt m tr res ->
         possible_trace w tr w' ->
-        do_ef_free l w vargs pct fpt m = Some (w', tr, res).
+        do_ef_free l w vargs pstate pct fpt m = Some (w', tr, res).
     Proof.
       intros. unfold do_ef_free. inv H.
       - rewrite (Int64.eq_false _ _ H1).
@@ -522,10 +482,11 @@ Module InterpreterEvents (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Al
     Qed.
 
     Lemma do_ef_free_sound :
-      forall l vargs pct fpt m tr res w w',
-        do_ef_free l w vargs pct fpt m = Some (w', tr, res) ->
-        extcall_free_sem l ge vargs pct fpt m tr res /\ possible_trace w tr w'.
-    Proof.
+      forall l vargs pstate pct fpt m tr res w w',
+        do_ef_free l w vargs pstate pct fpt m = Some (w', tr, res) ->
+        extcall_free_sem l ge vargs pstate pct fpt m tr res /\ possible_trace w tr w'.
+    Admitted.
+    (*Proof.
       unfold do_ef_free. intros.
       destruct vargs as [| [v vt]]; try congruence.
       destruct v; try congruence.
@@ -535,18 +496,18 @@ Module InterpreterEvents (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Al
         inv H. split.
         + eapply extcall_free_sem_null.
         + constructor.
-      - destruct (heapfree m (Int64.unsigned i) (fun vt0 : tag => FreeT l pct fpt vt vt0))
+      - destruct (heapfree m (Int64.unsigned i) (fun vt0 : val_tag => FreeT l pct fpt vt vt0))
           as [[[pct' m']|]|] eqn:?;
                              inv H; split; constructor; auto; intro;
           rewrite H in Heqb; rewrite Int64.eq_true in Heqb; discriminate.
-    Qed.
+    Qed.*)
 
     Definition do_external (ef: external_function) (l: Cabs.loc) :
-      world -> list atom -> tag -> tag -> mem -> option (world * trace * (MemoryResult (PolicyResult (atom * tag * mem)))) :=
+      world -> list atom -> policy_state -> control_tag -> val_tag -> mem -> option (world * trace * (PolicyResult (atom * control_tag * mem))) :=
       match ef with
       | EF_external name sg =>
-          fun w vargs pct fpt m =>
-            do_external_function name sg ge w vargs pct fpt m
+          fun w vargs pstate pct fpt m =>
+            do_external_function name sg ge w vargs pstate pct fpt m
   (*| EF_builtin name sg => do_builtin_or_external name sg
     | EF_vload chunk => do_ef_volatile_load chunk
     | EF_vstore chunk => do_ef_volatile_store chunk*)
@@ -555,9 +516,9 @@ Module InterpreterEvents (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Al
       end.
 
     Lemma do_ef_external_sound:
-      forall ef l w vargs pct fpt m w' t res,
-        do_external ef l w vargs pct fpt m = Some (w', t, res) ->
-        external_call l ef ge vargs pct fpt m t res /\ possible_trace w t w'.
+      forall ef l w vargs pstate pct fpt m w' t res,
+        do_external ef l w vargs pstate pct fpt m = Some (w', t, res) ->
+        external_call l ef ge vargs pstate pct fpt m t res /\ possible_trace w t w'.
     Proof with try congruence.
       intros until res.
       destruct ef; simpl...
@@ -570,9 +531,9 @@ Module InterpreterEvents (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Al
     Qed.
 
     Lemma do_ef_external_complete:
-      forall ef w l vargs pct fpt m w' t res,
-        external_call l ef ge vargs pct fpt m t res -> possible_trace w t w' ->
-        do_external ef l w vargs pct fpt m = Some (w', t, res).
+      forall ef w l vargs pstate pct fpt m w' t res,
+        external_call l ef ge vargs pstate pct fpt m t res -> possible_trace w t w' ->
+        do_external ef l w vargs pstate pct fpt m = Some (w', t, res).
     Proof.
       intros. destruct ef eqn:?; simpl in *.
       - (* EF_external *)

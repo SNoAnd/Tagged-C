@@ -228,6 +228,8 @@ module FrontendP =
   InterpInst.execute csyntax
 end
 
+(* Per Policies.md, add new policies in combination of module + desired allocator *)
 module WithNull = FrontendP (NullPolicy.NullPolicy) (FLAllocator)
 module WithPVI = FrontendP (PVI.PVI) (FLAllocator)
 module WithDoubleFree = FrontendP (DoubleFree.DoubleFree) (ConcreteAllocator)
+module WithHeapProblem = FrontendP (HeapProblem.HeapProblem) (ConcreteAllocator)

@@ -11,120 +11,126 @@ Require Import Tags.
 Require Import List. Import ListNotations. (* list notations is a module inside list *)
 
 Module PVI <: Policy.
+  Import Passthrough.
   
   Inductive myTag :=
   | Glob (id:ident)
   | Dyn (c:nat)
   | N
   .
+  
+  Definition val_tag := myTag.
+  Definition control_tag := nat.
+  Definition loc_tag := myTag.
 
-  Definition tag := myTag.
+  Theorem vt_eq_dec : forall (t1 t2:val_tag), {t1 = t2} + {t1 <> t2}.
+  Proof. repeat decide equality. Qed.
+  Theorem ct_eq_dec : forall (t1 t2:control_tag), {t1 = t2} + {t1 <> t2}.
+  Proof. repeat decide equality. Qed.
+  Theorem lt_eq_dec : forall (t1 t2:loc_tag), {t1 = t2} + {t1 <> t2}.
+  Proof. repeat decide equality. Qed.
 
-  Theorem tag_eq_dec : forall (t1 t2:tag), {t1 = t2} + {t1 <> t2}.
-  Proof.
-    unfold tag. intros. repeat decide equality.
-  Qed.
-  Definition def_tag := N.
+  Definition def_tag : val_tag := N.
+  Definition InitPCT : control_tag := O.
+  Definition DefLT   : loc_tag := N.
+  Definition InitT   : val_tag := N.
 
-  Definition InitPCT := Dyn 0.
-
-  Definition print_tag (t : tag) : string :=
+  Definition print_vt (t : val_tag) : string :=
     match t with
     | Glob id => "Global " ++ (extern_atom id)
     | Dyn c => "Dynamic"
     | N => "N"
     end.
+  Definition print_ct (t : control_tag) : string := "Next".
+  Definition print_lt (t : loc_tag) : string :=
+    match t with
+    | Glob id => "Global " ++ (extern_atom id)
+    | Dyn c => "Dynamic"
+    | N => "N"
+    end.
+
+  Definition policy_state := unit.
+  Definition init_state : policy_state := tt.
+  Definition log (pstate:policy_state) (msg:string) := pstate.
+  Definition dump (pstate:policy_state) : list string := [].
   
-  (* Does not inherit from Policy, more like impersonates *)
-  Inductive PolicyResult (A: Type) :=
-  | PolicySuccess (res: A) 
-  | PolicyFail (r: string) (params: list tag).
-
-  Arguments PolicySuccess {_} _. 
-  Arguments PolicyFail {_} _ _.
-
+  Definition color_eq (pt: val_tag) (lt: loc_tag) : bool :=
+    match pt, lt with
+    | Glob id1, Glob id2 => (id1 =? id2)%positive
+    | Dyn c1, Dyn c2 => (c1 =? c2)%nat
+    | _, _ => false
+    end.
+    
   Definition inj_loc (s:string) (l:loc) : string :=
     s ++ " at " ++ (print_loc l).
   
-  Definition CallT (l:loc) (pct pt: tag) : PolicyResult tag := PolicySuccess pct.
-
-  Definition ArgT (l:loc) (pct fpt vt : tag) (idx:nat) (ty: type) : PolicyResult (tag * tag) := PolicySuccess (pct,vt).
-
-  Definition RetT (l:loc) (pct_clr pct_cle vt : tag) : PolicyResult (tag * tag) := PolicySuccess (pct_cle,vt).
-  
-  Definition LoadT (l:loc) (pct pt vt: tag) (lts : list tag) : PolicyResult tag :=
+  Definition LoadT (l:loc) (pstate: policy_state) (pct: control_tag) (pt vt: val_tag) (lts : list loc_tag) :
+    PolicyResult val_tag :=
     match pt with
-    | N => PolicyFail (inj_loc "PVI || LoadT X Failure" l) ([pct;pt;vt]++lts)
-    | _ => if forallb (tag_eq_dec pt) lts then PolicySuccess vt 
-           else PolicyFail (inj_loc "PVI || LoadT tag_eq_dec Failure" l) ([pct;pt;vt]++lts)
+    | N => Fail (inj_loc "PVI || LoadT X Failure" l) PolicyFailure
+    | _ => if forallb (color_eq pt) lts then Success vt 
+           else Fail (inj_loc "PVI || LoadT tag_eq_dec Failure" l) PolicyFailure
     end.
 
-  Definition StoreT (l:loc) (pct pt vt : tag) (lts : list tag) : PolicyResult (tag * tag * list tag) :=
+  Definition StoreT (l:loc) (pstate: policy_state) (pct: control_tag) (pt vt: val_tag) (lts : list loc_tag) :
+    PolicyResult (control_tag * val_tag * list loc_tag) :=
     match pt with
-    | N => PolicyFail (inj_loc "PVI || StoreT X Failure" l) ([pct;pt;vt]++lts)
-    | _ => if forallb (tag_eq_dec pt) lts then PolicySuccess (pct,vt,lts) 
-           else (PolicyFail (inj_loc "PVI || StoreT tag_eq_dec Failure" l) ([pct;pt;vt]++lts))
+    | N => Fail (inj_loc "PVI || StoreT X Failure" l) PolicyFailure
+    | _ => if forallb (color_eq pt) lts then Success (pct,vt,lts) 
+           else Fail (inj_loc "PVI || StoreT tag_eq_dec Failure" l) PolicyFailure
     end.
   
-  Definition AccessT (l:loc) (pct vt : tag) : PolicyResult tag := PolicySuccess vt.
-
-  Definition AssignT (l:loc) (pct vt1 vt2 : tag) : PolicyResult (tag * tag) := PolicySuccess (pct,vt2).
-
-  Definition UnopT (l:loc) (op : unary_operation) (pct vt : tag) : PolicyResult (tag * tag) := PolicySuccess (pct, vt).
-
-  Definition BinopT (l:loc) (op : binary_operation) (pct vt1 vt2 : tag) : PolicyResult (tag * tag) :=
+  Definition BinopT (l:loc) (pstate: policy_state) (op : binary_operation) (pct: control_tag) (vt1 vt2 : val_tag) :
+    PolicyResult (control_tag * val_tag) :=
     match vt1, vt2 with
-    | Dyn n, X =>  PolicySuccess (pct, vt1)
-    | Glob id, X => PolicySuccess (pct, vt1)
-    | _, _ => PolicySuccess (pct, vt2)
+    | Dyn n, X =>  Success (pct, vt1)
+    | Glob id, X => Success (pct, vt1)
+    | _, _ => Success (pct, vt2)
     end.
 
-  Definition ConstT (l:loc) (pct : tag) : PolicyResult tag := PolicySuccess N.
-  Definition InitT (l:loc) (pct : tag) : PolicyResult tag := PolicySuccess N.
+  Definition ConstT (l:loc) (pstate: policy_state) (pct : control_tag) : PolicyResult val_tag := Success N.
 
-  Definition SplitT (l:loc) (pct vt : tag) (id : option ident) : PolicyResult tag := PolicySuccess pct.
-
-  Definition LabelT (l:loc) (pct : tag) (id : ident) : PolicyResult tag := PolicySuccess pct.
-
-  Definition ExprSplitT (l:loc) (pct vt : tag) : PolicyResult tag := PolicySuccess pct.
-
-  Definition ExprJoinT (l:loc) (pct vt : tag) : PolicyResult (tag * tag) := PolicySuccess (pct,vt).
-
-  Definition GlobalT (ce : composite_env) (id : ident) (ty : type) : tag * tag * tag :=
+  Definition GlobalT (ce : composite_env) (id : ident) (ty : type) : val_tag * val_tag * loc_tag :=
     (Glob id, N, Glob id).
 
-  Definition FunT (id : ident) (ty : type) : tag := N.
+  Definition FunT (ce: composite_env) (id : ident) (ty : type) : val_tag := N.
   
-  Definition LocalT (l:loc) (ce : composite_env) (pct : tag) (ty : type) : PolicyResult (tag * tag * (list tag))%type :=
-    match pct with
-    | Dyn c =>
-        PolicySuccess (Dyn (S c), Dyn c, repeat (Dyn c) (Z.to_nat (sizeof ce ty)))
-    | _ =>
-        PolicyFail (inj_loc "PVI || LocalT Failure" l) [pct]
-    end.
+  Definition LocalT (l:loc) (ce : composite_env) (pstate: policy_state) (pct : control_tag) (ty : type) :
+    PolicyResult (control_tag * val_tag * (list loc_tag))%type :=
+    let c := pct in
+    Success (S c, Dyn c, repeat (Dyn c) (Z.to_nat (sizeof ce ty))).
   
-  Definition DeallocT (l:loc) (ce : composite_env) (pct : tag) (ty : type) : PolicyResult (tag * tag * list tag) :=
-    PolicySuccess (pct, N, repeat N (Z.to_nat (sizeof ce ty))).
+  Definition DeallocT (l:loc) (ce : composite_env) (pstate: policy_state) (pct : control_tag) (ty : type) :
+    PolicyResult (control_tag * val_tag * loc_tag) :=
+    Success (pct, N, N).
 
-  Definition MallocT (l:loc) (pct pt vt : tag) : PolicyResult (tag * tag * tag * tag * tag) :=
-    match pct with
-    | Dyn c =>
-        PolicySuccess (Dyn (S c), Dyn c, N, Dyn c, Dyn c)
-    | _ =>
-        PolicyFail "PVI || MallocT Failure" [pct;pt;vt]
-    end.
+  Definition MallocT (l:loc) (pstate: policy_state) (pct: control_tag) (pt vt: val_tag) :
+    PolicyResult (control_tag * val_tag * val_tag * val_tag * loc_tag) :=
+    let c := pct in
+    Success (S c, Dyn c, N, Dyn c, Dyn c).
 
-  Definition FreeT (l:loc) (pct pt1 pt2 vt : tag) : PolicyResult (tag * tag * tag * tag) :=
-    PolicySuccess (pct, N, N, N).
+  Definition FreeT (l:loc) (pstate: policy_state) (pct: control_tag) (pt1 pt2 vht: val_tag) (lts: list loc_tag) :
+    PolicyResult (control_tag * val_tag * val_tag * list loc_tag) :=
+    Success (pct, N, N, lts).
 
-  Definition BuiltinT (l:loc) (fn : string) (pct : tag) (args : list tag) : PolicyResult tag :=
-    PolicySuccess N.
-  
-  Definition FieldT (l:loc) (ce : composite_env) (pct vt : tag) (ty : type) (id : ident) : PolicyResult tag := PolicySuccess vt.
+  Definition ExtCallT (l:loc) (pstate: policy_state) (fn: string) (pct: control_tag) (args: list val_tag) :
+    PolicyResult (control_tag * val_tag) :=
+    Success (pct, N).
 
-  Definition PICastT (l:loc) (pct pt : tag)  (lts : list tag) (ty : type) : PolicyResult tag := PolicySuccess pt.
-  Definition IPCastT (l:loc) (pct vt : tag)  (lts : list tag) (ty : type) : PolicyResult tag := PolicySuccess vt.
-  Definition PPCastT (l:loc) (pct vt : tag) (lts1 lts2 : list tag) (ty : type) : PolicyResult tag := PolicySuccess vt.
-  Definition IICastT (l:loc) (pct vt : tag) (ty : type) : PolicyResult tag := PolicySuccess vt.
-
+  (* Passthrough rules *)  
+  Definition CallT := Passthrough.CallT policy_state val_tag control_tag.  
+  Definition ArgT := Passthrough.ArgT policy_state val_tag control_tag.
+  Definition RetT := Passthrough.RetT policy_state val_tag control_tag.
+  Definition AccessT := Passthrough.AccessT policy_state val_tag control_tag.
+  Definition AssignT := Passthrough.AssignT policy_state val_tag control_tag.
+  Definition UnopT := Passthrough.UnopT policy_state val_tag control_tag.
+  Definition SplitT := Passthrough.SplitT policy_state val_tag control_tag.
+  Definition LabelT := Passthrough.LabelT policy_state control_tag.
+  Definition ExprSplitT := Passthrough.ExprSplitT policy_state val_tag control_tag.
+  Definition ExprJoinT := Passthrough.ExprJoinT policy_state val_tag control_tag.
+  Definition FieldT := Passthrough.FieldT policy_state val_tag control_tag.
+  Definition PICastT := Passthrough.PICastT policy_state val_tag control_tag loc_tag.
+  Definition IPCastT := Passthrough.IPCastT policy_state val_tag control_tag loc_tag.
+  Definition PPCastT := Passthrough.PPCastT policy_state val_tag control_tag loc_tag.
+  Definition IICastT := Passthrough.IICastT policy_state val_tag control_tag.
 End PVI.

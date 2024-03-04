@@ -1,7 +1,7 @@
 /**
  * @todo write test
- * @file heapleak_overwrite_1_fault.c
- * @brief Demonstrate a single conditional heap overwrite fault
+ * @file heapleak_address_1_fault.c
+ * @brief Demonstrate a single conditional heap address leak fault
  * @note
  * "heap leak" can mean just about any problem with the heap. There are at least 5:
  *      (1) heap buffer overwrite (RCE)
@@ -10,6 +10,7 @@
  *      (4) heap secret recovery from improper clean up (steal keys that were correctly
  *              freed but not zeroed out)
  *      (5) heap resource exhaustion/resource leak through memory (OOM )
+ *              We are explicitly ignoring this one. 
  * 
  *      (1)(2)(5) are things that SOTA fuzzers can reasonably detect when augmented with 
  *          sanitizers like ASAN. 

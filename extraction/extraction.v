@@ -24,7 +24,8 @@ Require Ctypes.
 Require Csyntax.
 Require Parser.
 Require Initializers.
-Require Import Tags NullPolicy PVI PNVI DoubleFree Allocator Initializers Csem.
+(* Per Policies.md, add new policies here*)
+Require Import Tags NullPolicy PVI DoubleFree HeapProblem Allocator Initializers Csem.
 
 Module Extracted (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Allocator Ptr Pol M).
 
@@ -42,8 +43,8 @@ Module Extracted (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Allocator 
   Import Smallstep.
   Import Events.
   Import Genv.
-  Import Mem.
   Import A.
+  Import Mem.
   
 End Extracted.
   
@@ -112,8 +113,9 @@ End Extracted.
   
   Cd "extraction".
   
+  (* Per Policies.md, add new policies here *)
   Separate Extraction
-           Tags NullPolicy PVI PNVI DoubleFree
+           Tags NullPolicy PVI DoubleFree HeapProblem
            Allocator
            Extracted
            Ctypes.merge_attributes Ctypes.remove_attributes

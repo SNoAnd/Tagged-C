@@ -52,28 +52,6 @@ Local Unset Case Analysis Schemes.
 
 Local Notation "a # b" := (PMap.get b a) (at level 1).
 
-Inductive FailureClass : Type :=
-| MisalignedStore (alignment ofs : Z)
-| MisalignedLoad (alignment ofs : Z)
-| PrivateStore (ofs : Z)
-| PrivateLoad (ofs : Z)
-| OtherFailure
-.
-
-Inductive MemoryResult (A:Type) : Type :=
-| MemorySuccess (a:A)
-| MemoryFail (msg:string) (failure:FailureClass)
-.
-
-Arguments MemorySuccess {_} _.
-Arguments MemoryFail {_} _.
-
-Instance MRMonad : Monad MemoryResult :=
-  {| ret T a := MemorySuccess a; bind T1 T2 res f := match res with
-                                         | MemorySuccess a => f a
-                                         | MemoryFail msg params => MemoryFail msg params
-                                         end |}.
-
 Module Type Memory (Ptr: Pointer) (Pol:Policy).
   Module BI := Builtins Ptr.
   Export BI.
@@ -116,29 +94,29 @@ Module Type Memory (Ptr: Pointer) (Pol:Policy).
       [a].  It returns the value of the memory chunk
       at that address.  [None] is returned if the accessed bytes
       are not readable. *)
-  Parameter load : memory_chunk -> mem -> addr -> MemoryResult atom.
+  Parameter load : memory_chunk -> mem -> addr -> PolicyResult atom.
 
-  Parameter load_ltags : memory_chunk -> mem -> addr -> MemoryResult (list tag).
+  Parameter load_ltags : memory_chunk -> mem -> addr -> PolicyResult (list loc_tag).
 
-  Parameter load_all : memory_chunk -> mem -> addr -> MemoryResult (atom * list tag).
+  Parameter load_all : memory_chunk -> mem -> addr -> PolicyResult (atom * list loc_tag).
   
   Parameter load_all_compose :
     forall chunk m a v lts,
-      load_all chunk m a = MemorySuccess (v,lts) <->
-        load chunk m a = MemorySuccess v /\ load_ltags chunk m a = MemorySuccess lts.
+      load_all chunk m a = Success (v,lts) <->
+        load chunk m a = Success v /\ load_ltags chunk m a = Success lts.
 
   Parameter load_all_fail :
     forall chunk m a msg failure,
-      load_all chunk m a = MemoryFail msg failure <->
-        load chunk m a = MemoryFail msg failure /\ load_ltags chunk m a = MemoryFail msg failure.
+      load_all chunk m a = Fail msg failure <->
+        load chunk m a = Fail msg failure /\ load_ltags chunk m a = Fail msg failure.
   
   (** [loadbytes m ofs n] reads [n] consecutive bytes starting at
       location [(b, ofs)].  Returns [None] if the accessed locations are
       not readable. *)
 
-  Parameter loadbytes : mem -> addr -> Z -> MemoryResult (list memval).
+  Parameter loadbytes : mem -> addr -> Z -> PolicyResult (list memval).
 
-  Parameter loadtags : mem -> addr -> Z -> MemoryResult (list tag).
+  Parameter loadtags : mem -> addr -> Z -> PolicyResult (list loc_tag).
 
   (** Memory stores. *)
   
@@ -147,14 +125,14 @@ Module Type Memory (Ptr: Pointer) (Pol:Policy).
       Return the updated memory store, or [None] if the accessed bytes
       are not writable. *)
   
-  Parameter store : memory_chunk -> mem -> addr -> atom -> list tag -> MemoryResult mem.
+  Parameter store : memory_chunk -> mem -> addr -> atom -> list loc_tag -> PolicyResult mem.
 
-  Parameter store_atom : memory_chunk -> mem -> addr -> atom -> MemoryResult mem.
+  Parameter store_atom : memory_chunk -> mem -> addr -> atom -> PolicyResult mem.
   
   (** [storebytes m ofs bytes] stores the given list of bytes [bytes]
       starting at location [(b, ofs)].  Returns updated memory state
       or [None] if the accessed locations are not writable. *)
-  Parameter storebytes : mem -> addr -> list memval -> list tag -> MemoryResult mem.
+  Parameter storebytes : mem -> addr -> list memval -> list loc_tag -> PolicyResult mem.
   
   Global Opaque Memory.store Memory.load Memory.storebytes Memory.loadbytes.
 
@@ -182,7 +160,7 @@ Module ConcMem (Ptr: Pointer) (Pol:Policy) <: Memory Ptr Pol.
     Int64.add a i.
   
   Record mem' : Type := mkmem {
-    mem_contents: ZMap.t (memval*tag);  (**r [offset -> memval] *)
+    mem_contents: ZMap.t (memval*loc_tag);  (**r [offset -> memval] *)
     mem_access: ZMap.t permission;      (**r [offset -> kind -> option permission] *)
     live: list (Z*Z);
   }.
@@ -267,45 +245,45 @@ Module ConcMem (Ptr: Pointer) (Pol:Policy) <: Memory Ptr Pol.
   Qed.
 
   Definition empty: mem :=
-    mkmem (ZMap.init (Undef, def_tag))
+    mkmem (ZMap.init (Undef, DefLT))
           (ZMap.init MostlyDead)
           [].
 
-  Fixpoint getN (n: nat) (p: Z) (c: ZMap.t (memval*tag)) {struct n}: list (memval * tag) :=
+  Fixpoint getN (n: nat) (p: Z) (c: ZMap.t (memval*loc_tag)) {struct n}: list (memval * loc_tag) :=
     match n with
     | O => nil
     | S n' => ZMap.get p c :: getN n' (p + 1) c
     end.
   
-  Definition load (chunk: memory_chunk) (m: mem) (a: addr): MemoryResult atom :=
+  Definition load (chunk: memory_chunk) (m: mem) (a: addr): PolicyResult atom :=
     if aligned_access_dec chunk a then
       if allowed_access_dec m chunk a
-      then MemorySuccess (decode_val chunk (map (fun x => fst x) (getN (size_chunk_nat chunk) (Int64.unsigned a) (m.(mem_contents)))))
-      else MemoryFail "" (PrivateLoad (Int64.unsigned a))
-    else MemoryFail "" (MisalignedLoad (align_chunk chunk) (Int64.unsigned a)).
+      then Success (decode_val chunk (map (fun x => fst x) (getN (size_chunk_nat chunk) (Int64.unsigned a) (m.(mem_contents)))))
+      else Fail "" (PrivateLoad (Int64.unsigned a))
+    else Fail "" (MisalignedLoad (align_chunk chunk) (Int64.unsigned a)).
 
-  Definition load_ltags (chunk: memory_chunk) (m: mem) (a: addr): MemoryResult (list tag) :=
+  Definition load_ltags (chunk: memory_chunk) (m: mem) (a: addr): PolicyResult (list loc_tag) :=
     if aligned_access_dec chunk a then
       if allowed_access_dec m chunk a
-      then MemorySuccess (map (fun x => snd x) (getN (size_chunk_nat chunk) (Int64.unsigned a) (m.(mem_contents))))
-      else MemoryFail "" (PrivateLoad (Int64.unsigned a))
-    else MemoryFail "" (MisalignedLoad (align_chunk chunk) (Int64.unsigned a)).
+      then Success (map (fun x => snd x) (getN (size_chunk_nat chunk) (Int64.unsigned a) (m.(mem_contents))))
+      else Fail "" (PrivateLoad (Int64.unsigned a))
+    else Fail "" (MisalignedLoad (align_chunk chunk) (Int64.unsigned a)).
 
-Definition load_all (chunk: memory_chunk) (m: mem) (a: addr): MemoryResult (atom * list tag) :=
+Definition load_all (chunk: memory_chunk) (m: mem) (a: addr): PolicyResult (atom * list loc_tag) :=
     if aligned_access_dec chunk a then
       if allowed_access_dec m chunk a
-      then MemorySuccess (decode_val chunk
+      then Success (decode_val chunk
                                      (map (fun x => fst x)
                                           (getN (size_chunk_nat chunk)
                                                 (Int64.unsigned a) (m.(mem_contents)))),
                            map (fun x => snd x) (getN (size_chunk_nat chunk) (Int64.unsigned a) (m.(mem_contents))))
-      else MemoryFail "" (PrivateLoad (Int64.unsigned a))
-    else MemoryFail "" (MisalignedLoad (align_chunk chunk) (Int64.unsigned a)).
+      else Fail "" (PrivateLoad (Int64.unsigned a))
+    else Fail "" (MisalignedLoad (align_chunk chunk) (Int64.unsigned a)).
   
   Lemma load_all_compose :
     forall chunk m a v lts,
-      load_all chunk m a = MemorySuccess (v,lts) <->
-        load chunk m a = MemorySuccess v /\ load_ltags chunk m a = MemorySuccess lts.
+      load_all chunk m a = Success (v,lts) <->
+        load chunk m a = Success v /\ load_ltags chunk m a = Success lts.
   Proof.
     intros until lts.
     unfold load_all; unfold load; unfold load_ltags.
@@ -316,8 +294,8 @@ Definition load_all (chunk: memory_chunk) (m: mem) (a: addr): MemoryResult (atom
 
   Lemma load_all_fail :
     forall chunk m a msg failure,
-      load_all chunk m a = MemoryFail msg failure <->
-        load chunk m a = MemoryFail msg failure /\ load_ltags chunk m a = MemoryFail msg failure.
+      load_all chunk m a = Fail msg failure <->
+        load chunk m a = Fail msg failure /\ load_ltags chunk m a = Fail msg failure.
   Proof.
     intros until failure.
     unfold load_all; unfold load; unfold load_ltags.
@@ -326,55 +304,56 @@ Definition load_all (chunk: memory_chunk) (m: mem) (a: addr): MemoryResult (atom
     - destruct (aligned_access_dec chunk a); destruct (allowed_access_dec m chunk a); intro H; destruct H as [H1 H2]; inv H1; inv H2; auto.
   Qed. 
 
-  Definition loadbytes (m: mem) (a: addr) (n: Z): MemoryResult (list memval) :=
+  Definition loadbytes (m: mem) (a: addr) (n: Z): PolicyResult (list memval) :=
     if range_perm_neg_dec m (Int64.unsigned a) ((Int64.unsigned a) + n) Dead
-    then MemorySuccess (map (fun x => fst x) (getN (Z.to_nat n) (Int64.unsigned a) (m.(mem_contents))))
-    else MemoryFail "" (PrivateLoad (Int64.unsigned a)).
+    then Success (map (fun x => fst x) (getN (Z.to_nat n) (Int64.unsigned a) (m.(mem_contents))))
+    else Fail "" (PrivateLoad (Int64.unsigned a)).
 
-  Definition loadtags (m: mem) (a: addr) (n: Z) : MemoryResult (list tag) :=
+  Definition loadtags (m: mem) (a: addr) (n: Z) : PolicyResult (list loc_tag) :=
     if range_perm_neg_dec m (Int64.unsigned a) ((Int64.unsigned a) + n) Dead
-    then MemorySuccess (map (fun x => snd x) (getN (Z.to_nat n) (Int64.unsigned a) (m.(mem_contents))))
-    else MemoryFail "" (PrivateLoad (Int64.unsigned a)).
+    then Success (map (fun x => snd x) (getN (Z.to_nat n) (Int64.unsigned a) (m.(mem_contents))))
+    else Fail "" (PrivateLoad (Int64.unsigned a)).
 
-  Fixpoint setN (vl: list (memval*tag)) (p: Z) (c: ZMap.t (memval*tag)) {struct vl}: ZMap.t (memval*tag) :=
+  Fixpoint setN (vl: list (memval*loc_tag)) (p: Z)
+           (c: ZMap.t (memval*loc_tag)) {struct vl}: ZMap.t (memval*loc_tag) :=
     match vl with
     | nil => c
     | v :: vl' => setN vl' (p + 1) (ZMap.set p v c)
     end.
 
-  Fixpoint merge_vals_tags (vs:list memval) (lts:list tag) :=
+  Fixpoint merge_vals_tags (vs:list memval) (lts:list loc_tag) :=
     match vs with
     | v::vs' =>
-        (v,hd def_tag lts)::(merge_vals_tags vs' (tl lts))
+        (v,hd DefLT lts)::(merge_vals_tags vs' (tl lts))
     | _ => []
     end.
   
-  Definition store (chunk: memory_chunk) (m: mem) (a: addr) (v:atom) (lts:list tag)
-    : MemoryResult mem :=
+  Definition store (chunk: memory_chunk) (m: mem) (a: addr) (v:atom) (lts:list loc_tag)
+    : PolicyResult mem :=
     if aligned_access_dec chunk a then
       if allowed_access_dec m chunk a then
-        MemorySuccess (mkmem (setN (merge_vals_tags (encode_val chunk v) lts) (Int64.unsigned a) (m.(mem_contents)))
+        Success (mkmem (setN (merge_vals_tags (encode_val chunk v) lts) (Int64.unsigned a) (m.(mem_contents)))
                              m.(mem_access) m.(live))
-      else MemoryFail "" (PrivateStore (Int64.unsigned a))
-    else MemoryFail "" (MisalignedStore (align_chunk chunk) (Int64.unsigned a)).
+      else Fail "" (PrivateStore (Int64.unsigned a))
+    else Fail "" (MisalignedStore (align_chunk chunk) (Int64.unsigned a)).
 
   Definition store_atom (chunk: memory_chunk) (m: mem) (a: addr) (v: atom)
-    : MemoryResult mem :=
+    : PolicyResult mem :=
     if aligned_access_dec chunk a then
       if allowed_access_dec m chunk a then
         let lts := map snd (getN (Z.to_nat (size_chunk chunk)) (Int64.unsigned a) (m.(mem_contents))) in
-        MemorySuccess (mkmem (setN (merge_vals_tags (encode_val chunk v) lts) (Int64.unsigned a) (m.(mem_contents)))
+        Success (mkmem (setN (merge_vals_tags (encode_val chunk v) lts) (Int64.unsigned a) (m.(mem_contents)))
                              m.(mem_access) m.(live))
-      else MemoryFail "" (PrivateStore (Int64.unsigned a))
-    else MemoryFail "" (MisalignedStore (align_chunk chunk) (Int64.unsigned a)).
+      else Fail "" (PrivateStore (Int64.unsigned a))
+    else Fail "" (MisalignedStore (align_chunk chunk) (Int64.unsigned a)).
 
-  Definition storebytes (m: mem) (a: addr) (bytes: list memval) (lts:list tag)
-    : MemoryResult mem :=
+  Definition storebytes (m: mem) (a: addr) (bytes: list memval) (lts:list loc_tag)
+    : PolicyResult mem :=
     if range_perm_neg_dec m (Int64.unsigned a) ((Int64.unsigned a) + Z.of_nat (length bytes)) Dead then
-      MemorySuccess (mkmem
+      Success (mkmem
                        (setN (merge_vals_tags bytes lts) (Int64.unsigned a) (m.(mem_contents)))
                        m.(mem_access) m.(live))
-    else MemoryFail "" (PrivateStore (Int64.unsigned a)).
+    else Fail "" (PrivateStore (Int64.unsigned a)).
   
 End ConcMem.
 
@@ -420,19 +399,19 @@ Module MultiMem (Pol: Policy) : Memory SemiconcretePointer Pol.
   Definition empty : mem :=
     mkMem (PMap.init CM.empty) (PMap.init CM.empty).
   
-  Definition load (chunk: memory_chunk) (m: mem) (a: addr) : MemoryResult atom :=
+  Definition load (chunk: memory_chunk) (m: mem) (a: addr) : PolicyResult atom :=
     match a with
     | (LocInd C, i) => CM.load chunk (m.(comp_locals)#C) i
     | (ShareInd b _, i) => CM.load chunk (m.(comp_locals)#b) i
     end.
 
-  Definition load_ltags (chunk: memory_chunk) (m: mem) (a: addr) : MemoryResult (list tag) :=
+  Definition load_ltags (chunk: memory_chunk) (m: mem) (a: addr) : PolicyResult (list loc_tag) :=
     match a with
     | (LocInd C, i) => CM.load_ltags chunk (m.(comp_locals)#C) i
     | (ShareInd b _, i) => CM.load_ltags chunk (m.(comp_locals)#b) i
     end.
   
-  Definition load_all (chunk: memory_chunk) (m: mem) (a: addr) : MemoryResult (atom * list tag) :=
+  Definition load_all (chunk: memory_chunk) (m: mem) (a: addr) : PolicyResult (atom * list loc_tag) :=
     match a with
     | (LocInd C, i) => CM.load_all chunk (m.(comp_locals)#C) i
     | (ShareInd b _, i) => CM.load_all chunk (m.(comp_locals)#b) i
@@ -440,8 +419,8 @@ Module MultiMem (Pol: Policy) : Memory SemiconcretePointer Pol.
   
   Lemma load_all_compose :
     forall chunk m a v lts,
-      load_all chunk m a = MemorySuccess (v,lts) <->
-        load chunk m a = MemorySuccess v /\ load_ltags chunk m a = MemorySuccess lts.
+      load_all chunk m a = Success (v,lts) <->
+        load chunk m a = Success v /\ load_ltags chunk m a = Success lts.
   Proof.
     unfold load, load_ltags, load_all. intros until a.
     destruct a; destruct i; apply CM.load_all_compose.
@@ -449,27 +428,27 @@ Module MultiMem (Pol: Policy) : Memory SemiconcretePointer Pol.
     
   Lemma load_all_fail :
     forall chunk m a msg failure,
-      load_all chunk m a = MemoryFail msg failure <->
-        load chunk m a = MemoryFail msg failure /\ load_ltags chunk m a = MemoryFail msg failure.
+      load_all chunk m a = Fail msg failure <->
+        load chunk m a = Fail msg failure /\ load_ltags chunk m a = Fail msg failure.
   Proof.
     unfold load, load_ltags, load_all. intros until a.
     destruct a; destruct i; apply CM.load_all_fail.
   Qed.
   
-  Definition loadbytes (m: mem) (a: addr) (num: Z) : MemoryResult (list memval) :=
+  Definition loadbytes (m: mem) (a: addr) (num: Z) : PolicyResult (list memval) :=
     match a with
     | (LocInd C, i) => CM.loadbytes (m.(comp_locals)#C) i num
     | (ShareInd b _, i) => CM.loadbytes (m.(comp_locals)#b) i num
     end.    
 
-  Definition loadtags (m: mem) (a: addr) (num: Z) : MemoryResult (list tag) :=
+  Definition loadtags (m: mem) (a: addr) (num: Z) : PolicyResult (list loc_tag) :=
     match a with
     | (LocInd C, i) => CM.loadtags (m.(comp_locals)#C) i num
     | (ShareInd b _, i) => CM.loadtags (m.(comp_locals)#b) i num
     end.    
 
-  Definition store (chunk: memory_chunk) (m: mem) (a: addr) (v: atom) (lts: list tag)
-    : MemoryResult mem :=
+  Definition store (chunk: memory_chunk) (m: mem) (a: addr) (v: atom) (lts: list loc_tag)
+    : PolicyResult mem :=
     match a with
     | (LocInd C, i) =>
         cm <- CM.store chunk (m.(comp_locals)#C) i v lts;;
@@ -480,7 +459,7 @@ Module MultiMem (Pol: Policy) : Memory SemiconcretePointer Pol.
     end.
     
   Definition store_atom (chunk: memory_chunk) (m: mem) (a: addr) (v: atom)
-    : MemoryResult mem :=
+    : PolicyResult mem :=
     match a with
     | (LocInd C, i) =>
         cm <- CM.store_atom chunk (m.(comp_locals)#C) i v;;
@@ -490,8 +469,8 @@ Module MultiMem (Pol: Policy) : Memory SemiconcretePointer Pol.
         ret (mkMem (PMap.set b cm m.(shares)) m.(comp_locals))
     end.
 
-  Definition storebytes (m: mem) (p: ptr) (mvs: list memval) (lts: list tag) :
-    MemoryResult mem :=
+  Definition storebytes (m: mem) (p: ptr) (mvs: list memval) (lts: list loc_tag) :
+    PolicyResult mem :=
     match p with
     | (LocInd C, i) =>
         cm <- CM.storebytes (m.(comp_locals)#C) i mvs lts;;

@@ -396,14 +396,14 @@ Fixpoint output_trace (t: trace) : Prop :=
 
 (** * Semantics of volatile memory accesses *)
 Inductive volatile_load (ge: Genv.t F V):
-                   memory_chunk -> mem -> ptr -> trace -> MemoryResult atom -> Prop :=
+                   memory_chunk -> mem -> ptr -> trace -> PolicyResult atom -> Prop :=
   | volatile_load_vol: forall chunk m p id gv ev v vt,
       invert_symbol_ptr ge p = Some (id, gv) ->
       gv.(gvar_volatile) = true ->
       eventval_match ge ev (type_of_chunk chunk) (v,vt) ->
       volatile_load ge chunk m p
                     (Event_vload chunk id p ev :: nil)
-                    (MemorySuccess (Values.load_result chunk v,vt))
+                    (Success (Values.load_result chunk v,vt))
   | volatile_load_nonvol: forall chunk m p res,
       (forall id gv, invert_symbol_ptr ge p = Some (id, gv) ->
                      gv.(gvar_volatile) = false) ->
@@ -411,14 +411,14 @@ Inductive volatile_load (ge: Genv.t F V):
       volatile_load ge chunk m p E0 res.
 
 Inductive volatile_store (ge: Genv.t F V):
-  memory_chunk ->  mem -> ptr -> atom -> list tag -> trace -> MemoryResult mem -> Prop :=
+  memory_chunk ->  mem -> ptr -> atom -> list loc_tag -> trace -> PolicyResult mem -> Prop :=
   | volatile_store_vol: forall chunk m p id gv ev v vt lts,
       invert_symbol_ptr ge p = Some (id, gv) ->
       gv.(gvar_volatile) = true ->
       eventval_match ge ev (type_of_chunk chunk) (Values.load_result chunk v, vt) ->
       volatile_store ge chunk m p (v,vt) lts
                      (Event_vstore chunk id p ev :: nil)
-                     (MemorySuccess m)
+                     (Success m)
   | volatile_store_nonvol: forall chunk m p v vt lts res,
       (forall id gv, invert_symbol_ptr ge p = Some (id, gv) ->
                      gv.(gvar_volatile) = false) ->
@@ -437,34 +437,34 @@ Inductive volatile_store (ge: Genv.t F V):
 *)
 
 Definition extcall_sem : Type :=
-  Genv.t F V -> list atom -> tag (* PC *) -> tag (* function ptr *) -> mem -> trace ->
-  MemoryResult (PolicyResult (atom * tag * mem)) -> Prop.
+  Genv.t F V -> list atom -> policy_state -> control_tag (* PC *) -> val_tag (* function ptr *) -> mem -> trace ->
+  (PolicyResult (atom * control_tag * mem)) -> Prop.
 
 (** ** Semantics of volatile loads *)
 
 Inductive volatile_load_sem (l:Cabs.loc) (chunk: memory_chunk) (ge: Genv.t F V):
-  list atom -> tag -> tag -> mem -> trace ->
-  MemoryResult (PolicyResult (atom * tag * mem)) -> Prop :=
-| volatile_load_sem_intro: forall p pt m pct fpt t v vt vt' vt'' lts,
-    load_ltags chunk m p = MemorySuccess lts ->
-    LoadT l pct pt vt lts = PolicySuccess vt' ->
-    AccessT l pct vt' = PolicySuccess vt'' ->
-    volatile_load ge chunk m p t (MemorySuccess (v,vt)) ->
+  list atom -> control_tag -> val_tag -> mem -> trace ->
+  PolicyResult (atom * control_tag * mem) -> Prop :=
+| volatile_load_sem_intro: forall pstate p pt m pct fpt t v vt vt' vt'' lts,
+    load_ltags chunk m p = Success lts ->
+    LoadT l pstate pct pt vt lts = Success vt' ->
+    AccessT l pstate pct vt' = Success vt'' ->
+    volatile_load ge chunk m p t (Success (v,vt)) ->
     volatile_load_sem l chunk ge ((Vptr p, pt) :: nil) pct fpt m t
-                      (MemorySuccess (PolicySuccess ((v,vt), pct, m))).
+                      (Success ((v,vt), pct, m)).
 
 (** ** Semantics of volatile stores *)
 
 Inductive volatile_store_sem (l:Cabs.loc) (chunk: memory_chunk) (ge: Genv.t F V):
-  list atom -> tag -> tag -> mem -> trace ->
-  (MemoryResult (PolicyResult (atom * tag * mem))) -> Prop :=
-  | volatile_store_sem_intro: forall p pt m1 pct pct' pct'' fpt v0 vt0 v vt vt' vt'' lts lts' t m2,
-      load_all chunk m1 p = MemorySuccess (v0,vt0,lts) -> 
-      AssignT l pct vt0 vt = PolicySuccess (pct', vt') ->
-      StoreT l pct' pt vt' lts = PolicySuccess (pct'',vt'',lts') ->
-      volatile_store ge chunk m1 p (v,vt) lts t (MemorySuccess m2) ->
+  list atom -> control_tag -> val_tag -> mem -> trace ->
+  PolicyResult (atom * control_tag * mem) -> Prop :=
+  | volatile_store_sem_intro: forall p pt m1 pstate pct pct' pct'' fpt v0 vt0 v vt vt' vt'' lts lts' t m2,
+      load_all chunk m1 p = Success (v0,vt0,lts) -> 
+      AssignT l pstate pct vt0 vt = Success (pct', vt') ->
+      StoreT l pstate pct' pt vt' lts = Success (pct'',vt'',lts') ->
+      volatile_store ge chunk m1 p (v,vt) lts t (Success m2) ->
       volatile_store_sem l chunk ge ((Vptr p,pt) :: (v,vt) :: nil) pct fpt m1 t
-                         (MemorySuccess (PolicySuccess ((Vundef,def_tag), pct'', m2))).
+                         (Success ((Vundef,InitT), pct'', m2)).
 
 
 Definition alloc_size (v: val) (z:Z) : Prop :=
@@ -476,47 +476,47 @@ Definition alloc_size (v: val) (z:Z) : Prop :=
 
 (** ** Semantics of dynamic memory allocation (malloc) *)
 Inductive extcall_malloc_sem (l:Cabs.loc) (ge: Genv.t F V):
-  list atom -> tag -> tag -> mem -> trace ->
-  (MemoryResult (PolicyResult (atom * tag * mem))) -> Prop :=
-| extcall_malloc_sem_intro: forall v sz st pct fpt m m' lo hi vt_body vt_head lt pt pct',
+  list atom -> policy_state -> control_tag -> val_tag -> mem -> trace ->
+  (PolicyResult (atom * control_tag * mem)) -> Prop :=
+| extcall_malloc_sem_intro: forall v sz st pstate pct fpt m m' lo hi vt_body vt_head lt pt pct',
     alloc_size v sz ->
-    MallocT l pct fpt st = PolicySuccess (pct', pt, vt_body, vt_head, lt) ->
-    heapalloc m sz vt_head vt_body lt = MemorySuccess (m', lo, hi) ->
-    extcall_malloc_sem l ge ((v,st) :: nil) pct fpt m E0
-                       (MemorySuccess (PolicySuccess ((Vptr lo, pt), pct', m')))
-| extcall_malloc_sem_fail_0: forall v sz st pct fpt m msg params,
+    MallocT l pstate pct fpt st = Success (pct', pt, vt_body, vt_head, lt) ->
+    heapalloc m sz vt_head vt_body lt = Success (m', lo, hi) ->
+    extcall_malloc_sem l ge ((v,st) :: nil) pstate pct fpt m E0
+                       (Success ((Vptr lo, pt), pct', m'))
+| extcall_malloc_sem_fail_0: forall v sz st pstate pct fpt m msg failure,
     alloc_size v sz ->
-    MallocT l pct fpt st = PolicyFail msg params ->
-    extcall_malloc_sem l ge ((v,st) :: nil) pct fpt m E0
-                       (MemorySuccess (PolicyFail msg params))
-| extcall_malloc_sem_fail_1: forall v sz st pct fpt m vt_body vt_head lt pt pct' msg failure,
+    MallocT l pstate pct fpt st = Fail msg failure ->
+    extcall_malloc_sem l ge ((v,st) :: nil) pstate pct fpt m E0
+                       (Fail msg failure)
+| extcall_malloc_sem_fail_1: forall v sz st pstate pct fpt m vt_body vt_head lt pt pct' msg failure,
     alloc_size v sz ->
-    MallocT l pct fpt st = PolicySuccess (pct', pt, vt_body, vt_head, lt) ->
-    heapalloc m sz vt_head vt_body lt = MemoryFail msg failure ->
-    extcall_malloc_sem l ge ((v,st) :: nil) pct fpt m E0
-                       (MemoryFail msg failure).
+    MallocT l pstate pct fpt st = Success (pct', pt, vt_body, vt_head, lt) ->
+    heapalloc m sz vt_head vt_body lt = Fail msg failure ->
+    extcall_malloc_sem l ge ((v,st) :: nil) pstate pct fpt m E0
+                       (Fail msg failure).
 
 Inductive extcall_free_sem (l:Cabs.loc) (ge: Genv.t F V) :
-  list atom -> tag -> tag -> mem -> trace ->
-  (MemoryResult (PolicyResult (atom * tag * mem))) -> Prop :=
-| extcall_free_sem_ptr: forall addr fpt pt pct pct' m m',
-    addr <> Int64.zero ->
-    heapfree m (Int64.unsigned addr) (fun vt => FreeT l pct fpt pt vt) = MemorySuccess (PolicySuccess (pct', m')) ->
-    extcall_free_sem l ge ((Vlong addr,pt) :: nil) pct fpt m E0
-                     (MemorySuccess (PolicySuccess ((Vundef,def_tag), pct', m')))
-| extcall_free_sem_ptr_fail_0: forall addr fpt pt pct m msg failure,
-    addr <> Int64.zero ->
-    heapfree m (Int64.unsigned addr) (fun vt => FreeT l pct fpt pt vt) = MemoryFail msg failure ->
-    extcall_free_sem l ge ((Vlong addr,pt) :: nil) pct fpt m E0
-                     (MemoryFail msg failure)
-| extcall_free_sem_ptr_fail_1: forall addr fpt pt pct m msg params,
-    addr <> Int64.zero ->
-    heapfree m (Int64.unsigned addr) (fun vt => FreeT l pct fpt pt vt) = MemorySuccess (PolicyFail msg params) ->
-    extcall_free_sem l ge ((Vlong addr,pt) :: nil) pct fpt m E0
-                     (MemorySuccess (PolicyFail msg params))
-| extcall_free_sem_null: forall pct fpt m pt,
-    extcall_free_sem l ge ((Vlong Int64.zero,pt) :: nil) pct fpt m E0
-                     (MemorySuccess (PolicySuccess ((Vundef,def_tag), pct, m))).
+  list atom -> policy_state -> control_tag -> val_tag -> mem -> trace ->
+  (PolicyResult (atom * control_tag * mem)) -> Prop :=
+| extcall_free_sem_ptr: forall p pstate pct pct' fpt pt  m m',
+    (concretize p) <> Int64.zero ->
+    heapfree m p (fun vt => FreeT l pstate pct fpt pt vt) = Success (pct', m') ->
+    extcall_free_sem l ge ((Vptr p,pt) :: nil) pstate pct fpt m E0
+                     (Success ((Vundef,def_tag), pct', m'))
+| extcall_free_sem_ptr_fail_0: forall p pstate pct fpt pt m msg failure,
+    (concretize p) <> Int64.zero ->
+    heapfree m p (fun vt => FreeT l pstate pct fpt pt vt) = Fail msg failure ->
+    extcall_free_sem l ge ((Vptr p,pt) :: nil) pstate pct fpt m E0
+                     (Fail msg failure)
+| extcall_free_sem_ptr_fail_1: forall p pstate pct fpt pt m msg failure,
+    (concretize p) <> Int64.zero ->
+    heapfree m p (fun vt => FreeT l pstate pct fpt pt vt) = Fail msg failure ->
+    extcall_free_sem l ge ((Vptr p,pt) :: nil) pstate pct fpt m E0
+                     (Fail msg failure)
+| extcall_free_sem_null: forall pstate pct fpt m pt,
+    extcall_free_sem l ge ((Vlong Int64.zero,pt) :: nil) pstate pct fpt m E0
+                     (Success ((Vundef,def_tag), pct, m)).
 
 (** ** Semantics of [memcpy] operations. *)
 
@@ -529,8 +529,8 @@ Inductive extcall_free_sem (l:Cabs.loc) (ge: Genv.t F V) :
       osrc = odst
       \/ osrc + sz <= odst
       \/ odst + sz <= osrc ->
-      Mem.loadbytes m (osrc) sz = MemorySuccess bytes ->
-      Mem.storebytes m (odst) bytes lts = MemorySuccess m' ->
+      Mem.loadbytes m (osrc) sz = Success bytes ->
+      Mem.storebytes m (odst) bytes lts = Success m' ->
       extcall_memcpy_sem sz al ge ((Vint (Int.repr odst),pt1) :: (Vint (Int.repr osrc),pt2) :: nil) pct m E0 (Vundef,def_tag) pct m'.*)
 
 (*Lemma extcall_memcpy_ok:
@@ -633,7 +633,7 @@ Qed.*)
 (** ** Semantics of annotations. *)
 
 Inductive extcall_annot_sem (text: string) (targs: list typ) (ge: Genv.t F V):
-              list atom -> tag -> mem -> trace -> atom -> tag -> mem -> Prop :=
+              list atom -> control_tag -> mem -> trace -> atom -> control_tag -> mem -> Prop :=
   | extcall_annot_sem_intro: forall vargs pct m args,
       eventval_list_match ge args targs vargs ->
       extcall_annot_sem text targs ge vargs pct m (Event_annot text args :: E0) (Vundef,def_tag) pct m.
@@ -674,13 +674,13 @@ Proof.
 Qed.*)
 
 Inductive extcall_annot_val_sem (text: string) (targ: typ) (ge: Genv.t F V):
-              list atom -> tag -> mem -> trace -> atom -> tag -> mem -> Prop :=
+              list atom -> control_tag -> mem -> trace -> atom -> control_tag -> mem -> Prop :=
   | extcall_annot_val_sem_intro: forall varg pct m arg,
       eventval_match ge arg targ varg ->
       extcall_annot_val_sem text targ ge (varg :: nil) pct m (Event_annot text (arg :: nil) :: E0) varg pct m.
 
 Inductive extcall_debug_sem (ge: Genv.t F V):
-              list atom -> tag -> mem -> trace -> atom -> tag -> mem -> Prop :=
+              list atom -> control_tag -> mem -> trace -> atom -> control_tag -> mem -> Prop :=
   | extcall_debug_sem_intro: forall vargs pct m,
       extcall_debug_sem ge vargs pct m E0 (Vundef,def_tag) pct m.
 
@@ -691,12 +691,12 @@ Inductive extcall_debug_sem (ge: Genv.t F V):
   These built-in functions have no observable effects and do not access memory. *)
 
 Inductive known_builtin_sem (bf: builtin_function) (ge: Genv.t F V):
-  list atom -> tag -> tag -> mem -> trace ->
-  MemoryResult (PolicyResult (atom * tag * mem)) -> Prop :=
-  | known_builtin_sem_intro: forall vargs vres pct fpt m,
+  list atom -> policy_state -> control_tag -> val_tag -> mem -> trace ->
+  PolicyResult (atom * control_tag * mem) -> Prop :=
+  | known_builtin_sem_intro: forall vargs vres pstate pct fpt m,
       builtin_function_sem bf vargs = Some vres ->
-      known_builtin_sem bf ge (map (fun v => (v,def_tag)) vargs) pct fpt m E0
-                        (MemorySuccess (PolicySuccess ((vres,def_tag), pct, m))).
+      known_builtin_sem bf ge (map (fun v => (v,def_tag)) vargs) pstate pct fpt m E0
+                        (Success ((vres,InitT), pct, m)).
 
 (** ** Semantics of external functions. *)
 
@@ -787,13 +787,13 @@ Inductive eval_builtin_arg: builtin_arg A -> val -> Prop :=
 | eval_BA_single: forall n,
     eval_builtin_arg (BA_single n) (Vsingle n)
 | eval_BA_loadstack: forall chunk ofs v vt,
-    load chunk m (off sp (Ptrofs.to_int64 ofs)) = MemorySuccess (v,vt) ->
+    load chunk m (off sp (Ptrofs.to_int64 ofs)) = Success (v,vt) ->
     eval_builtin_arg (BA_loadstack chunk ofs) v
 | eval_BA_addrstack: forall ofs,
     eval_builtin_arg (BA_addrstack ofs) (Vptr (off sp (Ptrofs.to_int64 ofs)))
 | eval_BA_loadglobal: forall chunk id base bound v vt pt gv,
     find_symbol ge id = Some (SymGlob base bound pt gv) ->
-    load chunk m base = MemorySuccess (v,vt) ->
+    load chunk m base = Success (v,vt) ->
     eval_builtin_arg (BA_loadglobal chunk id (Ptrofs.of_int64 (concretize base))) v
 | eval_BA_addrglobal: forall id base bound pt gv,
     find_symbol ge id = Some (SymGlob base bound pt gv) ->
