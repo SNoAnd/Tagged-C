@@ -885,60 +885,6 @@ End SIMU_DETERM_ONE.
 
 End FORWARD_SIMU_DETERM_DIAGRAMS.
 
-(** * Backward simulations between two transition semantics. *)
-
-Definition safe (L: semantics) (s: state L) : Prop :=
-  forall s',
-  Star L s E0 s' ->
-  (exists r, final_state L s' r)
-  \/ (exists t, exists s'', Step L s' t s'').
-
-Lemma star_safe:
-  forall (L: semantics) s s',
-  Star L s E0 s' -> safe L s -> safe L s'.
-Proof.
-  intros; red; intros. apply H0. eapply star_trans; eauto.
-Qed.
-
-(** The general form of a backward simulation. *)
-
-Record bsim_properties (L1: S1.semantics) (L2: S2.semantics) (index: Type)
-                       (order: index -> index -> Prop)
-                       (match_states: index -> S1.state L1 -> S2.state L2 -> Prop) : Prop := {
-    bsim_order_wf: well_founded order;
-    bsim_initial_states_exist:
-      forall s1, S1.initial_state L1 s1 -> exists s2, S2.initial_state L2 s2;
-    bsim_match_initial_states:
-      forall s1 s2, S1.initial_state L1 s1 -> S2.initial_state L2 s2 ->
-      exists i, exists s1', S1.initial_state L1 s1' /\ match_states i s1' s2;
-    bsim_match_final_states:
-      forall i s1 s2 r,
-      match_states i s1 s2 -> safe L1 s1 -> S2.final_state L2 s2 r ->
-      exists s1', Star L1 s1 E0 s1' /\ S1.final_state L1 s1' r;
-    bsim_progress:
-      forall i s1 s2,
-      match_states i s1 s2 -> safe L1 s1 ->
-      (exists r, S2.final_state L2 s2 r) \/
-      (exists t, exists s2', Step L2 s2 t s2');
-    bsim_simulation:
-      forall s2 t s2', Step L2 s2 t s2' ->
-      forall i s1, match_states i s1 s2 -> safe L1 s1 ->
-      exists i', exists s1',
-         (Plus L1 s1 t s1' \/ (Star L1 s1 t s1' /\ order i' i))
-      /\ match_states i' s1' s2';
-    bsim_public_preserved:
-      forall id, public_symbol (globalenv L2) id = public_symbol (globalenv L1) id
-  }.
-
-Arguments bsim_properties: clear implicits.
-
-Inductive backward_simulation (L1: S1.semantics) (L2: S2.semantics) : Prop :=
-  Backward_simulation (index: Type)
-                      (order: index -> index -> Prop)
-                      (match_states: index -> S1.state L1 -> S2.state L2 -> Prop)
-                      (props: bsim_properties L1 L2 index order match_states).
-
-Arguments Backward_simulation {L1 L2 index} order match_states props.
 
 (** An alternate form of the simulation diagram *)
 
@@ -957,60 +903,6 @@ Proof.
   left; exists i'; exists s1'; split; auto. econstructor; eauto.
 Qed.
 
-(** ** Backward simulation diagrams. *)
-
-(** Various simulation diagrams that imply backward simulation. *)
-
-Section BACKWARD_SIMU_DIAGRAMS.
-
-Variable L1: semantics.
-Variable L2: semantics.
-
-Hypothesis public_preserved:
-  forall id, public_symbol (globalenv L2) id = public_symbol (globalenv L1) id.
-
-Variable match_states: S1.state L1 -> S2.state L2 -> Prop.
-
-Hypothesis initial_states_exist:
-  forall s1, S1.initial_state L1 s1 -> exists s2, S2.initial_state L2 s2.
-
-Hypothesis match_initial_states:
-  forall s1 s2, S1.initial_state L1 s1 -> S2.initial_state L2 s2 ->
-  exists s1', S1.initial_state L1 s1' /\ match_states s1' s2.
-
-Hypothesis match_final_states:
-  forall s1 s2 r,
-  match_states s1 s2 -> S2.final_state L2 s2 r -> S1.final_state L1 s1 r.
-
-Hypothesis progress:
-  forall s1 s2,
-  match_states s1 s2 -> safe L1 s1 ->
-  (exists r, S2.final_state L2 s2 r) \/
-  (exists t, exists s2', Step L2 s2 t s2').
-
-Section BACKWARD_SIMULATION_PLUS.
-
-Hypothesis simulation:
-  forall s2 t s2', Step L2 s2 t s2' ->
-  forall s1, match_states s1 s2 -> safe L1 s1 ->
-  exists s1', Plus L1 s1 t s1' /\ match_states s1' s2'.
-
-Lemma backward_simulation_plus: backward_simulation L1 L2.
-Proof.
-  apply Backward_simulation with
-    (fun (x y: unit) => False)
-    (fun (i: unit) s1 s2 => match_states s1 s2);
-  constructor; auto.
-- red; intros; constructor; intros. contradiction.
-- intros. exists tt; eauto.
-- intros. exists s1; split. apply star_refl. eauto.
-- intros. exploit simulation; eauto. intros [s1' [A B]].
-  exists tt; exists s1'; auto.
-Qed.
-
-End BACKWARD_SIMULATION_PLUS.
-
-End BACKWARD_SIMU_DIAGRAMS.
 
 (** ** Backward simulation of transition sequences *)
 

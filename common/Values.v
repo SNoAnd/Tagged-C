@@ -25,6 +25,7 @@ Require Import AST.
 
 Module Type Pointer.
   Parameter ptr : Type.
+  Parameter context : Type.
   
   Parameter concretize : ptr -> int64.
   Parameter off : ptr -> int64 -> ptr.
@@ -47,6 +48,7 @@ End Pointer.
 
 Module ConcretePointer <: Pointer.
   Definition ptr : Type := int64.
+  Definition context : Type := unit.
   
   Definition concretize (p: ptr) : int64 := p.
   Definition off (p: ptr) (i: int64) : ptr := Int64.add p i.
@@ -86,6 +88,13 @@ Module SemiconcretePointer <: Pointer.
   | LocInd (C:Comp)
   | ShareInd (b:block) (base:int64)
   .
+
+  Inductive myContext : Type :=
+  | L (C:Comp)
+  | S (b:block)
+  .
+
+  Definition context := myContext.
   
   Definition ptr : Type := (index * int64).
   
@@ -102,6 +111,7 @@ Module SemiconcretePointer <: Pointer.
   Qed.
 
   Definition concretize (p: ptr) : int64 := snd p.
+
   Definition off (p: ptr) (i: int64) : ptr :=
     let (ind, pos) := p in (ind, Int64.add pos i).
 

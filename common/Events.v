@@ -475,47 +475,47 @@ Definition alloc_size (v: val) (z:Z) : Prop :=
   end.
 
 (** ** Semantics of dynamic memory allocation (malloc) *)
-Inductive extcall_malloc_sem (l:Cabs.loc) (ge: Genv.t F V):
+Inductive extcall_malloc_sem (l:Cabs.loc) (ge: Genv.t F V) (c: context):
   list atom -> policy_state -> control_tag -> val_tag -> mem -> trace ->
   (PolicyResult (atom * control_tag * mem)) -> Prop :=
-| extcall_malloc_sem_intro: forall v sz st pstate pct fpt m m' lo hi vt_body vt_head lt pt pct',
+| extcall_malloc_sem_intro: forall v sz st pstate pct fpt m m' p vt_body vt_head lt pt pct',
     alloc_size v sz ->
     MallocT l pstate pct fpt st = Success (pct', pt, vt_body, vt_head, lt) ->
-    heapalloc m sz vt_head vt_body lt = Success (m', lo, hi) ->
-    extcall_malloc_sem l ge ((v,st) :: nil) pstate pct fpt m E0
-                       (Success ((Vptr lo, pt), pct', m'))
+    heapalloc m c sz vt_head vt_body lt = Success (m', p) ->
+    extcall_malloc_sem l ge c ((v,st) :: nil) pstate pct fpt m E0
+                       (Success ((Vptr p, pt), pct', m'))
 | extcall_malloc_sem_fail_0: forall v sz st pstate pct fpt m msg failure,
     alloc_size v sz ->
     MallocT l pstate pct fpt st = Fail msg failure ->
-    extcall_malloc_sem l ge ((v,st) :: nil) pstate pct fpt m E0
+    extcall_malloc_sem l ge c ((v,st) :: nil) pstate pct fpt m E0
                        (Fail msg failure)
 | extcall_malloc_sem_fail_1: forall v sz st pstate pct fpt m vt_body vt_head lt pt pct' msg failure,
     alloc_size v sz ->
     MallocT l pstate pct fpt st = Success (pct', pt, vt_body, vt_head, lt) ->
-    heapalloc m sz vt_head vt_body lt = Fail msg failure ->
-    extcall_malloc_sem l ge ((v,st) :: nil) pstate pct fpt m E0
+    heapalloc m c sz vt_head vt_body lt = Fail msg failure ->
+    extcall_malloc_sem l ge c ((v,st) :: nil) pstate pct fpt m E0
                        (Fail msg failure).
 
-Inductive extcall_free_sem (l:Cabs.loc) (ge: Genv.t F V) :
+Inductive extcall_free_sem (l:Cabs.loc) (ge: Genv.t F V) (c: context):
   list atom -> policy_state -> control_tag -> val_tag -> mem -> trace ->
   (PolicyResult (atom * control_tag * mem)) -> Prop :=
 | extcall_free_sem_ptr: forall p pstate pct pct' fpt pt  m m',
     (concretize p) <> Int64.zero ->
-    heapfree m p (fun vt => FreeT l pstate pct fpt pt vt) = Success (pct', m') ->
-    extcall_free_sem l ge ((Vptr p,pt) :: nil) pstate pct fpt m E0
+    heapfree m c p (fun vt => FreeT l pstate pct fpt pt vt) = Success (pct', m') ->
+    extcall_free_sem l ge c ((Vptr p,pt) :: nil) pstate pct fpt m E0
                      (Success ((Vundef,def_tag), pct', m'))
 | extcall_free_sem_ptr_fail_0: forall p pstate pct fpt pt m msg failure,
     (concretize p) <> Int64.zero ->
-    heapfree m p (fun vt => FreeT l pstate pct fpt pt vt) = Fail msg failure ->
-    extcall_free_sem l ge ((Vptr p,pt) :: nil) pstate pct fpt m E0
+    heapfree m c p (fun vt => FreeT l pstate pct fpt pt vt) = Fail msg failure ->
+    extcall_free_sem l ge c ((Vptr p,pt) :: nil) pstate pct fpt m E0
                      (Fail msg failure)
 | extcall_free_sem_ptr_fail_1: forall p pstate pct fpt pt m msg failure,
     (concretize p) <> Int64.zero ->
-    heapfree m p (fun vt => FreeT l pstate pct fpt pt vt) = Fail msg failure ->
-    extcall_free_sem l ge ((Vptr p,pt) :: nil) pstate pct fpt m E0
+    heapfree m c p (fun vt => FreeT l pstate pct fpt pt vt) = Fail msg failure ->
+    extcall_free_sem l ge c ((Vptr p,pt) :: nil) pstate pct fpt m E0
                      (Fail msg failure)
 | extcall_free_sem_null: forall pstate pct fpt m pt,
-    extcall_free_sem l ge ((Vlong Int64.zero,pt) :: nil) pstate pct fpt m E0
+    extcall_free_sem l ge c ((Vlong Int64.zero,pt) :: nil) pstate pct fpt m E0
                      (Success ((Vundef,def_tag), pct, m)).
 
 (** ** Semantics of [memcpy] operations. *)
@@ -748,14 +748,14 @@ Qed.*)
 
 This predicate is used in the semantics of all CompCert languages. *)
 
-Definition external_call (l:Cabs.loc) (ef: external_function): extcall_sem :=
+Definition external_call (l:Cabs.loc) (ef: external_function) (c: context): extcall_sem :=
   match ef with
   | EF_external name sg  => external_functions_sem name sg
 (*  | EF_builtin name sg   => builtin_or_external_sem name sg
   | EF_vload chunk       => volatile_load_sem chunk
   | EF_vstore chunk      => volatile_store_sem chunk*)
-  | EF_malloc            => extcall_malloc_sem l
-  | EF_free              => extcall_free_sem l
+  | EF_malloc            => fun ge => extcall_malloc_sem l ge c
+  | EF_free              => fun ge => extcall_free_sem l ge c
 (*  | EF_memcpy sz al      => extcall_memcpy_sem sz al
   | EF_annot kind txt targs   => extcall_annot_sem txt targs
   | EF_annot_val kind txt targ => extcall_annot_val_sem txt targ

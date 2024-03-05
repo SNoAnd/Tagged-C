@@ -9,29 +9,32 @@ Require Import Coq.Logic.Eqdep_dec.
 Require Import NullPolicy.
 Require Import FunctionalExtensionality.
 
-Module PolicyInsensitivity (Ptr: Pointer) (Pol: Policy)
-       (M: Memory Ptr) (A: Allocator Ptr).
-  Module M1 := M Pol.
-  Module M2 := M NullPolicy.
-  Module A1 := A Pol M1.
-  Module A2 := A NullPolicy M2.
-  Module FS := FSIM Ptr Pol M1 A1
-                    Ptr NullPolicy M2 A2.
+Module Compartmentalization (Pol: Policy) (A: Allocator).
+  
+  Module Sem1 := CompartmentCsem.
+  Import Sem1.
+  
+  Module Outer := TaggedCsem Pol.
+  Module A2 := A ConcretePointer Pol Outer.M.
+  Module Sem2 := Outer.Inner A2.
+
+  Module FS := SIM SemiconcretePointer NullPolicy M FA.AllocDef Sem1
+                   ConcretePointer Pol Outer.M A2 Sem2.
   Import FS.
   Import PE.
   
   Variable prog1 : CS1.program.
   Variable prog2 : CS2.program.
 
-  Definition gcm1 := Csem1.globalenv prog1.
-  Definition gcm2 := Csem2.globalenv prog2.
+  Definition gcm1 := Sem1.globalenv prog1.
+  Definition gcm2 := Sem2.globalenv prog2.
 
   Variable ce : composite_env.
-  Variable ge1 : Csem1.Smallstep.Events.Genv.t
-                   Csem1.Csyntax.fundef type.
+  Variable ge1 : Sem1.Smallstep.Events.Genv.t
+                   Sem1.Csyntax.fundef type.
   Variable m1 : CS1.Cop.Events.Genv.mem.
-  Variable ge2 : Csem2.Smallstep.Events.Genv.t
-                   Csem2.Csyntax.fundef type.
+  Variable ge2 : Sem2.Smallstep.Events.Genv.t
+                   Sem2.Csyntax.fundef type.
   Variable m2 : CS2.Cop.Events.Genv.mem.
   Variable sem1 : S1.semantics.
   Variable sem2 : S2.semantics.
@@ -39,34 +42,78 @@ Module PolicyInsensitivity (Ptr: Pointer) (Pol: Policy)
   Hypothesis same_prog : prog_match prog1 prog2.
 
   Hypothesis globalenv1 :
-    Csem1.globalenv prog1 = MemorySuccess (ge1,ce,m1).
+    Sem1.globalenv prog1 = Success (ge1,ce,m1).
   Hypothesis globalenv2 :
-    Csem2.globalenv prog2 = MemorySuccess (ge2,ce,m2).
+    Sem2.globalenv prog2 = Success (ge2,ce,m2).
   
-  Hypothesis sem1_src : Csem1.semantics prog1 ge1 ce = sem1.
-  Hypothesis sem2_src : Csem2.semantics prog2 ge2 ce = sem2.
+  Hypothesis sem1_src : Sem1.semantics prog1 ge1 ce = sem1.
+  Hypothesis sem2_src : Sem2.semantics prog2 ge2 ce = sem2.
 
-  Module V1 := M1.MD.TLib.Switch.BI.BI1.BI0.Values.
-  Module V2 := M2.MD.TLib.Switch.BI.BI1.BI0.Values. 
+  Theorem CompartmentCorrectness : forward_simulation sem1 sem2.
+  Admitted.
+
+  Theorem CompartmentSafety : backward_simulation sem1 sem2.
+  Admitted.
   
-  Definition vcoerce1 (v:V1.val) : V2.val :=
+End Compartmentalization.
+
+Module PolicyInsensitivity (Pol: Policy) (A: Allocator).
+  Module Outer1 := TaggedCsem Pol.
+  Module A1 := A ConcretePointer Pol Outer1.M.
+  Module Outer2 := TaggedCsem NullPolicy.
+  Module A2 := A ConcretePointer NullPolicy Outer2.M.
+  Module Sem1 := Outer1.Inner A1.
+  Module Sem2 := Outer2.Inner A2.
+  
+  Module FS := SIM ConcretePointer Pol Outer1.M A1 Sem1
+                   ConcretePointer NullPolicy Outer2.M A2 Sem2.
+  Import FS.
+  Import PE.
+  
+  Variable prog1 : CS1.program.
+  Variable prog2 : CS2.program.
+
+  Definition gcm1 := Sem1.globalenv prog1.
+  Definition gcm2 := Sem2.globalenv prog2.
+
+  Variable ce : composite_env.
+  Variable ge1 : Sem1.Smallstep.Events.Genv.t
+                   Sem1.Csyntax.fundef type.
+  Variable m1 : CS1.Cop.Events.Genv.mem.
+  Variable ge2 : Sem2.Smallstep.Events.Genv.t
+                   Sem2.Csyntax.fundef type.
+  Variable m2 : CS2.Cop.Events.Genv.mem.
+  Variable sem1 : S1.semantics.
+  Variable sem2 : S2.semantics.
+
+  Hypothesis same_prog : prog_match prog1 prog2.
+
+  Hypothesis globalenv1 :
+    Sem1.globalenv prog1 = Success (ge1,ce,m1).
+  Hypothesis globalenv2 :
+    Sem2.globalenv prog2 = Success (ge2,ce,m2).
+  
+  Hypothesis sem1_src : Sem1.semantics prog1 ge1 ce = sem1.
+  Hypothesis sem2_src : Sem2.semantics prog2 ge2 ce = sem2.
+  
+  Definition vcoerce1 (v:Val1.val) : Val2.val :=
     match v with
-    | V1.Vundef => V2.Vundef
-    | V1.Vint i => V2.Vint i
-    | V1.Vlong i => V2.Vlong i
-    | V1.Vfloat f => V2.Vfloat f
-    | V1.Vsingle f => V2.Vsingle f
-    | V1.Vptr p => V2.Vptr p
-    | V1.Vfptr b => V2.Vfptr b
-    | V1.Vefptr ef tyl rt cc => V2.Vefptr ef tyl rt cc
+    | Val1.Vundef => Val2.Vundef
+    | Val1.Vint i => Val2.Vint i
+    | Val1.Vlong i => Val2.Vlong i
+    | Val1.Vfloat f => Val2.Vfloat f
+    | Val1.Vsingle f => Val2.Vsingle f
+    | Val1.Vptr p => Val2.Vptr p
+    | Val1.Vfptr b => Val2.Vfptr b
+    | Val1.Vefptr ef tyl rt cc => Val2.Vefptr ef tyl rt cc
     end.
 
-  Coercion vcoerce1 : V1.val >-> V2.val.
+  Coercion vcoerce1 : Val1.val >-> Val2.val.
 
-  Definition match_val (v1: V1.val) (v2: V2.val) : Prop :=
+  Definition match_val (v1: Val1.val) (v2: Val2.val) : Prop :=
     v2 = v1.
 
-  Definition match_atom (v1: M1.MD.TLib.atom) (v2: M2.MD.TLib.atom) : Prop :=
+  Definition match_atom (v1: TLib1.atom) (v2: TLib2.atom) : Prop :=
     match_val (fst v1) (fst v2).
 
   Definition match_option_map {A1 A2:Type}
@@ -247,34 +294,34 @@ Module PolicyInsensitivity (Ptr: Pointer) (Pol: Policy)
                        (CS2.mkfunction fn_return fn_callconv fn_params fn_vars fn_body2)
   .
   
-  Inductive match_var_entry : Csem1.var_entry -> Csem2.var_entry -> Prop :=
+  Inductive match_var_entry : Sem1.var_entry -> Sem2.var_entry -> Prop :=
   | MPRIV : forall ty,
-      match_var_entry (Csem1.PRIV ty) (Csem2.PRIV ty) 
-  | MPUB : forall p1 p2 pt1 pt2 ty,
-      match_var_entry (Csem1.PUB p1 p2 pt1 ty)
-                      (Csem2.PUB p1 p2 pt2 ty) 
+      match_var_entry (Sem1.PRIV ty) (Sem2.PRIV ty) 
+  | MPUB : forall p1 pt1 pt2 ty,
+      match_var_entry (Sem1.PUB p1 pt1 ty)
+                      (Sem2.PUB p1 pt2 ty) 
   .
   
-  Definition match_env (e1: Csem1.env) (e2: Csem2.env) : Prop :=
+  Definition match_env (e1: Sem1.env) (e2: Sem2.env) : Prop :=
     forall p, match_option_map match_var_entry (e1!p) (e2!p).
 
-  Definition match_tenv (te1: Csem1.tenv) (te2: Csem2.tenv) : Prop :=
+  Definition match_tenv (te1: Sem1.tenv) (te2: Sem2.tenv) : Prop :=
     forall p, match_option_map match_atom (te1!p) (te2!p).
 
-  Definition coerce_kind1 (k: Csem1.kind) : Csem2.kind :=
+  Definition coerce_kind1 (k: Sem1.kind) : Sem2.kind :=
     match k with
-    | Csem1.LV => Csem2.LV
-    | Csem1.RV => Csem2.RV
+    | Sem1.LV => Sem2.LV
+    | Sem1.RV => Sem2.RV
     end.
 
-  Definition coerce_kind2 (k: Csem2.kind) : Csem1.kind :=
+  Definition coerce_kind2 (k: Sem2.kind) : Sem1.kind :=
     match k with
-    | Csem2.LV => Csem1.LV
-    | Csem2.RV => Csem1.RV
+    | Sem2.LV => Sem1.LV
+    | Sem2.RV => Sem1.RV
     end.
 
-  Coercion coerce_kind1 : Csem1.kind >-> Csem2.kind.
-  Coercion coerce_kind2 : Csem2.kind >-> Csem1.kind.
+  Coercion coerce_kind1 : Sem1.kind >-> Sem2.kind.
+  Coercion coerce_kind2 : Sem2.kind >-> Sem1.kind.
   
   Record match_ctx
          (ctx1: CS1.expr -> CS1.expr)
@@ -294,10 +341,10 @@ Module PolicyInsensitivity (Ptr: Pointer) (Pol: Policy)
           exists e1',
             e1 = ctx1 e1' /\ match_expr e1' e2;
 
-        closed_context : forall (k1_1 k2_1:Csem1.kind) (k1_2 k2_2:Csem2.kind),
+        closed_context : forall (k1_1 k2_1:Sem1.kind) (k1_2 k2_2:Sem2.kind),
           k1_1 = k1_2 ->
           k2_1 = k2_2 ->
-          (Csem1.context k1_1 k2_1 ctx1 <-> Csem2.context k1_2 k2_2 ctx2)
+          (Sem1.context k1_1 k2_1 ctx1 <-> Sem2.context k1_2 k2_2 ctx2)
       }.
 
   Variable expr1_to_expr2 : CS1.expr -> CS2.expr.
@@ -312,107 +359,107 @@ Module PolicyInsensitivity (Ptr: Pointer) (Pol: Policy)
   Axiom matching_ctx_matches : forall ctx1,
       match_ctx ctx1 (matching_ctx ctx1). 
   
-  Inductive match_cont : Csem1.cont -> Csem2.cont -> Prop :=
-  | MKstop: match_cont Csem1.Kstop Csem2.Kstop
+  Inductive match_cont : Sem1.cont -> Sem2.cont -> Prop :=
+  | MKstop: match_cont Sem1.Kstop Sem2.Kstop
   | MKdo: forall k1 k2,
       match_cont k1 k2 ->
-      match_cont (Csem1.Kdo k1) (Csem2.Kdo k2)
+      match_cont (Sem1.Kdo k1) (Sem2.Kdo k2)
   | MKseq: forall s1 s2 k1 k2,
       match_statement s1 s2 ->
       match_cont k1 k2 ->
-      match_cont (Csem1.Kseq s1 k1) (Csem2.Kseq s2 k2)
+      match_cont (Sem1.Kseq s1 k1) (Sem2.Kseq s2 k2)
   | MKifthenelse: forall s1_1 s1_2 s2_1 s2_2 l k1 k2,
       match_statement s1_1 s1_2 ->
       match_statement s2_1 s2_2 ->
       match_cont k1 k2 ->
-      match_cont (Csem1.Kifthenelse s1_1 s2_1 l k1)
-                 (Csem2.Kifthenelse s1_2 s2_2 l k2)
+      match_cont (Sem1.Kifthenelse s1_1 s2_1 l k1)
+                 (Sem2.Kifthenelse s1_2 s2_2 l k2)
   | MKwhile1: forall e1 e2 s1 s2 lb lc k1 k2,
       match_expr e1 e2 ->
       match_statement s1 s2 ->
       match_cont k1 k2 ->
-      match_cont (Csem1.Kwhile1 e1 s1 lb lc k1)
-                 (Csem2.Kwhile1 e2 s2 lb lc k2)
+      match_cont (Sem1.Kwhile1 e1 s1 lb lc k1)
+                 (Sem2.Kwhile1 e2 s2 lb lc k2)
   | MKwhile2: forall e1 e2 s1 s2 lb lc k1 k2,
       match_expr e1 e2 ->
       match_statement s1 s2 ->
       match_cont k1 k2 ->
-      match_cont (Csem1.Kwhile2 e1 s1 lb lc k1)
-                 (Csem2.Kwhile2 e2 s2 lb lc k2)
+      match_cont (Sem1.Kwhile2 e1 s1 lb lc k1)
+                 (Sem2.Kwhile2 e2 s2 lb lc k2)
   | MKdowhile1: forall e1 e2 s1 s2 lb lc k1 k2,
       match_expr e1 e2 ->
       match_statement s1 s2 ->
       match_cont k1 k2 ->
-      match_cont (Csem1.Kdowhile1 e1 s1 lb lc k1)
-                 (Csem2.Kdowhile1 e2 s2 lb lc k2)
+      match_cont (Sem1.Kdowhile1 e1 s1 lb lc k1)
+                 (Sem2.Kdowhile1 e2 s2 lb lc k2)
   | MKdowhile2: forall e1 e2 s1 s2 lb lc k1 k2,
       match_expr e1 e2 ->
       match_statement s1 s2 ->
       match_cont k1 k2 ->
-      match_cont (Csem1.Kdowhile2 e1 s1 lb lc k1)
-                 (Csem2.Kdowhile2 e2 s2 lb lc k2)
+      match_cont (Sem1.Kdowhile2 e1 s1 lb lc k1)
+                 (Sem2.Kdowhile2 e2 s2 lb lc k2)
   | MKfor2: forall e1 e2 s1_1 s1_2 s2_1 s2_2 lb lc k1 k2,
       match_expr e1 e2 ->
       match_statement s1_1 s1_2 ->
       match_statement s2_1 s2_2 ->
       match_cont k1 k2 ->
-      match_cont (Csem1.Kfor2 e1 s1_1 s2_1 lb lc k1)
-                 (Csem2.Kfor2 e2 s1_2 s2_2 lb lc k2)
+      match_cont (Sem1.Kfor2 e1 s1_1 s2_1 lb lc k1)
+                 (Sem2.Kfor2 e2 s1_2 s2_2 lb lc k2)
   | MKfor3: forall e1 e2 s1_1 s1_2 s2_1 s2_2 lb lc k1 k2,
       match_expr e1 e2 ->
       match_statement s1_1 s1_2 ->
       match_statement s2_1 s2_2 ->
       match_cont k1 k2 ->
-      match_cont (Csem1.Kfor3 e1 s1_1 s2_1 lb lc k1)
-                 (Csem2.Kfor3 e2 s1_2 s2_2 lb lc k2)
+      match_cont (Sem1.Kfor3 e1 s1_1 s2_1 lb lc k1)
+                 (Sem2.Kfor3 e2 s1_2 s2_2 lb lc k2)
   | MKfor4: forall e1 e2 s1_1 s1_2 s2_1 s2_2 lb lc k1 k2,
       match_expr e1 e2 ->
       match_statement s1_1 s1_2 ->
       match_statement s2_1 s2_2 ->
       match_cont k1 k2 ->
-      match_cont (Csem1.Kfor4 e1 s1_1 s2_1 lb lc k1)
-                 (Csem2.Kfor4 e2 s1_2 s2_2 lb lc k2)
+      match_cont (Sem1.Kfor4 e1 s1_1 s2_1 lb lc k1)
+                 (Sem2.Kfor4 e2 s1_2 s2_2 lb lc k2)
   | MKswitch1: forall ls1 ls2 k1 k2,
       match_ls ls1 ls2 ->
       match_cont k1 k2 ->
-      match_cont (Csem1.Kswitch1 ls1 k1) (Csem2.Kswitch1 ls2 k2)
+      match_cont (Sem1.Kswitch1 ls1 k1) (Sem2.Kswitch1 ls2 k2)
   | MKswitch2: forall k1 k2,
       match_cont k1 k2 ->
-      match_cont (Csem1.Kswitch2 k1) (Csem2.Kswitch2 k2)
+      match_cont (Sem1.Kswitch2 k1) (Sem2.Kswitch2 k2)
   | MKreturn: forall k1 k2,
       match_cont k1 k2 ->
-      match_cont (Csem1.Kreturn k1) (Csem2.Kreturn k2)
+      match_cont (Sem1.Kreturn k1) (Sem2.Kreturn k2)
   | MKcall: forall f1 f2 e1 e2 te1 te2 l pct1 pct2 ctx1 ctx2 ty k1 k2,
       match_function f1 f2 ->
       match_env e1 e2 ->
       match_tenv te1 te2 ->
       match_ctx ctx1 ctx2 ->
       match_cont k1 k2 ->
-      match_cont (Csem1.Kcall f1 e1 te1 l pct1 ctx1 ty k1)
-                 (Csem2.Kcall f2 e2 te2 l pct2 ctx2 ty k2)
+      match_cont (Sem1.Kcall f1 e1 te1 l pct1 ctx1 ty k1)
+                 (Sem2.Kcall f2 e2 te2 l pct2 ctx2 ty k2)
   .
 
   Record match_mem (m1:GV1.mem) (m2:GV2.mem) :=
     mkmatchm
       {
         load_all_agree : forall chunk p v1 vt1 lts1,
-          GV1.load_all chunk m1 p = MemorySuccess (v1,vt1,lts1) ->
-          exists v2 vt2 lts2, GV2.load_all chunk m2 p = MemorySuccess (v2,vt2,lts2)
+          GV1.load_all chunk m1 p = Success (v1,vt1,lts1) ->
+          exists v2 vt2 lts2, GV2.load_all chunk m2 p = Success (v2,vt2,lts2)
                               /\ match_val v1 v2
       ;
         load_agree : forall chunk p v1 vt1,
-          GV1.load chunk m1 p = MemorySuccess (v1,vt1) ->
-          exists v2 vt2, GV2.load chunk m2 p = MemorySuccess (v2,vt2)
+          GV1.load chunk m1 p = Success (v1,vt1) ->
+          exists v2 vt2, GV2.load chunk m2 p = Success (v2,vt2)
                          /\ match_val v1 v2
       ;
         load_ltags_agree : forall chunk p lts1,
-          GV1.load_ltags chunk m1 p = MemorySuccess lts1 ->
-          exists lts2, GV2.load_all chunk m2 p = MemorySuccess lts2;
+          GV1.load_ltags chunk m1 p = Success lts1 ->
+          exists lts2, GV2.load_all chunk m2 p = Success lts2;
       }.
   
   (* Define matching relation on states that holds if they match except for tags.*)
-  Inductive match_states : Csem1.state -> Csem2.state -> Prop :=
-  | MState : forall f1 f2 pct1 pct2 stmt1 stmt2 k1 k2 e1 e2 te1 te2 m1 m2,
+  Inductive match_states : Sem1.state -> Sem2.state -> Prop :=
+  | MState : forall f1 f2 ps1 ps2 pct1 pct2 stmt1 stmt2 k1 k2 e1 e2 te1 te2 m1 m2,
       match_function f1 f2 ->
       (* Ignore PCT *)
       match_statement stmt1 stmt2 ->
@@ -420,42 +467,42 @@ Module PolicyInsensitivity (Ptr: Pointer) (Pol: Policy)
       match_env e1 e2 ->
       match_tenv te1 te2 ->
       (* Memories match *)
-      match_states (Csem1.State f1 pct1 stmt1 k1 e1 te1 m1)
-                   (Csem2.State f2 pct2 stmt2 k2 e2 te2 m2)
-  | MExprState : forall f1 f2 l pct1 pct2 expr1 expr2 k1 k2 e1 e2 te1 te2 m1 m2,
+      match_states (Sem1.State f1 ps1 pct1 stmt1 k1 e1 te1 m1)
+                   (Sem2.State f2 ps2 pct2 stmt2 k2 e2 te2 m2)
+  | MExprState : forall f1 f2 l ps1 ps2 pct1 pct2 expr1 expr2 k1 k2 e1 e2 te1 te2 m1 m2,
       match_function f1 f2 ->
       (* Ignore PCT *)
       match_expr expr1 expr2 ->
       match_cont k1 k2 ->
       match_env e1 e2 ->
       match_tenv te1 te2 ->
-      match_states (Csem1.ExprState f1 l pct1 expr1 k1 e1 te1 m1)
-                   (Csem2.ExprState f2 l pct2 expr2 k2 e2 te2 m2)      
-  | MCallstate : forall fd1 fd2 l pct1 pct2 fpt1 fpt2 args1 args2 k1 k2 m1 m2,
+      match_states (Sem1.ExprState f1 l ps1 pct1 expr1 k1 e1 te1 m1)
+                   (Sem2.ExprState f2 l ps2 pct2 expr2 k2 e2 te2 m2)      
+  | MCallstate : forall fd1 fd2 l ps1 ps2 pct1 pct2 fpt1 fpt2 args1 args2 k1 k2 m1 m2,
       fundef_match fd1 fd2 ->
       (* Ignore tags *)
       match_list_map match_atom args1 args2 ->
       match_cont k1 k2 ->
-      match_states (Csem1.Callstate fd1 l pct1 fpt1 args1 k1 m1)
-                   (Csem2.Callstate fd2 l pct2 fpt2 args2 k2 m2)
-  | MReturnState : forall fd1 fd2 l pct1 pct2 retv1 retv2 k1 k2 m1 m2,
+      match_states (Sem1.Callstate fd1 l ps1 pct1 fpt1 args1 k1 m1)
+                   (Sem2.Callstate fd2 l ps2 pct2 fpt2 args2 k2 m2)
+  | MReturnState : forall fd1 fd2 l ps1 ps2 pct1 pct2 retv1 retv2 k1 k2 m1 m2,
       fundef_match fd1 fd2 ->
       (* Ignore tags *)
       match_atom retv1 retv2 ->
       match_cont k1 k2 ->
-      match_states (Csem1.Returnstate fd1 l pct1 retv1 k1 m1)
-                   (Csem2.Returnstate fd2 l pct2 retv2 k2 m2)  
-  | MStuckstate : match_states Csem1.Stuckstate Csem2.Stuckstate
-  | Failstop : forall s2 msg failure params,
-      match_states (Csem1.Failstop msg failure params)
+      match_states (Sem1.Returnstate fd1 l ps1 pct1 retv1 k1 m1)
+                   (Sem2.Returnstate fd2 l ps2 pct2 retv2 k2 m2)  
+  | MStuckstate : match_states Sem1.Stuckstate Sem2.Stuckstate
+  | Failstop : forall s2 msg failure,
+      match_states (Sem1.Failstop msg failure)
                    s2
   .
 
   Lemma bool_val_eq :
     forall v1 v2 ty m1 m2,
       match_val v1 v2 ->
-      Csem1.Csyntax.Cop.bool_val v1 ty m1 =
-        Csem2.Csyntax.Cop.bool_val v2 ty m2.
+      Sem1.Csyntax.Cop.bool_val v1 ty m1 =
+        Sem2.Csyntax.Cop.bool_val v2 ty m2.
   Proof.
     intros. inv H.
     unfold CS1.Cop.bool_val.
@@ -507,38 +554,38 @@ Module PolicyInsensitivity (Ptr: Pointer) (Pol: Policy)
   Lemma deref_loc_match :
     forall ty m1 m2 ofs pt1 pt2 bf tr1 v1 vt1 lts1,
       match_mem m1 m2 ->
-      Csem1.deref_loc ge1 ty m1 ofs pt1 bf tr1 (MemorySuccess ((v1,vt1),lts1)) ->
+      Sem1.deref_loc ge1 ty m1 ofs pt1 bf tr1 (Success ((v1,vt1),lts1)) ->
       exists tr2 v2 vt2 lts2,
-        Csem2.deref_loc ge2 ty m2 ofs pt2 bf tr2 (MemorySuccess ((v2,vt2),lts2)).
+        Sem2.deref_loc ge2 ty m2 ofs pt2 bf tr2 (Success ((v2,vt2),lts2)).
   Proof.
     intros. inv H0.
     - assert (exists v2 vt2 lts2,
                  CS2.Cop.Events.Genv.load_all chunk m4 ofs =
-                   MemorySuccess (v2, vt2, lts2)). { admit. }
+                   Success (v2, vt2, lts2)). { admit. }
       destruct H0 as [v2 [vt2 [lts2 H0]]]. eexists. exists v2, vt2, lts2.
       rewrite <- H0.
-      eapply Csem2.deref_loc_value; eauto.
+      eapply Sem2.deref_loc_value; eauto.
     - assert (exists tr2 v2 vt2,
-                 Csem2.Smallstep.Events.volatile_load ge2 chunk m4 ofs tr2
-                   (MemorySuccess (v2, vt2))). { admit. }
+                 Sem2.Smallstep.Events.volatile_load ge2 chunk m4 ofs tr2
+                   (Success (v2, vt2))). { admit. }
       assert (exists lts2,
                  CS2.Cop.Events.Genv.load_ltags chunk m4 ofs =
-                   MemorySuccess lts2). { admit. }
+                   Success lts2). { admit. }
       destruct H0 as [tr2 [v2 [vt2 H0]]].
       destruct H1 as [lts H1].
       exists tr2, v2, vt2, lts.
-      eapply Csem2.deref_loc_volatile; eauto.
-    - exists E2.E0, (V2.Vptr ofs), pt2, [].
-      eapply Csem2.deref_loc_reference; eauto.
-    - exists E2.E0, (V2.Vptr ofs), pt2, [].
-      eapply Csem2.deref_loc_copy; eauto.
+      eapply Sem2.deref_loc_volatile; eauto.
+    - exists E2.E0, (Val2.Vptr ofs), pt2, [].
+      eapply Sem2.deref_loc_reference; eauto.
+    - exists E2.E0, (Val2.Vptr ofs), pt2, [].
+      eapply Sem2.deref_loc_copy; eauto.
     - assert (exists v2 vt2 lts,
                  CS2.Cop.load_bitfield ty sz sg pos width m4 ofs
-                                       (MemorySuccess (v2,vt2,lts))).
+                                       (Success (v2,vt2,lts))).
       { admit. }
       destruct H0 as [v2 [vt2 [lts2 H0]]].
       exists E2.E0, v2, vt2, lts2.
-      eapply Csem2.deref_loc_bitfield; eauto.
+      eapply Sem2.deref_loc_bitfield; eauto.
   Admitted.
       
   Ltac eexist' :=
@@ -556,10 +603,10 @@ Module PolicyInsensitivity (Ptr: Pointer) (Pol: Policy)
   
   Ltac estep_or_sstep :=
     match goal with
-    | [ |- Csem2.step _ _ (Csem2.ExprState _ _ _ _ _ _ _ _) _ 
-                      (Csem2.ExprState _ _ _ _ _ _ _ _) ]=>
+    | [ |- Sem2.step _ _ (Sem2.ExprState _ _ _ _ _ _ _ _) _ 
+                      (Sem2.ExprState _ _ _ _ _ _ _ _) ]=>
         left
-    | [ |- Csem2.step _ _ _ _ _ ] =>
+    | [ |- Sem2.step _ _ _ _ _ ] =>
         right
     end.
 
@@ -588,12 +635,12 @@ Module PolicyInsensitivity (Ptr: Pointer) (Pol: Policy)
         let H3 := fresh "H" in
         let v := fresh "v" in
         let vt := fresh "vt" in
-        pose proof (H1 b) as H3; unfold M1.MD.TLib.atom in *;
+        pose proof (H1 b) as H3; unfold TLib1.atom in *;
         rewrite H2 in H3; destruct te2!b as [[v vt]|] eqn:?; inv H3;
         simpl in *; subst; clear H2
     | [ H1: match_ctx ?C1 ?C2,
-          H2: Csem1.context ?k1 ?k2 ?C1 |- _ ] =>
-        assert (Csem2.context k1 k2 C2) by
+          H2: Sem1.context ?k1 ?k2 ?C1 |- _ ] =>
+        assert (Sem2.context k1 k2 C2) by
         (rewrite <- (H1.(closed_context C1 C2)); eauto);
         clear H2
     | [ H1: _ = ?C1 ?expr1,
@@ -608,15 +655,15 @@ Module PolicyInsensitivity (Ptr: Pointer) (Pol: Policy)
     end.
 
   Lemma lred_transl :
-    forall e1 e2 lc C1 C2 expr1 expr2 pct1 pct2 te1 te2 m1 m2 expr1' te1' m1',
+    forall e1 e2 lc C1 C2 expr1 expr2 ps1 ps2 pct1 pct2 te1 te2 m1 m2 expr1' te1' m1',
       match_env e1 e2 ->
       match_expr expr1 expr2 ->
       match_tenv te1 te2 ->
       match_ctx C1 C2 ->
       (*match_mem m1 m2 ->*)
-      Csem1.lred ge1 ce e1 lc (C1 expr1) pct1 te1 m1 expr1' te1' m1' ->
+      Sem1.lred ge1 ce e1 lc (C1 expr1) ps1 pct1 te1 m1 expr1' te1' m1' ->
       exists expr2' te2' m2',
-        Csem2.lred ge2 ce e2 lc (C2 expr2) pct2 te2 m2 expr2' te2' m2' /\
+        Sem2.lred ge2 ce e2 lc (C2 expr2) ps2 pct2 te2 m2 expr2' te2' m2' /\
           match_expr expr1' expr2'. (* /\
           match_tenv te1' te2'. /\
                                  match_mem m1' m2'.*)
@@ -624,27 +671,27 @@ Module PolicyInsensitivity (Ptr: Pointer) (Pol: Policy)
     intros. apply (H2.(closed_expr C1 C2)) in H0.
     inv H3; inv H0; try congruence; repeat doinv;
       repeat eexist'; deduce_match.
-    - eapply Csem2.red_var_tmp; eauto.
-    - eapply Csem2.red_var_local; eauto.
-    - eapply Csem2.red_var_global; eauto. admit.
-    - eapply Csem2.red_func; eauto. admit.
-    - eapply Csem2.red_ext_func; eauto. admit.
-    - eapply Csem2.red_builtin; eauto.
-    - eapply Csem2.red_deref.
-    - eapply Csem2.red_field_struct; eauto. reflexivity.
-    - eapply Csem2.red_field_union; eauto. reflexivity.
+    - eapply Sem2.red_var_tmp; eauto.
+    - eapply Sem2.red_var_local; eauto.
+    - eapply Sem2.red_var_global; eauto. admit.
+    - eapply Sem2.red_func; eauto. admit.
+    - eapply Sem2.red_ext_func; eauto. admit.
+    - eapply Sem2.red_builtin; eauto.
+    - eapply Sem2.red_deref.
+    - eapply Sem2.red_field_struct; eauto. reflexivity.
+    - eapply Sem2.red_field_union; eauto. reflexivity.
   Admitted.
 
   Lemma rred_transl :
-    forall e1 e2 lc C1 C2 expr1 expr2 pct1 pct2 te1 te2 m1 m2 pct1' expr1' te1' m1' tr1,
+    forall e1 e2 lc C1 C2 expr1 expr2 ps1 ps2 pct1 pct2 te1 te2 m1 m2 pct1' expr1' te1' m1' tr1,
       match_env e1 e2 ->
       match_expr expr1 expr2 ->
       match_tenv te1 te2 ->
       match_ctx C1 C2 ->
       (*match_mem m1 m2 ->*)
-      Csem1.rred ge1 ce lc pct1 (C1 expr1) te1 m1 tr1 pct1' expr1' te1' m1' ->
+      Sem1.rred ge1 ce lc ps1 pct1 (C1 expr1) te1 m1 tr1 pct1' expr1' te1' m1' ->
       exists pct2' expr2' te2' m2' tr2,
-        Csem2.rred ge2 ce lc pct2 (C2 expr2) te2 m2 tr2 pct2' expr2' te2' m2' /\
+        Sem2.rred ge2 ce lc ps2 pct2 (C2 expr2) te2 m2 tr2 pct2' expr2' te2' m2' /\
           match_expr expr1' expr2'. (* /\
           match_tenv te1' te2'. /\
                                  match_mem m1' m2'.*)
@@ -653,7 +700,7 @@ Module PolicyInsensitivity (Ptr: Pointer) (Pol: Policy)
     inv H3; inv H0; try congruence; repeat doinv; repeat eexist';
       try (deduce_match; [| econstructor]);
       try (econstructor; eauto; reflexivity; fail).
-    - econstructor. pose proof deref_loc_match. reflexivity. reflexivity.
+    - econstructor. pose proof deref_loc_match. admit. reflexivity. reflexivity.
     - econstructor. admit. reflexivity.
     - econstructor. admit. reflexivity.
     - admit.
@@ -663,7 +710,7 @@ Module PolicyInsensitivity (Ptr: Pointer) (Pol: Policy)
     - repeat econstructor; eauto. erewrite bool_val_eq in H5; eauto. constructor.
     - repeat econstructor; eauto. erewrite bool_val_eq in H5; eauto. constructor.
     - repeat econstructor. erewrite bool_val_eq in H5; eauto. constructor.
-    - erewrite bool_val_eq in H5; eauto. split. eapply Csem2.red_seqor_false; eauto.
+    - erewrite bool_val_eq in H5; eauto. split. eapply Sem2.red_seqor_false; eauto.
       reflexivity. constructor. auto. constructor.
     - repeat econstructor. erewrite bool_val_eq in H5; eauto. constructor.
       destruct b; auto.
@@ -701,10 +748,10 @@ Module PolicyInsensitivity (Ptr: Pointer) (Pol: Policy)
   Theorem PolicyInsensitiveForward : forward_simulation sem1 sem2.
   Proof.
     pose proof sem1_src.
-    unfold Csem1.semantics in *.
+    unfold Sem1.semantics in *.
     rewrite <- H. clear H.
     pose proof sem2_src.
-    unfold Csem2.semantics in *.
+    unfold Sem2.semantics in *.
     rewrite <- H. clear H.
 
     (*pose proof same_prog. inv H. pose proof success1. pose proof success2.*)
@@ -712,11 +759,11 @@ Module PolicyInsensitivity (Ptr: Pointer) (Pol: Policy)
     eapply forward_simulation_step; simpl.
     - admit. (* Need to show that, if prog_defs match, the same symbols are found
                 in gv find_symb. *)
-    - admit. (* Need to show that state is equivalent to Csem1.state and state0
-                is Csem2.state. Destruct on (initial_state s1) and construct an
+    - admit. (* Need to show that state is equivalent to Sem1.state and state0
+                is Sem2.state. Destruct on (initial_state s1) and construct an
                 s2 such that (initial_state s2) but with other tags, so matching.*)
-    - admit. (* Need to show that state is equivalent to Csem1.state and state0
-                is Csem2.state. Destruct on (initial_state s1) and construct an
+    - admit. (* Need to show that state is equivalent to Sem1.state and state0
+                is Sem2.state. Destruct on (initial_state s1) and construct an
                 s2 such that (final_state s2) but with other tags, so matching.*)
     - instantiate (1 := match_states). intros. inv H0.
       + inv H. inv H0.
@@ -730,25 +777,24 @@ Module PolicyInsensitivity (Ptr: Pointer) (Pol: Policy)
           -- econstructor.
         * admit. (* do_free_variables match *)
         * admit. (* do_free_variables match *)
-        * admit. (* do_free_variables match *)
-        * admit. (* do_free_variables match *)
+        * admit. (* is_call_cont? *)
         * admit. (* find_label match *)
       + inv H; inv H0.
-        * inv H15; pose proof (matching_ctx_matches C); repeat doinv;
+        * inv H16; pose proof (matching_ctx_matches C); repeat doinv;
             try (deduce_match;
                  [estep_or_sstep; repeat (econstructor; eauto)
                  | use_ctx; econstructor ]; fail).
-          -- deduce_match. estep_or_sstep.
+          -- eexists. eexists. deduce_match. estep_or_sstep.
              econstructor; eauto.
-             eapply Csem2.red_var_global. admit. admit. admit.
+             eapply Sem2.red_var_global. admit. admit. admit.
           -- deduce_match.
              estep_or_sstep.
              econstructor; eauto.
-             eapply Csem2.red_func. admit. admit. admit.
+             eapply Sem2.red_func. admit. admit. admit.
           -- deduce_match.
              estep_or_sstep.
              econstructor; eauto.
-             eapply Csem2.red_ext_func. admit. admit. admit.
+             eapply Sem2.red_ext_func. admit. admit. admit.
             admit.
           -- admit.
           -- admit.
@@ -759,8 +805,8 @@ Module PolicyInsensitivity (Ptr: Pointer) (Pol: Policy)
                  | use_ctx; econstructor ]; fail).
         replace (matching_ctx C) with C2 in H by auto.
         match goal with
-        | [ H: Csem1.lred _ _ _ _ _ _ _ _ _ _ _ |- Csem2.estep _ _ _ _ _ ] =>
-            eapply Csem2.step_lred
+        | [ H: Sem1.lred _ _ _ _ _ _ _ _ _ _ _ |- Sem2.estep _ _ _ _ _ ] =>
+            eapply Sem2.step_lred
         end.
         * inv H15.
           -- econstructor.
@@ -774,12 +820,3 @@ Module PolicyInsensitivity (Ptr: Pointer) (Pol: Policy)
     Admitted.
   
 End PolicyInsensitivity.
-
-Module Compartmentalization (Ptr: Pointer) (Pol: Policy)
-       (M: Memory) (A: Allocator).
-  Module Ctop := Ctop Ptr.
-  Module Csem := Csem Ptr Pol M A.
-
-  Variable prog : Ctop.program.
-  
-End Compartmentalization.

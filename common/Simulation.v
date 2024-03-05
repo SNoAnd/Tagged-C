@@ -14,17 +14,20 @@ Require Import AST Ctypes.
 
 Module ProgEquiv (Ptr1: Pointer) (Pol1: Policy)
        (M1: Memory Ptr1 Pol1) (A1: Allocator Ptr1 Pol1 M1)
+       (Sem1: Semantics Ptr1 Pol1 M1 A1)
        (Ptr2: Pointer) (Pol2: Policy)
-       (M2: Memory Ptr2 Pol2) (A2: Allocator Ptr2 Pol2 M2).
+       (M2: Memory Ptr2 Pol2) (A2: Allocator Ptr2 Pol2 M2)
+       (Sem2: Semantics Ptr2 Pol2 M2 A2).
 
-  Module Csem1 := Csem Ptr1 Pol1 M1 A1.
-  Module CS1 := Csem1.Csyntax.
-  Module Val1 := M1.MD.TLib.Switch.BI.BI1.BI0.Values.
+  Module CS1 := Sem1.Csyntax.
+  Module TLib1 := M1.MD.TLib.
+  Import TLib1.
+  Module Val1 := TLib1.Switch.BI.BI1.BI0.Values.
   Import Val1.
   
-  Module Csem2 := Csem Ptr2 Pol2 M2 A2.
-  Module CS2 := Csem2.Csyntax.
-  Module Val2 := M2.MD.TLib.Switch.BI.BI1.BI0.Values.
+  Module CS2 := Sem2.Csyntax.
+  Module TLib2 := M2.MD.TLib.
+  Module Val2 := TLib2.Switch.BI.BI1.BI0.Values.
   Import Val2.
   
   Variable val_match : Val1.val -> Val2.val -> Prop.
@@ -202,19 +205,19 @@ End ProgEquiv.
 
 (** The general form of a forward simulation. *)
 
-Module FSIM (Ptr1: Pointer) (Pol1: Policy)
+Module SIM (Ptr1: Pointer) (Pol1: Policy)
        (M1: Memory Ptr1 Pol1) (A1: Allocator Ptr1 Pol1 M1)
+       (Sem1: Semantics Ptr1 Pol1 M1 A1)
        (Ptr2: Pointer) (Pol2: Policy)
-       (M2: Memory Ptr2 Pol2) (A2: Allocator Ptr2 Pol2 M2).
-  Module PE := ProgEquiv Ptr1 Pol1 M1 A1
-                         Ptr2 Pol2 M2 A2.
+       (M2: Memory Ptr2 Pol2) (A2: Allocator Ptr2 Pol2 M2)
+       (Sem2: Semantics Ptr2 Pol2 M2 A2).
+  Module PE := ProgEquiv Ptr1 Pol1 M1 A1 Sem1
+                         Ptr2 Pol2 M2 A2 Sem2.
   Import PE.
-  Module Csem1 := Csem1.
-  Module S1 := Csem1.Smallstep.
+  Module S1 := Sem1.Smallstep.
   Module E1 := S1.Events.
   Module GV1 := E1.Genv.
-  Module Csem2 := Csem2.
-  Module S2 := Csem2.Smallstep.
+  Module S2 := Sem2.Smallstep.
   Module E2 := S2.Events.
   Module GV2 := E2.Genv.
   
@@ -289,205 +292,351 @@ Module FSIM (Ptr1: Pointer) (Pol1: Policy)
   Notation " 'S2.Nostep' L " := (S2.nostep (S2.step L) (S2.globalenv L) (S2.ce L)) (at level 1) : smallstep_scope.
   
   Open Scope smallstep_scope.
-  
-  Record fsim_properties (L1: S1.semantics) (L2: S2.semantics) (index: Type)
-         (order: index -> index -> Prop)
-         (match_states: index -> S1.state L1 -> S2.state L2 -> Prop) : Prop := {
-      fsim_order_wf: well_founded order;
-      fsim_match_initial_states:
-      forall s1, S1.initial_state L1 s1 ->
-                 exists i, exists s2, S2.initial_state L2 s2 /\ match_states i s1 s2;
-      fsim_match_final_states:
-      forall i s1 s2 r,
-        match_states i s1 s2 -> S1.final_state L1 s1 r -> S2.final_state L2 s2 r;
-      fsim_simulation:
-      forall s1 t1 s1', S1.Step L1 s1 t1 s1' ->
-                       forall i s2, match_states i s1 s2 ->
-                                    exists i', exists s2', exists t2,
-                                      (S2.Plus L2 s2 t2 s2' \/
-                                         (S2.Star L2 s2 t2 s2' /\ order i' i))
-                                      /\ match_states i' s1' s2' /\ match_traces t1 t2;
-      fsim_public_preserved:
-      forall id, GV2.public_symbol L2.(S2.globalenv) id = GV1.public_symbol L1.(S1.globalenv) id
-    }.
 
-Arguments fsim_properties: clear implicits.
+  Section FSIM.
+    Record fsim_properties (L1: S1.semantics) (L2: S2.semantics) (index: Type)
+           (order: index -> index -> Prop)
+           (match_states: index -> S1.state L1 -> S2.state L2 -> Prop) : Prop := {
+        fsim_order_wf: well_founded order;
+        fsim_match_initial_states:
+        forall s1, S1.initial_state L1 s1 ->
+                   exists i, exists s2, S2.initial_state L2 s2
+                                        /\ match_states i s1 s2;
+        fsim_match_final_states:
+        forall i s1 s2 r,
+          match_states i s1 s2 -> S1.final_state L1 s1 r -> S2.final_state L2 s2 r;
+        fsim_simulation:
+        forall s1 t1 s1', S1.Step L1 s1 t1 s1' ->
+                          forall i s2, match_states i s1 s2 ->
+                                       exists i', exists s2', exists t2,
+                                         (S2.Plus L2 s2 t2 s2' \/
+                                            (S2.Star L2 s2 t2 s2' /\ order i' i))
+                                         /\ match_states i' s1' s2'
+                                         /\ match_traces t1 t2;
+        fsim_public_preserved:
+        forall id, GV2.public_symbol L2.(S2.globalenv) id = GV1.public_symbol L1.(S1.globalenv) id
+      }.
 
-Inductive forward_simulation (L1: S1.semantics) (L2: S2.semantics) : Prop :=
-  Forward_simulation (index: Type)
-                     (order: index -> index -> Prop)
-                     (match_states: index -> S1.state L1 -> S2.state L2 -> Prop)
-                     (props: fsim_properties L1 L2 index order match_states).
+    Arguments fsim_properties: clear implicits.
 
-Arguments Forward_simulation {L1 L2 index} order match_states props.
+    Inductive forward_simulation (L1: S1.semantics) (L2: S2.semantics) : Prop :=
+      Forward_simulation (index: Type)
+                         (order: index -> index -> Prop)
+                         (match_states: index -> S1.state L1 -> S2.state L2 -> Prop)
+                         (props: fsim_properties L1 L2 index order match_states).
 
-(** An alternate form of the simulation diagram *)
+    Arguments Forward_simulation {L1 L2 index} order match_states props.
 
-Lemma fsim_simulation':
-  forall L1 L2 index order match_states, fsim_properties L1 L2 index order match_states ->
-  forall i s1 t1 s1', S1.Step L1 s1 t1 s1' ->
-  forall s2, match_states i s1 s2 ->
-  (exists i', exists s2', exists t2, S2.Plus L2 s2 t2 s2' /\ match_states i' s1' s2' /\ match_traces t1 t2)
-  \/ (exists i', order i' i /\ t1 = E1.E0 /\ match_states i' s1' s2).
-Proof.
-  intros. exploit fsim_simulation; eauto.
-  intros [i' [s2' [t2 [A [B C]]]]]. intuition.
-  left; exists i'; exists s2'; exists t2; auto.
-  inv H3. inv C.
-  right; exists i'; auto.
-  left; exists i'; exists s2'; exists (S2.Events.Eapp t0 t3); split; auto. econstructor; eauto.
-Qed.
+    (** An alternate form of the simulation diagram *)
 
-(** ** Forward simulation diagrams. *)
-
-(** Various simulation diagrams that imply forward simulation *)
-
-Section FORWARD_SIMU_DIAGRAMS.
-
-  Variable L1: S1.semantics.
-  Variable L2: S2.semantics.
-  
-  Hypothesis public_preserved:
-    forall id, GV2.public_symbol (S2.globalenv L2) id = GV1.public_symbol (S1.globalenv L1) id.
-
-  Variable match_states: S1.state L1 -> S2.state L2 -> Prop.
-
-  Hypothesis match_initial_states:
-    forall s1, S1.initial_state L1 s1 ->
-               exists s2, S2.initial_state L2 s2 /\ match_states s1 s2.
-
-  Hypothesis match_final_states:
-    forall s1 s2 r,
-      match_states s1 s2 ->
-      S1.final_state L1 s1 r ->
-      S2.final_state L2 s2 r.
-
-  (** Simulation when one transition in the first program
-      corresponds to zero, one or several transitions in the second program.
-      However, there is no stuttering: infinitely many transitions
-      in the source program must correspond to infinitely many
-      transitions in the second program. *)
-
-  Section SIMULATION_STAR_WF.
-
-    (** [order] is a well-founded ordering associated with states
-        of the first semantics.  Stuttering steps must correspond
-        to states that decrease w.r.t. [order]. *)
-
-    Variable order: S1.state L1 -> S1.state L1 -> Prop.
-    Hypothesis order_wf: well_founded order.
-
-    Hypothesis simulation:
-      forall s1 t1 s1', S1.Step L1 s1 t1 s1' ->
-                       forall s2, match_states s1 s2 ->
-                                  exists s2' t2,
-                                    (S2.Plus L2 s2 t2 s2' \/ (S2.Star L2 s2 t2 s2' /\ order s1' s1))
-                                    /\ match_states s1' s2' /\ match_traces t1 t2.
-
-    Lemma forward_simulation_star_wf: forward_simulation L1 L2.
+    Lemma fsim_simulation':
+      forall L1 L2 index order match_states,
+        fsim_properties L1 L2 index order match_states ->
+        forall i s1 t1 s1',
+          S1.Step L1 s1 t1 s1' ->
+          forall s2, match_states i s1 s2 ->
+                     (exists i', exists s2', exists t2, S2.Plus L2 s2 t2 s2'
+                                                        /\ match_states i' s1' s2'
+                                                        /\ match_traces t1 t2)
+                     \/ (exists i', order i' i /\ t1 = E1.E0
+                                    /\ match_states i' s1' s2).
     Proof.
-      apply Forward_simulation with order (fun idx s1 s2 => idx = s1 /\ match_states s1 s2);
+      intros. exploit fsim_simulation; eauto.
+      intros [i' [s2' [t2 [A [B C]]]]]. intuition.
+      left; exists i'; exists s2'; exists t2; auto.
+      inv H3. inv C.
+      right; exists i'; auto.
+      left; exists i'; exists s2'; exists (S2.Events.Eapp t0 t3);
+        split; auto. econstructor; eauto.
+    Qed.
+
+    (** ** Forward simulation diagrams. *)
+
+    (** Various simulation diagrams that imply forward simulation *)
+
+    Section FORWARD_SIMU_DIAGRAMS.
+
+      Variable L1: S1.semantics.
+      Variable L2: S2.semantics.
+      
+      Hypothesis public_preserved:
+        forall id,
+          GV2.public_symbol (S2.globalenv L2) id =
+            GV1.public_symbol (S1.globalenv L1) id.
+      
+      Variable match_states: S1.state L1 -> S2.state L2 -> Prop.
+
+      Hypothesis match_initial_states:
+        forall s1, S1.initial_state L1 s1 ->
+                   exists s2, S2.initial_state L2 s2 /\ match_states s1 s2.
+
+      Hypothesis match_final_states:
+        forall s1 s2 r,
+          match_states s1 s2 ->
+          S1.final_state L1 s1 r ->
+          S2.final_state L2 s2 r.
+
+      (** Simulation when one transition in the first program
+          corresponds to zero, one or several transitions in the second program.
+          However, there is no stuttering: infinitely many transitions
+          in the source program must correspond to infinitely many
+          transitions in the second program. *)
+
+      Section SIMULATION_STAR_WF.
+
+        (** [order] is a well-founded ordering associated with states
+            of the first semantics.  Stuttering steps must correspond
+            to states that decrease w.r.t. [order]. *)
+
+        Variable order: S1.state L1 -> S1.state L1 -> Prop.
+        Hypothesis order_wf: well_founded order.
+
+        Hypothesis simulation:
+          forall s1 t1 s1',
+            S1.Step L1 s1 t1 s1' ->
+            forall s2, match_states s1 s2 ->
+                       exists s2' t2,
+                         (S2.Plus L2 s2 t2 s2'
+                          \/ (S2.Star L2 s2 t2 s2' /\ order s1' s1))
+                         /\ match_states s1' s2' /\ match_traces t1 t2.
+
+        Lemma forward_simulation_star_wf: forward_simulation L1 L2.
+        Proof.
+          apply Forward_simulation with order
+                                        (fun idx s1 s2 => idx = s1
+                                                          /\ match_states s1 s2);
         constructor.
-      - auto.
-      - intros. exploit match_initial_states; eauto. intros [s2 [A B]].
-        exists s1; exists s2; auto.
-      - intros. destruct H. eapply match_final_states; eauto.
-      - intros. destruct H0. subst i. exploit simulation; eauto. intros [s2' [t2 [A [B C]]]].
-        exists s1'; exists s2'; exists t2; intuition auto.
-      - auto.
-    Qed.
+          - auto.
+          - intros. exploit match_initial_states; eauto. intros [s2 [A B]].
+            exists s1; exists s2; auto.
+          - intros. destruct H. eapply match_final_states; eauto.
+          - intros. destruct H0. subst i.
+            exploit simulation; eauto. intros [s2' [t2 [A [B C]]]].
+            exists s1'; exists s2'; exists t2; intuition auto.
+          - auto.
+        Qed.
 
-  End SIMULATION_STAR_WF.
+      End SIMULATION_STAR_WF.
 
-  Section SIMULATION_STAR.
+      Section SIMULATION_STAR.
 
-    (** We now consider the case where we have a nonnegative integer measure
-        associated with states of the first semantics.  It must decrease when we take
-        a stuttering step. *)
+        (** We now consider the case where we have a nonnegative integer measure
+            associated with states of the first semantics.
+            It must decrease when we take
+            a stuttering step. *)
 
-    Variable measure: S1.state L1 -> nat.
+        Variable measure: S1.state L1 -> nat.
 
-    Hypothesis simulation:
-      forall s1 t1 s1', S1.Step L1 s1 t1 s1' ->
-                       forall s2, match_states s1 s2 ->
-                                  (exists s2', exists t2, S2.Plus L2 s2 t2 s2' /\ match_states s1' s2' /\ match_traces t1 t2)
-                                  \/ (measure s1' < measure s1 /\ t1 = E1.E0 /\ match_states s1' s2)%nat.
+        Hypothesis simulation:
+          forall s1 t1 s1',
+            S1.Step L1 s1 t1 s1' ->
+            forall s2, match_states s1 s2 ->
+                       (exists s2', exists t2, S2.Plus L2 s2 t2 s2'
+                                               /\ match_states s1' s2'
+                                               /\ match_traces t1 t2)
+                       \/ (measure s1' < measure s1
+                           /\ t1 = E1.E0 /\ match_states s1' s2)%nat.
 
-    Lemma forward_simulation_star: forward_simulation L1 L2.
-    Proof.
-      apply forward_simulation_star_wf with (ltof _ measure).
-      apply well_founded_ltof.
-      intros. exploit simulation; eauto. intros [[s2' [t2 [A B]]] | [A [B C]]].
-      exists s2', t2; auto.
-      exists s2, E2.E0; split. right; split. constructor. auto.
-      rewrite B. intuition. constructor.
-    Qed.
+        Lemma forward_simulation_star: forward_simulation L1 L2.
+        Proof.
+          apply forward_simulation_star_wf with (ltof _ measure).
+          apply well_founded_ltof.
+          intros. exploit simulation; eauto. intros [[s2' [t2 [A B]]] | [A [B C]]].
+          exists s2', t2; auto.
+          exists s2, E2.E0; split. right; split. constructor. auto.
+          rewrite B. intuition. constructor.
+        Qed.
 
-  End SIMULATION_STAR.
+      End SIMULATION_STAR.
 
-  (** Simulation when one transition in the first program corresponds
-      to one or several transitions in the second program. *)
+      (** Simulation when one transition in the first program corresponds
+          to one or several transitions in the second program. *)
 
-  Section SIMULATION_PLUS.
+      Section SIMULATION_PLUS.
+        
+        Hypothesis simulation:
+          forall s1 t1 s1',
+            S1.Step L1 s1 t1 s1' ->
+            forall s2, match_states s1 s2 ->
+                       exists s2' t2, S2.Plus L2 s2 t2 s2'
+                                      /\ match_states s1' s2' /\ match_traces t1 t2.
 
-    Hypothesis simulation:
-      forall s1 t1 s1', S1.Step L1 s1 t1 s1' ->
-                       forall s2, match_states s1 s2 ->
-                                  exists s2' t2, S2.Plus L2 s2 t2 s2' /\ match_states s1' s2' /\ match_traces t1 t2.
+        Lemma forward_simulation_plus: forward_simulation L1 L2.
+        Proof.
+          apply forward_simulation_star with (measure := fun _ => O).
+          intros. exploit simulation; eauto.
+        Qed.
 
-    Lemma forward_simulation_plus: forward_simulation L1 L2.
-    Proof.
-      apply forward_simulation_star with (measure := fun _ => O).
-      intros. exploit simulation; eauto.
-    Qed.
+      End SIMULATION_PLUS.
 
-  End SIMULATION_PLUS.
-
-  (** Lock-step simulation: each transition in the first semantics
-      corresponds to exactly one transition in the second semantics. *)
+      (** Lock-step simulation: each transition in the first semantics
+          corresponds to exactly one transition in the second semantics. *)
   
-  Section SIMULATION_STEP.
+      Section SIMULATION_STEP.
 
-    Hypothesis simulation:
-      forall s1 t1 s1', S1.Step L1 s1 t1 s1' ->
-                       forall s2, match_states s1 s2 ->
-                                  exists s2' t2, S2.Step L2 s2 t2 s2' /\ match_states s1' s2' /\ match_traces t1 t2.
+        Hypothesis simulation:
+          forall s1 t1 s1',
+            S1.Step L1 s1 t1 s1' ->
+            forall s2, match_states s1 s2 ->
+                       exists s2' t2, S2.Step L2 s2 t2 s2'
+                                      /\ match_states s1' s2' /\ match_traces t1 t2.
 
-    Lemma forward_simulation_step: forward_simulation L1 L2.
+        Lemma forward_simulation_step: forward_simulation L1 L2.
+        Proof.
+          apply forward_simulation_plus.
+          intros. exploit simulation; eauto. intros [s2' [t2 [A B]]].
+          exists s2', t2; split; auto. apply S2.plus_one; auto.
+        Qed.
+
+      End SIMULATION_STEP.
+
+      (** Simulation when one transition in the first program
+          corresponds to zero or one transitions in the second program.
+          However, there is no stuttering: infinitely many transitions
+          in the source program must correspond to infinitely many
+          transitions in the second program. *)
+
+      Section SIMULATION_OPT.
+
+        Variable measure: S1.state L1 -> nat.
+
+        Hypothesis simulation:
+          forall s1 t1 s1',
+            S1.Step L1 s1 t1 s1' ->
+            forall s2, match_states s1 s2 ->
+                       (exists s2' t2, S2.Step L2 s2 t2 s2'
+                                       /\ match_states s1' s2' /\ match_traces t1 t2)
+                       \/ (measure s1' < measure s1
+                           /\ t1 = E1.E0 /\ match_states s1' s2)%nat.
+
+        Lemma forward_simulation_opt: forward_simulation L1 L2.
+        Proof.
+          apply forward_simulation_star with measure.
+          intros. exploit simulation; eauto. intros [[s2' [t2 [A B]]] | [A [B C]]].
+          left; exists s2', t2; split; auto. apply S2.plus_one; auto.
+          right; auto.
+        Qed.
+
+      End SIMULATION_OPT.
+
+    End FORWARD_SIMU_DIAGRAMS.
+
+  End FSIM. 
+
+  (** * Backward simulations between two transition semantics. *)
+
+  Section BSIM.
+  
+    Definition safe (L: S1.semantics) (s: S1.state L) : Prop :=
+      forall s',
+        S1.Star L s E1.E0 s' ->
+        (exists r, S1.final_state L s' r)
+        \/ (exists t, exists s'', S1.Step L s' t s'').
+
+    Lemma star_safe:
+      forall (L: S1.semantics) s s',
+        S1.Star L s E1.E0 s' -> safe L s -> safe L s'.
     Proof.
-      apply forward_simulation_plus.
-      intros. exploit simulation; eauto. intros [s2' [t2 [A B]]].
-      exists s2', t2; split; auto. apply S2.plus_one; auto.
+      intros; red; intros. apply H0. eapply S1.star_trans; eauto.
     Qed.
 
-  End SIMULATION_STEP.
+    (** The general form of a backward simulation. *)
 
-  (** Simulation when one transition in the first program
-      corresponds to zero or one transitions in the second program.
-      However, there is no stuttering: infinitely many transitions
-      in the source program must correspond to infinitely many
-      transitions in the second program. *)
+    Record bsim_properties (L1: S1.semantics) (L2: S2.semantics) (index: Type)
+           (order: index -> index -> Prop)
+           (match_states: index -> S1.state L1 -> S2.state L2 -> Prop) : Prop := {
+        bsim_order_wf: well_founded order;
+        bsim_initial_states_exist:
+        forall s1, S1.initial_state L1 s1 -> exists s2, S2.initial_state L2 s2;
+        bsim_match_initial_states:
+        forall s1 s2, S1.initial_state L1 s1 -> S2.initial_state L2 s2 ->
+                      exists i, exists s1', S1.initial_state L1 s1' /\ match_states i s1' s2;
+        bsim_match_final_states:
+        forall i s1 s2 r,
+          match_states i s1 s2 -> safe L1 s1 -> S2.final_state L2 s2 r ->
+          exists s1', S1.Star L1 s1 E1.E0 s1' /\ S1.final_state L1 s1' r;
+        bsim_progress:
+        forall i s1 s2,
+          match_states i s1 s2 -> safe L1 s1 ->
+          (exists r, S2.final_state L2 s2 r) \/
+            (exists t, exists s2', S2.Step L2 s2 t s2');
+        bsim_simulation:
+        forall s2 t2 s2', S2.Step L2 s2 t2 s2' ->
+                         forall i s1, match_states i s1 s2 -> safe L1 s1 ->
+                                      exists i', exists s1', exists t1,
+                                        (S1.Plus L1 s1 t1 s1'
+                                         \/ (S1.Star L1 s1 t1 s1' /\ order i' i))
+                                        /\ match_states i' s1' s2';
+        bsim_public_preserved:
+        forall id, GV2.public_symbol (S2.globalenv L2) id =
+                     GV1.public_symbol (S1.globalenv L1) id
+      }.
 
-  Section SIMULATION_OPT.
+    Arguments bsim_properties: clear implicits.
+    
+    Inductive backward_simulation (L1: S1.semantics) (L2: S2.semantics) : Prop :=
+      Backward_simulation (index: Type)
+                          (order: index -> index -> Prop)
+                          (match_states: index -> S1.state L1 -> S2.state L2 -> Prop)
+                          (props: bsim_properties L1 L2 index order match_states).
 
-    Variable measure: S1.state L1 -> nat.
+    Arguments Backward_simulation {L1 L2 index} order match_states props.
 
-    Hypothesis simulation:
-      forall s1 t1 s1', S1.Step L1 s1 t1 s1' ->
-                       forall s2, match_states s1 s2 ->
-                                  (exists s2' t2, S2.Step L2 s2 t2 s2' /\ match_states s1' s2' /\ match_traces t1 t2)
-                                  \/ (measure s1' < measure s1 /\ t1 = E1.E0 /\ match_states s1' s2)%nat.
+    (** ** Backward simulation diagrams. *)
 
-    Lemma forward_simulation_opt: forward_simulation L1 L2.
-    Proof.
-      apply forward_simulation_star with measure.
-      intros. exploit simulation; eauto. intros [[s2' [t2 [A B]]] | [A [B C]]].
-      left; exists s2', t2; split; auto. apply S2.plus_one; auto.
-      right; auto.
-    Qed.
+(** Various simulation diagrams that imply backward simulation. *)
 
-  End SIMULATION_OPT.
+    Section BACKWARD_SIMU_DIAGRAMS.
 
-End FORWARD_SIMU_DIAGRAMS.
+      Variable L1: S1.semantics.
+      Variable L2: S2.semantics.
 
-End FSIM. 
+      Hypothesis public_preserved:
+        forall id, GV2.public_symbol (S2.globalenv L2) id =
+                     GV1.public_symbol (S1.globalenv L1) id.
+
+      Variable match_states: S1.state L1 -> S2.state L2 -> Prop.
+
+      Hypothesis initial_states_exist:
+        forall s1, S1.initial_state L1 s1 -> exists s2, S2.initial_state L2 s2.
+
+      Hypothesis match_initial_states:
+        forall s1 s2, S1.initial_state L1 s1 -> S2.initial_state L2 s2 ->
+                      exists s1', S1.initial_state L1 s1' /\ match_states s1' s2.
+
+      Hypothesis match_final_states:
+        forall s1 s2 r,
+          match_states s1 s2 -> S2.final_state L2 s2 r -> S1.final_state L1 s1 r.
+
+      Hypothesis progress:
+        forall s1 s2,
+          match_states s1 s2 -> safe L1 s1 ->
+          (exists r, S2.final_state L2 s2 r) \/
+            (exists t, exists s2', S2.Step L2 s2 t s2').
+      
+      Section BACKWARD_SIMULATION_PLUS.
+
+        Hypothesis simulation:
+          forall s2 t2 s2',
+            S2.Step L2 s2 t2 s2' ->
+            forall s1, match_states s1 s2 -> safe L1 s1 ->
+                       exists s1' t1, S1.Plus L1 s1 t1 s1' /\ match_states s1' s2'.
+
+        Lemma backward_simulation_plus: backward_simulation L1 L2.
+        Proof.
+          apply Backward_simulation with
+            (fun (x y: unit) => False)
+            (fun (i: unit) s1 s2 => match_states s1 s2);
+            constructor; auto.
+          - red; intros; constructor; intros. contradiction.
+          - intros. exists tt; eauto.
+          - intros. exists s1; split. apply S1.star_refl. eauto.
+          - intros. exploit simulation; eauto. intros [s1' [t1 [A B]]].
+            exists tt; exists s1'; exists t1; auto.
+        Qed.
+
+      End BACKWARD_SIMULATION_PLUS.
+
+    End BACKWARD_SIMU_DIAGRAMS.
+  End BSIM.
+End SIM.

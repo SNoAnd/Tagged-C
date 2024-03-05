@@ -177,7 +177,6 @@ Module Genv (Ptr: Pointer) (Pol: Policy) (M:Memory Ptr Pol) (A: Allocator Ptr Po
 
     Section CONSTRUCTION.
 
-
       Definition store_init_data (ge: t) (m: mem) (p: ptr) (id: init_data) (vt: val_tag) (lt: loc_tag) :
         PolicyResult mem :=
         match id with
@@ -211,25 +210,27 @@ Module Genv (Ptr: Pointer) (Pol: Policy) (M:Memory Ptr Pol) (A: Allocator Ptr Po
         let diff := Nat.sub n (length idl) in
         idl ++ (repeat (Init_int8 Int.zero) diff).
             
-      Definition alloc_global (ge: t) (m: mem) (tree: PTree.t (ptr*Z)) (id: ident)
-                 (v: globvar V) (vt : val_tag) (lt : loc_tag) : PolicyResult (ptr * mem) :=
+      Definition alloc_global (ge: t) (m: mem) (c: context)
+                 (tree: PTree.t (context -> ptr)) (id: ident) (v: globvar V)
+                 (vt : val_tag) (lt : loc_tag) : PolicyResult (ptr * mem) :=
         let init := v.(gvar_init) in
         let sz := v.(gvar_size) in
         let init_sz := init_data_list_size init in
         match PTree.get id tree with
-        | Some (base, bound) =>
+        | Some base =>
             let padded := pad_init_data_list (Pos.to_nat sz) init in
-            m2 <- store_init_data_list ge m base padded vt lt;;
-            ret (base,m2)
+            m2 <- store_init_data_list ge m (base c) padded vt lt;;
+            ret (base c,m2)
         | None => Fail "Globals weren't allocated correctly" OtherFailure
         end.
 
-      Program Definition add_global (ge: t) (m: mem) (tree: PTree.t (ptr*Z)) (idg: ident * globdef F V)
+      Program Definition add_global (ge: t) (m: mem) (c: context)
+              (tree: PTree.t (context -> ptr)) (idg: ident * globdef F V)
         : (t*mem) :=
         match idg#2 with
         | Gvar gv =>
             let '(pt, vt, lt) := GlobalT ce (idg#1) Tvoid in (* TODO: if we're going to do things based on type here, need to concretize V *)
-            match alloc_global ge m tree (idg#1) gv vt lt with
+            match alloc_global ge m c tree (idg#1) gv vt lt with
             | Success (base', m') =>
                 let size := Int64.repr (Zpos gv.(gvar_size)) in
                 let bound := off base' size in
@@ -319,22 +320,19 @@ Module Genv (Ptr: Pointer) (Pol: Policy) (M:Memory Ptr Pol) (A: Allocator Ptr Po
         - eapply ge.(genv_funs_inj); eauto.        
       Defined.
       
-      Fixpoint add_globals (ge: t) (m: mem) (tree: PTree.t (ptr*Z)) (gl: list (ident * globdef F V))
+      Fixpoint add_globals (ge: t) (cs: ident -> context) (m: mem)
+               (tree: PTree.t (context -> ptr)) (gl: list (ident * globdef F V))
         : (t*mem) :=
         match gl with
         | [] => (ge,m)
         | g::gl' =>
-            let '(ge', m') := add_globals ge m tree gl' in
-            add_global ge' m' tree g
+            let '(ge', m') := add_globals ge cs m tree gl' in
+            add_global ge' m' (cs (fst g)) tree g
         end.
       
       Program Definition empty_genv (pub: list ident) : t :=
         @mkgenv pub (PTree.empty _) (PTree.empty _) [] 2%positive _ _.
       
-      Definition init_record (m: A.mem) (base: ptr) (sz: Z) : PolicyResult A.mem :=
-        let szv := Vlong (Int64.neg (Int64.repr sz)) in
-        A.store Mint64 m base (szv, InitT) [DefLT].
-
       Fixpoint filter_var_sizes (idgs:list (ident*globdef F V)) :=
         match idgs with
         | [] => []
@@ -342,11 +340,10 @@ Module Genv (Ptr: Pointer) (Pol: Policy) (M:Memory Ptr Pol) (A: Allocator Ptr Po
         | _::idgs' => filter_var_sizes idgs'
         end.
       
-      Definition globalenv (p: AST.program F V) : PolicyResult (t * mem) :=
-        m <- init_record A.empty heap_base heap_size;;
-        let (m',tree) := A.globalalloc m (filter_var_sizes p.(AST.prog_defs)) in
-        ret (add_globals (empty_genv p.(AST.prog_public)) m tree p.(AST.prog_defs)).
-
+      Definition globalenv (p: AST.program F V) (cs: ident -> context) :
+        PolicyResult (t * mem) :=
+        let (m,tree) := A.globalalloc A.empty (filter_var_sizes p.(AST.prog_defs)) in
+        ret (add_globals (empty_genv p.(AST.prog_public)) cs m tree p.(AST.prog_defs)).
       Section WITH_GE.
 
         Variable ge : t.

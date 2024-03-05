@@ -357,7 +357,7 @@ Definition load_all (chunk: memory_chunk) (m: mem) (a: addr): PolicyResult (atom
   
 End ConcMem.
 
-Module MultiMem (Pol: Policy) : Memory SemiconcretePointer Pol.
+Module MultiMem (Pol: Policy) <: Memory SemiconcretePointer Pol.
   Module CM := ConcMem SemiconcretePointer Pol.
   Export CM.
   Module BI := BI.
