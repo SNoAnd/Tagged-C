@@ -582,7 +582,7 @@ Module PolicyInsensitivity (Pol: Policy) (A: Allocator).
                        (CS2.Cop.sem_binary_operation ce op v2 ty v4 ty' m2).
   Admitted.      
   
-  Lemma deref_loc_match :
+  Lemma deref_loc_match_success :
     forall ty m1 m2 ofs pt1 pt2 bf tr1 v1 vt1 lts1,
       match_mem m1 m2 ->
       Sem1.deref_loc ge1 ty m1 ofs pt1 bf tr1 (Success ((v1,vt1),lts1)) ->
@@ -621,6 +621,15 @@ Module PolicyInsensitivity (Pol: Policy) (A: Allocator).
       eapply Sem2.deref_loc_bitfield; eauto.
   Admitted.*)
 
+  Lemma deref_loc_match_fail :
+    forall ty m1 m2 ofs pt1 pt2 bf tr1 msg failure,
+      match_mem m1 m2 ->
+      Sem1.deref_loc ge1 ty m1 ofs pt1 bf tr1 (Fail msg failure) ->
+      exists tr2,
+        Sem2.deref_loc ge2 ty m2 ofs pt2 bf tr2 (Fail msg failure) /\
+          match_traces tr1 tr2.
+  Admitted.
+  
   Lemma assign_loc_match :
     forall ty m1 m2 p pt1 pt2 bf tr1 v1 v2 vt1 vt2 lts1 lts2 m1' v1' vt1',
       match_mem m1 m2 ->
@@ -659,14 +668,14 @@ Module PolicyInsensitivity (Pol: Policy) (A: Allocator).
         intuition; [ | econstructor; eauto | eauto | eauto | eauto ]
     end.             
   
-  Ltac estep_or_sstep :=
+(*  Ltac estep_or_sstep :=
     match goal with
     | [ |- Sem2.step _ _ (Sem2.ExprState _ _ _ _ _ _ _ _) _ 
                       (Sem2.ExprState _ _ _ _ _ _ _ _) ]=>
         left
     | [ |- Sem2.step _ _ _ _ _ ] =>
         right
-    end.
+    end.*)
 
   Ltac doinv :=
     match goal with
@@ -721,8 +730,15 @@ Module PolicyInsensitivity (Pol: Policy) (A: Allocator).
         let lts2 := fresh "lts2" in
         let A := fresh "A" in
         let B := fresh "B" in
-        pose proof (deref_loc_match ty m1 m2 ofs pt1 tt bf tr1 v vt lts H2 H1)
+        pose proof (deref_loc_match_success ty m1 m2 ofs pt1 tt bf tr1 v vt lts H2 H1)
         as [tr2 [v2 [vt2 [lts2 [A B]]]]]; inv B; clear H1
+    | [ H1: Sem1.deref_loc _ ?ty ?m1 ?ofs ?pt1 ?bf ?tr1 (Fail ?msg ?failure),
+          H2: match_mem ?m1 ?m2 |- _] =>
+        let tr2 := fresh "tr2" in
+        let A := fresh "A" in
+        let B := fresh "B" in
+        pose proof (deref_loc_match_fail ty m1 m2 ofs pt1 tt bf tr1 msg failure H2 H1)
+        as [tr2 [A B]]; inv B; clear H1
     | [ H1: Sem1.assign_loc _ _ ?ty ?m1 ?p ?pt1 ?bf (?v1, ?vt1) ?tr1
                             (Success (?m1', (?v1', ?vt1'))) ?lts1,
           H2: match_mem ?m1 ?m2 |- _ ] =>
@@ -736,6 +752,18 @@ Module PolicyInsensitivity (Pol: Policy) (A: Allocator).
                                      [tt] m1' v1' vt1') as
           [tr2 [m2' [v2' [vt2' [A B]]]]];
         auto; clear H1
+    | [ H: Sem1.context ?k1 ?k2 ?C1 |- _ ] =>
+        let H0 := fresh "H" in
+        let H1 := fresh "H" in
+        pose proof matching_ctx_matches as H;
+        pose proof (H.(closed_context _ _) k1 k2 k1 k2 H) as H1;
+        clear H
+    | [ H: Sem1.context ?k1 ?k2 ?C1 |- _ ] =>
+        let H0 := fresh "H" in
+        let H1 := fresh "H" in
+        pose proof (matching_ctx_matches C1) as H0;
+        pose proof (H0.(closed_context _ _) k1 k2 k1 k2) as H1;
+        apply H1 in H; auto; [ clear H1 ]
     end.
   
   Ltac use_ctx :=
@@ -854,6 +882,14 @@ Module PolicyInsensitivity (Pol: Policy) (A: Allocator).
     - rewrite H0; eauto; constructor.
   Admitted.
 
+  Ltac deduce_fail on_pol_fail on_other_fail :=
+    match goal with
+    | [ H: _ = Fail _ PolicyFailure |- Sem2.estep _ _ _ _ _ ] =>
+        apply on_pol_fail
+    | [ |- Sem2.estep _ _ _ _ _ ] =>
+        apply on_other_fail
+    end.
+  
   Lemma estep_forward :
     forall (s1: Sem1.state) (tr1: S1.Events.trace) (s1': Sem1.state) (s2: Sem2.state),
       match_states s1 s2 ->
@@ -862,22 +898,19 @@ Module PolicyInsensitivity (Pol: Policy) (A: Allocator).
         Sem2.estep ge2 ce s2 tr2 s2' /\ match_states s1' s2' /\ match_traces tr1 tr2.
   Proof.
     intros. inv H0; repeat doinv.
-    - inv H. pose proof (matching_ctx_matches C).
-      apply H.(r _ _) in H13 as [a2 [A B]].
+    - inv H. apply H0.(r _ _) in H14 as [a2 [A B]].
       exploit lred_transl; eauto.
-      intros. destruct H0 as [expr2' [te2' [m2' [D E]]]]. subst.
+      intros. destruct H as [expr2' [te2' [m2' [D E]]]]. subst.
       eexists. eexists. intuition.
-      2: { econstructor; eauto. eapply H.(closed_expr _ _); eauto. }
-      eapply Sem2.step_lred; eauto. erewrite <- H.(closed_context _ _); eauto.
+      2: { econstructor; eauto. eapply H0.(closed_expr _ _); eauto. }
+      eapply Sem2.step_lred; eauto.
       econstructor.
-    - inv H. pose proof (matching_ctx_matches C).
-      apply H.(r _ _) in H13 as [a2 [A B]]. subst.
+    - inv H. apply H0.(r _ _) in H14 as [a2 [A B]]. subst.
       exploit rred_transl; eauto.
-      intros. destruct H0 as [pct2' [expr2' [te2' [m2' [tr2 [D E]]]]]].
+      intros. destruct H as [pct2' [expr2' [te2' [m2' [tr2 [D E]]]]]].
       eexists. eexists. intuition.
-      2: { econstructor; eauto. eapply H.(closed_expr _ _); eauto. }
-      eapply Sem2.step_rred; eauto. erewrite <- H.(closed_context _ _); eauto.
-      auto.
+      2: { econstructor; eauto. eapply H0.(closed_expr _ _); eauto. }
+      eapply Sem2.step_rred; eauto. auto.
     - admit.
     - inv H. pose proof (matching_ctx_matches C).
       apply H.(r _ _) in H13 as [a2 [A B]]. subst.
@@ -896,7 +929,30 @@ Module PolicyInsensitivity (Pol: Policy) (A: Allocator).
       + admit. (* need a left-hand version of matching context *)
       + admit. (* need a left-hand version of matching context *)
     - inv H. pose proof (matching_ctx_matches C).
-
+      apply H0.(r _ _) in H14 as [a2 [A B]].
+      inv H1.
+      + inv B. inv H9. inv H10.
+        exists E2.E0. eexists. intuition econstructor; eauto.
+        econstructor; eauto. reflexivity.
+      + inv B. inv H9. inv H10.        
+        exists E2.E0. eexists. intuition econstructor; eauto.
+        econstructor; eauto. reflexivity.
+    - inv H.
+      apply H0.(r _ _) in H14 as [a2 [A B]].
+      inv H1; inv B; repeat doinv; eexists; eexists.
+      all: intuition; [ deduce_fail Sem2.step_rred Sem2.step_rfail;
+                     eauto; econstructor; eauto
+                   | try econstructor
+                   | try econstructor; eauto
+        ]; try reflexivity; try (destruct pt2; eauto).
+      + admit. (* unop *)
+      + admit. (* binop *)
+      + admit. (* bool_val *)
+      + admit. (* unop *)
+        apply Sem2.step_rfail.
+        eapply Sem2.failred_rvalof_mem0; eauto. destruct pt2. eauto.
+        auto. econstructor. constructor; auto.
+      +
         
   Lemma sstep_forward :
     forall (s1: Sem1.state) (tr1: S1.Events.trace) (s1': Sem1.state) (s2: Sem2.state),
