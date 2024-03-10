@@ -2986,10 +2986,7 @@ Proof with (unfold ret; eauto with coqlib).
     + rewrite pred_dec_true; auto. rewrite H2. rewrite H3. left. econstructor.       
     + rewrite pred_dec_true; auto. left. econstructor.
     + rewrite pred_dec_true; auto. rewrite H2. left. econstructor.
-    + rewrite pred_dec_true; auto. rewrite H2. left. econstructor.
     + rewrite pred_dec_true; auto. rewrite H2. rewrite H3. left. econstructor.
-    + rewrite pred_dec_true; auto. rewrite H2. rewrite H3. left. econstructor.
-    + exploit do_ef_external_complete; eauto. intro EQ; rewrite EQ. auto with coqlib.
     + exploit do_ef_external_complete; eauto. intro EQ; rewrite EQ. auto with coqlib.
     + exploit do_ef_external_complete; eauto. intro EQ; rewrite EQ. auto with coqlib.
 Qed.
@@ -3019,3 +3016,4 @@ Definition at_final_state (S: Csem.state): option int :=
   end.
 
 End Cexec.
+
