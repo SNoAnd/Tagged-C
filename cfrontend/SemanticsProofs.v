@@ -627,8 +627,63 @@ Module PolicyInsensitivity (Pol: Policy) (A: Allocator).
       match_option_map match_val
                        (CS1.Cop.sem_binary_operation ce op v1 ty v3 ty' m1)
                        (CS2.Cop.sem_binary_operation ce op v2 ty v4 ty' m2).
-  Admitted.      
+  Admitted.
   
+  Lemma do_alloc_variables_match_success :
+    forall lc ps1 pct1 e1 m1 vars pct1' e1' m1' ps2 pct2 e2 m2,
+      match_env e1 e2 ->
+      match_mem m1 m2 ->
+      Sem1.do_alloc_variables ce lc ps1 pct1 e1 m1 vars =
+        Success (pct1', e1', m1') ->
+      exists pct2' e2' m2',
+        Sem2.do_alloc_variables ce lc ps2 pct2 e2 m2 vars =
+          Success (pct2', e2', m2') /\
+          match_env e1' e2' /\ match_mem m1' m2'.
+  Admitted.
+  
+  Lemma do_alloc_variables_match_fail :
+    forall lc ps1 pct1 e1 m1 vars ps2 pct2 e2 m2 msg failure,
+      match_env e1 e2 ->
+      match_mem m1 m2 ->
+      Sem1.do_alloc_variables ce lc ps1 pct1 e1 m1 vars =
+        Fail msg failure ->
+      Sem2.do_alloc_variables ce lc ps2 pct2 e2 m2 vars =
+        Fail msg failure.
+  Admitted.
+  
+  Lemma do_free_variables_match_success :
+    forall lc ps1 pct1 m1 e1 pct1' m1' ps2 pct2 m2 e2,
+      Sem1.do_free_variables ce lc ps1 pct1 m1 (Sem1.variables_of_env e1) =
+        Success (pct1', m1') ->
+      exists pct2' m2',
+        Sem2.do_free_variables ce lc ps2 pct2 m2 (Sem2.variables_of_env e2) =
+          Success (pct2', m2') /\ match_mem m1' m2'.
+  Admitted.
+
+  Lemma do_free_variables_match_fail :
+    forall lc ps1 pct1 m1 e1 ps2 pct2 m2 e2 msg failure,
+      Sem1.do_free_variables ce lc ps1 pct1 m1 (Sem1.variables_of_env e1) =
+        Fail msg failure ->
+      Sem2.do_free_variables ce lc ps2 pct2 m2 (Sem2.variables_of_env e2) =
+        Fail msg failure.
+  Admitted.
+
+  Lemma is_call_cont_match :
+    forall k1 k2,
+      match_cont k1 k2 ->
+      Sem1.is_call_cont k1 <-> Sem2.is_call_cont k2.
+  Proof.
+    intros. inv H; simpl; intuition.
+  Qed.
+
+  Lemma match_call_cont :
+    forall k1 k2,
+      match_cont k1 k2 ->
+      match_cont (Sem1.call_cont k1) (Sem2.call_cont k2).
+  Proof.
+    intros. induction H; try constructor; simpl; auto.
+  Qed.
+    
   Lemma deref_loc_match_success :
     forall ty m1 m2 ofs pt1 pt2 bf tr1 v1 vt1 lts1,
       match_mem m1 m2 ->
@@ -685,7 +740,7 @@ Module PolicyInsensitivity (Pol: Policy) (A: Allocator).
       exists tr2 m2' v2' vt2',
         Sem2.assign_loc ge2 ce ty m2 p pt2 bf (v2, vt2) tr2 
                         (Success (m2', (v2',vt2'))) lts2 /\
-          match_traces tr1 tr2 /\ match_val v1' v2'.
+          match_mem m1' m2' /\ match_traces tr1 tr2 /\ match_val v1' v2'.
   Admitted.
 
   Lemma assign_loc_match_fail :
@@ -726,15 +781,6 @@ Module PolicyInsensitivity (Pol: Policy) (A: Allocator).
         intuition; [ | econstructor; eauto | eauto | eauto | eauto ]
     end.             
   
-(*  Ltac estep_or_sstep :=
-    match goal with
-    | [ |- Sem2.step _ _ (Sem2.ExprState _ _ _ _ _ _ _ _) _ 
-                      (Sem2.ExprState _ _ _ _ _ _ _ _) ]=>
-        left
-    | [ |- Sem2.step _ _ _ _ _ ] =>
-        right
-    end.*)
-
   Ltac doinv :=
     match goal with
     | [ H: match_cont (_ _) _ |- _ ] => inv H
@@ -798,6 +844,45 @@ Module PolicyInsensitivity (Pol: Policy) (A: Allocator).
         destruct (CS2.Cop.sem_binary_operation ce op v1 ty v2 ty' m2) eqn:H4;
         [ rewrite H3 in H4 | exfalso; apply H3 ]; try constructor;
         clear H1
+    | [ H1: Sem1.do_alloc_variables _ ?lc ?ps1 ?pct1 Sem1.empty_env ?m1 ?vars =
+              Success (?pct1', ?e1', ?m1'),
+          H2: match_mem ?m1 ?m2 |- _ ] =>
+        let H3 := fresh "H" in
+        let pct2' := fresh "pct2" in
+        let e2' := fresh "e2" in
+        let m2' := fresh "m2" in
+        let A := fresh "A" in
+        let B := fresh "B" in
+        let C := fresh "C" in
+        pose proof (do_alloc_variables_match_success
+                      lc ps1 pct1 Sem1.empty_env m1 vars pct1' e1' m1'
+                      tt tt Sem2.empty_env m2) as H3;
+        destruct H3 as [pct2' [e2' [m2' [A [B C]]]]]; eauto;
+        [ constructor | clear H1 ]
+    | [ H1: Sem1.do_alloc_variables _ ?lc ?ps1 ?pct1 Sem1.empty_env ?m1 ?vars =
+              Fail ?msg ?failure,
+          H2: match_mem ?m1 ?m2 |- _ ] =>
+        apply (do_alloc_variables_match_fail
+                 lc ps1 pct1 Sem1.empty_env m1 vars
+                 tt tt Sem2.empty_env m2 msg failure) in H1;
+        [ | constructor | auto ]
+    | [ H1: Sem1.do_free_variables
+              ?ce ?lc ?ps1 ?pct1 ?m1
+              (Sem1.variables_of_env ?e1) = Success (?pct1', ?m1'),
+          H2: match_env ?e1 ?e2,
+            H3: match_mem ?m1 ?m2|- _ ] =>
+        let A := fresh "A" in
+        let B := fresh "B" in
+        apply (do_free_variables_match_success lc ps1 pct1 m1 e1 pct1' m1' tt tt
+                                               m2 e2) in H1; eauto;
+        destruct H1 as [pct2' [m2' [A B]]]
+    | [ H1: Sem1.do_free_variables
+              ?ce ?lc ?ps1 ?pct1 ?m1
+              (Sem1.variables_of_env ?e1) = Fail ?msg ?failure,
+          H2: match_env ?e1 ?e2,
+            H3: match_mem ?m1 ?m2|- _ ] =>
+        apply (do_free_variables_match_fail lc ps1 pct1 m1 e1 tt tt
+                                            m2 e2 msg failure) in H1; eauto
     | [ H1: Sem1.deref_loc _ ?ty ?m1 ?ofs ?pt1 ?bf ?tr1 (Success (?v, ?vt, ?lts)),
           H2: match_mem ?m1 ?m2 |- _] =>
         let tr2 := fresh "tr2" in
@@ -938,7 +1023,6 @@ Module PolicyInsensitivity (Pol: Policy) (A: Allocator).
     - destruct b; auto.
     - econstructor; eauto. destruct pt2. eauto. reflexivity. reflexivity.
       destruct pt2. rewrite H0; try reflexivity. eapply A0.
-    - admit. (* econstructor; eauto. rewrite <- H0; eauto. reflexivity. reflexivity. *)
     - apply match_traces_app; auto.
     - rewrite H0; constructor.
     - rewrite H0; try constructor.
@@ -953,8 +1037,8 @@ Module PolicyInsensitivity (Pol: Policy) (A: Allocator).
     - econstructor; eauto. destruct pt2. eauto. reflexivity. reflexivity.
     - intuition; eauto. econstructor. inv H8; eauto. constructor.
     - rewrite H0; eauto; constructor.
-  Admitted.
-
+  Qed.
+  
   Ltac deduce_fail on_pol_fail on_other_fail :=
     match goal with
     | [ H: _ = Fail _ PolicyFailure |- Sem2.estep _ _ _ _ _ ] =>
@@ -1061,7 +1145,7 @@ Module PolicyInsensitivity (Pol: Policy) (A: Allocator).
       + eexists; eexists. intuition. apply Sem2.step_call.
         econstructor; eauto. admit. auto. constructor. constructor.
   Admitted.
-        
+  
   Lemma sstep_forward :
     forall (s1: Sem1.state) (tr1: S1.Events.trace) (s1': Sem1.state) (s2: Sem2.state),
       match_states s1 s2 ->
@@ -1069,36 +1153,90 @@ Module PolicyInsensitivity (Pol: Policy) (A: Allocator).
       exists s2' tr2,
         Sem2.sstep ge2 ce s2 tr2 s2' /\ match_states s1' s2' /\ match_traces tr1 tr2.
   Proof.
-    intros. inv H; inv H0; repeat doinv; eexists; eexists;
-      try (intuition econstructor; eauto; econstructor; eauto).
-    - intuition econstructor; eauto.
+    intros. inv H; inv H0; repeat doinv;
+      try (eexists; eexists;
+           intuition econstructor;
+           eauto; repeat (econstructor; eauto); fail).
+    - eexists; eexists. intuition econstructor; eauto.
       inv H12; intro; try discriminate; contradiction.
       repeat econstructor; eauto.
-    - econstructor.
-    - admit.
-    - admit.
-    - intuition econstructor; eauto. admit. econstructor.
-    - intuition econstructor; eauto. admit. admit. admit.
-    - intuition econstructor; eauto. reflexivity. destruct b; eauto.
-    - admit.
-    - admit.
-    - admit.
-    - admit.
-    - intuition econstructor; eauto. admit. admit.
-    - intuition econstructor; eauto. admit. admit.
-    - intuition econstructor; eauto. admit. admit. (* matching seq_of_ls... *)
+    - eexists; eexists. intuition econstructor; eauto.
+      destruct ps2. destruct pct2. apply A.
+      inv H1. constructor. admit.
+      constructor. eapply match_call_cont. auto.
+    - eexists; eexists. intuition. eapply Sem2.step_return_none_fail0.
+      destruct ps2. destruct pct2. apply H16. constructor. constructor.
+    - eexists; eexists. intuition econstructor; eauto.
+      apply is_call_cont_match in H3; intuition. econstructor.
+    - eexists; eexists. intuition econstructor; eauto.
+      inv H1. simpl in *. 
+      admit. admit. admit.
+    - eexists; eexists. intuition econstructor; eauto. reflexivity. destruct b; eauto.
+    - destruct b; eexists; eexists.
+      + intuition. eapply Sem2.step_while_true; eauto. reflexivity.
+        constructor. constructor.
+      + intuition. eapply Sem2.step_while_false; eauto. reflexivity.
+        constructor. constructor.
+    - destruct b; eexists; eexists.
+      + intuition. eapply Sem2.step_dowhile_true; eauto. reflexivity.
+        constructor. constructor.
+      + intuition. eapply Sem2.step_dowhile_false; eauto. reflexivity.
+        constructor. constructor.        
+    - destruct b; eexists; eexists.
+      + intuition. eapply Sem2.step_for_true; eauto. reflexivity.
+        constructor. constructor.
+      + intuition. eapply Sem2.step_for_false; eauto. reflexivity.
+        constructor. constructor.        
+    - eexists; eexists. intuition econstructor; eauto. inv H1; eauto.
+      destruct ps2. destruct pct2. eauto. admit.
+      rewrite H; constructor. apply match_call_cont; auto.
+    - eexists; eexists. intuition. eapply Sem2.step_return_fail1; eauto.
+      inv H1; eauto. destruct ps2. destruct pct2. eauto.
+      constructor. constructor.
+    - eexists; eexists. intuition. eapply Sem2.step_return_fail1; eauto.
+      inv H1; eauto. destruct ps2. destruct pct2. eauto.
+      constructor. constructor.
+    - eexists; eexists. intuition econstructor; eauto. admit. admit.
+      constructor. auto. (* matching seq_of_ls... *)
+    - inv H1. eexists; eexists. intuition econstructor; eauto. reflexivity.
+      admit. (* do_init_params *)
       econstructor; eauto.
+      admit. (* statement_match / match_statement *)
+      simpl. admit.
+      auto. admit.
+      constructor. admit.
+    - inv H1.
+      destruct (Sem2.do_alloc_variables ce l0 tt tt Sem2.empty_env m4 fn_vars)
+               as [ [[pct2' e2] m2'] | ] eqn:?.
+      + destruct (Sem2.do_init_params ce l0 ps2 pct2' e2 m2'
+                                      (Sem2.option_zip fn_params args2))
+                 as [ [[pct2'' e2'] m2''] | ] eqn:?.
+        * eexists; eexists. intuition. eapply Sem2.step_internal_function; eauto.
+          reflexivity. constructor. constructor.
+        * eexists; eexists. intuition.
+          eapply Sem2.step_internal_function_fail3; eauto.
+          reflexivity. constructor. constructor.
+      + eexists; eexists. intuition. eapply Sem2.step_internal_function_fail1; eauto.
+          reflexivity. constructor. constructor.
+    - inv H1. eexists; eexists. intuition.
+      eapply Sem2.step_internal_function_fail2; eauto.
+      reflexivity. constructor. constructor.
+    - inv H1. eexists; eexists. intuition.
+      eapply Sem2.step_internal_function_fail2; eauto.
+      reflexivity. constructor. constructor.
     - admit.
     - admit.
+    - inv H1. eexists; eexists. admit. (* external_call *)
     - admit.
     - admit.
-    - admit.
-    - admit.
-    - admit.
-    - admit.
-    - admit.
-    - admit.
-    - admit.
+    - destruct retv2. eexists; eexists. intuition.
+      eapply Sem2.step_returnstate; eauto. reflexivity.
+      constructor; auto. auto. eapply H16.(closed_expr _ _).
+      constructor. inv H2. simpl in H. rewrite H. constructor.
+      constructor.
+    - destruct retv2. eexists; eexists. intuition.
+      eapply Sem2.step_returnstate; eauto. reflexivity.
+      constructor; auto. constructor.
   Admitted.
       
   Theorem PolicyInsensitiveForward : forward_simulation sem1 sem2.
