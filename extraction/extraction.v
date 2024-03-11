@@ -25,7 +25,7 @@ Require Csyntax.
 Require Parser.
 Require Initializers.
 (* Per Policies.md, add new policies here*)
-Require Import Tags NullPolicy PVI DoubleFree HeapProblem Allocator Initializers Csem.
+Require Import Tags Product NullPolicy PVI DoubleFree HeapProblem Allocator Initializers Csem.
 
 Module Extracted (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Allocator Ptr Pol M).
 

@@ -115,21 +115,26 @@ the provenance of pointers that code can access. This model embraces that princi
               {\(C,\alpha,M,e \mid *(\mathit{Vptr} ~ \mathbf{S}(b, \mathit{base}) ~ a) := v
                 \longrightarrow C,\alpha,M',e \mid v\)}
 
-  \judgment[Malloc]
+  \judgment[MallocLocal]
            {\(\mathit{heap\_alloc} ~ \alpha ~ C ~ sz = (p, \alpha')\)}
            {\(C,\alpha,M,e\mid \mathtt{malloc}(\mathit{Vint} ~ sz) \longrightarrow
              C,\alpha',M,e \mid \mathit{Vptr} ~ \mathbf{L}(C) ~ p\)}
 
-  \judgmenttwo[MallocLocal]
+  \judgmenttwo[MallocShare]
               {\(\mathit{fresh} ~ b\)}
               {\(\mathit{heap\_alloc} ~ \alpha ~ b ~ sz = (p, \alpha')\)}
               {\(C,\alpha,M,e \mid \mathtt{malloc\_share}(\mathit{Vint} ~ sz) \longrightarrow C,\alpha',M,e \mid \mathit{Vptr} ~ \mathbf{S}(b,p) ~ p\)}
 
-  \judgment[Free]
-           {\(\mathit{heap\_free} ~ \alpha ~ I ~ a = \alpha'\)}
-           {\(C,\alpha,M,e \mid \mathtt{free}(\mathit{Vptr} ~ I ~ a) \longrightarrow
+  \judgment[FreeLocal]
+           {\(\mathit{heap\_free} ~ \alpha ~ C ~ a = \alpha'\)}
+           {\(C,\alpha,M,e \mid \mathtt{free}(\mathit{Vptr} ~ \mathbf{L}(C) ~ a) \longrightarrow
              C,\alpha',M,e \mid \mathit{Vundef}\)}
-
+              
+  \judgment[FreeShare]
+           {\(\mathit{heap\_free} ~ \alpha ~ b ~ a = \alpha'\)}
+           {\(C,\alpha,M,e \mid \mathtt{free}(\mathit{Vptr} ~ (\mathbf{S}(b, \mathit{base})) ~ \mathit{base}) \longrightarrow
+             C,\alpha',M,e \mid \mathit{Vundef}\)}
+           
   \judgment[CastIntegerPointer]
            {}
            {\(C,\alpha,M,e \mid \mathtt{(t*)} (\mathit{Vint} ~ i) \longrightarrow
@@ -370,6 +375,9 @@ previously allocated.
     \caption{Facts about Stack Alloc}
   \end{subfigure}
   \begin{subfigure}{0.49\textwidth}
+    \judgment[HeapFreeSuccess]
+             {\(LiveH ~ \alpha ~ (B,a_1,a_2)\)}
+             {\(\mathit{heap\_free} ~ \alpha ~ B ~ a_1 = \alpha'\)}
     \judgment[HeapFreeStabS]
              {\(\mathit{heap\_free} ~ \alpha ~ B ~ a = \alpha'\)}
              {\(LiveS(\alpha') = LiveS(\alpha)\)}

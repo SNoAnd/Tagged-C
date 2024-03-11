@@ -244,8 +244,7 @@ Module HeapProblem <: Policy.
   - vt', new value tag on the memory (APT: no, value)  being loaded 
 
   Failures, except for N, will include the h node
-
-  *)
+*)
  (* Helper function for StoreT. Recursing over the tags in teh block *)
   Fixpoint CheckforColorMatchOnLoad (ptr_color: Z) (ptr_l load_l:loc) (vt : val_tag) (lts : list loc_tag) : PolicyResult val_tag :=
   match lts with
@@ -340,7 +339,6 @@ Fixpoint CheckforColorMatchOnStore (ptr_color: Z) (ptr_l store_l :loc) (pct : co
 
  Definition StoreT (l:loc) (pstate: policy_state) (pct : control_tag) (pt vt : val_tag) (lts : list loc_tag) : PolicyResult (control_tag * val_tag * list loc_tag) := 
   match pt with 
-    (* APT: I think there are better ways to structure this code. Let's discuss. *)
   (* we need to know the pointer's location and the store operations location if something goes wrong *)
   | PointerWithColor ptr_l ptr_color => (
       ConvertDirtyAllocOnStore pct vt lts [] (CheckforColorMatchOnStore ptr_color ptr_l l pct vt lts)
@@ -530,6 +528,7 @@ Fixpoint CheckforColorMatchOnStore (ptr_color: Z) (ptr_l store_l :loc) (pct : co
           (AllocatedHeader l currcolor), (AllocatedDirty l currcolor))
    )
    end.
+
   (* 
   FreeT 
       If the memory pointed to by the pointer has the same color as the pointer, it is freed and
@@ -571,8 +570,8 @@ Fixpoint CheckforColorMatchOnStore (ptr_color: Z) (ptr_l store_l :loc) (pct : co
  *)
  (* @TODO - need helpder function to loop over lts here stubbing this out so we can get a merge 
     will need to make a list of same length as lts in the success case*)
- Definition FreeT (l:loc) (pstate: policy_state) (pct: control_tag) (fptrt pt vht : val_tag) (lts: list loc_tag) : 
-  PolicyResult (control_tag * val_tag * val_tag * list loc_tag) :=
+  Definition FreeT (l:loc) (pstate: policy_state) (pct: control_tag) (fptrt pt vht : val_tag) (lts: list loc_tag) : 
+    PolicyResult (control_tag * val_tag * val_tag * list loc_tag) :=
   (*
   match pt, lts with 
     (* code probably did something wrong *)
@@ -603,7 +602,7 @@ Fixpoint CheckforColorMatchOnStore (ptr_color: Z) (ptr_l store_l :loc) (pct : co
   *)
   Success (pct, N, N, lts).
 
- (* These are required, but cannot "passthrough" because they don't get tags to start with.
+  (* These are required, but cannot "passthrough" because they don't get tags to start with.
     In other words, they have to make tags out of thin air. *)
  
   (* Constants are never pointers to malloced memory. *)
@@ -629,7 +628,7 @@ Fixpoint CheckforColorMatchOnStore (ptr_color: Z) (ptr_l store_l :loc) (pct : co
     : PolicyResult (control_tag*val_tag) :=
     Success (pct,N).
  
-   (* Passthrough rules *)
+  (* Passthrough rules *)
   Definition CallT := Passthrough.CallT policy_state val_tag control_tag.  
   Definition ArgT := Passthrough.ArgT policy_state val_tag control_tag.
   Definition RetT := Passthrough.RetT policy_state val_tag control_tag.

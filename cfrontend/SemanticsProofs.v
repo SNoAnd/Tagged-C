@@ -124,11 +124,9 @@ Module PolicyInsensitivity (Pol: Policy) (A: Allocator).
   Definition gcm2 := Sem2.globalenv prog2.
 
   Variable ce : composite_env.
-  Variable ge1 : Sem1.Smallstep.Events.Genv.t
-                   Sem1.Csyntax.fundef type.
+  Variable ge1 : GV1.t CS1.fundef type.
   Variable m1 : CS1.Cop.Events.Genv.mem.
-  Variable ge2 : Sem2.Smallstep.Events.Genv.t
-                   Sem2.Csyntax.fundef type.
+  Variable ge2 : GV2.t CS2.fundef type.
   Variable m2 : CS2.Cop.Events.Genv.mem.
   Variable sem1 : S1.semantics.
   Variable sem2 : S2.semantics.
@@ -139,7 +137,57 @@ Module PolicyInsensitivity (Pol: Policy) (A: Allocator).
     Sem1.globalenv prog1 = Success (ge1,ce,m1).
   Hypothesis globalenv2 :
     Sem2.globalenv prog2 = Success (ge2,ce,m2).
+
+  Definition match_option_map {A1 A2:Type}
+             (m: A1 -> A2 -> Prop)
+             (a1: option A1) (a2: option A2) : Prop :=
+    match a1, a2 with
+    | Some a1', Some a2' => m a1' a2'
+    | None, None => True
+    | _, _ => False
+  end.
+
+  Fixpoint match_list_map {A1 A2:Type}
+             (m: A1 -> A2 -> Prop)
+             (al1: list A1) (al2: list A2) : Prop :=
+    match al1, al2 with
+    | a1::al1', a2::al2' =>
+        m a1 a2 /\ match_list_map m al1' al2'
+    | [], [] => True
+    | _, _ => False
+  end.
   
+  Inductive match_symb_kind : GV1.symb_kind type -> GV2.symb_kind type -> Prop :=
+  | MIFun : forall b pt,
+      match_symb_kind (GV1.SymIFun type b pt) (GV2.SymIFun type b tt) 
+  | MEFun : forall ef tyl rt cc pt,
+      match_symb_kind (GV1.SymEFun type ef tyl rt cc pt) (GV2.SymEFun type ef tyl rt cc tt) 
+  | MEGlob : forall p1 p2 vt gv,
+      match_symb_kind (GV1.SymGlob p1 p2 vt gv) (GV2.SymGlob p1 p2 tt gv)       
+  .
+
+  Definition match_gfun (gd1: globdef CS1.fundef type) (gd2: globdef CS2.fundef type) : Prop :=
+    match gd1, gd2 with
+    | Gfun fd1, Gfun fd2 => fundef_match fd1 fd2
+    | _, _ => False
+    end.
+  
+  Record match_genvs (ge1: GV1.t CS1.fundef type) (ge2: GV2.t CS2.fundef type) :=
+    {
+      public_eq : ge1.(GV1.genv_public) = ge2.(GV2.genv_public);
+      symb_match : forall i, match_option_map
+                               match_symb_kind
+                               (ge1.(GV1.genv_symb)!i)
+                               (ge2.(GV2.genv_symb)!i);
+      fun_defs_match : forall i, match_option_map
+                                   match_gfun
+                                   (ge1.(GV1.genv_fun_defs)!i)
+                                   (ge2.(GV2.genv_fun_defs)!i);
+      ef_defs_eq : ge1.(GV1.genv_ef_defs) = ge2.(GV2.genv_ef_defs)
+    }.
+  
+  Hypothesis gvs_match : match_genvs ge1 ge2.
+
   Hypothesis sem1_src : Sem1.semantics prog1 ge1 ce = sem1.
   Hypothesis sem2_src : Sem2.semantics prog2 ge2 ce = sem2.
   
@@ -162,25 +210,6 @@ Module PolicyInsensitivity (Pol: Policy) (A: Allocator).
 
   Definition match_atom (v1: TLib1.atom) (v2: TLib2.atom) : Prop :=
     match_val (fst v1) (fst v2).
-
-  Definition match_option_map {A1 A2:Type}
-             (m: A1 -> A2 -> Prop)
-             (a1: option A1) (a2: option A2) : Prop :=
-    match a1, a2 with
-    | Some a1', Some a2' => m a1' a2'
-    | None, None => True
-    | _, _ => False
-  end.
-
-  Fixpoint match_list_map {A1 A2:Type}
-             (m: A1 -> A2 -> Prop)
-             (al1: list A1) (al2: list A2) : Prop :=
-    match al1, al2 with
-    | a1::al1', a2::al2' =>
-        m a1 a2 /\ match_list_map m al1' al2'
-    | [], [] => True
-    | _, _ => False
-  end.
 
   Inductive match_expr : CS1.expr -> CS2.expr -> Prop :=
   | MEval : forall v1 v2 vt1 vt2 ty,
@@ -275,7 +304,25 @@ Module PolicyInsensitivity (Pol: Policy) (A: Allocator).
       match_exprlist el1 el2 ->
       match_exprlist (CS1.Econs e1 el1) (CS2.Econs e2 el2) 
   .
-  
+
+  Lemma expr_match_expr :
+    forall e1 e2,
+      expr_match e1 e2 ->
+      match_expr e1 e2
+  with exprlist_match_exprlist :
+    forall el1 el2,
+      exprlist_match el1 el2 ->
+      match_exprlist el1 el2.
+  Proof.
+    - clear expr_match_expr. intros.
+      induction H; try constructor; auto.
+      admit.
+    - clear exprlist_match_exprlist. intros.
+      induction H.
+      + constructor.
+      + constructor; auto.
+  Admitted.
+   
   Inductive match_statement : CS1.statement -> CS2.statement -> Prop :=
   | MSskip : match_statement CS1.Sskip CS2.Sskip
   | MSSdo : forall e1 e2 l,
@@ -333,10 +380,25 @@ Module PolicyInsensitivity (Pol: Policy) (A: Allocator).
       match_ls (CS1.LScons z s1 ls1) (CS2.LScons z s2 ls2)
   .
 
+  Lemma statement_match_statement :
+    forall s1 s2,
+      statement_match s1 s2 ->
+      match_statement s1 s2 with
+  ls_match_ls :
+    forall ls1 ls2,
+      ls_match ls1 ls2 ->
+      match_ls ls1 ls2.
+  Proof.
+    - clear statement_match_statement. intros.
+      induction H; try constructor; try apply expr_match_expr; auto.
+    - clear ls_match_ls. intros.
+      induction H; constructor; auto.
+  Qed.
+      
   Inductive match_function : CS1.function ->
                              CS2.function -> Prop :=
     MFunc: forall fn_return fn_callconv fn_params fn_vars fn_body1 fn_body2,
-        match_statement fn_body1 fn_body2 ->
+        statement_match fn_body1 fn_body2 ->
         match_function (CS1.mkfunction fn_return fn_callconv fn_params fn_vars fn_body1)
                        (CS2.mkfunction fn_return fn_callconv fn_params fn_vars fn_body2)
   .
@@ -650,6 +712,29 @@ Module PolicyInsensitivity (Pol: Policy) (A: Allocator).
       Sem2.do_alloc_variables ce lc ps2 pct2 e2 m2 vars =
         Fail msg failure.
   Admitted.
+
+  Lemma do_init_params_match_success :
+    forall lc ps1 pct1 e1 m1 params args1 pct1' e1' m1' ps2 pct2 e2 m2 args2,
+      match_env e1 e2 ->
+      match_mem m1 m2 ->
+      match_list_map match_atom args1 args2 ->
+      Sem1.do_init_params ce lc ps1 pct1 e1 m1 (Sem1.option_zip params args1) =
+        Success (pct1', e1', m1') ->
+      exists pct2' e2' m2',
+        Sem2.do_init_params ce lc ps2 pct2 e2 m2 (Sem2.option_zip params args2) =
+          Success (pct2', e2', m2') /\ match_env e1' e2' /\ match_mem m1' m2'.
+  Admitted.
+
+  Lemma do_init_params_match_fail :
+    forall lc ps1 pct1 e1 m1 params args1 ps2 pct2 e2 m2 args2 msg failure,
+      match_env e1 e2 ->
+      match_mem m1 m2 ->
+      match_list_map match_atom args1 args2 ->
+      Sem1.do_init_params ce lc ps1 pct1 e1 m1 (Sem1.option_zip params args1) =
+        Fail msg failure ->
+      Sem2.do_init_params ce lc ps2 pct2 e2 m2 (Sem2.option_zip params args2) =
+        Fail msg failure.
+  Admitted.
   
   Lemma do_free_variables_match_success :
     forall lc ps1 pct1 m1 e1 pct1' m1' ps2 pct2 m2 e2,
@@ -683,7 +768,16 @@ Module PolicyInsensitivity (Pol: Policy) (A: Allocator).
   Proof.
     intros. induction H; try constructor; simpl; auto.
   Qed.
-    
+
+  Lemma find_label_match :
+    forall lbl s1 k1 s1' k1' s2 k2,
+      statement_match s1 s2 ->
+      match_cont k1 k2 ->
+      Sem1.find_label lbl s1 (Sem1.call_cont k1) = Some (s1', k1') ->
+      exists s2' k2',
+        Sem2.find_label lbl s2 (Sem2.call_cont k2) = Some (s2', k2').
+  Admitted.
+   
   Lemma deref_loc_match_success :
     forall ty m1 m2 ofs pt1 pt2 bf tr1 v1 vt1 lts1,
       match_mem m1 m2 ->
@@ -753,7 +847,35 @@ Module PolicyInsensitivity (Pol: Policy) (A: Allocator).
                         (Fail msg failure) lts2 /\
           match_traces tr1 tr2.
   Admitted.
+
+(*  Lemma volatile_store_decidable :
+    forall chunk m p v lts,
+      (exists tr res,
+          Sem2.Smallstep.Events.volatile_store ge2 chunk m p v lts tr res) \/
+        (forall tr res, ~ Sem2.Smallstep.Events.volatile_store ge2 chunk m p v lts tr res).
+  Proof.
+    intros. Print Sem2.Smallstep.Events.volatile_store.
+    destruct (GV2.invert_symbol_ptr ge2 p) as [ [id gv] | ] eqn:?.
+    - destruct gv.(gvar_volatile) eqn:?.
+      + 
   
+  Lemma assign_loc_decidable :
+    forall ty m p pt bf v vt lts,
+      (exists tr res, Sem2.assign_loc ge2 ce ty m p pt bf (v,vt) tr res lts) \/
+  (forall tr res, ~ Sem2.assign_loc ge2 ce ty m p pt bf (v,vt) tr res lts).
+  Proof.
+    intros. destruct (access_mode ty) eqn:?; destruct bf eqn:?.
+    - left.
+      destruct (type_is_volatile ty) eqn:?.
+      +     Print Sem2.assign_loc.
+            Print Sem2.Smallstep.Events.volatile_store.
+            
+      + destruct (CS2.Cop.Events.Genv.store m0 m p (v, vt) lts) eqn:?.
+        * eexists; eexists. eapply Sem2.assign_loc_value; eauto.
+*)    
+
+
+      
   Lemma match_traces_app :
     forall tr1 tr2 tr3 tr4,
       match_traces tr1 tr2 ->
@@ -866,6 +988,30 @@ Module PolicyInsensitivity (Pol: Policy) (A: Allocator).
                  lc ps1 pct1 Sem1.empty_env m1 vars
                  tt tt Sem2.empty_env m2 msg failure) in H1;
         [ | constructor | auto ]
+    | [ H1: Sem1.do_init_params _ ?lc ?ps1 ?pct1 ?e1 ?m1
+                                (Sem1.option_zip ?params ?args1) =
+              Success (?pct1', ?e1', ?m1'),
+          H2: match_env ?e1 ?e2,
+            H3: match_mem ?m1 ?m2,
+              H4: match_list_map match_atom ?args1 ?args2 |- _ ] =>
+        let H5 := fresh "H" in
+        let pct2' := fresh "pct2" in
+        let e2' := fresh "e2" in
+        let m2' := fresh "m2" in
+        let A := fresh "A" in
+        let B := fresh "B" in
+        let C := fresh "C" in
+        pose proof (do_init_params_match_success lc ps1 pct1 e1 m1 params args1
+                                                 pct1' e1' m1' tt tt e2 m2 args2) as H5;
+        destruct H5 as [pct2' [e2' [m2' [A [B C]]]]]; eauto; clear H1
+    | [ H1: Sem1.do_init_params _ ?lc ?ps1 ?pct1 ?e1 ?m1
+                                (Sem1.option_zip ?params ?args1) =
+              Fail ?msg ?failure,
+          H2: match_env ?e1 ?e2,
+            H3: match_mem ?m1 ?m2,
+              H4:  match_list_map match_atom ?args1 ?args2 |- _ ] =>
+        apply (do_init_params_match_fail lc ps1 pct1 e1 m1 params args1
+                                         tt tt e2 m2 args2 msg failure) in H1; eauto
     | [ H1: Sem1.do_free_variables
               ?ce ?lc ?ps1 ?pct1 ?m1
               (Sem1.variables_of_env ?e1) = Success (?pct1', ?m1'),
@@ -1038,7 +1184,33 @@ Module PolicyInsensitivity (Pol: Policy) (A: Allocator).
     - intuition; eauto. econstructor. inv H8; eauto. constructor.
     - rewrite H0; eauto; constructor.
   Qed.
-  
+
+  Lemma callred_transl :
+    forall lc ps1 ps2 pct1 pct2 a1 a2 m1 m2 fd1 fd2
+           fpt1 fpt2 vargs1 vargs2 ty pct1',
+      match_expr a1 a2 ->
+      match_mem m1 m2 ->
+      fundef_match fd1 fd2 ->
+      Sem1.callred ge1 lc ps1 pct1 a1 m1 fd1 fpt1 vargs1 ty pct1' ->
+      exists pct2',
+        Sem2.callred ge2 lc ps2 pct2 a2 m2 fd2 fpt2 vargs2 ty pct2'.
+  Proof.
+    intros. inv H2; repeat doinv.
+    - exists tt. destruct vt2. destruct fpt2. inv H1; econstructor; eauto.
+      + admit.
+      + destruct tyf; inv H5.
+        * destruct tyf; inv H2; simpl; auto.
+        * simpl. auto.
+      + admit.
+      + admit.
+      + destruct tyf; inv H5.
+        * destruct tyf; inv H1; simpl; auto.
+        * simpl. auto.
+      + admit.
+    - exists tt. destruct vt2. destruct fpt2. inv H1; econstructor; eauto.
+      admit.
+  Admitted.
+          
   Ltac deduce_fail on_pol_fail on_other_fail :=
     match goal with
     | [ H: _ = Fail _ PolicyFailure |- Sem2.estep _ _ _ _ _ ] =>
@@ -1068,7 +1240,30 @@ Module PolicyInsensitivity (Pol: Policy) (A: Allocator).
       eexists. eexists. intuition.
       2: { econstructor; eauto. eapply H0.(closed_expr _ _); eauto. }
       eapply Sem2.step_rred; eauto. auto.
-    - admit.
+    - inv H. apply H0.(r _ _) in H14 as [a2 [A B]].
+      inv H1.
+      + pose proof (gvs_match.(fun_defs_match _ _) b).
+        destruct (ge1.(GV1.genv_fun_defs)!b) as [[fd1| x1] | ] eqn:?;
+        destruct (ge2.(GV2.genv_fun_defs)!b) as [[fd2| x2] | ] eqn:?;
+        try (inv H1; fail).
+        * unfold GV1.find_funct in H.
+          unfold GV1.find_funct_ptr in H.
+          rewrite Heqo in H. inv H.
+          simpl in H1. exploit callred_transl; eauto.
+          econstructor; eauto. simpl.
+          unfold GV1.find_funct_ptr. rewrite Heqo. auto.
+          intros [pct2' H].
+          repeat doinv.
+          eexists; eexists. intuition. eapply Sem2.step_call; eauto.
+          econstructor; eauto. admit. constructor; auto. constructor.
+        * unfold GV1.find_funct in H.
+          unfold GV1.find_funct_ptr in H.
+          rewrite Heqo in H. inv H.
+      + repeat doinv.
+        eexists; eexists. intuition.
+        eapply Sem2.step_call; eauto. econstructor.
+        admit. econstructor; eauto. constructor.
+        admit. constructor; auto. constructor.  
     - inv H. pose proof (matching_ctx_matches C).
       apply H.(r _ _) in H13 as [a2 [A B]]. subst.
       exists Sem2.Stuckstate. exists E2.E0. 
@@ -1119,7 +1314,11 @@ Module PolicyInsensitivity (Pol: Policy) (A: Allocator).
         * intuition. eapply Sem2.step_rred.
           eapply Sem2.red_seqor_false; eauto. reflexivity.
           auto. constructor. constructor.        
-      + eexists; eexists. admit. 
+      + eexists; eexists. intuition.
+        * eapply Sem2.step_rred.
+          econstructor; eauto. destruct pt2. eauto. reflexivity. reflexivity.
+
+                         
       + eexists; eexists. admit.
       + eexists; eexists. intuition. apply Sem2.step_rfail.
         eapply Sem2.failred_assign_mem3; eauto.
@@ -1162,7 +1361,7 @@ Module PolicyInsensitivity (Pol: Policy) (A: Allocator).
       repeat econstructor; eauto.
     - eexists; eexists. intuition econstructor; eauto.
       destruct ps2. destruct pct2. apply A.
-      inv H1. constructor. admit.
+      inv H1; constructor; auto.
       constructor. eapply match_call_cont. auto.
     - eexists; eexists. intuition. eapply Sem2.step_return_none_fail0.
       destruct ps2. destruct pct2. apply H16. constructor. constructor.
@@ -1188,23 +1387,18 @@ Module PolicyInsensitivity (Pol: Policy) (A: Allocator).
       + intuition. eapply Sem2.step_for_false; eauto. reflexivity.
         constructor. constructor.        
     - eexists; eexists. intuition econstructor; eauto. inv H1; eauto.
-      destruct ps2. destruct pct2. eauto. admit.
+      destruct ps2. destruct pct2. eauto. inv H1; constructor; auto.
       rewrite H; constructor. apply match_call_cont; auto.
-    - eexists; eexists. intuition. eapply Sem2.step_return_fail1; eauto.
-      inv H1; eauto. destruct ps2. destruct pct2. eauto.
-      constructor. constructor.
-    - eexists; eexists. intuition. eapply Sem2.step_return_fail1; eauto.
+    - eexists; eexists. intuition. eapply Sem2.step_return_fail; eauto.
       inv H1; eauto. destruct ps2. destruct pct2. eauto.
       constructor. constructor.
     - eexists; eexists. intuition econstructor; eauto. admit. admit.
       constructor. auto. (* matching seq_of_ls... *)
-    - inv H1. eexists; eexists. intuition econstructor; eauto. reflexivity.
-      admit. (* do_init_params *)
-      econstructor; eauto.
-      admit. (* statement_match / match_statement *)
-      simpl. admit.
-      auto. admit.
-      constructor. admit.
+    - inv H1; simpl in *.
+      eexists; eexists. intuition econstructor; eauto. reflexivity.
+      simpl. destruct ps2. destruct pct0. eauto. econstructor; eauto. simpl.
+      apply statement_match_statement; auto.
+      constructor.
     - inv H1.
       destruct (Sem2.do_alloc_variables ce l0 tt tt Sem2.empty_env m4 fn_vars)
                as [ [[pct2' e2] m2'] | ] eqn:?.
@@ -1214,21 +1408,19 @@ Module PolicyInsensitivity (Pol: Policy) (A: Allocator).
         * eexists; eexists. intuition. eapply Sem2.step_internal_function; eauto.
           reflexivity. constructor. constructor.
         * eexists; eexists. intuition.
-          eapply Sem2.step_internal_function_fail3; eauto.
+          eapply Sem2.step_internal_function_fail2; eauto.
           reflexivity. constructor. constructor.
       + eexists; eexists. intuition. eapply Sem2.step_internal_function_fail1; eauto.
           reflexivity. constructor. constructor.
     - inv H1. eexists; eexists. intuition.
-      eapply Sem2.step_internal_function_fail2; eauto.
+      eapply Sem2.step_internal_function_fail1; eauto.
       reflexivity. constructor. constructor.
-    - inv H1. eexists; eexists. intuition.
-      eapply Sem2.step_internal_function_fail2; eauto.
-      reflexivity. constructor. constructor.
-    - admit.
-    - admit.
+    - inv H1; simpl in *. eexists; eexists. Print Sem2.sstep.
+      intuition. eapply Sem2.step_internal_function_fail2; eauto.
+      reflexivity. simpl. destruct ps2. destruct pct0. eauto.
+      constructor. constructor.
+    - inv H1. eexists; eexists. admit.
     - inv H1. eexists; eexists. admit. (* external_call *)
-    - admit.
-    - admit.
     - destruct retv2. eexists; eexists. intuition.
       eapply Sem2.step_returnstate; eauto. reflexivity.
       constructor; auto. auto. eapply H16.(closed_expr _ _).
@@ -1238,7 +1430,7 @@ Module PolicyInsensitivity (Pol: Policy) (A: Allocator).
       eapply Sem2.step_returnstate; eauto. reflexivity.
       constructor; auto. constructor.
   Admitted.
-      
+  
   Theorem PolicyInsensitiveForward : forward_simulation sem1 sem2.
   Proof.
     pose proof sem1_src.

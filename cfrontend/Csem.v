@@ -1182,12 +1182,7 @@ Inductive sstep: state -> trace -> state -> Prop :=
     do_free_variables l pstate pct m (variables_of_env e) = Success (pct', m') ->
     sstep (ExprState f l pstate pct (Eval (v,vt) ty) (Kreturn k) e te m)
           E0 (Returnstate (Internal f) l pstate pct' (v',vt) (call_cont k) m')
-| step_return_fail0:  forall f pstate pct l v vt ty k e te m v' msg failure,
-    sem_cast v ty f.(fn_return) m = Some v' ->
-    do_free_variables l pstate pct m (variables_of_env e) = Fail msg failure ->
-    sstep (ExprState f l pstate pct (Eval (v,vt) ty) (Kreturn k) e te m)
-          E0 (Failstop msg failure)
-| step_return_fail1:  forall f pstate pct l v vt ty k e te m v' msg failure,
+| step_return_fail:  forall f pstate pct l v vt ty k e te m v' msg failure,
     sem_cast v ty f.(fn_return) m = Some v' ->
     do_free_variables l pstate pct m (variables_of_env e) = Fail msg failure ->
     sstep (ExprState f l pstate pct (Eval (v,vt) ty) (Kreturn k) e te m)
@@ -1246,20 +1241,7 @@ Inductive sstep: state -> trace -> state -> Prop :=
     do_alloc_variables l pstate pct' empty_env m f.(fn_vars) = Fail msg failure ->
     sstep (Callstate (Internal f) l pstate pct vft vargs k m)
           E0 (Failstop msg failure)
-| step_internal_function_fail2: forall f l pstate pct pct' vft vargs k m msg failure,
-    list_norepet (var_names (fn_params f) ++ var_names (fn_vars f)) ->
-    CallT l pstate pct vft = Success pct' ->
-    do_alloc_variables l pstate pct' empty_env m f.(fn_vars) = Fail msg failure ->
-    sstep (Callstate (Internal f) l pstate pct vft vargs k m)
-          E0 (Failstop msg failure)
-| step_internal_function_fail3: forall f l pstate pct pct' pct'' vft vargs k m e m' msg failure,
-    list_norepet (var_names (fn_params f) ++ var_names (fn_vars f)) ->
-    CallT l pstate pct vft = Success pct' ->
-    do_alloc_variables l pstate pct' empty_env m f.(fn_vars) = Success (pct'', e, m') ->
-    do_init_params l pstate pct'' e m' (option_zip f.(fn_params) vargs) = Fail msg failure ->
-    sstep (Callstate (Internal f) l pstate pct vft vargs k m)
-          E0 (Failstop msg failure)
-| step_internal_function_fail4: forall f l pstate pct pct' pct'' vft vargs k m e m' msg failure,
+| step_internal_function_fail2: forall f l pstate pct pct' pct'' vft vargs k m e m' msg failure,
     list_norepet (var_names (fn_params f) ++ var_names (fn_vars f)) ->
     CallT l pstate pct vft = Success pct' ->
     do_alloc_variables l pstate pct' empty_env m f.(fn_vars) = Success (pct'', e, m') ->
@@ -1271,11 +1253,7 @@ Inductive sstep: state -> trace -> state -> Prop :=
     external_call l ef tt ge vargs pstate pct vft m t (Success (vres, pct', m')) ->
     sstep (Callstate (External ef targs tres cc) l pstate pct vft vargs k m)
           t (Returnstate (External ef targs tres cc) l pstate pct' vres k m')
-| step_external_function_fail0: forall l ef pstate pct vft targs tres cc vargs k m t msg failure,
-    external_call l ef tt ge vargs pstate pct vft m t (Fail msg failure) ->
-    sstep (Callstate (External ef targs tres cc) l pstate pct vft vargs k m)
-          t (Failstop msg failure)
-| step_external_function_fail1: forall l ef pstate pct vft targs tres cc vargs k m t msg failure,
+| step_external_function_fail: forall l ef pstate pct vft targs tres cc vargs k m t msg failure,
     external_call l ef tt ge vargs pstate pct vft m t (Fail msg failure) ->
     sstep (Callstate (External ef targs tres cc) l pstate pct vft vargs k m)
           t (Failstop msg failure)
@@ -2543,11 +2521,6 @@ Inductive sstep: state -> trace -> state -> Prop :=
     do_free_variables l pstate pct m (variables_of_env e) = Fail msg failure ->
     sstep (ExprState f l CMP bg pstate pct (Eval (v,vt) ty) (Kreturn k) e te m)
           E0 (Failstop msg failure)
-| step_return_fail1:  forall f CMP bg pstate pct l v vt ty k e te m v' msg failure,
-    sem_cast v ty f.(fn_return) m = Some v' ->
-    do_free_variables l pstate pct m (variables_of_env e) = Fail msg failure ->
-    sstep (ExprState f l CMP bg pstate pct (Eval (v,vt) ty) (Kreturn k) e te m)
-          E0 (Failstop msg failure)
 | step_skip_call: forall f CMP bg pstate pct k e te m,
     is_call_cont k ->
     sstep (State f CMP bg pstate pct Sskip k e te m)
@@ -2602,20 +2575,7 @@ Inductive sstep: state -> trace -> state -> Prop :=
     do_alloc_variables l CMP bg pstate pct' empty_env m f.(fn_vars) = Fail msg failure ->
     sstep (Callstate (Internal f) l CMP bg pstate pct vft vargs k m)
           E0 (Failstop msg failure)
-| step_internal_function_fail2: forall f l CMP bg pstate pct pct' vft vargs k m msg failure,
-    list_norepet (var_names (fn_params f) ++ var_names (fn_vars f)) ->
-    CallT l pstate pct vft = Success pct' ->
-    do_alloc_variables l CMP bg pstate pct' empty_env m f.(fn_vars) = Fail msg failure ->
-    sstep (Callstate (Internal f) l CMP bg pstate pct vft vargs k m)
-          E0 (Failstop msg failure)
-| step_internal_function_fail3: forall f l CMP bg bg' pstate pct pct' pct'' vft vargs k m e m' msg failure,
-    list_norepet (var_names (fn_params f) ++ var_names (fn_vars f)) ->
-    CallT l pstate pct vft = Success pct' ->
-    do_alloc_variables l CMP bg pstate pct' empty_env m f.(fn_vars) = Success (bg', pct'', e, m') ->
-    do_init_params l CMP bg pstate pct'' e m' (option_zip f.(fn_params) vargs) = Fail msg failure ->
-    sstep (Callstate (Internal f) l CMP bg pstate pct vft vargs k m)
-          E0 (Failstop msg failure)
-| step_internal_function_fail4: forall f l CMP bg bg' pstate pct pct' pct'' vft vargs k m e m' msg failure,
+| step_internal_function_fail2: forall f l CMP bg bg' pstate pct pct' pct'' vft vargs k m e m' msg failure,
     list_norepet (var_names (fn_params f) ++ var_names (fn_vars f)) ->
     CallT l pstate pct vft = Success pct' ->
     do_alloc_variables l CMP bg pstate pct' empty_env m f.(fn_vars) = Success (bg', pct'', e, m') ->

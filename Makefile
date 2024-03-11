@@ -114,10 +114,10 @@ COMMON=Errors.v AST.v Linking.v \
 CFRONTEND=Ctypes.v Cop.v Csyntax.v Csem.v 
 
 # Policy definitions (in policies/) Add new policy files here
+# NB Product.v is the (Cartisian) product of multiple policies
+POLICIES=NullPolicy.v PVI.v DoubleFree.v HeapProblem.v Product.v
 
-POLICIES=NullPolicy.v PVI.v DoubleFree.v HeapProblem.v
-
-# Parser
+# Parserr
 
 PARSER=Cabs.v Parser.v
 
