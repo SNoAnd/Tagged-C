@@ -42,153 +42,199 @@ the provenance of pointers that code can access. This model embraces that princi
 \section{Abstract Semantics}
 
 \begin{figure}
+  \begin{minipage}[t]{0.5\textwidth}
+    \vspace{0em}
+    \[\begin{split}
+    m \in ~ & \mathit{mem} \\
+    \mathit{empty} \in ~ & \mathit{mem} \\
+    \mathit{read} \in ~ & \mathit{mem} \rightarrow \mathit{int} \rightharpoonup \mathit{val} \\
+    \mathit{write} \in ~ & \mathit{mem} \rightarrow \mathit{int} \rightarrow \mathit{val}
+    \rightharpoonup \mathit{mem} \\
+    M \in ~ & \mathcal{M} \subseteq \mathcal{C} + \mathit{block} \rightharpoonup \mathit{mem} \\
+    \mathit{heap\_alloc} \in ~ & \mathcal{M} \rightarrow \mathcal{C} + \mathit{block} \rightarrow
+    \mathit{int} \rightharpoonup (\mathit{int} \times \mathcal{M}) \\
+    \mathit{heap\_free} \in ~ & \mathcal{M} \rightarrow \mathcal{C} + \mathit{block} \rightarrow
+    \mathit{int} \rightharpoonup \mathcal{M} \\
+    \mathit{stk\_alloc} \in ~ & \mathcal{M} \rightarrow \mathcal{C} + \mathit{block} \rightarrow
+    \mathit{int} \rightharpoonup (\mathit{int} \times \mathcal{M}) \\
+    \mathit{stk\_free} \in ~ & \mathcal{M} \rightarrow \mathcal{C} + \mathit{block} \rightharpoonup
+    \mathcal{M} \\
+    \mathit{perturb} \in ~ & \mathcal{M} \rightharpoonup \mathcal{M} \\
+    \end{split}\]
+  \end{minipage}
   \begin{minipage}[t]{0.49\textwidth}
     \vspace{0em}
-    \(C \in \mathcal{C}~~~ b \in \mathit{block}~~~  m \in \mathit{mem}~~~ \alpha \in \mathit{oracle}\)
+    \(C \in \mathcal{C}~~~ b \in \mathit{block}~~~ \)
     \[\begin{aligned}
     \mathcal{C}^+ & ::= \mathbf{L}(C) \mid \mathbf{S}(b, \mathit{base}) &
     \mathit{base} \in \mathit{int} \\
     v \in \mathit{val} & ::= \ldots \mid \mathit{Vptr} ~ c ~ a &
     c \in \mathcal{C}^+, a \in \mathit{int} \\
     e & \in \mathit{ident} \rightharpoonup (\mathcal{C}^+ \times \mathit{int}) \\
-    M & \in \mathcal{M} \subseteq \mathcal{C} + \mathit{block} \rightarrow \mathit{mem} \\
     \end{aligned}\]
-  \end{minipage}
-  \begin{minipage}[t]{0.49\textwidth}
-    \vspace{0em}
     \begin{tabular}{l | l}
-      \multicolumn{2}{r}{\(\mathit{state} ::= C, \alpha, M, e, \ldots \mid \mathtt{expr}\)} \\
-      \hspace{4em} & \(C, \alpha, M, e, \ldots \mid \mathtt{stmt}\) \\
-      \hspace{4em} & \(\mathit{CALL}(f, \alpha, M, \ldots)\)  \\
-      \hspace{4em} & \(\mathit{RET}(\alpha, M, v, \ldots)\) \\
+      \multicolumn{2}{r}{\(\mathit{state} ::= C, M, e, \ldots \mid \mathtt{expr}\)} \\
+      \hspace{4em} & \(C, M, e, \ldots \mid \mathtt{stmt}\) \\
+      \hspace{4em} & \(\mathit{CALL}(f, M, \ldots)\)  \\
+      \hspace{4em} & \(\mathit{RET}(M, v, \ldots)\) \\
       \multicolumn{2}{l}{} \\
       \multicolumn{2}{l}{\hspace{1.5em}\((\longrightarrow) \in \mathit{state} \times \mathit{state}\)} \\
     \end{tabular}
-
   \end{minipage}
-    \[\begin{split}
-    \mathit{read} \in ~ & \mathit{oracle} \rightarrow \mathcal{C} + \mathit{block}
-    \rightarrow \mathit{mem} \rightarrow \mathit{int} \rightharpoonup \mathit{val} \\
-    \mathit{write} \in ~ & \mathit{oracle} \rightarrow \mathcal{C} + \mathit{block}
-    \rightarrow \mathit{mem} \rightarrow \mathit{int} \rightarrow \mathit{val} \rightharpoonup
-    \mathit{mem} \\
-    \mathit{heap\_alloc} \in ~ & \mathit{oracle} \rightarrow
-    \mathcal{C} + \mathit{block} \rightarrow
-    \mathit{int} \rightharpoonup (\mathit{int} \times \mathit{oracle}) \\
-    \mathit{heap\_free} \in ~ & \mathit{oracle} \rightarrow
-    \mathcal{C}+\mathit{block} \rightarrow \mathit{int} \rightharpoonup
-    \mathit{oracle} \\
-    \mathit{stk\_alloc} \in ~ & \mathit{oracle} \rightarrow
-    \mathcal{C} + \mathit{block} \rightarrow
-    \mathit{int} \rightharpoonup (\mathit{int} \times \mathit{oracle}) \\
-    \mathit{stk\_free} \in ~ & \mathit{oracle} \rightarrow \mathcal{C}+\mathit{block}
-    \rightharpoonup \mathit{oracle} \\
-    \mathit{perturb} \in ~ & \mathit{oracle} \rightharpoonup \mathit{oracle} \\
-%    \mathit{baseof} \in ~ & \mathit{oracle} \rightarrow \mathit{block} \rightharpoonup \mathit{int} \\
-    \end{split}\]
 
-    \caption{Definitions}
-    \label{subfig:defs}
+
+  \caption{Definitions}
+  \label{subfig:defs}
   \label{fig:memmod}
 \end{figure}
 \begin{figure}
 
-  \judgment[ValOfLocal]
-           {\(\mathit{read} ~ \alpha ~ C ~ (M ~ C) ~ a = v\)}
-           {\(C,\alpha,M,e \mid *(\mathit{Vptr} ~ \mathbf{L}(C) ~ a)
-             \longrightarrow C,\alpha,M,e \mid v\)}
+  \begin{minipage}[t]{0.3\textwidth}
+    \[\begin{aligned}
+    \mathbf{WR1} \triangleq
+    \mathit{write} ~ m ~ a ~ v = m' \rightarrow & \\
+    \mathit{read} ~ m ~ a = v & \\[0.75em]
+    \mathbf{WR2} \triangleq \mathit{read} ~ m ~ a = v \rightarrow & \\
+    \mathit{write} ~ m ~ a' ~ v' = m' \rightarrow & \\
+    a \not = a' \rightarrow \mathit{read} ~ m' ~ a = v & \\[0.75em]
+    \mathbf{RW} \triangleq \mathit{read} ~ m ~ a = v \rightarrow & \\
+    \exists m' . \mathit{write} ~ m ~ a ~ v' = m' & \\
+    \end{aligned}\]
+  \end{minipage}
+  \begin{minipage}[t]{0.69\textwidth}
+    \judgmenttwo[ValOfLocal]
+                {\(M ~ C = m\)}
+                {\(\mathit{read} ~ m ~ a = v\)}
+                {\(C,M,e \mid *(\mathit{Vptr} ~ \mathbf{L}(C) ~ a)
+                  \longrightarrow C,M,e \mid v\)}
 
-  \judgmenttwo[AssignLocal]
-              {\(\mathit{write} ~ C ~ (M ~ C) ~ a ~ v = m'\)}
-              {\(M' = M[C \mapsto m']\)}
-              {\(C,\alpha,M,e \mid *(\mathit{Vptr} ~ \mathbf{L}(C) ~ a) := v
-                \longrightarrow C,\alpha,M',e \mid v\)}
+    \judgmentthree[AssignLocal]
+                  {\(M ~ C = m\)}
+                  {\(\mathit{write} ~ m ~ a ~ v = m'\)}
+                  {\(M' = M[C \mapsto m']\)}
+                  {\(C,M,e \mid *(\mathit{Vptr} ~ \mathbf{L}(C) ~ a) := v
+                    \longrightarrow C,M',e \mid v\)}
 
-  \judgment[ValOfShare]
-           {\(\mathit{read} ~ (M ~ b) ~ a = v\)}
-           {\(C,\alpha,M,e \mid *(\mathit{Vptr} ~ \mathbf{S}(b, \mathit{base}) ~ a)
-             \longrightarrow C,\alpha,M,e \mid v\)}
+    \judgmenttwo[ValOfShare]
+                {\(M ~ b = m\)}
+                {\(\mathit{read} ~ m ~ a = v\)}
+                {\(C,M,e \mid *(\mathit{Vptr} ~ \mathbf{S}(b, \mathit{base}) ~ a)
+                  \longrightarrow C,M,e \mid v\)}
 
-  \judgmenttwo[AssignShare]
-              {\(\mathit{write} ~ (M ~ b) ~ a ~ v = m'\)}
-              {\(M' = M[b \mapsto m']\)}
-              {\(C,\alpha,M,e \mid *(\mathit{Vptr} ~ \mathbf{S}(b, \mathit{base}) ~ a) := v
-                \longrightarrow C,\alpha,M',e \mid v\)}
+    \judgmentthree[AssignShare]
+                  {\(M ~ b = m\)}
+                  {\(\mathit{write} ~ m ~ a ~ v = m'\)}
+                  {\(M' = M[b \mapsto m']\)}
+                  {\(C,M,e \mid *(\mathit{Vptr} ~ \mathbf{S}(b, \mathit{base}) ~ a) := v
+                    \longrightarrow C,M',e \mid v\)}
+  \end{minipage}
 
-  \judgment[MallocLocal]
-           {\(\mathit{heap\_alloc} ~ \alpha ~ C ~ sz = (p, \alpha')\)}
-           {\(C,\alpha,M,e\mid \mathtt{malloc}(\mathit{Vint} ~ sz) \longrightarrow
-             C,\alpha',M,e \mid \mathit{Vptr} ~ \mathbf{L}(C) ~ p\)}
+  \caption{Reads and Writes}
+  \label{subfig:rwstep}
+\end{figure}
 
-  \judgmenttwo[MallocShare]
-              {\(\mathit{fresh} ~ b\)}
-              {\(\mathit{heap\_alloc} ~ \alpha ~ b ~ sz = (p, \alpha')\)}
-              {\(C,\alpha,M,e \mid \mathtt{malloc\_share}(\mathit{Vint} ~ sz) \longrightarrow C,\alpha',M,e \mid \mathit{Vptr} ~ \mathbf{S}(b,p) ~ p\)}
+\begin{figure}
+  \begin{minipage}[t]{0.3\textwidth}
+    \[\begin{aligned}
+    \mathbf{HA} \triangleq
+    \mathit{heap\_alloc} ~ M ~ B ~ sz & \\ = (a, M') \rightarrow & \\
+    \mathit{LiveH} ~ M ~ B ~ (a, a+sz) \\[0.75em]
+    \mathbf{HAM} \triangleq
+    \mathit{Live} ~ M ~ B ~ (a_1,a_2) \rightarrow & \\
+    \exists m . M ~ B = m & \\[0.75em]
+    \mathbf{HAR} \triangleq
+    \mathit{LiveH} ~ M ~ B ~ (a_1,a_2) \rightarrow & \\
+    a_1 \leq a < a_2 \rightarrow & \\
+    \exists v . \mathit{read} ~ (M ~ B) ~ a = v & \\[0.75em]
+    \mathbf{HAW} \triangleq
+    \mathit{LiveH} ~ M ~ B ~ (a_1,a_2) \rightarrow & \\
+    a_1 \leq a < a_2 \rightarrow & \\    
+    \exists m' . \mathit{write} ~ (M ~ B) ~ a ~ v = m' & \\
+    \end{aligned}\]
+  \end{minipage}
+  \begin{minipage}[t]{0.69\textwidth}
+  \judgmentbr[MallocLoc]
+             {\(\mathit{expr} = \mathtt{malloc}(\mathit{Vint} ~ sz)\)}
+             {\(\mathit{heap\_alloc} ~ M ~ C ~ sz = (a, M')\)}
+             {\(C,M,e\mid \mathit{expr} \longrightarrow
+               C,M',e \mid \mathit{Vptr} ~ \mathbf{L}(C) ~ a\)}
 
-  \judgment[FreeLocal]
-           {\(\mathit{heap\_free} ~ \alpha ~ C ~ a = \alpha'\)}
-           {\(C,\alpha,M,e \mid \mathtt{free}(\mathit{Vptr} ~ \mathbf{L}(C) ~ a) \longrightarrow
-             C,\alpha',M,e \mid \mathit{Vundef}\)}
+  \judgmenttwobrlong[MallocShr]
+                    {\(M ~ b = \bot\)}
+                    {\(\mathit{heap\_alloc} ~ M ~ b ~ sz = (a, M')\)}
+                    {\(\mathit{expr} = \mathtt{malloc\_share}(\mathit{Vint} ~ sz)\)}
+                    {\(C,M,e \mid \mathit{expr} \longrightarrow
+                      C,M',e \mid \mathit{Vptr} ~ \mathbf{S}(b,a) ~ a\)}
+
+  \judgmenttwo[FreeLoc]
+              {\(v = \mathit{Vptr} ~ \mathbf{L}(C) ~ a\)}
+              {\(\mathit{heap\_free} ~ M ~ C ~ a = M'\)}
+              {\(C,M,e \mid \mathtt{free}(v) \longrightarrow
+                C,M',e \mid \mathit{Vundef}\)}
               
-  \judgment[FreeShare]
-           {\(\mathit{heap\_free} ~ \alpha ~ b ~ a = \alpha'\)}
-           {\(C,\alpha,M,e \mid \mathtt{free}(\mathit{Vptr} ~ (\mathbf{S}(b, \mathit{base})) ~ \mathit{base}) \longrightarrow
-             C,\alpha',M,e \mid \mathit{Vundef}\)}
+  \judgmentbr[FreeShr]
+             {\(v = \mathit{Vptr} ~ (\mathbf{S}(b, \mathit{base})) ~ \mathit{base}\)}
+             {\(\mathit{heap\_free} ~ M ~ b ~ a = M'\)}
+             {\(C,M,e \mid \mathtt{free}(v)  \longrightarrow
+               C,M',e \mid \mathit{Vundef}\)}
            
-  \judgment[CastIntegerPointer]
+  \judgment[CastIP]
            {}
-           {\(C,\alpha,M,e \mid \mathtt{(t*)} (\mathit{Vint} ~ i) \longrightarrow
-             C,\alpha,M,e \mid \mathit{Vptr} ~ \mathbf{L}(C) ~ \mathit{i}\)}
+           {\(C,M,e \mid \mathtt{(t*)} (\mathit{Vint} ~ i) \longrightarrow
+             C,M,e \mid \mathit{Vptr} ~ \mathbf{L}(C) ~ \mathit{i}\)}
+  \end{minipage}
 
-  \caption{Selected Memory Steps}
-  \label{subfig:steps}
+  \caption{Heap Allocation and Integer-Pointer Cast}
+  \label{subfig:alstep}
 \end{figure}
 
 We define a C semantics that separates the world into compartments, ranged over by
 \(A\), \(B\), \(C\), etc., each with its own separate memory. The core memory model
-is shown in Figure \ref{fig:memmod}. The allocator oracle, ranged over by \(\alpha\),
-is an abstract state encapsulating information about how allocations
-are arrayed inside compartments or as shared blocks. From the programmer's
-perspective, \(\alpha\) should be opaque, but for purposes of proving correctness
-of a given system it is instantiated to match the actual behavior of the
-compiler-allocator-hardware combination. 
+is shown in Figure \ref{fig:memmod}. A concrete memory, \(m\), partially maps machine
+integer (\(\mathit{int}\)) addresses to values with a basic axiomatization given in
+Figure \ref{subfig:rwstep}. Axioms {\bf WR1} and {\bf WR2} are standard memory axioms.
 
-The \(\mathit{read}\) and \(\mathit{write}\) operations always operate on a single
-abstract memory, which behaves as a flat address space accessed via machine integers
-(\(\mathit{int}\)). Operations that access addresses outside of allocated blocks
-may or may not failstop, determined by the oracle. If they are successful, they
-behave consistently (multiple consecutive loads yield the same value, a load after
-a store yields the stored value, etc.) Memories are kept totally
-separate, fulfilling our first requirement: compartments' local memories are
-definitely never accessible to other compartments.
+Axiom {\bf RW} deals with the partial nature of memory: reads and writes that are not defined
+correspond to failstop behavior. Below, we will discuss how reads and writes to allocated memory
+are guaranteed to succeed. Other reads and writes might succeed or failstop depending on
+how the compiler has organized memory. {\bf WR1} implicitly tells us that if a write
+succeeds, a read from that location will succeed as well. {\bf RW} tells us conversely that
+a location that is legal to read is also legal to write, regardless of its allocation status.
 
-A pointer value consists of a pair: a ``base'' drawn from the set \(\mathcal{C}^+\)
-that determines which memory it accesses, and a machine integer address representing
+One memory of this kind is assigned to each compartment, and additional memories will be
+allocated for shared blocks. Memories are kept totally separate, fulfilling our first requirement:
+compartments' local memories are definitely never accessible to other compartments.
+A pointer value consists of a pair: a ``base'' (ranged over by \(B\)) drawn from the set
+\(\mathcal{C}^+\) that determines which memory it accesses, and a machine integer address representing
 their concrete position. A base is either \(\mathbf{L}(C)\), for local pointers into
 the compartment \(C\), or \(\mathbf{S}(b,\mathit{base})\), where \(b\) is an
 abstract block identifier and \(\mathit{base}\) is a machine integer. A
 ``super-memory'' \(M\) is a map from bases to memories.
 
-Figure \ref{subfigs:steps} shows how loads and stores occur in this system.
-The pointer's base determines which memory it accesses, and its value is treated
-as the pointer into that memory. A pointer's base can never be changed via
-arithmetic---all operations either preserve the base, or demote their result
-to a plain integer.
+The allocation and free operations for both stack and heap act on the super-memory.
+The axiomatization for heap allocation is given in Figure \ref{subfig:alstep}.
+Once a region is allocated within a memory, the predicate \(\mathit{LiveH}\)
+holds on the allocated region, and reads and writes are guaranteed to succeed within
+that region of the appropriate base. Further axioms related to how multiple allocations
+interact with one another will appear later.
+
+This axiomatization serves to abstract away concrete details about memory layout
+that may be specific to a given compiler-allocator-hardware combination. We can
+understand any particular instance of \(\mathcal{M}\) as an oracle that divines where
+the target system will place each allocation and, with knowledge of the full layout of
+memory, determines what happens in the event of an out-of-bounds read or write.
+This oracular is constrained by the full set of axioms in Section \ref{sec:axioms}.
 
 \paragraph{Allocation}
 
 The abstract operations \(\mathit{heap\_alloc}\) and \(\mathit{stk\_alloc}\)
 yield addresses at which to locate a new block, either within a compartment's memory
 or in its own isolated block. In the latter case, the address provided becomes
-the new base of that block's base. It also updates the oracle to reflect that loads
-and stores to the new block will not failstop (see Section \ref{sec:axioms}). Since
-the \(\mathit{*\_alloc}\) operations are parameterized by the compartment
-or block that they allocate, they are allowed to make decisions based on that
+the new base of that block's base. Since the \(\mathit{*\_alloc}\) operations are
+parameterized by the full super-memory \(M\) and the identity of the compartment or block
+that they allocate, they are allowed to make decisions based on that
 information, such as attempting to keep compartment-local allocations in designated
-regions to protect using a page-table-based enforcement mechanism. When proving
-program properties in this setting, one should quantify over all possible oracles,
-but when proving correctness of an implementation we restrict ourselves to oracles
-that reflect its actually behavior.
+regions to protect using a page-table-based enforcement mechanism.
 
 \paragraph{Arithmetic and Integer-Pointer Casts}
 
@@ -204,26 +250,26 @@ pointer to the active compartment, as shown in Figure \ref{subfig:steps}.
 \begin{figure}
   \judgment[Unop]
            {}
-           {\(C,\alpha,M,e \mid \odot (\mathit{Vptr} ~ I ~ a) \longrightarrow
-             C,\alpha,M,e \mid \mathit{Vptr} ~ I ~ (\langle \odot \rangle a)\)}
+           {\(C,M,e \mid \odot (\mathit{Vptr} ~ I ~ a) \longrightarrow
+             C,M,e \mid \mathit{Vptr} ~ I ~ (\langle \odot \rangle a)\)}
            
   \judgment[BinopPointerInteger]
            {}
-           {\(C,\alpha,M,e \mid (\mathit{Vptr} ~ I ~ a) \oplus
+           {\(C,M,e \mid (\mathit{Vptr} ~ I ~ a) \oplus
              (\mathit{Vint} ~ i) \longrightarrow
-             C,\alpha,M,e \mid \mathit{Vptr} ~ I ~ (a \langle \oplus \rangle i)\)}
+             C,M,e \mid \mathit{Vptr} ~ I ~ (a \langle \oplus \rangle i)\)}
 
   \judgment[BinopIntegerPointer]
            {}
-           {\(C,\alpha,M,e \mid (\mathit{Vint} ~ i) \oplus
+           {\(C,M,e \mid (\mathit{Vint} ~ i) \oplus
              (\mathit{Vptr} ~ I ~ a) \longrightarrow
-           C,\alpha,M,e \mid \mathit{Vptr} ~ I ~ (i \langle \oplus \rangle a)\)}
+             C,M,e \mid \mathit{Vptr} ~ I ~ (i \langle \oplus \rangle a)\)}
 
   \judgment[BinopPointers]
            {}
-           {\(C,\alpha,M,e \mid (\mathit{Vptr} ~ I ~ a_1) \oplus
+           {\(C,M,e \mid (\mathit{Vptr} ~ I ~ a_1) \oplus
              (\mathit{Vptr} ~ I ~ a_2) \longrightarrow
-             C,\alpha,M,e \mid \mathit{Vint} ~ (a_1 \langle \oplus \rangle a_2)\)}
+             C,M,e \mid \mathit{Vint} ~ (a_1 \langle \oplus \rangle a_2)\)}
 
   \caption{Arithmetic Operations Involving Pointers}
   \label{fig:arith}
@@ -246,8 +292,7 @@ We assume that each local variable comes pre-annotated with how it should
 be allocated, with a simple flag \(\mathbf{L}\) or \(\mathbf{S}\), so that
 a function signature is a list of tuples \((id,\mathbf{L} \mid \mathbf{S},sz)\).
 (Aside: there is a case to be made we should just allocate all stack objects locally
-barring some critical use case for share them. Doing so would simplify the model
-here.)
+barring some critical use case for share them. Doing so would simplify the model here.)
 
 The allocation and deallocation of stack memory is shown in the step rules in
 Section \ref{fig:callret}. In the full semantics, calls and returns step through
@@ -259,21 +304,49 @@ the intermediate returnstate, the semantics likewise deallocates every variable 
 previously allocated.
 
 \begin{figure}
-  \[\mathit{alloc\_locals} ~ C ~ \alpha ~ \mathit{ls} =
-  \begin{cases}
-    (\alpha, \lambda \mathit{id}. \bot) & \textnormal{if } \mathit{ls} = [~]\\
-    (\alpha'', e[\mathit{id} \mapsto (\mathbf{L}(C),i)]) &
-    \textnormal{if } \mathit{ls} = (id,\mathbf{L},sz)::\mathit{ls}',\\
-    & \textnormal{where } \mathit{alloc\_locals} ~ C ~ \alpha ~ \mathit{ls}' =
-    (\alpha', e) \\
-    & \textnormal{and } \mathit{stk\_alloc} ~ \alpha' ~ C ~ sz = (i, \alpha'') \\
-    (\alpha'', e[\mathit{id} \mapsto (\mathbf{S}(b,i),i)]) &
-    \textnormal{if } \mathit{ls} = (id,\mathbf{S},sz)::\mathit{ls}',\\
-    & \textnormal{where } \mathit{alloc\_locals} ~ C ~ \alpha ~ \mathit{ls}' =
-    (\alpha', e) \\
-    & \textnormal{and for fresh } b, \mathit{stk\_alloc} ~ \alpha' ~ b ~ sz = (i, \alpha'') \\
-  \end{cases}\]
 
+  \begin{minipage}{0.4\textwidth}
+  \[\begin{split}
+  \mathit{alloc\_locals} ~ & M ~ C ~ [~] = (M, \lambda \mathit{id} . \bot) \\[0.75em]
+  \mathit{alloc\_locals} ~ & M ~ C ~ (id,\mathbf{L},sz)::\mathit{ls} = \\
+  & (M'', e[\mathit{id} \mapsto (\mathbf{L}(C),i)]) \\
+  \textnormal{where } & \mathit{stk\_alloc} ~ M ~ C ~ sz = (i, M') \\
+  \textnormal{and } & \mathit{alloc\_locals} ~ M' ~ C ~ \mathit{ls} = (M'', e) \\[0.75em]
+  \mathit{alloc\_locals} & ~ M ~ C ~ (id,\mathbf{S},sz)::\mathit{ls} = \\
+  & (M'', e[\mathit{id} \mapsto (\mathbf{S}(b,i),i)]) \\
+  \textnormal{where } & \mathit{alloc\_locals} ~ M ~ C ~ \mathit{ls} = (M', e) \\
+  \textnormal{and } & \mathit{stk\_alloc} ~ M' ~ C ~ sz = (i, M'') \\[0.75em]
+  \end{split}\]
+  \end{minipage}
+  \begin{minipage}{0.6\textwidth}
+  \[\begin{aligned}\mathbf{SA} \triangleq 
+  \mathit{stk\_alloc} ~ M ~ B ~ sz = (a, M') \rightarrow & \\
+  \mathit{LiveS}(M') = (B,a,a+sz)::\mathit{LiveS}(M) & \\[0.75em]
+  \mathbf{SAM} \triangleq
+  (B,a_1, a_2) \in LiveS(M) \rightarrow & \\
+  \exists m . (M ~ B) = m & \\[0.75em]
+  \mathbf{SAR} \triangleq
+  (B,a_1, a_2) \in LiveS(M) \rightarrow & \\
+  a_1 \leq a < a_2 \rightarrow \exists v . \mathit{read} ~ (M ~ B) ~ a = v & \\[0.75em]
+  \mathbf{SAW} \triangleq
+  (B,a_1, a_2) \in LiveS(M) \rightarrow & \\
+  a_1 \leq a < a_2 \rightarrow \exists m . \mathit{write} ~ (M ~ B) ~ a ~ v = m & \\[0.75em]
+  \end{aligned}\]
+  \end{minipage}
+      
+  \judgmenttwo[FromCallstate]
+              {\(f = (C,\mathit{locals},s)\)}
+              {\(\mathit{alloc\_locals} ~ M ~ C ~ \mathit{locals} = (M',e)\)}
+              {\(\mathit{CALL}(f,M) \longrightarrow
+                C,\mathit{perturb} ~ M',e \mid s\)}
+
+  \caption{Call Semantics and Local Variables}
+  \label{fig:callret}
+
+\end{figure}
+
+\begin{comment}
+\begin{figure}
   \[\mathit{dealloc\_locals} ~ \alpha ~ e =
   \begin{cases}
     \mathit{stk\_free} ~ \alpha' ~ C ~ i &
@@ -286,181 +359,101 @@ previously allocated.
     \alpha' \\
     \alpha & \textnormal{otherwise} \\
   \end{cases}\]
-  
-  \judgmenttwo[FromCallstate]
-              {\(f = (C,\mathit{locals},s)\)}
-              {\(\mathit{alloc\_locals} ~ C ~ \alpha ~ \mathit{locals} =
-                (\alpha',e)\)}
-              {\(\mathit{CALL}(f,\alpha,M) \longrightarrow
-                C,\mathit{perturb} ~ \alpha',M,e \mid s\)}
-
+              
   \judgment[Return]
            {\(\mathit{dealloc\_locals} ~ \alpha ~ e = \alpha'\)}
            {\(C,\alpha,M,e \mid \mathtt{return} ~ v \longrightarrow
              \mathit{RET}(\alpha,M,v)\)}
-           
+
+
   \caption{Call and Return Semantics (Continuations omitted)}
   \label{fig:callret}
 \end{figure}
+\end{comment}
 
-\section{Axioms of the Oracle}
+\section{Memory Axioms}
 \label{sec:axioms}
 
 \begin{figure}
-  \begin{subfigure}{0.5\textwidth}
-    \judgment[ReadWrite]
-             {\(\mathit{write} ~ \alpha ~ B ~ m ~ a ~ v = m'\)}
-             {\(\mathit{read} ~ \alpha ~ B ~ m' ~ a ~ v\)}
-    \judgmenttwo[WriteStable]
-                {\(a \not = a'\)}
-                {\(\mathit{write} ~ \alpha ~ m ~ a' ~ v = m'\)}
-                {\(\mathit{read} ~ \alpha ~ B ~ m ~ a =
-                  \mathit{read} ~ \alpha ~ B ~ m' ~ a\)}
-    \judgmentbr[ReadLiveH]
-               {\(LiveH ~ \alpha ~ (B,a_1, a_2)\)}
-               {\(a_1 \leq a < a_2\)}
-               {\(\exists v . \mathit{read} ~ \alpha ~ B ~ a = v\)}
-    \judgmentbr[WriteLiveH]
-               {\(LiveH ~ \alpha ~ (B,a_1, a_2)\)}
-               {\(a_1 \leq a < a_2\)}
-               {\(\exists m' . \mathit{write} ~ \alpha ~ m ~ a ~ v = m'\)}
-    \judgmentbr[ReadLiveS]
-               {\((B,a_1, a_2) \in LiveS(\alpha)\)}
-               {\(a_1 \leq a < a_2\)}
-               {\(\exists v . \mathit{read} ~ \alpha ~ B ~ a = v\)}
-    \judgmentbr[WriteLiveS]
-               {\((B,a_1, a_2) \in LiveS(\alpha)\)}
-               {\(a_1 \leq a < a_2\)}
-               {\(\exists m' . \mathit{write} ~ \alpha ~ m ~ a ~ v = m'\)}
+  \begin{minipage}{0.5\textwidth}
+    \[\begin{aligned}
+    \mathbf{HSTAB1} \triangleq \mathit{LiveH} ~ M ~ B ~ (a_1,a_2) \rightarrow & \\
+    (\mathit{heap\_alloc} ~ M ~ B ~ sz = (\underline{~~}, M') \lor & \\
+    \mathit{stk\_alloc} ~ M ~ B ~ sz = (\underline{~~}, M') \lor & \\
+    \mathit{stk\_free} ~ M ~ B = m') \rightarrow & \\
+    \mathit{LiveH} ~ M' ~ B ~ (a_1,a_2) & \\[0.75em]
+    \mathbf{HSTAB2} \triangleq \mathit{LiveH} ~ M ~ B ~ (a_1,a_2) \rightarrow & \\
+    \mathit{heap\_free} ~ M ~ B ~ a = M' \rightarrow & \\
+    a \not = a_1 \rightarrow \mathit{LiveH} ~ M' ~ B ~ (a_1,a_2) & \\[0.75em]
+    \mathbf{SSTAB} \triangleq
+    (\mathit{heap\_alloc} ~ M ~ B ~ sz = (\underline{~~}, M') \lor & \\
+    \mathit{heap\_free} ~ M ~ B ~ a = M') \rightarrow & \\
+    \mathit{LiveS}(M') = \mathit{LiveS}(M) & \\[0.75em]
+    \mathbf{HADISJ} \triangleq \mathit{LiveH} ~ M ~ B ~ (a_1,a_2) \lor & \\
+    ((B,a_1,a_2) \in \mathit{LiveS}(M)) \rightarrow & \\
+    \mathit{heap\_alloc} ~ M ~ B ~ sz = (a', M') \rightarrow & \\
+    a'+sz < a_1 \land a_2 \leq a' & \\[0.75em]
+    \mathbf{SADISJ} \triangleq \mathit{LiveH} ~ M ~ B ~ (a_1,a_2) \lor & \\
+    ((B,a_1,a_2) \in \mathit{LiveS}(M)) \rightarrow & \\
+    \mathit{stk\_alloc} ~ M ~ B ~ sz = (a', M') \rightarrow & \\
+    a'+sz < a_1 \land a_2 \leq a' & \\[0.75em]
+    \end{aligned}\]
+  \end{minipage}
+  \begin{minipage}{0.5\textwidth}
+    \[\begin{aligned}
+    \mathbf{HF} \triangleq \mathit{LiveH} ~ M ~ (B,a_1,a_2) \rightarrow & \\
+    \mathit{heap\_free} ~ M ~ B ~ a_1 = M' & \\[0.75em]
+    \mathbf{SF1} \triangleq \mathit{LiveS}(M) = (B,a_1,a_2)::\underline{~~~} \rightarrow & \\
+    \mathit{stk\_free} ~ M ~ B ~ a_1 = M' & \\[0.75em]
+    \mathbf{SF2} \triangleq 
+    \mathit{stk\_free} ~ M ~ B ~ a_1 = M' & \rightarrow \\
+    \underline{~~}::\mathit{LiveS}(M') = \mathit{LiveS}(M) & \\[0.75em]
+    \mathbf{PERT1} \triangleq (\mathit{LiveH} ~ M ~ (B,a_1,a_2) \lor & \\
+    (B,a_1,a_2) \in \mathit{LiveS}(M)) \rightarrow & \\
+    \mathit{perturb} ~ M = M' \rightarrow
+    a_1 \leq a < a_2 \rightarrow & \\
+    \mathit{read} ~ (M~B) ~ a = v \rightarrow & \\
+    \mathit{read} ~ (M'~B) ~ a = v & \\[0.75em]
+    \mathbf{PERT2} \triangleq \mathit{LiveH} ~ M ~ (B,a_1,a_2) \rightarrow & \\
+    \mathit{perturb} ~ M = M' \rightarrow & \\
+    \mathit{LiveH} ~ M ~ (B,a_1,a_2) \\[0.75em]
+    \mathbf{PERT3} \triangleq \mathit{perturb} ~ M = M' \rightarrow & \\
+    \mathit{LiveS}(M) = \mathit{LiveS}(M') \\[0.75em]
+    \end{aligned}\]
+  \end{minipage}
 
-  \caption{Facts about Reads and Writes}
-  \end{subfigure}
-  \begin{subfigure}{0.49\textwidth}
-    \judgment[HeapAlloc]
-             {\(\mathit{heap\_alloc} ~ \alpha ~ B ~ s = (i, \alpha')\)}
-             {\(LiveH ~ \alpha' ~ (B,i,i+s)\)}
-    \judgmentbr[HeapAllocDisjH]
-               {\(LiveH ~ \alpha ~ (B,a_1,a_2)\)} 
-               {\(\mathit{heap\_alloc} ~ \alpha ~ B ~ s = (i, \alpha')\)}
-               {\(i+s < a_1\) or \(a_2 \leq i\)}
-    \judgmentbr[HeapAllocDisjS]
-               {\((B,a_1,a_2) \in LiveS(\alpha)\)} 
-               {\(\mathit{heap\_alloc} ~ \alpha ~ B' ~ s = (i, \alpha')\)}
-               {\(i+s < a_1\) or \(a_2 \leq i\)}
-    \judgmentbr[HeapAllocStabH]
-               {\(LiveH ~ \alpha ~ (B,a_1,a_2)\)} 
-               {\(\mathit{heap\_alloc} ~ \alpha ~ B' ~ s = (i, \alpha')\)}
-               {\(LiveH ~ \alpha' ~ (B,a_1,a_2)\)}
-    \judgment[HeapAllocStabS]
-             {\(\mathit{heap\_alloc} ~ \alpha ~ B ~ s = (i, \alpha')\)}
-             {\(LiveS(\alpha') = LiveS(\alpha)\)}
-    \caption{Facts about Heap Alloc}  
-  \end{subfigure}
-  \begin{subfigure}{0.5\textwidth}
-    \judgment[StkAlloc]
-             {\(\mathit{stk\_alloc} ~ \alpha ~ B ~ s = (i, \alpha')\)}
-             {\(LiveS(\alpha') = (B,i,i+s)::LiveS(\alpha)\)}
-    \judgmentbr[StkAllocDisjH]
-               {\(LiveH ~ \alpha ~ (B,a_1,a_2)\)} 
-               {\(\mathit{stk\_alloc} ~ \alpha ~ B' ~ s = (i, \alpha')\)}
-               {\(i+s < a_1\) or \(a_2 \leq i\)}
-    \judgmentbr[StkAllocDisjS]
-               {\((B,a_1,a_2) \in LiveS(\alpha)\)} 
-               {\(\mathit{stack\_alloc} ~ \alpha ~ B' ~ s = (i, \alpha')\)}
-               {\(i+s < a_1\) or \(a_2 \leq i\)}
-    \judgmentbr[StkAllocStabH]
-               {\(LiveH ~ \alpha ~ (B,a_1,a_2)\)} 
-               {\(\mathit{stk\_alloc} ~ \alpha ~ B ~ s = (i, \alpha')\)}
-               {\(LiveH ~ \alpha' ~ (B,a_1,a_2)\)}
-    \caption{Facts about Stack Alloc}
-  \end{subfigure}
-  \begin{subfigure}{0.49\textwidth}
-    \judgment[HeapFreeSuccess]
-             {\(LiveH ~ \alpha ~ (B,a_1,a_2)\)}
-             {\(\mathit{heap\_free} ~ \alpha ~ B ~ a_1 = \alpha'\)}
-    \judgment[HeapFreeStabS]
-             {\(\mathit{heap\_free} ~ \alpha ~ B ~ a = \alpha'\)}
-             {\(LiveS(\alpha') = LiveS(\alpha)\)}
-    \judgmentbrbr[HeapFreeStabH]
-                 {\(LiveH ~ \alpha ~ (B,a_1,a_2)\)}
-                 {\(a < a_1\) or \(a_2 \leq a\)}
-                 {\(\mathit{heap\_free} ~ \alpha ~ B' ~ a = \alpha'\)}
-                 {\(LiveH ~ \alpha' ~ (B,a_1,a_2)\)}
-    \judgment[StkFreeStabS]
-             {\(\mathit{stk\_free} ~ \alpha ~ B' = \alpha'\)}
-             {\(\underline{~~}::LiveS(\alpha') = LiveS(\alpha)\)}
-    \judgmentbr[StkFreeStabH]
-               {\(LiveH ~ \alpha ~ (B,a_1,a_2)\)}
-               {\(\mathit{stk\_free} ~ \alpha ~ B' = \alpha'\)}
-               {\(LiveH ~ \alpha' ~ (B,a_1,a_2)\)}
-    \caption{Facts about Free}
-  \end{subfigure}
-  \begin{subfigure}{\textwidth}
-
-    \begin{minipage}{0.5\textwidth}
-      \judgmentbr[PerturbStabH]
-                 {\(LiveH ~ \alpha ~ (B,a_1,a_2)\)}
-                 {\(\mathit{perturb} ~ \alpha = \alpha'\)}
-                 {\(LiveH ~ \alpha' ~ (B,a_1,a_2)\)}
-    \end{minipage}
-    \begin{minipage}{0.5\textwidth}
-    \judgment[PerturbStabS]
-             {\(\mathit{perturb} ~ \alpha = \alpha'\)}
-             {\(LiveS(\alpha') = LiveS(\alpha)\)}
-    \end{minipage}
-    \judgmenttwobr[PerturbStabValH]
-                  {\(\mathit{read} ~ \alpha ~ B ~ m ~ a = v\)}
-                  {\(\mathit{perturb} ~ \alpha = \alpha'\)}
-                  {\(LiveH ~ \alpha ~ (B,a_1,a_2)\)}
-                  {\(a_1 \leq a < a_2\)}
-                  {\(\mathit{read} ~ \alpha' ~ B ~ m ~ a = v\)}
-
-    \judgmenttwobr[PerturbStabValS]
-                  {\(\mathit{read} ~ \alpha ~ B ~ m ~ a = v\)}
-                  {\(\mathit{perturb} ~ \alpha = \alpha'\)}
-                  {\((B,a_1,a_2) \in LiveS(\alpha)\)}
-                  {\(a_1 \leq a < a_2\)}
-                  {\(\mathit{read} ~ \alpha' ~ B ~ m ~ a = v\)}
-                 
-    \caption{Facts about Perturb}
-  \end{subfigure}
-  
-  \caption{Assertion Rules}
+  \caption{Remaining Axioms}
   \label{fig:asserts}
 \end{figure}
 
-The allocation oracle hides the behavior of the compiler behind an abstract
-interface that produces addresses on command. Our semantics behaves
-nondeterministically in a general sense, but all nondeterministic behaviors are
-captured by the oracle. Given a particular oracle, the semantics is deterministic.
+The oracular axiomatization of memory hides the behavior of the compiler behind an abstract
+interface that produces addresses on command. On the surface this creates a nondeterministic
+semantics, but given any particular instantiation of \(\mathit{mem}\), the semantics
+becomes deterministic.
 
-Here we axiomitize the oracle. We define two kinds of statements that we can make
-about the locations of allocated regions. The proposition
-\(\mathit{LiveH} ~ \alpha ~ (B, a_1, a_2)\) means that, according to \(\alpha\), the
-region from \(a_1\) to \(a_2\) is allocated in the heap and belongs to the base
-\(B\). \(\mathit{LiveS}(\alpha)\) is a list of triples \((B, a_1, a_2)\) representing
-the stack, such that any \((B, a_1, a_2) \in \mathit{LiveS}(\alpha)\) designates
-a stack allocated block in \(\alpha\). \(\mathit{LiveS}\) is map from an oracle
+Relevant axioms have been shown above, and now we can fill in the rest, with a special
+focus on how behavior is or is not preserved over allocations. We define two kinds of statements
+that we can make about the locations of allocated regions. The proposition
+\(\mathit{LiveH} ~ M ~ (B, a_1, a_2)\) means that the region from \(a_1\) to \(a_2\) is
+allocated in the heap of the base \(B\). \(\mathit{LiveS}(M)\) is a list of triples
+\((B, a_1, a_2)\) similarly representing the stack. \(\mathit{LiveS}\) is map from an oracle
 to a stack because calls to \(\mathit{stk\_free}\) should only ever deallocate
-the most-recently-allocated object, so we must maintain the order.
+the most-recently-allocated object, so we must maintain their order.
 
-The full set of axioms is found in Figure \ref{fig:asserts}. Importantly,
-allocations are guaranteed to be disjoint from any prior allocations.
-In fact, because all compartments share an oracle, this is the case even for
-allocations from other compartments---convenient, because we assume that we are
-targeting a system with a single address space, and this guarantees that any valid
-allocator must be that can fit in that address space. Addresses in allocated regions
-are guaranteed successful loads and stores, and loads following successful stores
-are always successful (and return the stored value) even if outside of allocated
-regions.
+The full set of axioms not already introduced is found in Figure \ref{fig:asserts}. Importantly,
+allocations are guaranteed to be disjoint from any prior allocations in the same base.
+(In fact, when targeting a system with a single address space, we further restrict them to be disjoint
+across all bases.) Addresses in allocated regions are guaranteed successful loads and stores, and
+once an unallocated address has been successfully accessed it is guaranteed to behave consistently
+until new memory is allocated anywhere in the system, at which point all unallocated memory
+again becomes unpredictable.
 
-The \(\mathit{perturb}\) operation mutates the allocator oracle to represent the
-possibility of compiler-generated code using unallocated memory and therefore changing
-its value or rendering it inaccessible. The only facts that are maintained over a
-call to perturb are those involving addresses in allocated regions. Perturb happens
-during every function call and return, because the compiler needs to be free to
-reallocate memory during those operations, but it may happen at other points in the
-semantics as well.
+The \(\mathit{perturb}\) operation similarly represents the possibility of compiler-generated
+code using unallocated memory and therefore changing its value or rendering it inaccessible.
+The only facts that are maintained over a call to perturb are those involving addresses in
+allocated regions. Perturb happens during every function call and return, because the compiler
+needs to be free to reallocate memory during those operations, but it may happen at other points
+in the semantics as well.
 
 \section{Cross-compartment interfaces}
 \label{sec:interfaces}
@@ -491,7 +484,8 @@ In particular, in a tag-based enforcemen mechanism with a limited quantity of ta
 is this system realistic? In general it requires a unique tag per compartment,
 as well as one for each shared allocation. In the extreme, consider a system along
 the lines of ARM's MTE, which has four-bit tags. That could only enforce this
-semantics for a very small program, or one with very little shared memory (fewer than sixteen tags, so perhaps two-four compartments and around a dozen shared objects.)
+semantics for a very small program, or one with very little shared memory
+(fewer than sixteen tags, so perhaps two-four compartments and around a dozen shared objects.)
 
 On the other hand, this semantics is a reasonable goal under an enforcement mechanism
 with even eight-bit tags (512 compartments and shared objects.) If we go up to sixteen
@@ -515,44 +509,41 @@ temporal memory safety: under some circumstances a shared object can be accessed
 by a compartment that it has not (yet) been shared with.
 
 \begin{figure}
+
+  \begin{minipage}{0.45\textwidth}
     \[\begin{aligned}
-    \mathit{val} & ::= \ldots \mid \mathit{Vptr} ~ B ~ a &
-    B \in 2^{\mathcal{C}}
-    \end{aligned}\]
-    %
-    \[\begin{split}
+    \mathit{val} & ::= \ldots \mid \mathit{Vptr} ~ B ~ a \hspace{3em} B \in 2^{\mathcal{C}} \\
     e & \in \mathit{ident} \rightharpoonup (2^{\mathcal{C}} \times \mathit{int}) \\
-    M \in ~ & \mathcal{M} \subseteq 2^{\mathcal{C}} \rightarrow \mathit{mem} \\
-    \mathit{heap\_alloc} \in ~ & \mathit{oracle} \rightarrow
-    2^{\mathcal{C}} \rightarrow \mathit{int} \rightharpoonup
-    (\mathit{int} \times \mathit{oracle}) \\
-    \mathit{heap\_free} \in ~ & \mathit{oracle} \rightarrow 2^{\mathcal{C}} \rightarrow
-    \mathit{int} \rightharpoonup \mathit{oracle} \\
-    \mathit{stk\_alloc} \in ~ & \mathit{oracle} \rightarrow
-    2^{\mathcal{C}} \rightarrow \mathit{int} \rightharpoonup
-    (\mathit{int} \times \mathit{oracle}) \\
-    \mathit{stk\_free} \in ~ & \mathit{oracle} \rightarrow 2^{\mathcal{C}}
-    \rightharpoonup \mathit{oracle} \\
-%    \mathit{baseof} \in ~ & \mathit{oracle} \rightarrow \mathit{block} \rightharpoonup \mathit{int} \\
-    \end{split}\]
-    \judgment[ValOf]
-             {\(\mathit{read} ~ \alpha ~ B ~ (M ~ B) ~ a = v\)}
-             {\(C,\alpha,M,e \mid *(\mathit{Vptr} ~ B ~ a)
-               \longrightarrow C, \alpha, M \mid v\)}
+    M & \in \mathcal{M} \subseteq 2^{\mathcal{C}} \rightarrow \mathit{mem} \\
+    \mathit{heap\_alloc} & \in \mathcal{M} \rightarrow 2^{\mathcal{C}} \rightarrow
+    \mathit{int} \rightharpoonup (\mathit{int} \times \mathcal{M}) \\
+    \mathit{heap\_free} & \in \mathcal{M} \rightarrow 2^{\mathcal{C}} \rightarrow
+    \mathit{int} \rightharpoonup \mathcal{M} \\
+    \mathit{stk\_alloc} & \in \mathcal{M} \rightarrow 2^{\mathcal{C}} \rightarrow
+    \mathit{int} \rightharpoonup (\mathit{int} \times \mathcal{M}) \\
+    \mathit{stk\_free} & \in \mathcal{M} \rightarrow 2^{\mathcal{C}}
+    \rightharpoonup \mathcal{M} \\
+    \end{aligned}\]
+  \end{minipage}
+  \begin{minipage}{0.55\textwidth}
+    \judgmenttwo{\(M ~ B = m\)}
+                {\(\mathit{read} ~ m ~ a = v\)}
+                {\(C,M,e \mid *(\mathit{Vptr} ~ B ~ a)
+                  \longrightarrow C,M,e \mid v\)}
 
-             \judgmenttwo{\(\mathit{write} ~ \alpha ~ B ~ (M ~ B) ~ a ~ v = m'\)}
-                {\(M' = M[B \mapsto m']\)}
-                {\(C,\alpha,M,e \mid *(\mathit{Vptr} ~ B ~ a) := v
-                  \longrightarrow C,\alpha,M',e \mid v\)}
+    \judgmentthree{\(M ~ B = m\)}
+                  {\(\mathit{write} ~ m ~ a ~ v = m'\)}
+                  {\(M' = M[B \mapsto m']\)}
+                  {\(C,M,e \mid *(\mathit{Vptr} ~ B ~ a) := v
+                    \longrightarrow C,M',e \mid v\)}
 
-    \judgment{\(\mathit{heap\_alloc} ~ \alpha ~ B ~ sz = (p, \alpha')\)}
-             {\(C,\alpha,M,e \mid \mathtt{malloc}_B(\mathit{Vint} ~ sz)
-               \longrightarrow C,\alpha',M,e \mid \mathit{Vptr} ~ B ~ p\)}
-    \judgment{}
-             {\(C,\alpha,M,e \mid \mathtt{(t*)} (\mathit{Vint} ~ i) \longrightarrow
-               C,\alpha,M,e \mid \mathit{Vptr} ~ \{C\} ~ \mathit{i}\)}
+    \judgment{\(\mathit{heap\_alloc} ~ M ~ B ~ sz = (p, M')\)}
+             {\(C,M,e \mid \mathtt{malloc}_B(\mathit{Vint} ~ sz)
+               \longrightarrow C,M',e \mid \mathit{Vptr} ~ B ~ p\)}
 
-  \caption{Memory With Explicit Sharing}
+  \end{minipage}
+
+  \caption{Selected Rules for Explicit Sharing}
   \label{fig:powerset}
 \end{figure}
 
