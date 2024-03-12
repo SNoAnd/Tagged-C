@@ -115,6 +115,11 @@ Module Type Allocator (P : Policy).
   
 End Allocator.
 
+(* The job of this allocator is emulate real(ish) memory for
+    diagnostic purposes (like fuzzing).
+  Differences from Allocator
+  - does not clear memory after free
+*)
 Module ConcreteAllocator (P : Policy) : Allocator P.
   Module Mem := Mem P.
   Import Mem.
@@ -201,18 +206,35 @@ Module ConcreteAllocator (P : Policy) : Allocator P.
         | None => None
         end
     end.
-  
+
+  (* NB bytes should not be cleared. lts can change *)
+  (* UNTESTED - AMN Questions:
+      - how are we supposed to figure out what the return type of load/store bytes is? 
+          I did it by looking at the type of where it was passed in other fns, but how would I do that if I couldn't cargocult?
+      - Should it be m, or m'? does m' preserve the memval?
+          If the memvals are preserved when m turns into m', this is ok
+          If not, then we have a problem.
+          I can't tell if it is or not
+      - relatedly, loadbytes doesn't give me a return type, which makes 227 more confusing: what do the  <-, ;; do?  *)
   Definition heapalloc (m: mem) (size: Z) (vt_head vt_body : val_tag) (lt: loc_tag) : PolicyResult (mem * Z * Z) :=
     let '(m,sp) := m in
     match find_free 100 m 1000 size vt_head lt with
     | Some (m', base) =>
-        m'' <- storebytes m' (base + header_size)
-                         (repeat (Byte Byte.zero vt_body) (Z.to_nat size))
-                         (repeat lt (Z.to_nat size));;
+          (* storebytes (m:mem) (ofs:Z) (bytes:list memval) (lts:list loc_tag)
+             loadbytes (m:mem) (ofs n:Z)*)
+        (* AMN Why does this line work? if i just invoke loadbytes i get a policyresult(listval), 
+            but if I do this magic dance, I get the memval ?*)
+        mvs <- loadbytes m' (base + header_size)  size;;
+        m'' <- storebytes 
+                         (*mem*)m' 
+                         (*ofs*)(base + header_size) 
+                         (*bytes*) mvs
+                         (*lts*)(repeat lt (Z.to_nat size));;
         ret ((m'',sp), base + header_size, base + header_size + size)
     | None => Fail "Failure in find_free" OtherFailure
     end.
 
+  (* NB bytes should unchanged; lts can change *)
   Definition heapfree (m: mem) (addr: Z) (rule : val_tag -> list loc_tag -> PolicyResult (control_tag*val_tag*val_tag*list loc_tag))
     : PolicyResult (control_tag * mem) :=
     let (m, sp) := m in
