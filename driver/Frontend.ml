@@ -233,3 +233,6 @@ module WithNull = FrontendP (NullPolicy.NullPolicy) (FLAllocator)
 module WithPVI = FrontendP (PVI.PVI) (FLAllocator)
 module WithDoubleFree = FrontendP (DoubleFree.DoubleFree) (ConcreteAllocator)
 module WithHeapProblem = FrontendP (HeapProblem.HeapProblem) (ConcreteAllocator)
+
+module DFxHP = Product.PolProduct (DoubleFree.DoubleFree) (HeapProblem.HeapProblem)
+module WithDFxHP = FrontendP (DFxHP) (ConcreteAllocator)
