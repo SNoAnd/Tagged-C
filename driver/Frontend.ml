@@ -229,10 +229,27 @@ module FrontendP =
 end
 
 (* Per Policies.md, add new policies in combination of module + desired allocator *)
+
+(* Single policies *)
 module WithNull = FrontendP (NullPolicy.NullPolicy) (FLAllocator)
 module WithPVI = FrontendP (PVI.PVI) (FLAllocator)
 module WithDoubleFree = FrontendP (DoubleFree.DoubleFree) (ConcreteAllocator)
 module WithHeapProblem = FrontendP (HeapProblem.HeapProblem) (ConcreteAllocator)
 
+(* Multiple Policies  
+  In general, combined policies should all use (or be known to function with) 
+    the chosen allocator. The product of policies will interact with only 1 allocator.
+    Nothing checks if you paired a policy with the wrong allocator.
+
+  Yes, hardcoded combos are considered poor practice in production code.
+    Howevever, it is unclear if OCaml will tolerate this easily, and the
+    engineering effort exceeds the expected contribution to the research. 
+
+    Perhaps an ugrad or masters student would like to help in the future? *)
 module DFxHP = Product.PolProduct (DoubleFree.DoubleFree) (HeapProblem.HeapProblem)
 module WithDFxHP = FrontendP (DFxHP) (ConcreteAllocator)
+
+(* PVI should be ok with the ConcreteAllocator here, but pairing a policy with
+   an allocator it's not neccessarily designed for isn't encouraged. *)
+module DFxPVI = Product.PolProduct (PVI.PVI) (DoubleFree.DoubleFree)
+module WithDFxPVI = FrontendP (DFxPVI) (ConcreteAllocator)
