@@ -140,6 +140,9 @@ End Allocator.
   (* APT: Another difference should be that double frees and maybe other errors should be possible.
      ALSO: the headers need to be protected by the policy! *)
 *)
+(*
+  @TODO label @loc_tag Heap, @loc_tag NotHeap , policy cant do it for you 
+*)
 Module ConcreteAllocator (P : Policy) : Allocator P.
   Module Mem := Mem P.
   Import Mem.
@@ -182,31 +185,29 @@ Module ConcreteAllocator (P : Policy) : Allocator P.
      If the header space is not inclueded, it makes size 0 regions problematic, as you cannot
      distinguish "free" from "in use". 
      BTW, it would be legal to just return a null pointer for a 0-length malloc request. *)
-  Definition get_header (m: Mem.mem) (base: Z) : PolicyResult (atom * list loc_tag) :=
-    match load_all Mint64 m base with
-    | Success res => ret res
-    | Fail failure => raise failure
-    end.
-
-  Definition parse_header (v: val) : PolicyResult (bool * Z) :=
-    match v with
-    | Vlong i =>
-        let live := (0 <? (Int64.signed i))%Z in (* -: free, +: live, 0: free, but no room! *)
+  (* Assumes no malloc/free size 0, which is legal *)
+  Definition check_header (m: Mem.mem) (base: Z) : option (bool * Z * val_tag) :=
+    match load Mint64 m base with
+    | Success (Vlong i, vt) =>
+        let live := (0 <=? (Int64.signed i))%Z in
         let sz := (Z.abs (Int64.signed i)) in
         ret (live, sz)
     | Vundef => raise (OtherFailure "Header is undefined")
     | _ => raise (OtherFailure "Header is not a long")
     end.
 
-  Definition update_header (m: Mem.mem) (base: Z) (live: bool) (sz: Z)
-             (vt: val_tag) (lts: list loc_tag) : PolicyResult Mem.mem :=
-    if sz <? 0 then raise (OtherFailure "Attempting to allocate negative size")
-    else
-      let rec :=
-        if live
-        then Vlong (Int64.repr sz)
-        else Vlong (Int64.neg (Int64.repr sz)) in
-      ret (superstore Mint64 m base (rec, vt) lts).
+  Definition update_header (m: Mem.mem) (base: Z) (live: bool) (sz: Z) (vt: val_tag) (lt: loc_tag)
+    : option Mem.mem :=
+    if sz <? 0 then None else
+    let rec :=
+      if live
+      then Vlong (Int64.repr sz)
+      else Vlong (Int64.neg (Int64.repr sz))
+    in
+    match store Mint64 m base (rec, vt) [lt;lt;lt;lt;lt;lt;lt;lt] with
+    | Success m'' => Some m''
+    | _ => None
+    end.
 
   Definition header_size := size_chunk Mint64.
   Definition block_align := align_chunk Mint64.
@@ -272,21 +273,72 @@ Module ConcreteAllocator (P : Policy) : Allocator P.
       - relatedly, loadbytes doesn't give me a return type, which makes 227 more confusing: what do the  <-, ;; do?  *)
   Definition heapalloc (m: mem) (size: Z) (vt_head : val_tag): PolicyResult (mem * Z * Z) :=
     let '(m,sp) := m in
-    '(m',base) <- find_free 100 m 1000 size vt_head;;
-    ret ((m',sp),base,base+size).
-  
-  Definition heapfree (l: Cabs.loc) (pct: control_tag) (m: mem) (addr: Z) (pt: val_tag) :
-    PolicyResult (Z * control_tag * mem) :=
+    match find_free 100 m 1000 size vt_head lt with
+    | Some (m', base) =>
+        m'' <- storebytes m' (base + header_size)
+                         (repeat (Byte Byte.zero vt_body) (Z.to_nat size))
+                         (repeat lt (Z.to_nat size));;
+        ret ((m'',sp), base + header_size, base + header_size + size)
+    | None => Fail "Failure in find_free" OtherFailure
+    end.
+    (*
+    let '(m,sp) := m in
+    match find_free 100 m 1000 size vt_head lt with
+    (* find free sets teh header, base points to the header *)
+    | Some (m', base) =>
+          (* storebytes (m:mem) (ofs:Z) (bytes:list memval) (lts:list loc_tag)
+             loadbytes (m:mem) (ofs n:Z)*)
+        (* policyresult is a monad *)
+        mvs <- loadbytes m' (base + header_size)  size;;
+        m'' <- storebytes 
+                         (*mem*)m' 
+                         (*ofs*)(base + header_size) 
+                         (*bytes*)mvs
+                         (*lts*)(repeat lt (Z.to_nat size));;
+        ret ((m'',sp), base + header_size, base + header_size + size)
+    | None => Fail "Failure in find_free" OtherFailure
+    end.
+  *)
+  (* NB bytes should remain unchanged; lts can change *)
+  (* the getting of the header val first..which might be dangerous
+      it might ask for all the tags, and fail in teh wrong spot, with
+      the wrong error. 
+  *)
+  Definition heapfree (m: mem) (addr: Z) (rule : val_tag -> list loc_tag -> PolicyResult (control_tag*val_tag*val_tag*list loc_tag))
+    : PolicyResult (control_tag * mem) :=
     let (m, sp) := m in
     (* APT: This is not safe: addr might not be a heap header at all!
        Need to do a tag check to make sure that it is, or else
-       iterate through the heap to locate a block at this addr. *)
-    '((v,vt),lts) <- get_header m (addr-header_size);;
-    '(pct',vt',lts') <- FreeT l pct pt vt lts;;
-    '(live,sz) <- parse_header v;;
-    m' <- update_header m (addr-header_size) false sz vt' lts';;
-    ret (sz,pct',(m',sp)).
-    
+       iterate through the heap to locate a block at this addr. 
+       Will get an OtherFailure 
+       
+       @TODO
+       replace bind with a match, catch the fail and then mod the message 
+        to make it clear that 
+
+        validating the tag on the header, part 2, figure out how to deal
+          a little cleaner
+        
+        also make these errors clearer 
+       *)
+    match check_header m (addr-header_size) with
+    | Some (live, sz, vt) =>
+        match loadbytes m addr sz, loadtags m addr sz with
+        | Success mvs, Success lts =>
+            '(PCT', vt1, vt2, lts') <- rule vt lts;;
+            match update_header m (addr-header_size) false sz vt1 DefLT with
+            | Some m' =>
+                match storebytes m addr mvs lts' with
+                | Success m'' => ret (PCT', (m'', sp))
+                | Fail failure => raise failure
+                end
+            | None => raise (OtherFailure "Free failing")
+            end
+        | Fail failure, _ | _, Fail failure => raise failure
+        end
+    | None => raise (OtherFailure "Free failing")
+    end.
+  
   Fixpoint globals (m : Mem.mem) (gs : list (ident*Z)) (next : Z) : (Mem.mem * PTree.t (Z*Z)) :=
     match gs with
     | [] => (m, PTree.empty (Z*Z))
