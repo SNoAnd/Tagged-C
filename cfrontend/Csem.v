@@ -279,13 +279,6 @@ Module Csem (P: Policy) (A: Allocator P).
                      (raise failure)
   .
 
-  (** ** Reduction semantics for expressions *)
-    
-  Section EXPR.
-
-    Variable e: env.
-    Variable l: Cabs.loc.
-
     Definition bind_prop_success_rel {A: Type}
                (P: PolicyResult A -> Prop)
                (a: Result A) (ps ps': pstate) : Prop :=
@@ -296,6 +289,14 @@ Module Csem (P: Policy) (A: Allocator P).
     Notation "P << PS1 >> A << PS2 >>" :=
       (bind_prop_success_rel P A PS1 PS2)
         (at level 62, right associativity, A pattern).
+
+  
+  (** ** Reduction semantics for expressions *)
+    
+  Section EXPR.
+
+    Variable e: env.
+    Variable l: Cabs.loc.
     
     (** The semantics of expressions follows the popular Wright-Felleisen style.
         It is a small-step semantics that reduces one redex at a time.
@@ -1366,10 +1367,10 @@ Inductive sstep: state -> trace -> state -> Prop :=
     external_call l ef ge vargs pct vft m t <<ps>> (Success (vres, pct', m')) <<ps'>> ->
     sstep (Callstate (External ef targs tres cc) l ps pct vft vargs k m)
           t (Returnstate (External ef targs tres cc) l ps' pct' vres k m')
-| step_external_function_fail0: forall l ef ps lg pct vft targs tres cc vargs k m t failure,
-    external_call l ef ge vargs ps pct vft m t <<ps>> (Fail failure) <<ps'>> ->
+| step_external_function_fail0: forall l ef ps pct vft targs tres cc vargs k m t failure ps',
+    external_call l ef ge vargs pct vft m t <<ps>> (Fail failure) <<ps'>> ->
     sstep (Callstate (External ef targs tres cc) l ps pct vft vargs k m)
-          t (Failstop failure lg)
+          t (Failstop failure (snd ps'))
 
 | step_returnstate: forall l v vt vt' f fd ps ps' pct oldloc oldpct pct' e C ty k te m,
     RetT l pct oldpct vt ps = (Success (pct', vt'), ps') ->
