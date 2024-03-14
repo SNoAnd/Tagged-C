@@ -25,7 +25,7 @@ Require Csyntax.
 Require Parser.
 Require Initializers.
 (* Per Policies.md, add new policies here*)
-Require Import Tags NullPolicy PVI DoubleFree HeapProblem Allocator Initializers Csem.
+Require Import Tags NullPolicy PVI DoubleFree Allocator Initializers Csem.
 
 Module Extracted (P : Policy) (A : Allocator P).
 
@@ -115,7 +115,7 @@ End Extracted.
   
   (* Per Policies.md, add new policies here *)
   Separate Extraction
-           Tags NullPolicy PVI DoubleFree HeapProblem
+           Tags NullPolicy PVI DoubleFree
            Allocator
            Extracted
            Ctypes.merge_attributes Ctypes.remove_attributes
