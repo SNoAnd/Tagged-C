@@ -8,26 +8,11 @@ Require Import Tags.
 Require Import List. Import ListNotations.
 Require Import Cstrategy Ctypes.
 Require Import ExtLib.Structures.Monads. Import MonadNotation.
+Require Import ExtLib.Data.Monads.OptionMonad.
 
 Local Open Scope string_scope.
 Local Open Scope list_scope.
 Local Open Scope Z_scope.
-
-Notation "'do' X <- A ; B" := (match A with Some X => B | None => None end)
-  (at level 200, X name, A at level 100, B at level 200)
-  : option_monad_scope.
-
-Notation "'do' X , Y <- A ; B" := (match A with Some (X, Y) => B | None => None end)
-  (at level 200, X name, Y name, A at level 100, B at level 200)
-  : option_monad_scope.
-
-Notation "'do' X , Y , Z <- A ; B" := (match A with Some (X, Y, Z) => B | None => None end)
-  (at level 200, X name, Y name, Z name, A at level 100, B at level 200)
-  : option_monad_scope.
-
-Notation "'do' X , Y , Z , W <- A ; B" := (match A with Some (X, Y, Z, W) => B | None => None end)
-  (at level 200, X name, Y name, Z name, W name, A at level 100, B at level 200)
-  : option_monad_scope.
 
 Notation " 'check' A ; B" := (if A then B else None)
   (at level 200, A at level 100, B at level 200)
@@ -99,7 +84,7 @@ Module InterpreterEvents (P:Policy) (A:Allocator P).
           end*)
       | Vfptr b =>
           check (typ_eq t AST.Tptr);
-          do id <- invert_symbol_block ge b;
+          id <- invert_symbol_block ge b;;
           match find_symbol ge id with
           | Some (SymIFun _ b pt) =>
               check (public_symbol ge id);
@@ -118,8 +103,8 @@ Module InterpreterEvents (P:Policy) (A:Allocator P).
       match vl, tl with
       | nil, nil => Some nil
       | v1::vl, t1::tl =>
-          do ev1 <- eventval_of_atom v1 t1;
-          do evl <- list_eventval_of_atom vl tl;
+          ev1 <- eventval_of_atom v1 t1;;
+          evl <- list_eventval_of_atom vl tl;;
           Some (ev1 :: evl)
       | _, _ => None
       end.
@@ -173,6 +158,7 @@ Module InterpreterEvents (P:Policy) (A:Allocator P).
       | [ |- None = Some _ -> _ ] => let X := fresh "X" in intro X; discriminate
       | [ |- Some _ = None -> _ ] => let X := fresh "X" in intro X; discriminate
       | [ |- Some _ = Some _ -> _ ] => let X := fresh "X" in intro X; inv X
+      | [ |- _ <- ?x ;; _ = _ -> _ ] => destruct x eqn:?; simpl; mydestr
       | [ |- match ?x with Some _ => _ | None => _ end = _ -> _ ] => destruct x eqn:?; mydestr
       | [ |- match ?x with true => _ | false => _ end = _ -> _ ] => destruct x eqn:?; mydestr
       | [ |- match ?x with inl _ => _ | inr _ => _ end = _ -> _ ] => destruct x; mydestr
@@ -253,8 +239,8 @@ Module InterpreterEvents (P:Policy) (A:Allocator P).
                        end in
       match id_if_vol with
       | Some id =>
-          do res,w' <- nextworld_vload w chunk id ofs;
-          do vres,vt <- atom_of_eventval res (type_of_chunk chunk);
+          '(res,w') <- nextworld_vload w chunk id ofs;;
+          '(vres,vt) <- atom_of_eventval res (type_of_chunk chunk);;
           Some (w', Event_vload chunk id ofs res :: nil,
                  (fun s => (Success (Val.load_result chunk vres, vt), s)))
       | None =>
@@ -274,8 +260,8 @@ Module InterpreterEvents (P:Policy) (A:Allocator P).
                        end in
       match id_if_vol with
       | Some id =>
-          do ev <- eventval_of_atom (atom_map (Val.load_result chunk) v) (type_of_chunk chunk);
-          do w' <- nextworld_vstore w chunk id ofs ev;
+          ev <- eventval_of_atom (atom_map (Val.load_result chunk) v) (type_of_chunk chunk);;
+          w' <- nextworld_vstore w chunk id ofs ev;;
           Some(w', Event_vstore chunk id ofs ev :: nil,
                 (fun s => (Success m, s)))
       | None =>
@@ -309,7 +295,7 @@ Module InterpreterEvents (P:Policy) (A:Allocator P).
       - rewrite H1. rewrite H2.
         inv H0. inv H6. rewrite H10.
         eapply atom_of_eventval_complete in H3.
-        rewrite H3. inv H8. auto.
+        simpl. rewrite H3. inv H8. auto.
       - destruct (invert_symbol_ofs ge ofs) as [[id gv] |].
         + inv H0.
           specialize H1 with id gv.
@@ -341,7 +327,7 @@ Module InterpreterEvents (P:Policy) (A:Allocator P).
       unfold do_volatile_store. intros. inv H.
       - rewrite H3. rewrite H7.
         unfold atom_map. eapply eventval_of_atom_complete in H11. rewrite H11.
-        inv H0. inv H6. inv H4. rewrite H8. auto.
+        inv H0. inv H6. inv H4. simpl. rewrite H8. auto.
       - destruct (invert_symbol_ofs ge ofs) as [[id gv] |].
         + inv H0.
           specialize H6 with id gv.

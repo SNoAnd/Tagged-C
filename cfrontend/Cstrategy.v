@@ -350,7 +350,7 @@ Definition expr_kind (a: expr) : kind :=
   end.
 
 Lemma lred_kind:
-  forall l e a te m ps ps' PCT a' te' m', lred ce l e a te m PCT a' te' m' ps ps'
+  forall l e a te m ps ps' PCT a' te' m', lred ge ce l e a te m PCT a' te' m' ps ps'
                                           -> expr_kind a = LV.
 Proof.
   induction 1; auto.

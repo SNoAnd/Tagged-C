@@ -7,6 +7,7 @@ Require Import Ctypes.
 Require Import Cabs.
 Require Import String.
 Require Import Tags.
+Require Import ExtLib.Structures.Monads. Import MonadNotation.
 
 Require Import List. Import ListNotations. (* list notations is a module inside list *)
 
@@ -81,8 +82,9 @@ Definition print_lt (t : loc_tag) : string :=
 
 Definition policy_state : Type := unit.
 Definition init_state : policy_state := tt.
-Definition log (pstate: policy_state) (msg: string) := tt.
-Definition dump (pstate: policy_state) : list string := [].
+
+Definition PolicyResult := PolicyResult policy_state.
+Definition log := log policy_state.
 
  (* 
     MallocT sets the tag to Alloc, and clears free color if one was present becausee
@@ -101,9 +103,9 @@ Definition dump (pstate: policy_state) : list string := [].
            Free in this policy does not look at these at all, so it does not really
            matter was value goes here. 
   *)
- Definition MallocT (l:loc) (pstate: policy_state) (pct: control_tag) (fptrt st : val_tag) :
+ Definition MallocT (l:loc) (pct: control_tag) (fptrt st : val_tag) :
    PolicyResult (control_tag * val_tag * val_tag * val_tag * loc_tag) :=
-   Success (pct, Alloc, N, Alloc, tt).
+   ret (pct, Alloc, N, Alloc, tt).
   
   (* 
   FreeT colors the header tag with the current Freecolor from the pct. If there is already 
@@ -136,15 +138,15 @@ Definition dump (pstate: policy_state) : list string := [].
     - tag on the pointer passed to free
     - tag on the "header" 
  *)
- Definition FreeT (l:loc) (pstate: policy_state) (pct: control_tag) (fptrt pt vht : val_tag) (lts : list loc_tag) :
+ Definition FreeT (l:loc) (pct: control_tag) (fptrt pt vht : val_tag) (lts : list loc_tag) :
    PolicyResult (control_tag * val_tag * val_tag * list loc_tag) :=
   match vht with 
-    | Alloc => Success(pct, N, (FreeColor l), lts) (* was allocated then freed, assign free color from pct *)
+    | Alloc => ret(pct, N, (FreeColor l), lts) (* was allocated then freed, assign free color from pct *)
     | N (* trying to free unallocated memory at this location *)
-      => Fail (inj_loc "DoubleFree||FreeT detects free of unallocated memory| " l)
-                    PolicyFailure
+      => raise (PolicyFailure (inj_loc "DoubleFree||FreeT detects free of unallocated memory| " l))
+                    
     | FreeColor c (* Freecolor means this was already freed and never reallocated *)
-        => Fail  "DoubleFree||FreeT detects two frees| "  PolicyFailure
+        => raise (PolicyFailure "DoubleFree||FreeT detects two frees| ")
   end.
  
   (* These are required, but cannot pass through because they don't get tags to start with.
@@ -152,12 +154,12 @@ Definition dump (pstate: policy_state) : list string := [].
  (* Required for policy interface. Not relevant to this particular policy, pass values through *)
  
  (* Constants are never pointers to malloced memory. *)
- Definition ConstT (l:loc) (pstate: policy_state) (pct : control_tag) :
-   PolicyResult val_tag := Success N.
+ Definition ConstT (l:loc) (pct : control_tag) :
+   PolicyResult val_tag := ret N.
 
  (* NB this is for stack allocated variables. Not relevant to dynamic memory *)
- Definition DeallocT (l:loc) (ce : composite_env) (pstate: policy_state) (pct : control_tag) (ty : type) :
-    PolicyResult (control_tag * val_tag * loc_tag) := Success (pct, N, tt).
+ Definition DeallocT (l:loc) (ce : composite_env) (pct : control_tag) (ty : type) :
+    PolicyResult (control_tag * val_tag * loc_tag) := ret (pct, N, tt).
 
  Definition GlobalT (ce : composite_env) (id : ident) (ty : type) :
    val_tag * val_tag * loc_tag := (N, N, tt).
@@ -166,31 +168,31 @@ Definition dump (pstate: policy_state) : list string := [].
  Definition FunT (ce: composite_env) (id : ident) (ty : type) : val_tag := N.
 
  (* Required for policy interface. Not relevant to this particular policy, pass values through *)
- Definition LocalT (l:loc) (ce : composite_env) (pstate: policy_state) (pct : control_tag) (ty : type) :
+ Definition LocalT (l:loc) (ce : composite_env) (pct : control_tag) (ty : type) :
    PolicyResult (control_tag * val_tag * (list loc_tag))%type :=
-   Success (tt, N, []).
+   ret (tt, N, []).
 
- Definition ExtCallT (l:loc) (pstate: policy_state) (fn : string) (pct : control_tag) (args : list val_tag)
+ Definition ExtCallT (l:loc) (fn : string) (pct : control_tag) (args : list val_tag)
    : PolicyResult (control_tag*val_tag) :=
-   Success (pct,N).
+   ret (pct,N).
  
    (* Passthrough rules *)
-  Definition CallT := Passthrough.CallT policy_state val_tag control_tag.  
-  Definition ArgT := Passthrough.ArgT policy_state val_tag control_tag.
-  Definition RetT := Passthrough.RetT policy_state val_tag control_tag.
-  Definition AccessT := Passthrough.AccessT policy_state val_tag control_tag.
-  Definition AssignT := Passthrough.AssignT policy_state val_tag control_tag.
-  Definition LoadT := Passthrough.LoadT policy_state val_tag control_tag loc_tag.
-  Definition StoreT := Passthrough.StoreT policy_state val_tag control_tag loc_tag.
-  Definition UnopT := Passthrough.UnopT policy_state val_tag control_tag.
-  Definition BinopT := Passthrough.BinopT policy_state val_tag control_tag.
-  Definition SplitT := Passthrough.SplitT policy_state val_tag control_tag.
-  Definition LabelT := Passthrough.LabelT policy_state control_tag.
+  Definition CallT      := Passthrough.CallT policy_state val_tag control_tag.  
+  Definition ArgT       := Passthrough.ArgT policy_state val_tag control_tag.
+  Definition RetT       := Passthrough.RetT policy_state val_tag control_tag.
+  Definition AccessT    := Passthrough.AccessT policy_state val_tag control_tag.
+  Definition AssignT    := Passthrough.AssignT policy_state val_tag control_tag.
+  Definition LoadT      := Passthrough.LoadT policy_state val_tag control_tag loc_tag.
+  Definition StoreT     := Passthrough.StoreT policy_state val_tag control_tag loc_tag.
+  Definition UnopT      := Passthrough.UnopT policy_state val_tag control_tag.
+  Definition BinopT     := Passthrough.BinopT policy_state val_tag control_tag.
+  Definition SplitT     := Passthrough.SplitT policy_state val_tag control_tag.
+  Definition LabelT     := Passthrough.LabelT policy_state control_tag.
   Definition ExprSplitT := Passthrough.ExprSplitT policy_state val_tag control_tag.
-  Definition ExprJoinT := Passthrough.ExprJoinT policy_state val_tag control_tag.
-  Definition FieldT := Passthrough.FieldT policy_state val_tag control_tag.
-  Definition PICastT := Passthrough.PICastT policy_state val_tag control_tag loc_tag.
-  Definition IPCastT := Passthrough.IPCastT policy_state val_tag control_tag loc_tag.
-  Definition PPCastT := Passthrough.PPCastT policy_state val_tag control_tag loc_tag.
-  Definition IICastT := Passthrough.IICastT policy_state val_tag control_tag.
+  Definition ExprJoinT  := Passthrough.ExprJoinT policy_state val_tag control_tag.
+  Definition FieldT     := Passthrough.FieldT policy_state val_tag control_tag.
+  Definition PICastT    := Passthrough.PICastT policy_state val_tag control_tag loc_tag.
+  Definition IPCastT    := Passthrough.IPCastT policy_state val_tag control_tag loc_tag.
+  Definition PPCastT    := Passthrough.PPCastT policy_state val_tag control_tag loc_tag.
+  Definition IICastT    := Passthrough.IICastT policy_state val_tag control_tag.
 End DoubleFree.
