@@ -226,22 +226,22 @@ Module Mem (P:Policy).
       [b] and offset [ofs].  It returns the value of the memory chunk
       at that address.  [None] is returned if the accessed bytes
       are not readable. *)
-  Definition load (chunk: memory_chunk) (m: mem) (ofs: Z): PolicyResult atom :=
+  Definition load (chunk: memory_chunk) (m: mem) (ofs: Z): Result atom :=
     if aligned_access_dec chunk ofs then
       if allowed_access_dec m chunk ofs
       then Success (decode_val chunk (map (fun x => fst x) (getN (size_chunk_nat chunk) ofs
                                                                        (m.(mem_contents)))))
-      else Fail "" (PrivateLoad ofs)
-    else Fail "" (MisalignedLoad (align_chunk chunk) ofs).
+      else Fail (PrivateLoad ofs)
+    else Fail (MisalignedLoad (align_chunk chunk) ofs).
 
-  Definition load_ltags (chunk: memory_chunk) (m: mem) (ofs: Z): PolicyResult (list loc_tag) :=
+  Definition load_ltags (chunk: memory_chunk) (m: mem) (ofs: Z): Result (list loc_tag) :=
     if aligned_access_dec chunk ofs then
       if allowed_access_dec m chunk ofs
       then Success (map (fun x => snd x) (getN (size_chunk_nat chunk) ofs (m.(mem_contents))))
-      else Fail "" (PrivateLoad ofs)
-    else Fail "" (MisalignedLoad (align_chunk chunk) ofs).
+      else Fail (PrivateLoad ofs)
+    else Fail (MisalignedLoad (align_chunk chunk) ofs).
 
-  Definition load_all (chunk: memory_chunk) (m: mem) (ofs: Z): PolicyResult (atom * list loc_tag) :=
+  Definition load_all (chunk: memory_chunk) (m: mem) (ofs: Z): Result (atom * list loc_tag) :=
     if aligned_access_dec chunk ofs then
       if allowed_access_dec m chunk ofs
       then Success (decode_val chunk
@@ -249,8 +249,8 @@ Module Mem (P:Policy).
                                           (getN (size_chunk_nat chunk)
                                                 ofs (m.(mem_contents)))),
                            map (fun x => snd x) (getN (size_chunk_nat chunk) ofs (m.(mem_contents))))
-      else Fail "" (PrivateLoad ofs)
-    else Fail "" (MisalignedLoad (align_chunk chunk) ofs).
+      else Fail (PrivateLoad ofs)
+    else Fail (MisalignedLoad (align_chunk chunk) ofs).
 
   Lemma load_all_compose :
     forall chunk m ofs a lts,
@@ -265,9 +265,9 @@ Module Mem (P:Policy).
   Qed.
 
   Lemma load_all_fail :
-    forall chunk m ofs msg failure,
-      load_all chunk m ofs = Fail msg failure <->
-        load chunk m ofs = Fail msg failure /\ load_ltags chunk m ofs = Fail msg failure.
+    forall chunk m ofs failure,
+      load_all chunk m ofs = Fail failure <->
+        load chunk m ofs = Fail failure /\ load_ltags chunk m ofs = Fail failure.
   Proof.
     intros until failure.
     unfold load_all; unfold load; unfold load_ltags.
@@ -280,15 +280,15 @@ Module Mem (P:Policy).
       location [(b, ofs)].  Returns [None] if the accessed locations are
       not readable. *)
 
-  Definition loadbytes (m: mem) (ofs n: Z): PolicyResult (list memval) :=
+  Definition loadbytes (m: mem) (ofs n: Z): Result (list memval) :=
     if range_perm_neg_dec m ofs (ofs + n) Dead
     then Success (map (fun x => fst x) (getN (Z.to_nat n) ofs (m.(mem_contents))))
-    else Fail "" (PrivateLoad ofs).
+    else Fail (PrivateLoad ofs).
 
-  Definition loadtags (m: mem) (ofs n: Z) : PolicyResult (list loc_tag) :=
+  Definition loadtags (m: mem) (ofs n: Z) : Result (list loc_tag) :=
     if range_perm_neg_dec m ofs (ofs + n) Dead
     then Success (map (fun x => snd x) (getN (Z.to_nat n) ofs (m.(mem_contents))))
-    else Fail "" (PrivateLoad ofs).
+    else Fail (PrivateLoad ofs).
 
   (** Memory stores. *)
 
@@ -379,34 +379,34 @@ Module Mem (P:Policy).
     end.
   
   Definition store (chunk: memory_chunk) (m: mem) (ofs: Z) (a:atom) (lts:list loc_tag)
-    : PolicyResult mem :=
+    : Result mem :=
     if aligned_access_dec chunk ofs then
       if allowed_access_dec m chunk ofs then
         Success (mkmem (setN (merge_vals_tags (encode_val chunk a) lts) ofs (m.(mem_contents)))
                              m.(mem_access) m.(live))
-      else Fail "" (PrivateStore ofs)
-    else Fail "" (MisalignedStore (align_chunk chunk) ofs).
+      else Fail (PrivateStore ofs)
+    else Fail (MisalignedStore (align_chunk chunk) ofs).
 
   Definition store_atom (chunk: memory_chunk) (m: mem) (ofs: Z) (a:atom)
-    : PolicyResult mem :=
+    : Result mem :=
     if aligned_access_dec chunk ofs then
       if allowed_access_dec m chunk ofs then
         let lts := map snd (getN (Z.to_nat (size_chunk chunk)) ofs (m.(mem_contents))) in
         Success (mkmem (setN (merge_vals_tags (encode_val chunk a) lts) ofs (m.(mem_contents)))
                              m.(mem_access) m.(live))
-      else Fail "" (PrivateStore ofs)
-    else Fail "" (MisalignedStore (align_chunk chunk) ofs).
+      else Fail (PrivateStore ofs)
+    else Fail (MisalignedStore (align_chunk chunk) ofs).
   
   (** [storebytes m ofs bytes] stores the given list of bytes [bytes]
       starting at location [(b, ofs)].  Returns updated memory state
       or [None] if the accessed locations are not writable. *)
   Program Definition storebytes (m: mem) (ofs: Z) (bytes: list memval) (lts:list loc_tag)
-    : PolicyResult mem :=
+    : Result mem :=
     if range_perm_neg_dec m ofs (ofs + Z.of_nat (length bytes)) Dead then
       Success (mkmem
                        (setN (merge_vals_tags bytes lts) ofs (m.(mem_contents)))
                        m.(mem_access) m.(live))
-    else Fail "" (PrivateStore ofs).
+    else Fail (PrivateStore ofs).
   
   (** * Properties of the memory operations *)
 

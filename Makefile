@@ -117,8 +117,6 @@ CFRONTEND=Ctypes.v Cop.v Csyntax.v Csem.v Ctyping.v Cstrategy.v Cexec.v \
 # NB Product.v is the (Cartisian) product of multiple policies
 POLICIES=NullPolicy.v PVI.v DoubleFree.v HeapProblem.v Product.v
 
-# Parserr
-
 PARSER=Cabs.v Parser.v
 
 # MenhirLib

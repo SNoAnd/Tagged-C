@@ -27,6 +27,7 @@ Require Import Tags.
 Require Import Determinism.
 Require Import Values.
 Require Archi.
+Require Import ExtLib.Structures.Monads. Import MonadNotation.
 
 Module Cop (P:Policy) (A:Allocator P).
   Module TLib := TagLib P.
@@ -1046,95 +1047,41 @@ Definition bitfield_normalize (sz: intsize) (sg: signedness) (width: Z) (n: int)
   then Int.zero_ext width n
   else Int.sign_ext width n.
 
+Definition do_load_bitfield (sz: intsize) (sg: signedness) (pos width addr: Z) (m:mem)
+  :=
+  '((v, vt), lts) <- load_all (chunk_for_carrier sz) m addr;;
+  match v with
+  | Vint c => ret ((Vint (bitfield_extract sz sg pos width c), vt), lts)
+  | _ => ret ((Vundef, vt), lts)
+  end.
+
 Inductive load_bitfield: type -> intsize -> signedness -> Z -> Z -> mem -> Z ->
                          PolicyResult (atom * list loc_tag) -> Prop :=
-  | load_bitfield_intro: forall sz sg1 attr sg pos width m addr c vt lts,
-      0 <= pos -> 0 < width <= bitsize_intsize sz -> pos + width <= bitsize_carrier sz ->
-      sg1 = (if zlt width (bitsize_intsize sz) then Signed else sg) ->
-      load_all (chunk_for_carrier sz) m addr = Success (Vint c, vt, lts) ->
-      load_bitfield (Tint sz sg1 attr) sz sg pos width m addr
-                    (Success ((Vint (bitfield_extract sz sg pos width c), vt), lts))
-  | load_bitfield_fail: forall sz sg1 attr sg pos width m addr msg failure,
-      0 <= pos -> 0 < width <= bitsize_intsize sz -> pos + width <= bitsize_carrier sz ->
-      sg1 = (if zlt width (bitsize_intsize sz) then Signed else sg) ->
-      load_all (chunk_for_carrier sz) m addr = Fail msg failure ->
-      load_bitfield (Tint sz sg1 attr) sz sg pos width m addr
-                    (Fail msg failure).
+| load_bitfield_intro: forall sz sg1 attr sg pos width m addr,
+    0 <= pos -> 0 < width <= bitsize_intsize sz -> pos + width <= bitsize_carrier sz ->
+    sg1 = (if zlt width (bitsize_intsize sz) then Signed else sg) ->
+    load_bitfield (Tint sz sg1 attr) sz sg pos width m addr
+                  (do_load_bitfield sz sg pos width addr m).
 
-
+Definition do_store_bitfield (sz: intsize) (sg: signedness)
+           (pos width addr: Z) (m:mem) (n: int) (lts: list loc_tag) :=
+  '(v, vt) <- load (chunk_for_carrier sz) m addr;;
+  let v' := match v with
+            | Vint c =>
+                Vint (Int.bitfield_insert (first_bit sz pos width) width c n)
+            | _ => Vundef
+            end in
+  m' <- store (chunk_for_carrier sz) m addr (v', vt) lts;;
+  ret (m', (v',vt)).
+  
 Inductive store_bitfield: type -> intsize -> signedness -> Z -> Z -> mem ->
                           Z -> val_tag -> atom -> list loc_tag ->
                           PolicyResult (mem * atom) -> Prop :=
-  | store_bitfield_intro: forall sz sg1 attr sg pos width m addr pt c n vt ovt lts m',
+  | store_bitfield_intro: forall sz sg1 attr sg pos width m addr pt n vt lts,
       0 <= pos -> 0 < width <= bitsize_intsize sz -> pos + width <= bitsize_carrier sz ->
       sg1 = (if zlt width (bitsize_intsize sz) then Signed else sg) ->
-      load (chunk_for_carrier sz) m addr = Success (Vint c, ovt) ->
-      store (chunk_for_carrier sz) m addr
-                 (Vint (Int.bitfield_insert (first_bit sz pos width) width c n), vt) lts = Success m' ->
       store_bitfield (Tint sz sg1 attr) sz sg pos width m addr pt (Vint n,vt) lts
-                     (Success (m', (Vint (bitfield_normalize sz sg width n),vt)))
-  | store_bitfield_fail_0: forall sz sg1 attr sg pos width m addr pt n vt lts msg failure,
-      0 <= pos -> 0 < width <= bitsize_intsize sz -> pos + width <= bitsize_carrier sz ->
-      sg1 = (if zlt width (bitsize_intsize sz) then Signed else sg) ->
-      load (chunk_for_carrier sz) m addr = Fail msg failure ->
-      store_bitfield (Tint sz sg1 attr) sz sg pos width m addr pt (Vint n,vt) lts
-                     (Fail msg failure)
-  | store_bitfield_fail_1: forall sz sg1 attr sg pos width m addr pt c n vt ovt lts msg failure,
-      0 <= pos -> 0 < width <= bitsize_intsize sz -> pos + width <= bitsize_carrier sz ->
-      sg1 = (if zlt width (bitsize_intsize sz) then Signed else sg) ->
-      load (chunk_for_carrier sz) m addr = Success (Vint c, ovt) ->
-      store (chunk_for_carrier sz) m addr
-            (Vint (Int.bitfield_insert (first_bit sz pos width) width c n), vt)
-            lts = Fail msg failure ->
-      store_bitfield (Tint sz sg1 attr) sz sg pos width m addr pt (Vint n,vt) lts
-                     (Fail msg failure).
-
-(*Lemma sem_cast_inject:
-  forall f v1 ty1 ty m v tv1 tm,
-  sem_cast v1 ty1 ty m = Some v ->
-  Val.inject f v1 tv1 ->
-  Mem.inject f m tm ->
-  exists tv, sem_cast tv1 ty1 ty tm = Some tv /\ Val.inject f v tv.
-Proof.
-  intros. eapply sem_cast_inj; eauto.
-  intros; eapply Mem.weak_valid_pointer_inject_val; eauto.
-Qed.
-
-Lemma sem_unary_operation_inject:
-  forall f m m' op v1 ty1 v tv1,
-  sem_unary_operation op v1 ty1 m = Some v ->
-  Val.inject f v1 tv1 ->
-  Mem.inject f m m' ->
-  exists tv, sem_unary_operation op tv1 ty1 m' = Some tv /\ Val.inject f v tv.
-Proof.
-  intros. eapply sem_unary_operation_inj; eauto.
-  intros; eapply Mem.weak_valid_pointer_inject_val; eauto.
-Qed.
-
-Lemma sem_binary_operation_inject:
-  forall f m m' cenv op v1 ty1 v2 ty2 v tv1 tv2,
-  sem_binary_operation cenv op v1 ty1 v2 ty2 m = Some v ->
-  Val.inject f v1 tv1 -> Val.inject f v2 tv2 ->
-  Mem.inject f m m' ->
-  exists tv, sem_binary_operation cenv op tv1 ty1 tv2 ty2 m' = Some tv /\ Val.inject f v tv.
-Proof.
-  intros. eapply sem_binary_operation_inj; eauto.
-  intros; eapply Mem.valid_pointer_inject_val; eauto.
-  intros; eapply Mem.weak_valid_pointer_inject_val; eauto.
-  intros; eapply Mem.weak_valid_pointer_inject_no_overflow; eauto.
-  intros; eapply Mem.different_pointers_inject; eauto.
-Qed.
-
-Lemma bool_val_inject:
-  forall f m m' v ty b tv,
-  bool_val v ty m = Some b ->
-  Val.inject f v tv ->
-  Mem.inject f m m' ->
-  bool_val tv ty m' = Some b.
-Proof.
-  intros. eapply bool_val_inj; eauto.
-  intros; eapply Mem.weak_valid_pointer_inject_val; eauto.
-Qed.*)
+                     (do_store_bitfield sz sg pos width addr m n lts).
 
 (** * Some properties of operator semantics *)
 

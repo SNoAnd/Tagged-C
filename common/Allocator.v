@@ -13,6 +13,7 @@ Require Import Tags.
 Require Export Memdata.
 Require Import Memory.
 Require Import ExtLib.Structures.Monads. Import MonadNotation.
+Require Import ExtLib.Data.Monads.OptionMonad.
 
 Open Scope monad_scope.
 
@@ -24,22 +25,6 @@ Local Unset Case Analysis Schemes.
 
 Local Notation "a # b" := (PMap.get b a) (at level 1).
 
-Notation "'do' X <- A ; B" := (match A with Some X => B | None => None end)
-  (at level 200, X name, A at level 100, B at level 200)
-  : option_monad_scope.
-
-Notation "'do' X , Y <- A ; B" := (match A with Some (X, Y) => B | None => None end)
-  (at level 200, X name, Y name, A at level 100, B at level 200)
-  : option_monad_scope.
-
-Notation "'do' X , Y , Z <- A ; B" := (match A with Some (X, Y, Z) => B | None => None end)
-  (at level 200, X name, Y name, Z name, A at level 100, B at level 200)
-  : option_monad_scope.
-
-Notation "'do' X , Y , Z , W <- A ; B" := (match A with Some (X, Y, Z, W) => B | None => None end)
-  (at level 200, X name, Y name, Z name, W name, A at level 100, B at level 200)
-  : option_monad_scope.
-
 Notation "'check' A ; B" := (if A then B else None)
   (at level 200, A at level 100, B at level 200)
   : option_monad_scope.
@@ -50,6 +35,7 @@ Module Type Allocator (P : Policy).
   Module Mem := Mem P.
   Import Mem.
   Import MD.
+  Import TLib.
   Import P.
   
   Parameter t : Type.  
@@ -92,26 +78,55 @@ Module Type Allocator (P : Policy).
                              * mem).
 
   Parameter globalalloc : mem -> list (ident*Z) -> (mem * PTree.t (Z * Z)).
-  
-  Definition load (chunk:memory_chunk) (m:mem) (addr:Z) := Mem.load chunk (fst m) addr.
-  Definition load_ltags (chunk:memory_chunk) (m:mem) (addr:Z) := Mem.load_ltags chunk (fst m) addr.
-  Definition load_all (chunk:memory_chunk) (m:mem) (addr:Z) := Mem.load_all chunk (fst m) addr.
-  Definition loadbytes (m:mem) (ofs n:Z) := Mem.loadbytes (fst m) ofs n.
-  
-  Definition store (chunk:memory_chunk) (m:mem) (addr:Z) (v:Mem.TLib.atom) (lts:list loc_tag) :=
-    let '(m,st) := m in
-    m' <- Mem.store chunk m addr v lts;;
-    ret (m',st).
 
-  Definition store_atom (chunk:memory_chunk) (m:mem) (addr:Z) (v:Mem.TLib.atom) :=
-    let '(m,st) := m in
-    m' <- Mem.store_atom chunk m addr v;;
-    ret (m',st).
+  Definition load (chunk:memory_chunk) (m:mem) (addr:Z) : PolicyResult atom :=
+    match Mem.load chunk (fst m) addr with
+    | Success v => ret v
+    | Fail failure => raise failure
+    end.
   
-  Definition storebytes (m:mem) (ofs:Z) (bytes:list memval) (lts:list loc_tag) :=
+  Definition load_ltags (chunk:memory_chunk) (m:mem) (addr:Z) : PolicyResult (list loc_tag) :=
+    match Mem.load_ltags chunk (fst m) addr with
+    | Success v => ret v
+    | Fail failure => raise failure
+    end.
+  
+  Definition load_all (chunk:memory_chunk) (m:mem) (addr:Z) :
+    PolicyResult (atom * list loc_tag) :=
+    match Mem.load_all chunk (fst m) addr with
+    | Success v => ret v
+    | Fail failure => raise failure
+    end.
+
+  Definition loadbytes (m:mem) (ofs n:Z) : PolicyResult (list memval) :=
+    match Mem.loadbytes (fst m) ofs n with
+    | Success mvs => ret mvs
+    | Fail failure => raise failure
+    end.
+  
+  Definition store (chunk:memory_chunk) (m:mem) (addr:Z)
+             (v:Mem.TLib.atom) (lts:list loc_tag) : PolicyResult mem :=
     let '(m,st) := m in
-    m' <- Mem.storebytes m ofs bytes lts;;
-    ret (m',st).
+    match Mem.store chunk m addr v lts with
+    | Success m' => ret (m',st)
+    | Fail failure => raise failure
+    end.
+
+  Definition store_atom (chunk:memory_chunk) (m:mem) (addr:Z) (v:Mem.TLib.atom)
+    : PolicyResult mem :=
+    let '(m,st) := m in
+    match Mem.store_atom chunk m addr v with
+    | Success m' => ret (m',st)
+    | Fail failure => raise failure
+    end.
+  
+  Definition storebytes (m:mem) (ofs:Z) (bytes:list memval) (lts:list loc_tag)
+    : PolicyResult mem :=
+    let '(m,st) := m in
+    match Mem.storebytes m ofs bytes lts with
+    | Success m' => ret (m',st)
+    | Fail failure => raise failure
+    end.
   
 End Allocator.
 
@@ -124,6 +139,7 @@ Module ConcreteAllocator (P : Policy) : Allocator P.
   Module Mem := Mem P.
   Import Mem.
   Import MD.
+  Import TLib.
   Import P.
   
   Definition t : Type := (* stack pointer *) Z.
@@ -135,11 +151,11 @@ Module ConcreteAllocator (P : Policy) : Allocator P.
     let '(m,sp) := m in
     let sp' := sp - sz in
     let aligned_sp := floor sp' al in
-    Success ((m,aligned_sp),aligned_sp,sp).
+    ret ((m,aligned_sp),aligned_sp,sp).
   
   Definition stkfree (m: mem) (base bound: Z) : PolicyResult mem :=
     let '(m,sp) := m in
-    Success (m,base).
+    ret (m,base).
 
   Definition check_header (m: Mem.mem) (base: Z) : option (bool * Z * val_tag) :=
     match load Mint64 m base with
@@ -193,15 +209,15 @@ Module ConcreteAllocator (P : Policy) : Allocator P.
                 (* There is enough room to split *)
                 let new := base + header_size + padded_sz in
                 let new_sz := bs - (header_size + padded_sz) in
-                do m' <- update_header m base true padded_sz vt lt;
-                do m'' <- update_header m' new false new_sz InitT DefLT;
+                m' <- update_header m base true padded_sz vt lt;;
+                m'' <- update_header m' new false new_sz InitT DefLT;;
                 (* open question: how do we (re)tag new, free headers? *) 
                 Some (m'',base)
               else
                 (* [base ][========|==][=][next] *)
                 (* [hd_sz][   sz   |/8][ ][next] *)
                 (* There is exactly enough room (or not enough extra to split) *)                
-                do m' <- update_header m base true bs vt lt;
+                m' <- update_header m base true bs vt lt;;
                 Some (m',base)
         | None => None
         end
@@ -224,14 +240,22 @@ Module ConcreteAllocator (P : Policy) : Allocator P.
              loadbytes (m:mem) (ofs n:Z)*)
         (* AMN Why does this line work? if i just invoke loadbytes i get a policyresult(listval), 
             but if I do this magic dance, I get the memval ?*)
-        mvs <- loadbytes m' (base + header_size)  size;;
-        m'' <- storebytes 
-                         (*mem*)m' 
-                         (*ofs*)(base + header_size) 
-                         (*bytes*) mvs
-                         (*lts*)(repeat lt (Z.to_nat size));;
-        ret ((m'',sp), base + header_size, base + header_size + size)
-    | None => Fail "Failure in find_free" OtherFailure
+	match loadbytes m' (base + header_size)  size with
+        | Success mvs =>
+	     match storebytes 	
+                              (*mem*)m' 
+                              (*ofs*)(base + header_size) 
+                              (*bytes*) mvs
+                              (*lts*)(repeat lt (Z.to_nat size)) with
+	     | Success m'' =>
+                 (fun ps => (Success ((m'',sp), base + header_size, base + header_size + size), ps))
+	     | Fail failure =>
+	         (fun ps => (Fail failure, ps))
+             end
+	| Fail failure =>
+	    (fun ps => (Fail failure, ps))
+	end
+    | None => (fun ps => (Fail (OtherFailure "Failure in find_free"), ps))
     end.
 
   (* NB bytes should unchanged; lts can change *)
@@ -240,16 +264,20 @@ Module ConcreteAllocator (P : Policy) : Allocator P.
     let (m, sp) := m in
     match check_header m (addr-header_size) with
     | Some (live, sz, vt) =>
-        mvs <- loadbytes m addr sz;;
-        lts <- loadtags m addr sz;;
-        '(PCT', vt1, vt2, lts') <- rule vt lts;;
-        match update_header m (addr-header_size) false sz vt2 DefLT with
-        | Some m' =>
-            m'' <- storebytes m addr mvs lts';;
-            ret (PCT', (m'', sp))
-        | None => Fail "Free failing" OtherFailure
+        match loadbytes m addr sz, loadtags m addr sz with
+        | Success mvs, Success lts =>
+            '(PCT', vt1, vt2, lts') <- rule vt lts;;
+            match update_header m (addr-header_size) false sz vt2 DefLT with
+            | Some m' =>
+                match storebytes m addr mvs lts' with
+                | Success m'' => ret (PCT', (m'', sp))
+                | Fail failure => raise failure
+                end
+            | None => raise (OtherFailure "Free failing")
+            end
+        | Fail failure, _ | _, Fail failure => raise failure
         end
-    | None => Fail "Free failing" OtherFailure
+    | None => raise (OtherFailure "Free failing")
     end.
   
   Fixpoint globals (m : Mem.mem) (gs : list (ident*Z)) (next : Z) : (Mem.mem * PTree.t (Z*Z)) :=
@@ -265,26 +293,55 @@ Module ConcreteAllocator (P : Policy) : Allocator P.
     let (m, sp) := m in
     let (m', tree) := globals m gs 4 in
     ((m',sp), tree).
-  
-  Definition load (chunk:memory_chunk) (m:mem) (addr:Z) := Mem.load chunk (fst m) addr.
-  Definition load_ltags (chunk:memory_chunk) (m:mem) (addr:Z) := Mem.load_ltags chunk (fst m) addr.
-  Definition load_all (chunk:memory_chunk) (m:mem) (addr:Z) := Mem.load_all chunk (fst m) addr.
-  Definition loadbytes (m:mem) (ofs n:Z) := Mem.loadbytes (fst m) ofs n.
-  
-  Definition store (chunk:memory_chunk) (m:mem) (addr:Z) (v:Mem.TLib.atom) (lts:list loc_tag) :=
-    let '(m,sp) := m in
-    m' <- Mem.store chunk m addr v lts;;
-    ret (m',sp).
 
-  Definition store_atom (chunk:memory_chunk) (m:mem) (addr:Z) (v:Mem.TLib.atom) :=
-    let '(m,st) := m in
-    m' <- Mem.store_atom chunk m addr v;;
-    ret (m',st).
+  Definition load (chunk:memory_chunk) (m:mem) (addr:Z) : PolicyResult atom :=
+    match Mem.load chunk (fst m) addr with
+    | Success v => ret v
+    | Fail failure => raise failure
+    end.
   
-  Definition storebytes (m:mem) (ofs:Z) (bytes:list memval) (lts:list loc_tag) :=
+  Definition load_ltags (chunk:memory_chunk) (m:mem) (addr:Z) : PolicyResult (list loc_tag) :=
+    match Mem.load_ltags chunk (fst m) addr with
+    | Success v => ret v
+    | Fail failure => raise failure
+    end.
+  
+  Definition load_all (chunk:memory_chunk) (m:mem) (addr:Z) :
+    PolicyResult (atom * list loc_tag) :=
+    match Mem.load_all chunk (fst m) addr with
+    | Success v => ret v
+    | Fail failure => raise failure
+    end.
+
+  Definition loadbytes (m:mem) (ofs n:Z) : PolicyResult (list memval) :=
+    match Mem.loadbytes (fst m) ofs n with
+    | Success mvs => ret mvs
+    | Fail failure => raise failure
+    end.
+
+    Definition store (chunk:memory_chunk) (m:mem) (addr:Z)
+             (v:Mem.TLib.atom) (lts:list loc_tag) : PolicyResult mem :=
     let '(m,st) := m in
-    m' <- Mem.storebytes m ofs bytes lts;;
-    ret (m',st).
+    match Mem.store chunk m addr v lts with
+    | Success m' => ret (m',st)
+    | Fail failure => raise failure
+    end.
+
+  Definition store_atom (chunk:memory_chunk) (m:mem) (addr:Z) (v:Mem.TLib.atom)
+    : PolicyResult mem :=
+    let '(m,st) := m in
+    match Mem.store_atom chunk m addr v with
+    | Success m' => ret (m',st)
+    | Fail failure => raise failure
+    end.
+  
+  Definition storebytes (m:mem) (ofs:Z) (bytes:list memval) (lts:list loc_tag)
+    : PolicyResult mem :=
+    let '(m,st) := m in
+    match Mem.storebytes m ofs bytes lts with
+    | Success m' => ret (m',st)
+    | Fail failure => raise failure
+    end.
   
 End ConcreteAllocator.
   
@@ -292,6 +349,7 @@ Module FLAllocator (P : Policy) : Allocator P.
   Module Mem := Mem P.
   Import Mem.
   Import MD.
+  Import TLib.
   Import P.
   
   Definition freelist : Type := list (Z*Z*val_tag (* "header" val tag *)).
@@ -317,11 +375,11 @@ Module FLAllocator (P : Policy) : Allocator P.
     let '(m,(sp,heap)) := m in
     let sp' := sp - sz in
     let aligned_sp := floor sp' al in
-    Success ((m,(aligned_sp,heap)),aligned_sp,sp).
+    ret ((m,(aligned_sp,heap)),aligned_sp,sp).
 
   Definition stkfree (m: mem) (base bound: Z) : PolicyResult mem :=
     let '(m,(sp,heap)) := m in
-    Success (m,(base,heap)).
+    ret (m,(base,heap)).
   
   Fixpoint fl_alloc (fl : freelist) (size : Z) (vt : val_tag) : option (Z*Z*freelist) :=
     match fl with
@@ -341,28 +399,37 @@ Module FLAllocator (P : Policy) : Allocator P.
     let '(m, (sp,heap)) := m in
     match fl_alloc heap.(fl) size vt_head with
     | Some (base, bound, fl') =>
-        m' <- storebytes m base
+        match storebytes m base
                          (repeat (Byte Byte.zero vt_body) (Z.to_nat size))
-                         (repeat lt (Z.to_nat size));;
-        let regions' := ZMap.set base (Some (bound,vt_head)) heap.(regions) in
-        ret ((m', (sp, mkheap regions' fl')), base, bound)        
-    | None => Fail "Out of memory" OtherFailure
+                         (repeat lt (Z.to_nat size)) with
+        | Success m' =>
+            let regions' := ZMap.set base (Some (bound,vt_head)) heap.(regions) in
+            ret ((m', (sp, mkheap regions' fl')), base, bound)
+        | Fail failure => raise failure
+        end
+    | None => raise (OtherFailure "Out of memory")
     end.
 
-  Definition heapfree (m : mem) (base : Z) (rule : val_tag -> list loc_tag -> PolicyResult (control_tag*val_tag*val_tag*list loc_tag))
+  Definition heapfree (m : mem) (base : Z)
+             (rule : val_tag -> list loc_tag ->
+                     PolicyResult (control_tag*val_tag*val_tag*list loc_tag))
     : PolicyResult (control_tag*mem) :=
     let '(m, (sp,heap)) := m in
     match ZMap.get base heap.(regions) with
     | Some (bound,vt) =>
         let sz := bound - base in
-        mvs <- loadbytes m base sz;;
-        lts <- loadtags m base sz;;
-        '(pct',vt_head,vt_body,lts') <- rule vt lts;;
-        let heap' := (mkheap (ZMap.set base None heap.(regions))
-                             ((base,bound,vt_head)::heap.(fl))) in
-        m' <- storebytes m base mvs lts';;
-        ret (pct', (m', (sp,heap')))
-    | None => Fail "Bad free" OtherFailure
+        match loadbytes m base sz, loadtags m base sz with
+        | Success mvs, Success lts =>
+            '(pct',vt_head,vt_body,lts') <- rule vt lts;;
+            let heap' := (mkheap (ZMap.set base None heap.(regions))
+                                 ((base,bound,vt_head)::heap.(fl))) in
+            match storebytes m base mvs lts' with
+            | Success m' => ret (pct', (m', (sp,heap')))
+            | Fail failure => raise failure
+            end
+        | Fail failure, _ | _, Fail failure => raise failure
+        end
+    | None => raise (OtherFailure "Bad free")
    end.
 
   Fixpoint globals (m : Mem.mem) (gs : list (ident*Z)) (next : Z) : (Mem.mem * PTree.t (Z*Z)) :=
@@ -378,25 +445,54 @@ Module FLAllocator (P : Policy) : Allocator P.
     let (m, sp) := m in
     let (m', tree) := globals m gs 4 in
     ((m',sp), tree).
-  
-  Definition load (chunk:memory_chunk) (m:mem) (addr:Z) := Mem.load chunk (fst m) addr.
-  Definition load_ltags (chunk:memory_chunk) (m:mem) (addr:Z) := Mem.load_ltags chunk (fst m) addr.
-  Definition load_all (chunk:memory_chunk) (m:mem) (addr:Z) := Mem.load_all chunk (fst m) addr.
-  Definition loadbytes (m:mem) (ofs n:Z) := Mem.loadbytes (fst m) ofs n.
 
-  Definition store (chunk:memory_chunk) (m:mem) (addr:Z) (v:Mem.TLib.atom) (lts:list loc_tag) :=
-    let '(m,sp) := m in
-    m' <- Mem.store chunk m addr v lts;;
-    ret (m',sp).
-
-  Definition store_atom (chunk:memory_chunk) (m:mem) (addr:Z) (v:Mem.TLib.atom) :=
-    let '(m,st) := m in
-    m' <- Mem.store_atom chunk m addr v;;
-    ret (m',st).
+  Definition load (chunk:memory_chunk) (m:mem) (addr:Z) : PolicyResult atom :=
+    match Mem.load chunk (fst m) addr with
+    | Success v => ret v
+    | Fail failure => raise failure
+    end.
   
-  Definition storebytes (m:mem) (ofs:Z) (bytes:list MD.memval) (lts:list loc_tag) :=
+  Definition load_ltags (chunk:memory_chunk) (m:mem) (addr:Z) : PolicyResult (list loc_tag) :=
+    match Mem.load_ltags chunk (fst m) addr with
+    | Success v => ret v
+    | Fail failure => raise failure
+    end.
+  
+  Definition load_all (chunk:memory_chunk) (m:mem) (addr:Z) :
+    PolicyResult (atom * list loc_tag) :=
+    match Mem.load_all chunk (fst m) addr with
+    | Success v => ret v
+    | Fail failure => raise failure
+    end.
+
+  Definition loadbytes (m:mem) (ofs n:Z) : PolicyResult (list memval) :=
+    match Mem.loadbytes (fst m) ofs n with
+    | Success mvs => ret mvs
+    | Fail failure => raise failure
+    end.
+  
+  Definition store (chunk:memory_chunk) (m:mem) (addr:Z)
+             (v:Mem.TLib.atom) (lts:list loc_tag) : PolicyResult mem :=
     let '(m,st) := m in
-    m' <- Mem.storebytes m ofs bytes lts;;
-    ret (m',st).
+    match Mem.store chunk m addr v lts with
+    | Success m' => ret (m',st)
+    | Fail failure => raise failure
+    end.
+
+  Definition store_atom (chunk:memory_chunk) (m:mem) (addr:Z) (v:Mem.TLib.atom)
+    : PolicyResult mem :=
+    let '(m,st) := m in
+    match Mem.store_atom chunk m addr v with
+    | Success m' => ret (m',st)
+    | Fail failure => raise failure
+    end.
+  
+  Definition storebytes (m:mem) (ofs:Z) (bytes:list memval) (lts:list loc_tag)
+    : PolicyResult mem :=
+    let '(m,st) := m in
+    match Mem.storebytes m ofs bytes lts with
+    | Success m' => ret (m',st)
+    | Fail failure => raise failure
+    end.
   
 End FLAllocator.

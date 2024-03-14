@@ -157,7 +157,7 @@ Module Cstrategy (P: Policy) (A: Allocator P).
       | esr_rvalof_mem: forall ofs pt bf l ty v lts,
           eval_simple_lvalue l (Lmem ofs pt bf) ->
           ty = typeof l -> type_is_volatile ty = false ->
-          deref_loc ge ty m ofs pt bf E0 (Success (v, lts)) ->
+          deref_loc ge ty m ofs pt bf E0 (fun s => (Success (v, lts), s)) ->
           eval_simple_rvalue PCT (Evalof l ty) v
       | esr_rvalof_tmp: forall b l ty v,
           eval_simple_lvalue l (Ltmp b) ->
@@ -176,10 +176,10 @@ Module Cstrategy (P: Policy) (A: Allocator P).
           eval_simple_rvalue PCT r1 (v1,vt) ->
           sem_unary_operation op v1 (typeof r1) m = Some v ->
           eval_simple_rvalue PCT (Eunop op r1 ty) (v,vt)
-      | esr_binop: forall l pstate PCT' op r1 r2 ty v1 vt1 v2 vt2 v vt,
+      | esr_binop: forall l ps ps' PCT' op r1 r2 ty v1 vt1 v2 vt2 v vt,
           eval_simple_rvalue PCT r1 (v1,vt1) -> eval_simple_rvalue PCT r2 (v2,vt2) ->
           sem_binary_operation ce op v1 (typeof r1) v2 (typeof r2) m = Some v ->
-          BinopT l pstate op PCT vt1 vt2 = Success (PCT', vt) ->
+          BinopT l op PCT vt1 vt2 ps = (Success (PCT', vt), ps') ->
           eval_simple_rvalue PCT' (Ebinop op r1 r2 ty) (v,vt)
       | esr_cast: forall ty r1 v1 vt v,
           eval_simple_rvalue PCT r1 (v1,vt) ->
@@ -325,12 +325,12 @@ Proof.
 Qed.
 
 Lemma safe_imm_safe:
-  forall f l pstate PCT C a k e te m K,
-  safe (ExprState f l pstate PCT (C a) k e te m) ->
+  forall f l ps PCT C a k e te m K,
+  safe (ExprState f l ps PCT (C a) k e te m) ->
   context K RV C ->
-  imm_safe ge ce e l K a pstate PCT te m.
+  imm_safe ge ce e l K a PCT te m.
 Proof.
-  intros. destruct (classic (imm_safe ge ce e l K a pstate PCT te m)); auto.
+  intros. destruct (classic (imm_safe ge ce e l K a PCT te m)); auto.
   destruct (H Stuckstate).
   apply star_one. left. econstructor; eauto.
   destruct H2 as [r F]. inv F.
@@ -350,7 +350,7 @@ Definition expr_kind (a: expr) : kind :=
   end.
 
 Lemma lred_kind:
-  forall l e a te m pstate PCT a' te' m', lred ge ce l e a te m pstate PCT a' te' m'
+  forall l e a te m ps ps' PCT a' te' m', lred ge ce l e a te m PCT a' te' m' ps ps'
                                           -> expr_kind a = LV.
 Proof.
   induction 1; auto.
@@ -364,19 +364,19 @@ Proof.
 Qed.
 
 Lemma rred_kind:
-  forall l pstate PCT a m e t PCT' a' e' m', rred ge ce l pstate PCT a e m t PCT' a' e' m' -> expr_kind a = RV.
+  forall l ps ps' PCT a m e t PCT' a' e' m', rred ge ce l PCT a e m t PCT' a' e' m' ps ps' -> expr_kind a = RV.
 Proof.
   induction 1; auto.
 Qed.
 
 Lemma rfailred_kind:
-  forall l pstate PCT a m e tr msg failure, rfailred ge ce l pstate PCT a e m tr msg failure -> expr_kind a = RV.
+  forall l ps ps' PCT a m e tr failure, rfailred ge ce l PCT a e m tr failure ps ps' -> expr_kind a = RV.
 Proof.
   induction 1; auto.
 Qed.
 
 Lemma callred_kind:
-  forall l pstate pct ft a m pct' fd args ty, callred ge l pstate pct a m ft fd args ty pct' -> expr_kind a = RV.
+  forall l ps ps' pct ft a m pct' fd args ty, callred ge l pct a m ft fd args ty pct' ps ps' -> expr_kind a = RV.
 Proof.
   induction 1; auto.
 Qed.
@@ -388,7 +388,7 @@ Proof.
 Qed.
 
 Lemma imm_safe_kind:
-  forall e te k l a pstate PCT m, imm_safe ge ce e l k a pstate PCT te m -> expr_kind a = k.
+  forall e te k l a PCT m, imm_safe ge ce e l k a PCT te m -> expr_kind a = k.
 Proof.
   induction 1.
   auto.

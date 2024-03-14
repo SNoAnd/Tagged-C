@@ -28,14 +28,13 @@ Require Import Allocator.
 Require Import Globalenvs.
 Require Import Builtins.
 Require Import Tags.
+Require Import ExtLib.Structures.Monads. Import MonadNotation.
 
 Module Events (P:Policy) (A:Allocator P).
-  Module TLib := TagLib P.
-  Import TLib.
   Module Genv := Genv P A.
   Export Genv.
   Import A.
-  Import P.
+  Import TLib.
 
 (** * Events and traces *)
 
@@ -398,14 +397,14 @@ Fixpoint output_trace (t: trace) : Prop :=
 
 (** * Semantics of volatile memory accesses *)
 Inductive volatile_load (ge: Genv.t F V):
-                   memory_chunk -> mem -> int64 -> trace -> PolicyResult atom -> Prop :=
-  | volatile_load_vol: forall chunk m ofs id gv ev v vt,
+  memory_chunk -> mem -> int64 -> trace -> PolicyResult atom -> Prop :=
+| volatile_load_vol: forall chunk m ofs id gv ev v vt,
       invert_symbol_ofs ge ofs = Some (id, gv) ->
       gv.(gvar_volatile) = true ->
       eventval_match ge ev (type_of_chunk chunk) (v,vt) ->
       volatile_load ge chunk m ofs
                     (Event_vload chunk id ofs ev :: nil)
-                    (Success (Val.load_result chunk v,vt))
+                    (ret (Val.load_result chunk v,vt))
   | volatile_load_nonvol: forall chunk m ofs res,
       (forall id gv, invert_symbol_ofs ge ofs = Some (id, gv) ->
                      gv.(gvar_volatile) = false) ->
@@ -420,7 +419,7 @@ Inductive volatile_store (ge: Genv.t F V):
       eventval_match ge ev (type_of_chunk chunk) (Val.load_result chunk v, vt) ->
       volatile_store ge chunk m ofs (v,vt) lts
                      (Event_vstore chunk id ofs ev :: nil)
-                     (Success m)
+                     (ret m)
   | volatile_store_nonvol: forall chunk m ofs  v vt lts res,
       (forall id gv, invert_symbol_ofs ge ofs = Some (id, gv) ->
                      gv.(gvar_volatile) = false) ->
@@ -439,35 +438,43 @@ Inductive volatile_store (ge: Genv.t F V):
 *)
 
 Definition extcall_sem : Type :=
-  Genv.t F V -> list atom -> policy_state -> control_tag (* PC *) -> val_tag (* function ptr *) -> mem -> trace ->
+  Genv.t F V -> list atom -> control_tag (* PC *) -> val_tag (* function ptr *) -> mem -> trace ->
   (PolicyResult (atom * control_tag * mem)) -> Prop.
 
 (** ** Semantics of volatile loads *)
+Definition volatile_load_tags (l:Cabs.loc) (chunk: memory_chunk) (m:mem) (ofs:Z)
+           (pt:val_tag) (vt:val_tag) (pct:control_tag) : PolicyResult val_tag :=
+  lts <- load_ltags chunk m ofs;;
+  vt' <- LoadT l pct pt vt lts;;
+  AccessT l pct vt'.  
 
 Inductive volatile_load_sem (l:Cabs.loc) (chunk: memory_chunk) (ge: Genv.t F V):
-  list atom -> policy_state -> control_tag -> val_tag -> mem -> trace ->
+  list atom -> policy_state -> logs -> control_tag -> val_tag -> mem -> trace ->
   PolicyResult (atom * control_tag * mem) -> Prop :=
-| volatile_load_sem_intro: forall ofs pt m pstate pct fpt t v vt vt' vt'' lts,
-    load_ltags chunk m (Int64.unsigned ofs) = Success lts ->
-    LoadT l pstate pct pt vt lts = Success vt' ->
-    AccessT l pstate pct vt' = Success vt'' ->
-    volatile_load ge chunk m ofs t (Success (v,vt)) ->
-    volatile_load_sem l chunk ge ((Vlong ofs, pt) :: nil) pstate pct fpt m t
-                      (Success ((v,vt), pct, m)).
+| volatile_load_sem_intro:
+  forall ofs pt m pstate logs pct fpt t v vt vt',
+    volatile_load ge chunk m ofs t (ret (v,vt)) ->
+    volatile_load_tags l chunk m (Int64.unsigned ofs) pt vt pct = ret vt'->
+    volatile_load_sem l chunk ge ((Vlong ofs, pt) :: nil) pstate logs pct fpt m t
+                      (ret ((v,vt'), pct, m)).
 
 (** ** Semantics of volatile stores *)
+
+Definition volatile_store_tags (l:Cabs.loc) (chunk: memory_chunk) (m:mem) (ofs:Z)
+           (pt:val_tag) (vt:val_tag) (pct:control_tag) :
+  PolicyResult (control_tag*val_tag*list loc_tag) :=
+  '((_,vt0),lts) <- load_all chunk m ofs;;
+  '(pct',vt') <-  AssignT l pct vt0 vt;;
+  StoreT l pct' pt vt' lts.
 
 Inductive volatile_store_sem (l:Cabs.loc) (chunk: memory_chunk) (ge: Genv.t F V):
   list atom -> control_tag -> val_tag -> mem -> trace ->
   PolicyResult (atom * control_tag * mem) -> Prop :=
-  | volatile_store_sem_intro: forall ofs pt m1 pstate pct pct' pct'' fpt v0 vt0 v vt vt' vt'' lts lts' t m2,
-      load_all chunk m1 (Int64.unsigned ofs) = Success (v0,vt0,lts) -> 
-      AssignT l pstate pct vt0 vt = Success (pct', vt') ->
-      StoreT l pstate pct' pt vt' lts = Success (pct'',vt'',lts') ->
-      volatile_store ge chunk m1 ofs (v,vt) lts t (Success m2) ->
-      volatile_store_sem l chunk ge ((Vlong ofs,pt) :: (v,vt) :: nil) pct fpt m1 t
-                         (Success ((Vundef,InitT), pct'', m2)).
-
+  | volatile_store_sem_intro: forall ofs pt m pct pct' pct'' fpt v vt vt' lts t m',
+      volatile_store_tags l chunk m (Int64.unsigned ofs) pt vt pct = ret (pct',vt',lts) ->
+      volatile_store ge chunk m ofs (v,vt') lts t (ret m') ->
+      volatile_store_sem l chunk ge ((Vlong ofs,pt) :: (v,vt) :: nil) pct fpt m t
+                         (ret ((v,vt'), pct'', m')).
 
 Definition alloc_size (v: val) (z:Z) : Prop :=
   match v with
@@ -476,49 +483,35 @@ Definition alloc_size (v: val) (z:Z) : Prop :=
   | _ => False
   end.
 
+Definition do_extcall_malloc (l:Cabs.loc) (pct: control_tag) (fpt st: val_tag)
+  (m: mem) (sz: Z) :=
+  '(pct', pt, vt_body, vt_head, lt) <- MallocT l pct fpt st;;
+  '(m', lo, hi) <- heapalloc m sz vt_head vt_body lt;;
+  ret ((Vlong (Int64.repr lo), pt), pct', m').
+
 (** ** Semantics of dynamic memory allocation (malloc) *)
 Inductive extcall_malloc_sem (l:Cabs.loc) (ge: Genv.t F V):
-  list atom -> policy_state -> control_tag -> val_tag -> mem -> trace ->
+  list atom -> control_tag -> val_tag -> mem -> trace ->
   (PolicyResult (atom * control_tag * mem)) -> Prop :=
-| extcall_malloc_sem_intro: forall v sz st pstate pct fpt m m' lo hi vt_body vt_head lt pt pct',
+| extcall_malloc_sem_intro: forall v sz st pct fpt m,
     alloc_size v sz ->
-    MallocT l pstate pct fpt st = Success (pct', pt, vt_body, vt_head, lt) ->
-    heapalloc m sz vt_head vt_body lt = Success (m', lo, hi) ->
-    extcall_malloc_sem l ge ((v,st) :: nil) pstate pct fpt m E0
-                       (Success ((Vlong (Int64.repr lo), pt), pct', m'))
-| extcall_malloc_sem_fail_0: forall v sz st pstate pct fpt m msg failure,
-    alloc_size v sz ->
-    MallocT l pstate pct fpt st = Fail msg failure ->
-    extcall_malloc_sem l ge ((v,st) :: nil) pstate pct fpt m E0
-                       (Fail msg failure)
-| extcall_malloc_sem_fail_1: forall v sz st pstate pct fpt m vt_body vt_head lt pt pct' msg failure,
-    alloc_size v sz ->
-    MallocT l pstate pct fpt st = Success (pct', pt, vt_body, vt_head, lt) ->
-    heapalloc m sz vt_head vt_body lt = Fail msg failure ->
-    extcall_malloc_sem l ge ((v,st) :: nil) pstate pct fpt m E0
-                       (Fail msg failure).
+    extcall_malloc_sem l ge ((v,st) :: nil) pct fpt m E0
+                       (do_extcall_malloc l pct fpt st m sz).
 
+Definition do_extcall_free (l:Cabs.loc) (addr: int64) (pct: control_tag)
+           (fpt pt: val_tag) (m: mem) :=
+  if Int64.eq addr Int64.zero
+  then ret ((Vundef,InitT), pct, m)
+  else let rule := (fun vt => FreeT l pct fpt pt vt) in
+       '(pct', m') <- heapfree m (Int64.unsigned addr) rule;;
+       ret ((Vundef,InitT), pct', m').
+           
 Inductive extcall_free_sem (l:Cabs.loc) (ge: Genv.t F V) :
-  list atom -> policy_state -> control_tag -> val_tag -> mem -> trace ->
+  list atom -> control_tag -> val_tag -> mem -> trace ->
   (PolicyResult (atom * control_tag * mem)) -> Prop :=
-| extcall_free_sem_ptr: forall addr pstate pct pct' fpt pt  m m',
-    addr <> Int64.zero ->
-    heapfree m (Int64.unsigned addr) (fun vt => FreeT l pstate pct fpt pt vt) = Success (pct', m') ->
-    extcall_free_sem l ge ((Vlong addr,pt) :: nil) pstate pct fpt m E0
-                     (Success ((Vundef,def_tag), pct', m'))
-| extcall_free_sem_ptr_fail_0: forall addr pstate pct fpt pt m msg failure,
-    addr <> Int64.zero ->
-    heapfree m (Int64.unsigned addr) (fun vt => FreeT l pstate pct fpt pt vt) = Fail msg failure ->
-    extcall_free_sem l ge ((Vlong addr,pt) :: nil) pstate pct fpt m E0
-                     (Fail msg failure)
-| extcall_free_sem_ptr_fail_1: forall addr pstate pct fpt pt m msg failure,
-    addr <> Int64.zero ->
-    heapfree m (Int64.unsigned addr) (fun vt => FreeT l pstate pct fpt pt vt) = Fail msg failure ->
-    extcall_free_sem l ge ((Vlong addr,pt) :: nil) pstate pct fpt m E0
-                     (Fail msg failure)
-| extcall_free_sem_null: forall pstate pct fpt m pt,
-    extcall_free_sem l ge ((Vlong Int64.zero,pt) :: nil) pstate pct fpt m E0
-                     (Success ((Vundef,def_tag), pct, m)).
+| extcall_free_sem_intro: forall addr pct fpt pt m,
+    extcall_free_sem l ge ((Vlong addr,pt) :: nil) pct fpt m E0
+                     (do_extcall_free l addr pct fpt pt m).
 
 (** ** Semantics of [memcpy] operations. *)
 
@@ -693,12 +686,12 @@ Inductive extcall_debug_sem (ge: Genv.t F V):
   These built-in functions have no observable effects and do not access memory. *)
 
 Inductive known_builtin_sem (bf: builtin_function) (ge: Genv.t F V):
-  list atom -> policy_state -> control_tag -> val_tag -> mem -> trace ->
+  list atom -> control_tag -> val_tag -> mem -> trace ->
   PolicyResult (atom * control_tag * mem) -> Prop :=
-  | known_builtin_sem_intro: forall vargs vres pstate pct fpt m,
+  | known_builtin_sem_intro: forall vargs vres pct fpt m,
       builtin_function_sem bf vargs = Some vres ->
-      known_builtin_sem bf ge (map (fun v => (v,def_tag)) vargs) pstate pct fpt m E0
-                        (Success ((vres,InitT), pct, m)).
+      known_builtin_sem bf ge (map (fun v => (v,def_tag)) vargs) pct fpt m E0
+                        (ret ((vres,InitT), pct, m)).
 
 (** ** Semantics of external functions. *)
 
@@ -769,7 +762,7 @@ End OUTPUT_EVENTS.
 
 (** * Evaluation of builtin arguments *)
 
-Section EVAL_BUILTIN_ARG.
+(*Section EVAL_BUILTIN_ARG.
 
 Variable A F V: Type.
 Variable ge: Genv.t F V.
@@ -827,6 +820,6 @@ Qed.
 
 End EVAL_BUILTIN_ARG.
 
-Global Hint Constructors eval_builtin_arg: barg.
+Global Hint Constructors eval_builtin_arg: barg.*)
 
 End Events.
