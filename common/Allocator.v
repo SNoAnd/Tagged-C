@@ -72,7 +72,7 @@ Module Type Allocator (P : Policy).
                        (*partially applied tag rule, waiting for val tag on head
                          and all tags on freed locations *)
                          (val_tag (* val (head) *)  -> list loc_tag (* locs *)
-                          -> PolicyResult (control_tag * val_tag * val_tag * list loc_tag))
+                          -> PolicyResult (control_tag * val_tag * val_tag * list loc_tag))  (* APT: second val_tag is matched as "vt_body" in FLAllocator/heapfree,  but unused. What is it for? *)
                        -> PolicyResult
                             (control_tag (* pc tag *)
                              * mem).
@@ -133,7 +133,9 @@ End Allocator.
 (* The job of this allocator is emulate real(ish) memory for
     diagnostic purposes (like fuzzing).
   Differences from Allocator
-  - does not clear memory after free
+  - does not clear memory after free   (* APT: But neither does FLAllocator! *)
+  (* APT: Another difference should be that double frees and maybe other errors should be possible.
+     ALSO: the headers need to be protected by the policy! *)
 *)
 Module ConcreteAllocator (P : Policy) : Allocator P.
   Module Mem := Mem P.
@@ -147,6 +149,9 @@ Module ConcreteAllocator (P : Policy) : Allocator P.
   Definition mem : Type := (Mem.mem * t).
   Definition empty := (Mem.empty, init).
 
+  (* APT: shouldn't initial heap contain a single free block *)
+
+
   Definition stkalloc (m: mem) (al sz: Z) : PolicyResult (mem*Z*Z) :=
     let '(m,sp) := m in
     let sp' := sp - sz in
@@ -157,6 +162,11 @@ Module ConcreteAllocator (P : Policy) : Allocator P.
     let '(m,sp) := m in
     ret (m,base).
 
+  (* APT: Does size in header include space for header itself?
+     Code seems somewhat inconsistent on this point.
+     If the header space is not inclueded, it makes size 0 regions problematic, as you cannot
+     distinguish "free" from "in use". 
+     BTW, it would be legal to just return a null pointer for a 0-length malloc request. *)
   Definition check_header (m: Mem.mem) (base: Z) : option (bool * Z * val_tag) :=
     match load Mint64 m base with
     | Success (Vlong i, vt) =>
@@ -172,8 +182,8 @@ Module ConcreteAllocator (P : Policy) : Allocator P.
     let rec :=
       if live
       then Vlong (Int64.repr sz)
-      else Vlong (Int64.neg (Int64.repr sz))
-    in
+      else Vlong (Int64.neg (Int64.repr sz)) in
+
     match store Mint64 m base (rec, vt) [lt;lt;lt;lt;lt;lt;lt;lt] with
     | Success m'' => Some m''
     | _ => None
@@ -181,13 +191,15 @@ Module ConcreteAllocator (P : Policy) : Allocator P.
 
   Definition header_size := size_chunk Mint64.
   Definition header_align := align_chunk Mint64.
-  
+  (* APT: This name is a little confusing. The first data word of each block also need to be aligned to (align_chunk Mint64).
+   I guess that comes out in the wash(?) *)
+
   Fixpoint find_free (c : nat) (m : Mem.mem) (base : Z) (sz : Z) (vt : val_tag) (lt : loc_tag) : option (Mem.mem*Z) :=
     match c with
     | O => None
     | S c' =>
         (* Load a long from base.
-           Sign indictates: is this a live block? (Negative no, positive/zero yes)
+           Sign indicates: is this a live block? (Negative no, positive/zero yes)   (* APT: see note above *)
            Magnitude indicates size *)
         match check_header m base with
         | Some (true (* block is live *), bs, vt') =>
@@ -201,9 +213,9 @@ Module ConcreteAllocator (P : Policy) : Allocator P.
             let padded_sz := align sz header_align in
             if (bs <? padded_sz)%Z then
               (* there is no room *)
-              let next := base + bs in find_free c' m next sz vt lt
+              let next := base + bs in find_free c' m next sz vt lt  (* APT: what about header size? *)
             else
-              if (padded_sz + header_size <? bs)%Z then
+              if (padded_sz + header_size <? bs)%Z then 
                 (* [base ][========|==][ new  ][=============][next] *)
                 (* [hd_sz][   sz   |/8][rec_sz][bs-(sz+hd_sz)][next] *)
                 (* There is enough room to split *)
@@ -212,6 +224,7 @@ Module ConcreteAllocator (P : Policy) : Allocator P.
                 m' <- update_header m base true padded_sz vt lt;;
                 m'' <- update_header m' new false new_sz InitT DefLT;;
                 (* open question: how do we (re)tag new, free headers? *) 
+                (* APT: they will need to be protected. *)
                 Some (m'',base)
               else
                 (* [base ][========|==][=][next] *)
@@ -227,7 +240,8 @@ Module ConcreteAllocator (P : Policy) : Allocator P.
   (* UNTESTED - AMN Questions:
       - how are we supposed to figure out what the return type of load/store bytes is? 
           I did it by looking at the type of where it was passed in other fns, but how would I do that if I couldn't cargocult?
-      - Should it be m, or m'? does m' preserve the memval?
+          APT: Do "About loadbytes." or "Check loadbytes."
+      - Should it be m, or m'? does m' preserve the memval?  APT: ???
           If the memvals are preserved when m turns into m', this is ok
           If not, then we have a problem.
           I can't tell if it is or not
@@ -240,6 +254,10 @@ Module ConcreteAllocator (P : Policy) : Allocator P.
              loadbytes (m:mem) (ofs n:Z)*)
         (* AMN Why does this line work? if i just invoke loadbytes i get a policyresult(listval), 
             but if I do this magic dance, I get the memval ?*)
+        (* APT: policyresult a monad! More concretely, the notation definitions at the top of this file define <- ;; and
+         show how they expand into ordinary Gallina. *)
+        (* SNA: currently I've had to back out the monadic notation because loadbytes and storebytes are no longer policyresults,
+           just FYI. I do want to put it back later, because... well, look at those sad fail cases. *)
 	match loadbytes m' (base + header_size)  size with
         | Success mvs =>
 	     match storebytes 	
@@ -258,16 +276,19 @@ Module ConcreteAllocator (P : Policy) : Allocator P.
     | None => (fun ps => (Fail (OtherFailure "Failure in find_free"), ps))
     end.
 
-  (* NB bytes should unchanged; lts can change *)
+  (* NB bytes should remain unchanged; lts can change *)
   Definition heapfree (m: mem) (addr: Z) (rule : val_tag -> list loc_tag -> PolicyResult (control_tag*val_tag*val_tag*list loc_tag))
     : PolicyResult (control_tag * mem) :=
     let (m, sp) := m in
+    (* APT: This is not safe: addr might not be a heap header at all!
+       Need to do a tag check to make sure that it is, or else
+       iterate through the heap to locate a block at this addr. *)
     match check_header m (addr-header_size) with
     | Some (live, sz, vt) =>
         match loadbytes m addr sz, loadtags m addr sz with
         | Success mvs, Success lts =>
             '(PCT', vt1, vt2, lts') <- rule vt lts;;
-            match update_header m (addr-header_size) false sz vt2 DefLT with
+            match update_header m (addr-header_size) false sz vt1 DefLT with
             | Some m' =>
                 match storebytes m addr mvs lts' with
                 | Success m'' => ret (PCT', (m'', sp))
@@ -381,6 +402,7 @@ Module FLAllocator (P : Policy) : Allocator P.
     let '(m,(sp,heap)) := m in
     ret (m,(base,heap)).
   
+  (* APT: This should take alignment into account, because the base must be 8-byte aligned. *)
   Fixpoint fl_alloc (fl : freelist) (size : Z) (vt : val_tag) : option (Z*Z*freelist) :=
     match fl with
     | [] => None

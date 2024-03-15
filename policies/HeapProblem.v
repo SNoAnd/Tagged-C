@@ -103,7 +103,6 @@
  *  - @TODO there are some questions throughout
  *  - @TODO test that the failures have _enough_ information, but not too much
  *  - @TODO heap tests are not hooked into run all tests.py
- *  - @TODO alter concrete allocator to not clear memory
  *  - @WAITING - Sean is working on logging, which should emit the bytes not the tags.
  *      - We need it for improper secret disclosure. 
  *      - Hack up whatever kinda works, and may also support different ways of initing bytes,
@@ -345,11 +344,10 @@ Fixpoint CheckforColorMatchOnStore (ptr_color: Z) (ptr_l store_l :loc) (pct : co
       ConvertDirtyAllocOnStore pct vt lts [] (CheckforColorMatchOnStore ptr_color ptr_l l pct vt lts)
     )
     (* @TODO - if this is real, should we print both locations? the one for teh store and the one where the header got assigned? *)
-  | AllocatedHeader _ _ => Fail (inj_loc "HeapProblem|| StoreT tried to write through a header tag " l) PolicyFailure 
+  | AllocatedHeader _ _ => raise (PolicyFailure (inj_loc "HeapProblem|| StoreT tried to write through a header tag " l))
   (*probably shouldn't write through an N *)
-  | N => Fail (inj_loc "HeapProblem|| StoreT tried to write through a nonpointer tag " l) PolicyFailure
+  | N => raise (PolicyFailure (inj_loc "HeapProblem|| StoreT tried to write through a nonpointer tag " l))
   end.
-
 
  (*
   There is only one unary operation that is reasonably applied to pointers
@@ -569,40 +567,46 @@ Fixpoint CheckforColorMatchOnStore (ptr_color: Z) (ptr_l store_l :loc) (pct : co
     add header ctype to val tags
 
  *)
- (* @TODO - need helpder function to loop over lts here stubbing this out so we can get a merge 
-    will need to make a list of same length as lts in the success case*)
-  Definition FreeT (l:loc) (pct: control_tag) (fptrt pt vht : val_tag) (lts: list loc_tag) : 
+
+  (* helper to check all the tags in the heap block match the intended tag*)
+  Fixpoint checkFreeLocTags (expectedtag: loc_tag) (lts: list loc_tag): 
+    bool :=
+    match lts with 
+    | [] => true
+    | h::tail => 
+      (
+        if (lt_eq_dec expectedtag h)
+        then checkFreeLocTags expectedtag tail
+        else false 
+      )
+    end.
+  
+    Definition FreeT (l:loc) (pct: control_tag) (fptrt pt vht : val_tag) (lts: list loc_tag) : 
     PolicyResult (control_tag * val_tag * val_tag * list loc_tag) :=
-  (*
-  match pt, lts with 
-    (* code probably did something wrong *)
-    | PointerWithColor _ _, NotHeap => Fail (inj_loc "HeapProblem||FreeT detects free of memory not in the heap| " l) [pct;fptrt;pt;vht]
-    | PointerWithColor _ _, UnallocatedHeap => Fail (inj_loc "HeapProblem||FreeT detects free of unallocated heap memory| " l) [pct;fptrt;pt;vht]
-
-    (* You can legally malloc, never use it and free, though it is a waste *)
-    | PointerWithColor ptr_l ptr_c, AllocatedDirty mem_l mem_c => 
-        if ((Z.eqb ptr_c mem_c) && (Cabs.loc_eqb ptr_l mem_l)) then
-                        (* (pct', vtb, vth', lt) *)
-          ret (pct, N, VT , UnallocatedHeap)
-        else 
-          (* @TODO this one could probably use all 3 locations printed eventually *)
-          Fail (inj_loc "HeapProblem|| FreeT tried to free someone else's allocated memory " l) [pct;fptrt;pt;vht]
-
-    | PointerWithColor ptr_l ptr_c, Allocated mem_l mem_c => (
-        if ((Z.eqb ptr_c mem_c) && (Cabs.loc_eqb ptr_l mem_l)) then
-                        (* (pct', vtb, vth', lt) *)
-          ret (pct, N, UnallocatedHeap, UnallocatedHeap)
-        else 
-          (* @TODO this one could probably use all 3 locations printed eventually *)
-          Fail (inj_loc "HeapProblem|| FreeT tried to free someone else's allocated memory " l) [pct;fptrt;pt;vht]
-        )
-    | PointerWithColor _ _, _ => 
-    (* I probably did something wrong. t*)
-    | _ , _ =>  Fail (inj_loc "HeapProblem|| FreeT Misuse| FreeT tried to free a nonpointer : " l) [pct;fptrt;pt;vht]
-  end.
-  *)
-  ret (pct, N, N, lts).
-
+      match pt, vht with 
+      (* pointer points to an allocated header *)
+      | PointerWithColor ptr_l ptr_c, AllocatedHeader hdr_l hdr_c => 
+          (
+            (* header color/loc, pointer color/loc, and lts color/loc should match *)
+            if ((Z.eqb ptr_c hdr_c) && (Cabs.loc_eqb ptr_l hdr_l)) 
+            then
+              (
+                (* lts tags should all be AllocatedDirty or Allocated. If any tag is anything else,
+                   there's heap corruption *)
+                if ((checkFreeLocTags (Allocated ptr_l ptr_c) lts) || (checkFreeLocTags (AllocatedDirty ptr_l ptr_c) lts))
+                then ret (pct, N, N, (repeat UnallocatedHeap (length lts)))
+                else raise (PolicyFailure (inj_loc "HeapProblem|| Corrupted Heap |FreeT's block has unexpected tags" l))
+              )
+            else raise (PolicyFailure (inj_loc "HeapProblem| Corrupted Heap | FreeT tried to free someone else's allocated memory at " l))
+          )
+    
+      (* Invalid header. Trying to free nonlegal block*)
+      | PointerWithColor _ _, N => raise (PolicyFailure (inj_loc "HeapProblem|| FreeT Misuse| FreeT Nonsense free: " l))
+                                        
+      (* Tried to free through somethign that is not a pointer (N, header) *)
+      | _ , _ =>  raise (PolicyFailure (inj_loc "HeapProblem|| FreeT Misuse| FreeT tried to free through a nonpointer : " l))
+      end.
+  
   (* These are required, but cannot "passthrough" because they don't get tags to start with.
     In other words, they have to make tags out of thin air. *)
  
