@@ -323,20 +323,17 @@ Module ConcreteAllocator (P : Policy) : Allocator P.
        *)
     match check_header m (addr-header_size) with
     | Some (live, sz, vt) =>
-        match loadbytes m addr sz, loadtags m addr sz with
-        | Success mvs, Success lts =>
-            '(PCT', vt1, vt2, lts') <- rule vt lts;;
-            match update_header m (addr-header_size) false sz vt1 DefLT with
-            | Some m' =>
-                match storebytes m addr mvs lts' with
-                | Success m'' => ret (PCT', (m'', sp))
-                | Fail failure => raise failure
-                end
-            | None => raise (OtherFailure "Free failing")
-            end
-        | Fail failure, _ | _, Fail failure => raise failure
+        mvs <- loadbytes m addr sz;;
+        lts <- loadtags m addr sz;;
+        '(PCT', vt1, vt2, lts') <- rule vt lts;;
+        (* APT: FLallocator code uses vt1 instead.  Why are there two different tags anyway? *)
+        match update_header m (addr-header_size) false sz vt2 DefLT with
+        | Some m' =>
+            m'' <- storebytes m addr mvs lts';;
+            ret (PCT', (m'', sp))
+        | None => Fail "Free failing: corrupted header" OtherFailure
         end
-    | None => raise (OtherFailure "Free failing")
+    | None => Fail "Free failing: Not a header" OtherFailure
     end.
   
   Fixpoint globals (m : Mem.mem) (gs : list (ident*Z)) (next : Z) : (Mem.mem * PTree.t (Z*Z)) :=
