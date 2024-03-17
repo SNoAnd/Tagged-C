@@ -108,20 +108,19 @@ Module PVI <: Policy.
     PolicyResult (control_tag * val_tag * loc_tag) :=
     ret (pct, N, N).
 
-  Definition MallocT (l:loc) (pct: control_tag) (pt vt: val_tag) :
+  Definition MallocT (l:loc) (pct: control_tag) (fpt: val_tag) :
     PolicyResult (control_tag * val_tag * val_tag * val_tag * loc_tag) :=
     log ("Malloc call at " ++ print_loc l ++ " associated with color " ++ print_ct pct);;
     let c := pct in
     ret (S c, Dyn c, N, Dyn c, Dyn c).
 
-  Definition FreeT (l:loc) (pct: control_tag) (pt1 pt2 vht: val_tag) (lts: list loc_tag) :
-    PolicyResult (control_tag * val_tag * val_tag * list loc_tag) :=
-    ret (pct, N, N, lts).
+  Definition FreeT (l:loc) (pct: control_tag) (pt vht: val_tag) (lts: list loc_tag) :
+    PolicyResult (control_tag * val_tag * list loc_tag) :=
+    ret (pct, N, lts).
 
-  Definition ExtCallT (l:loc) (fn: string) (pct: control_tag) (args: list val_tag) :
-    PolicyResult (control_tag * val_tag) :=
-    ret (pct, N).
-
+  Definition ClearT (l:loc) (pct: control_tag) (n: nat) : PolicyResult (control_tag * list loc_tag) :=
+    ret (pct, repeat N n).
+  
   (* Passthrough rules *)  
   Definition CallT      := Passthrough.CallT policy_state val_tag control_tag.  
   Definition ArgT       := Passthrough.ArgT policy_state val_tag control_tag.
@@ -134,6 +133,8 @@ Module PVI <: Policy.
   Definition ExprSplitT := Passthrough.ExprSplitT policy_state val_tag control_tag.
   Definition ExprJoinT  := Passthrough.ExprJoinT policy_state val_tag control_tag.
   Definition FieldT     := Passthrough.FieldT policy_state val_tag control_tag.
+  Definition ExtCallT   := Passthrough.ExtCallT policy_state val_tag control_tag.
+  Definition ExtRetT    := Passthrough.ExtRetT policy_state val_tag control_tag.
   Definition PICastT    := Passthrough.PICastT policy_state val_tag control_tag loc_tag.
   Definition IPCastT    := Passthrough.IPCastT policy_state val_tag control_tag loc_tag.
   Definition PPCastT    := Passthrough.PPCastT policy_state val_tag control_tag loc_tag.

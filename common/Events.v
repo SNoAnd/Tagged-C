@@ -29,6 +29,7 @@ Require Import Globalenvs.
 Require Import Builtins.
 Require Import Tags.
 Require Import ExtLib.Structures.Monads. Import MonadNotation.
+Require Import List. Import ListNotations.
 
 Module Events (P:Policy) (A:Allocator P).
   Module Genv := Genv P A.
@@ -483,11 +484,21 @@ Definition alloc_size (v: val) (z:Z) : Prop :=
   | _ => False
   end.
 
-Definition do_extcall_malloc (l:Cabs.loc) (pct: control_tag) (fpt st: val_tag)
-  (m: mem) (sz: Z) :=
-  '(pct', pt, vt_body, vt_head, lt) <- MallocT l pct fpt st;;
-  '(m', lo, hi) <- heapalloc m sz vt_head vt_body lt;;
-  ret ((Vlong (Int64.repr lo), pt), pct', m').
+Definition do_extcall_malloc (l:Cabs.loc) (pct: control_tag) (fpt st: val_tag) (m: mem) (sz: Z)
+  : PolicyResult (atom * control_tag * mem) :=
+  pct' <- ExtCallT l "malloc" pct fpt [st];;
+  '(pct', pt, vt_body, vt_head, lt) <- MallocT l pct fpt;;
+  '(m', lo, hi) <- heapalloc m sz vt_head;;
+  mvs <- loadbytes m' lo sz;;
+  let mvs' := map (fun mv =>
+                     match mv with
+                     | Mem.MD.Byte b vt => Mem.MD.Byte b vt_body
+                     | Mem.MD.Fragment (v,vt) q n => Mem.MD.Fragment (v,vt_body) q n
+                     | Undef => Undef
+                     end) mvs in
+  m'' <- storebytes m' lo mvs' (repeat lt (Z.to_nat sz));;
+  '(pct', pt') <- ExtRetT l "malloc" pct pct' pt;;
+  ret ((Vlong (Int64.repr lo), pt'), pct', m').
 
 (** ** Semantics of dynamic memory allocation (malloc) *)
 Inductive extcall_malloc_sem (l:Cabs.loc) (ge: Genv.t F V):
@@ -498,20 +509,25 @@ Inductive extcall_malloc_sem (l:Cabs.loc) (ge: Genv.t F V):
     extcall_malloc_sem l ge ((v,st) :: nil) pct fpt m E0
                        (do_extcall_malloc l pct fpt st m sz).
 
-Definition do_extcall_free (l:Cabs.loc) (addr: int64) (pct: control_tag)
-           (fpt pt: val_tag) (m: mem) :=
+Definition do_extcall_free (l:Cabs.loc) (pct: control_tag)  (fpt pt: val_tag) (addr: int64) (m: mem)
+  : PolicyResult (atom * control_tag * mem) :=
   if Int64.eq addr Int64.zero
   then ret ((Vundef,InitT), pct, m)
-  else let rule := (fun vt => FreeT l pct fpt pt vt) in
-       '(pct', m') <- heapfree m (Int64.unsigned addr) rule;;
-       ret ((Vundef,InitT), pct', m').
-           
+  else
+    pct' <- ExtCallT l "free" pct fpt [pt];;
+    '(sz,pct'',m') <- heapfree l pct' m (Int64.unsigned addr) pt;;
+    mvs <- loadbytes m' (Int64.unsigned addr) sz;;
+    '(pct''',lts') <- ClearT l pct'' (Z.to_nat sz);;
+    m'' <- storebytes m' (Int64.unsigned addr) mvs lts';;
+    '(vt,pct'') <- ExtRetT l "free" pct pct' InitT;;
+    ret ((Vundef,InitT), pct', m'').
+
 Inductive extcall_free_sem (l:Cabs.loc) (ge: Genv.t F V) :
   list atom -> control_tag -> val_tag -> mem -> trace ->
   (PolicyResult (atom * control_tag * mem)) -> Prop :=
 | extcall_free_sem_intro: forall addr pct fpt pt m,
     extcall_free_sem l ge ((Vlong addr,pt) :: nil) pct fpt m E0
-                     (do_extcall_free l addr pct fpt pt m).
+                     (do_extcall_free l pct fpt pt addr m).
 
 (** ** Semantics of [memcpy] operations. *)
 

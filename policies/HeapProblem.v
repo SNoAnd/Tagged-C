@@ -519,7 +519,7 @@ Fixpoint CheckforColorMatchOnStore (ptr_color: Z) (ptr_l store_l :loc) (pct : co
            Free in this policy does not look at these at all, so it does not really
            matter was value goes here. 
   *)
-  Definition MallocT (l:loc) (pct: control_tag)  (fptrt st : val_tag) : PolicyResult (control_tag * val_tag * val_tag * val_tag * loc_tag) :=
+  Definition MallocT (l:loc) (pct: control_tag) (fptrt : val_tag) : PolicyResult (control_tag * val_tag * val_tag * val_tag * loc_tag) :=
    match pct with
    | PC_Extra currcolor => (
       (* ret (pct', pt, vtb, vht', lt) *)
@@ -581,8 +581,8 @@ Fixpoint CheckforColorMatchOnStore (ptr_color: Z) (ptr_l store_l :loc) (pct : co
       )
     end.
   
-    Definition FreeT (l:loc) (pct: control_tag) (fptrt pt vht : val_tag) (lts: list loc_tag) : 
-    PolicyResult (control_tag * val_tag * val_tag * list loc_tag) :=
+    Definition FreeT (l:loc) (pct: control_tag) (pt vht : val_tag) (lts: list loc_tag) : 
+    PolicyResult (control_tag * val_tag * list loc_tag) :=
       match pt, vht with 
       (* pointer points to an allocated header *)
       | PointerWithColor ptr_l ptr_c, AllocatedHeader hdr_l hdr_c => 
@@ -594,7 +594,7 @@ Fixpoint CheckforColorMatchOnStore (ptr_color: Z) (ptr_l store_l :loc) (pct : co
                 (* lts tags should all be AllocatedDirty or Allocated. If any tag is anything else,
                    there's heap corruption *)
                 if ((checkFreeLocTags (Allocated ptr_l ptr_c) lts) || (checkFreeLocTags (AllocatedDirty ptr_l ptr_c) lts))
-                then ret (pct, N, N, (repeat UnallocatedHeap (length lts)))
+                then ret (pct, N, (repeat UnallocatedHeap (length lts)))
                 else raise (PolicyFailure (inj_loc "HeapProblem|| Corrupted Heap |FreeT's block has unexpected tags" l))
               )
             else raise (PolicyFailure (inj_loc "HeapProblem| Corrupted Heap | FreeT tried to free someone else's allocated memory at " l))
@@ -606,6 +606,9 @@ Fixpoint CheckforColorMatchOnStore (ptr_color: Z) (ptr_l store_l :loc) (pct : co
       (* Tried to free through somethign that is not a pointer (N, header) *)
       | _ , _ =>  raise (PolicyFailure (inj_loc "HeapProblem|| FreeT Misuse| FreeT tried to free through a nonpointer : " l))
       end.
+
+    Definition ClearT (l:loc) (pct: control_tag) (n: nat) : PolicyResult (control_tag * list loc_tag) :=
+   ret (pct, repeat UnallocatedHeap n).
   
   (* These are required, but cannot "passthrough" because they don't get tags to start with.
     In other words, they have to make tags out of thin air. *)
@@ -629,10 +632,6 @@ Fixpoint CheckforColorMatchOnStore (ptr_color: Z) (ptr_l store_l :loc) (pct : co
     PolicyResult (control_tag * val_tag * (list loc_tag))%type :=
     ret (pct, N, []).  
 
-  Definition ExtCallT (l:loc) (fn : string) (pct : control_tag) (args : list val_tag)
-    : PolicyResult (control_tag*val_tag) :=
-    ret (pct,N).
- 
   (* Passthrough rules *)
   Definition CallT := Passthrough.CallT policy_state val_tag control_tag.  
   Definition ArgT := Passthrough.ArgT policy_state val_tag control_tag.
@@ -644,6 +643,8 @@ Fixpoint CheckforColorMatchOnStore (ptr_color: Z) (ptr_l store_l :loc) (pct : co
   Definition ExprSplitT := Passthrough.ExprSplitT policy_state val_tag control_tag.
   Definition ExprJoinT := Passthrough.ExprJoinT policy_state val_tag control_tag.
   Definition FieldT := Passthrough.FieldT policy_state val_tag control_tag. 
+  Definition ExtCallT   := Passthrough.ExtCallT policy_state val_tag control_tag.
+  Definition ExtRetT    := Passthrough.ExtRetT policy_state val_tag control_tag.
 
   (* Allowing these to pass through for now *)
   Definition PICastT := Passthrough.PICastT policy_state val_tag control_tag loc_tag.

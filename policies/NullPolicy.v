@@ -89,16 +89,23 @@ Module NullPolicy <: Policy.
     PolicyResult (control_tag * val_tag * loc_tag) :=
     ret (tt, tt, tt).
 
-  Definition MallocT (l:loc) (pct: control_tag) (pt vt: val_tag) :
+  Definition MallocT (l:loc) (pct: control_tag) (fpt: val_tag) :
     PolicyResult (control_tag * val_tag * val_tag * val_tag * loc_tag) :=
     ret (tt, tt, tt, tt, tt).
 
-  Definition FreeT (l:loc) (pct: control_tag) (fpt pt vht: val_tag) (lts: list loc_tag) :
-    PolicyResult (control_tag * val_tag * val_tag * list loc_tag) :=
-    ret (tt, tt, tt, lts).
+  Definition FreeT (l:loc) (pct: control_tag) (pt vht: val_tag) (lts: list loc_tag) :
+    PolicyResult (control_tag * val_tag * list loc_tag) :=
+    ret (tt, tt, lts).
 
-  Definition ExtCallT (l:loc) (fn : string) (pct: control_tag) (args : list val_tag) :
-    PolicyResult (control_tag * val_tag) := ret (tt,tt).
+  Definition ClearT (l:loc) (pct:control_tag) (sz:nat) :
+    PolicyResult (control_tag * list loc_tag) :=
+    ret (tt, repeat tt sz).
+  
+  Definition ExtCallT (l:loc) (fn: string) (pct: control_tag) (fpt: val_tag) (args : list val_tag) :
+    PolicyResult control_tag := ret tt.
+
+  Definition ExtRetT (l:loc) (fn: string) (clrpct clepct: control_tag) (vt: val_tag) :
+    PolicyResult (control_tag * val_tag) := ret (tt, tt).
   
   Definition FieldT (l:loc) (ce: composite_env) (pct: control_tag) (vt: val_tag) (ty: type) (id: ident)
     : PolicyResult val_tag := ret tt.

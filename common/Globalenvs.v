@@ -330,10 +330,6 @@ Module Genv (P:Policy) (A:Allocator P).
       Program Definition empty_genv (pub: list ident) : t :=
         @mkgenv pub (PTree.empty _) (PTree.empty _) [] 2%positive _ _.
       
-      Definition init_record (m: A.mem) (base: Z) (sz: Z) : PolicyResult A.mem :=
-        let szv := Vlong (Int64.neg (Int64.repr sz)) in
-        A.store Mint64 m base (szv, InitT) [DefLT].
-
       Fixpoint filter_var_sizes (idgs:list (ident*globdef F V)) :=
         match idgs with
         | [] => []
@@ -342,9 +338,8 @@ Module Genv (P:Policy) (A:Allocator P).
         end.
       
       Definition globalenv (p: AST.program F V) : PolicyResult (t * mem) :=
-        m <- init_record A.empty 1000 1000;;
-        let (m',tree) := A.globalalloc m (filter_var_sizes p.(AST.prog_defs)) in
-        add_globals (empty_genv p.(AST.prog_public)) m tree p.(AST.prog_defs).
+        let (m',tree) := A.globalalloc (A.empty) (filter_var_sizes p.(AST.prog_defs)) in
+        add_globals (empty_genv p.(AST.prog_public)) m' tree p.(AST.prog_defs).
 
       Section WITH_GE.
 

@@ -240,10 +240,35 @@ Module Type Policy.
                              * val_tag      (* Cleared value tag *)
                              * loc_tag)     (* Tag to be copied over all memory locations *).
 
+  Parameter ExtCallT : loc                  (* Inputs: *)
+                       -> string            (* External function name *)
+                       -> control_tag       (* PC tag *)
+                       -> val_tag           (* Function pointer tag *)
+                       -> list val_tag      (* Tags on all arguments *)
+                       -> PolicyResult
+                            policy_state    (* Outputs: *)
+                            control_tag     (* New PC tag *).
+
+  Parameter ExtRetT : loc                   (* Inputs: *)
+                      -> string             (* External function name *)
+                      -> control_tag        (* PC tag at return time *)
+                      -> control_tag        (* Prior PC tag from before call *)
+                      -> val_tag            (* Tag on returned value *)
+                      -> PolicyResult
+                           policy_state     (* Outputs: *)
+                            (control_tag    (* New PC tag *)
+                             * val_tag)     (* Tag on return value *).                   
+
+  (* This tag rule processes the body of malloc. So a call to malloc@fpt(sz@vt) is structured:
+     pct -> +========+ -> pct'   +=======+    pct ---> +=======+
+     fpt -> |ExtCallT| -> fpt -> |MallocT| -> pct'' -> |ExtRetT| -> pct'''
+     vt  -> +========+ -> vt -|  +=======+ -> pt ----> +=======+ -> pt'
+                               vt1|  |vt2 |lt
+                         [header@vt1][vt2.vt2.vt2...]
+                         [lt.lt.lt.lt.lt.lt.lt.lt...] *)
   Parameter MallocT : loc                   (* Inputs: *)
                       -> control_tag        (* PC tag *)
                       -> val_tag            (* Function pointer tag *)
-                      -> val_tag            (* Tag on 'size' argument *)
                       -> PolicyResult
                            policy_state     (* Outputs: *)
                            (control_tag     (* New PC tag *)
@@ -252,27 +277,37 @@ Module Type Policy.
                             * val_tag       (* Tag on the value in the block's header *)
                             * loc_tag)      (* Tag to be copied over all memory locations *).
 
+  (* The follow tag rules process the body of free. So a call to free@fpt(p@pt) is structured:
+                                         p
+                              [header@vt][.....(v@_).........]
+                              [   lts   ][...................]
+                                 vt|  |lts
+                                   v  v
+     pct -> +========+            +=====+          +======+    pct ----> +=======+
+     fpt -> |ExtCallT| -> pct' -> |FreeT| -> pct'' |ClearT| -> pct''' -> |ExtRetT| -> pct''''
+     pt  -> +========+ -> pt   -> +=====+          +======+     pt ----> +=======+ -> pt'
+                                vt1|  |lts'      vt2|  |lt
+                                   v  v             v  v
+                              [header'@vt1][...(v@vt2).......]
+                              [    lts    ][lt.lt.lt.lt.lt...] *)
   Parameter FreeT : loc                     (* Inputs: *)
                     -> control_tag          (* PC tag *)
-                    -> val_tag              (* Function pointer tag *)
-                    -> val_tag              (* Tag on parameter *)
-                    -> val_tag              (* Tag on value in the block's header *)
-                    -> list loc_tag         (* Tags on the memory being freed *)
+                    -> val_tag              (* Pointer tag *)
+                    -> val_tag              (* Header tag *)
+                    -> list loc_tag         (* Header location tags *)
                     -> PolicyResult
                          policy_state       (* Outputs: *)
                          (control_tag       (* New PC tag *)
-                          * val_tag         (* Tag for values in cleared block *)
-                          * val_tag         (* Tag on the value in the block's header *)
-                          * list loc_tag)   (* New tags for freed memory *).
-
-  Parameter ExtCallT : loc                  (* Inputs: *)
-                       -> string            (* External function name *)
-                       -> control_tag       (* PC tag *)
-                       -> list val_tag      (* Tags on all arguments *)
-                       -> PolicyResult
-                            policy_state    (* Outputs: *)
-                            (control_tag    (* New PC tag *)
-                             * val_tag)     (* Tag on return value *).
+                          * val_tag         (* New header tag *)
+                          * list loc_tag)   (* New location tags for header *).       
+  
+  Parameter ClearT : loc                    (* Inputs: *)
+                     -> control_tag         (* PC tag *)
+                     -> nat                 (* Size of region *)
+                     -> PolicyResult
+                          policy_state      (* Outputs: *)
+                          (control_tag      (* New PC tag *)
+                           * list loc_tag)  (* New tags for freed memory *).
   
   Parameter FieldT : loc
                      -> composite_env       (* Inputs: *)
@@ -400,7 +435,16 @@ Module Passthrough.
 
   Definition ExprJoinT (l:loc) (pct: control_tag) (vt: val_tag) :
     PolicyResult (control_tag * val_tag) := ret (pct,vt).
-    
+
+  Definition ExtCallT (l:loc) (fn: string) (pct: control_tag) (fpt: val_tag) (args: list val_tag) :
+    PolicyResult control_tag := ret pct.
+
+  Definition ExtRetT (l:loc) (fn: string) (pctclr pctcle: control_tag) (vt: val_tag) :
+    PolicyResult (control_tag*val_tag) := ret (pctcle,vt).
+
+  Definition FreeT (l:loc) (pct: control_tag) (pt vht: val_tag) (lts: list loc_tag) :
+    PolicyResult (control_tag * val_tag * list loc_tag) := ret (pct, vht, lts).
+  
   Definition FieldT (l:loc) (ce : composite_env) (pct: control_tag) (vt: val_tag)
              (ty : type) (id : ident) : PolicyResult val_tag := ret vt.
 

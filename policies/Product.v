@@ -177,25 +177,38 @@ Module PolProduct (P1:Policy) (P2: Policy) <: Policy.
                 (fun '(pct1, vt1, lt1) '(pct2, vt2, lt2) =>
                    ((pct1,pct2),(vt1,vt2),(lt1,lt2))).
 
-  Definition MallocT (l: loc) (pct: control_tag) (pt vt: val_tag) :
+  Definition MallocT (l: loc) (pct: control_tag) (fpt: val_tag) :
     PolicyResult (control_tag * val_tag * val_tag * val_tag * loc_tag) :=
-    double_bind (P1.MallocT l  (fst pct) (fst pt) (fst vt))
-                (P2.MallocT l  (snd pct) (snd pt) (snd vt))
+    double_bind (P1.MallocT l (fst pct) (fst fpt))
+                (P2.MallocT l (snd pct) (snd fpt))
                 (fun '(pct1, pt1, iv1, vht1, lt1) '(pct2, pt2, iv2, vht2, lt2) =>
                    ((pct1, pct2), (pt1, pt2), (iv1, iv2), (vht1, vht2), (lt1, lt2))).
 
-  Definition FreeT (l: loc) (pct: control_tag) (pt1 pt2 vt: val_tag) (lts: list loc_tag) :
-    PolicyResult (control_tag * val_tag * val_tag * list loc_tag) :=
-    double_bind (P1.FreeT l  (fst pct) (fst pt1) (fst pt2) (fst vt) (map fst lts))
-                (P2.FreeT l  (snd pct) (snd pt1) (snd pt2) (snd vt) (map snd lts))
-                (fun '(pct1, vt1, vht1, lts1) '(pct2, vt2, vht2, lts2) => 
-                   ((pct1, pct2), (vt1, vt2), (vht1, vht2), (combine lts1 lts2))).
+  Definition FreeT (l: loc) (pct: control_tag) (pt vt: val_tag) (lts: list loc_tag) :
+    PolicyResult (control_tag * val_tag * list loc_tag) :=
+    double_bind (P1.FreeT l (fst pct) (fst pt) (fst vt) (map fst lts))
+                (P2.FreeT l (snd pct) (snd pt) (snd vt) (map snd lts))
+                (fun '(pct1, vht1, lts1) '(pct2, vht2, lts2) => 
+                   ((pct1, pct2), (vht1, vht2), (combine lts1 lts2))).
 
-  Definition ExtCallT (l: loc) (fn: string) (pct: control_tag) (args : list val_tag) : 
-    PolicyResult (control_tag * val_tag):=
-    double_bind (P1.ExtCallT l  fn (fst pct) (map fst args))
-                (P2.ExtCallT l  fn (snd pct) (map snd args))
-                (fun '(pct1, vt1) '(pct2, vt2) => ((pct1, pct2),(vt1, vt2))).
+  Definition ClearT (l: loc) (pct: control_tag) (n: nat) :
+    PolicyResult (control_tag * list loc_tag) :=
+    double_bind (P1.ClearT l (fst pct) n)
+                (P2.ClearT l (snd pct) n)
+                (fun '(pct1, lts1) '(pct2, lts2) => 
+                   ((pct1, pct2), (combine lts1 lts2))).
+  
+  Definition ExtCallT (l: loc) (fn: string) (pct: control_tag) (fpt: val_tag) (args : list val_tag) : 
+    PolicyResult control_tag:=
+    double_bind (P1.ExtCallT l fn (fst pct) (fst fpt) (map fst args))
+                (P2.ExtCallT l fn (snd pct) (snd fpt) (map snd args))
+                (fun pct1 pct2 => (pct1, pct2)).
+
+  Definition ExtRetT (l: loc) (fn: string) (pctclr pctcle: control_tag) (vt : val_tag) : 
+    PolicyResult (control_tag*val_tag) :=
+    double_bind (P1.ExtRetT l fn (fst pctclr) (fst pctcle) (fst vt))
+                (P2.ExtRetT l fn (snd pctclr) (snd pctcle) (snd vt))
+                (fun '(pct1,vt1) '(pct2,vt2) => ((pct1, pct2),(vt1,vt2))).
   
   Definition FieldT (l: loc) (ce: composite_env) (pct: control_tag)
              (vt: val_tag) (ty : type) (id : ident) :

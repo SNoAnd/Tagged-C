@@ -161,11 +161,13 @@ let print_mem p m =
       | A.Mem.MostlyDead -> fprintf p "/");
       let (mv,t) = (ZMap.get (coqint_of_camlint (Int32.of_int i)) (A.Mem.mem_contents m)) in
       match mv with
-      | A.Mem.MD.Undef -> fprintf p " U @ %s|" (print_lt t); print_at (i+1) max
-      | A.Mem.MD.Byte (b,t) -> fprintf p " %lu |" (camlint_of_coqint b); print_at (i+1) max
-      | A.Mem.MD.Fragment ((v,_), q, n) -> fprintf p "| %a |" print_val v; print_at (i+(camlint_of_coqnat (Memdata.size_quantity_nat q))) max)
+      | A.Mem.MD.Undef -> fprintf p " U '@' %s|" (print_lt t); print_at (i+1) max
+      | A.Mem.MD.Byte (b,vt) ->
+                      fprintf p " %lu '@' %s|" (camlint_of_coqint b) (print_vt vt);
+                      print_at (i+1) max
+      | A.Mem.MD.Fragment ((v,vt), q, n) -> fprintf p "| %a |" print_val v; print_at (i+(camlint_of_coqnat (Memdata.size_quantity_nat q))) max)
     else () in
-  print_at 2960 3000;
+  print_at 1000 1016;
   fprintf p "\n"
 
 let print_failure failure =
@@ -677,7 +679,7 @@ let do_step p prog ge ce time s w =
             goes to stderr, which also goes to stdout? *)
         (*fprintf p "@[<hov 2>Failstop on policy @ %s %s@]@."
         (String.of_seq (List.to_seq msg)) (String.concat ", " (List.map print_tag params));*)
-        eprintf "@[<hov 2>Failstop on policy @ %s@]@."
+        eprintf "@[<hov 2>%s@]@."
         (print_failure failure);
         exit 42 (* error*)
       | _ ->

@@ -114,7 +114,7 @@ if __name__ == '__main__':
     # should failstop with a different dfree
     runACFileWithInput("double_free_confused_cleanup_2.c",
                        doublefree, "!!!",
-                       b' DoubleFree||FreeT detects two frees|  location double_free_confused_cleanup_2.c:41, location double_free_confused_cleanup_2.c:47')
+                       b'DoubleFree||FreeT detects two frees|  location double_free_confused_cleanup_2.c:41, location double_free_confused_cleanup_2.c:47')
     
     # should not
     runACFileWithInput("double_free_confused_cleanup_2.c",

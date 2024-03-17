@@ -71,14 +71,14 @@ Module DoubleFree <: Policy.
 
 Definition print_vt (t : val_tag) : string :=
     match t with
-    | FreeColor l => (inj_loc "location" l)
-    | N => "Non applicable" 
-    | Alloc => "Allocated"
+    | FreeColor l => (inj_loc "F" l)
+    | N => "N" 
+    | Alloc => "A"
     end.
 Definition print_ct (t : control_tag) : string :=
-  "Control tag, not DFree relevant" (* for policy designer debugging only *).
+  "tt" (* for policy designer debugging only *).
 Definition print_lt (t : loc_tag) : string :=
-  "Location tag, not DFree relevant" (* for policy designer debugging only *).
+  "tt" (* for policy designer debugging only *).
 
 Definition policy_state : Type := unit.
 Definition init_state : policy_state := tt.
@@ -103,11 +103,11 @@ Definition log := log policy_state.
            Free in this policy does not look at these at all, so it does not really
            matter was value goes here. 
   *)
- Definition MallocT (l:loc) (pct: control_tag) (fptrt st : val_tag) :
+ Definition MallocT (l:loc) (pct: control_tag) (fptrt : val_tag) :
    PolicyResult (control_tag * val_tag * val_tag * val_tag * loc_tag) :=
    ret (pct, Alloc, N, Alloc, tt).
-  
-  (* 
+
+ (* 
   FreeT colors the header tag with the current Freecolor from the pct. If there is already 
     a color present on the tag of the header, this is a double free. If it tries to free
     something that is unallocated, this is a nonsense free. Freeing a
@@ -122,9 +122,8 @@ Definition log := log policy_state.
   If rule succeeds, the return tuple contains:
     1st tag - pct, program counter tag. This replaces the LabelT behavior that set the 
         pct to FreeColor l
-    2nd tag - vt body, tags on body of valyes in block
-    3rd tag - vht header tag on the header, index -1 of block. This carries the free color.
-    4th tag - lt, location tags in block 
+    2rd tag - vht header tag on the header, index -1 of block. This carries the free color.
+    3th tag - lt, location tags in header
   
   If rule fails with two frees, the return tuple is :
     - the color of the first/previous free (recorded in the block header during first free)
@@ -137,18 +136,22 @@ Definition log := log policy_state.
     - tag on free's function pointer
     - tag on the pointer passed to free
     - tag on the "header" 
- *)
- Definition FreeT (l:loc) (pct: control_tag) (fptrt pt vht : val_tag) (lts : list loc_tag) :
-   PolicyResult (control_tag * val_tag * val_tag * list loc_tag) :=
+  *)
+ Definition FreeT (l:loc) (pct: control_tag) (pt vht : val_tag) (lts : list loc_tag) :
+   PolicyResult (control_tag * val_tag * list loc_tag) :=
   match vht with 
-    | Alloc => ret(pct, N, (FreeColor l), lts) (* was allocated then freed, assign free color from pct *)
+    | Alloc => ret(pct, (FreeColor l), lts) (* was allocated then freed, assign free color from pct *)
     | N (* trying to free unallocated memory at this location *)
       => raise (PolicyFailure (inj_loc "DoubleFree||FreeT detects free of unallocated memory| " l))
                     
     | FreeColor c (* Freecolor means this was already freed and never reallocated *)
-        => raise (PolicyFailure "DoubleFree||FreeT detects two frees| ")
+      => raise (PolicyFailure ("DoubleFree||FreeT detects two frees|  location "
+                                 ++ (print_loc c) ++ ", location " ++ (print_loc l)))
   end.
- 
+
+ Definition ClearT (l:loc) (pct: control_tag) (n: nat) : PolicyResult (control_tag * list loc_tag) :=
+   ret (pct, repeat tt n).
+   
   (* These are required, but cannot pass through because they don't get tags to start with.
     In other words, they have to make tags out of thin air. *)
  (* Required for policy interface. Not relevant to this particular policy, pass values through *)
@@ -171,10 +174,6 @@ Definition log := log policy_state.
  Definition LocalT (l:loc) (ce : composite_env) (pct : control_tag) (ty : type) :
    PolicyResult (control_tag * val_tag * (list loc_tag))%type :=
    ret (tt, N, []).
-
- Definition ExtCallT (l:loc) (fn : string) (pct : control_tag) (args : list val_tag)
-   : PolicyResult (control_tag*val_tag) :=
-   ret (pct,N).
  
    (* Passthrough rules *)
   Definition CallT      := Passthrough.CallT policy_state val_tag control_tag.  
@@ -191,6 +190,8 @@ Definition log := log policy_state.
   Definition ExprSplitT := Passthrough.ExprSplitT policy_state val_tag control_tag.
   Definition ExprJoinT  := Passthrough.ExprJoinT policy_state val_tag control_tag.
   Definition FieldT     := Passthrough.FieldT policy_state val_tag control_tag.
+  Definition ExtCallT   := Passthrough.ExtCallT policy_state val_tag control_tag.
+  Definition ExtRetT    := Passthrough.ExtRetT policy_state val_tag control_tag.
   Definition PICastT    := Passthrough.PICastT policy_state val_tag control_tag loc_tag.
   Definition IPCastT    := Passthrough.IPCastT policy_state val_tag control_tag loc_tag.
   Definition PPCastT    := Passthrough.PPCastT policy_state val_tag control_tag loc_tag.

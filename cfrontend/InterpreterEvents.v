@@ -383,20 +383,13 @@ Module InterpreterEvents (P:Policy) (A:Allocator P).
     Proof.
       unfold alloc_size. unfold do_alloc_size. split; intros; destruct v; inv H; auto.
     Qed.
-    
+
     Definition do_ef_malloc (l: Cabs.loc) (w: world) (vargs: list atom) (pct: control_tag) (fpt: val_tag) (m: mem)
       : option (world * trace * (PolicyResult (atom * control_tag * mem))) :=
       match vargs with
       | [(v,st)] =>
-          match do_alloc_size v with
-          | Some sz =>
-              let res :=
-                '(pct',pt',vt_body,vt_head,lt) <- MallocT l pct fpt st;;
-                '(m', base, bound) <- heapalloc m sz vt_head vt_body lt;;
-                ret ((Vlong (Int64.repr base), pt'), pct', m') in
-              Some (w, E0, res)
-          | None => None
-          end
+          sz <- do_alloc_size v;;
+          Some (w, E0, do_extcall_malloc l pct fpt st m sz)          
       | _ => None
       end.
 
@@ -444,13 +437,7 @@ Module InterpreterEvents (P:Policy) (A:Allocator P).
       : option (world * trace * (PolicyResult (atom * control_tag * mem))) :=
       match vargs with
       | [(Vlong addr,pt)] =>
-          if Int64.eq addr Int64.zero then
-            Some (w, E0, (fun s => (Success ((Vundef,def_tag),pct,m), s)))
-          else
-            let res :=
-              '(pct',m') <- heapfree m (Int64.unsigned addr) (fun vt => FreeT l pct fpt pt vt);;
-              ret ((Vundef,def_tag),pct',m') in
-              Some (w, E0, res)
+          Some (w, E0, do_extcall_free l pct fpt pt addr m)
       | _ => None
       end.
 
