@@ -399,10 +399,11 @@ Module FLAllocator (P : Policy) : Allocator P.
     match fl with
     | [] => None
     | (base, bound, vt') :: fl' =>
-        if bound - base =? size
+        let sz_aligned := align size 8 in        
+        if bound - base =? sz_aligned
         then Some (base,bound,fl')
-        else if size <? bound - base
-             then Some (base,base+size,(base+size+1,bound,vt)::fl')
+        else if sz_aligned <? bound - base
+             then Some (base,base+size,(base+size,bound,vt)::fl')
              else match fl_alloc fl' size vt with
                   | Some (base',bound',fl'') => Some (base', bound', (base, bound, vt') :: fl'')
                   | None => None

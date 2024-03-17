@@ -486,19 +486,20 @@ Definition alloc_size (v: val) (z:Z) : Prop :=
 
 Definition do_extcall_malloc (l:Cabs.loc) (pct: control_tag) (fpt st: val_tag) (m: mem) (sz: Z)
   : PolicyResult (atom * control_tag * mem) :=
+  let sz_aligned := align sz 8 in
   pct' <- ExtCallT l "malloc" pct fpt [st];;
-  '(pct', pt, vt_body, vt_head, lt) <- MallocT l pct fpt;;
-  '(m', lo, hi) <- heapalloc m sz vt_head;;
-  mvs <- loadbytes m' lo sz;;
+  '(pct'', pt, vt_body, vt_head, lt) <- MallocT l pct' fpt;;
+  '(m', lo, hi) <- heapalloc m sz_aligned vt_head;;
+  mvs <- loadbytes m' lo sz_aligned;;
   let mvs' := map (fun mv =>
                      match mv with
                      | Mem.MD.Byte b vt => Mem.MD.Byte b vt_body
                      | Mem.MD.Fragment (v,vt) q n => Mem.MD.Fragment (v,vt_body) q n
                      | Undef => Undef
                      end) mvs in
-  m'' <- storebytes m' lo mvs' (repeat lt (Z.to_nat sz));;
-  '(pct', pt') <- ExtRetT l "malloc" pct pct' pt;;
-  ret ((Vlong (Int64.repr lo), pt'), pct', m').
+  m'' <- storebytes m' lo mvs' (repeat lt (Z.to_nat sz_aligned));;
+  '(pct''', pt') <- ExtRetT l "malloc" pct pct'' pt;;
+  ret ((Vlong (Int64.repr lo), pt'), pct''', m'').
 
 (** ** Semantics of dynamic memory allocation (malloc) *)
 Inductive extcall_malloc_sem (l:Cabs.loc) (ge: Genv.t F V):
