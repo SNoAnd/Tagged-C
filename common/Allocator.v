@@ -182,16 +182,20 @@ Module ConcreteAllocator (P : Policy) : Allocator P.
      If the header space is not inclueded, it makes size 0 regions problematic, as you cannot
      distinguish "free" from "in use". 
      BTW, it would be legal to just return a null pointer for a 0-length malloc request. *)
-  Definition check_header (m: Mem.mem) (base: Z) :
-    PolicyResult (bool * Z * val_tag * (list loc_tag)) :=
+  Definition get_header (m: Mem.mem) (base: Z) : PolicyResult (atom * list loc_tag) :=
     match load_all Mint64 m base with
-    | Success ((Vlong i, vt), lts) =>
+    | Success res => ret res
+    | Fail failure => raise failure
+    end.
+
+  Definition parse_header (v: val) : PolicyResult (bool * Z) :=
+    match v with
+    | Vlong i =>
         let live := (0 <? (Int64.signed i))%Z in (* -: free, +: live, 0: free, but no room! *)
         let sz := (Z.abs (Int64.signed i)) in
-        ret (live, sz, vt, lts)
-    | Success ((Vundef, vt), lts) => raise (OtherFailure "Header is undefined")
-    | Success _ => raise (OtherFailure "Header is not a long")
-    | Fail failure => raise failure
+        ret (live, sz)
+    | Vundef => raise (OtherFailure "Header is undefined")
+    | _ => raise (OtherFailure "Header is not a long")
     end.
 
   Definition update_header (m: Mem.mem) (base: Z) (live: bool) (sz: Z)
@@ -218,7 +222,8 @@ Module ConcreteAllocator (P : Policy) : Allocator P.
            Sign indicates: is this a live block? (Negative no, positive/zero yes)
            (* APT: see note above *)
            Magnitude indicates size *)
-        '(live,bs,vt',lts) <- check_header m header;;
+        '((v,vt'),lts) <- get_header m header;;
+        '(live,bs) <- parse_header v;;
         if live
         then (* block is live *)
           (* [base ][=================][next] *)
@@ -276,8 +281,9 @@ Module ConcreteAllocator (P : Policy) : Allocator P.
     (* APT: This is not safe: addr might not be a heap header at all!
        Need to do a tag check to make sure that it is, or else
        iterate through the heap to locate a block at this addr. *)
-    '(live,sz,vt,lts) <- check_header m (addr-header_size);;
+    '((v,vt),lts) <- get_header m (addr-header_size);;
     '(pct',vt',lts') <- FreeT l pct pt vt lts;;
+    '(live,sz) <- parse_header v;;
     m' <- update_header m (addr-header_size) false sz vt' lts';;
     ret (sz,pct',(m',sp)).
     

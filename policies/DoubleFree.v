@@ -142,7 +142,8 @@ Definition log := log policy_state.
   match vht with 
     | Alloc => ret(pct, (FreeColor l), lts) (* was allocated then freed, assign free color from pct *)
     | N (* trying to free unallocated memory at this location *)
-      => raise (PolicyFailure (inj_loc "DoubleFree||FreeT detects free of unallocated memory| " l))
+      => raise (PolicyFailure ("DoubleFree||FreeT detects free of unallocated memory|  location "
+                                 ++ (print_loc l)))
                     
     | FreeColor c (* Freecolor means this was already freed and never reallocated *)
       => raise (PolicyFailure ("DoubleFree||FreeT detects two frees|  location "
