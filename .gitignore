@@ -87,3 +87,4 @@ writeup/*.pdf
 writeup/*.tex
 writeup/*.kra
 writeup/*.png
+.vscode/extensions.json
