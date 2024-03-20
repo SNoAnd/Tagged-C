@@ -151,7 +151,6 @@ Module HeapProblem <: Policy.
       In this case, the only extra state we need to carry around is the counter*)
  .
  Inductive myLocTag :=
- (* Use tt for unit? in place of N ?*)
  | NotHeap 
         (* this location is not heap memory. Heap pointers should not touch this *)
  | UnallocatedHeap 
@@ -210,8 +209,8 @@ Module HeapProblem <: Policy.
  Definition print_vt (t : val_tag) : string :=
     match t with
     | N => "Not a heap pointer"
-    | PointerWithColor l color => (inj_loc "pointer to heap at location, malloc'ed at " l)    
-    | AllocatedHeader l color => (inj_loc "header of heap allocated block, malloc'ed at " l)
+    | PointerWithColor l color => (inj_loc "pointer to heap, malloc'ed at source location" l)    
+    | AllocatedHeader l color => (inj_loc "header of heap allocated block, malloc'ed at source location" l)
     end.
  Definition print_ct (t : control_tag) : string :=
    (* @TODO maybe it would be nice to know the color for debugging the policy? *)
