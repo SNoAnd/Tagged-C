@@ -46,6 +46,8 @@
  *      - the value tag on the pointer is colored with the location of the malloc and the current color from the pc tag
  *      - the location tags on the block are marked with the same location + color, marked AllocatedDirty (to detect Heap Problem #4)
  *     APT: Including the header location tag??
+       AMN: well, its equivalent val_tag, vht is not a loc_tag
+ *      - the val_tag on the header, vht, is set to AllocatedHeader (location, color)
  *      - color counter is increased
  *  - When memory is written via StoreT
  *      - If pt is not a pointer tag, error
@@ -74,7 +76,8 @@
  *      - If the header tag is N, L_NotHeap, or L_UnallocatedHeap, fail
  *      - If the header tag is AllocatedDirty, or AllocatedwithColor and the location+color are the same, success
  *      - If the header tag is Allocated, but the location+color do not match, that is heap corruption.
- *      APT: What happens to the location tags on the header and data? 
+ *      APT: What happens to the location tags on the header and data?
+        AMN:  
  *  - Binary Operations & Unary Operations
  *      - most of the unary ones don't make a lot of sense with pointers 
  *      - classic arthimetic ops that make sense with ptrs preserve pointerness

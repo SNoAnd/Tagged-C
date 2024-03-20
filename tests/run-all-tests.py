@@ -11,6 +11,7 @@ defaulttimeout = 1000 # default # of steps to allow to run
 # strings to reuse
 doublefree = "dfree"
 PVI = "pvi"
+dfreeXpvi = "dfxpvi"
 passmsg = "\t\ttest passed"
 failmsg = "\t\ttest FAILED!"
 # after adding locations, these no longer have the same error
@@ -70,6 +71,12 @@ if __name__ == '__main__':
     runACFileWithoutInput("stack_load_store_ob.c", PVI,
                           b'PVI || StoreT')
 
+    print("\n=======\nMultipolicy (Product.v) without input\n=======")
+    runACFileWithoutInput("double_free_no_input.c", dfreeXpvi,
+                          b'ProdLeft||DoubleFree||FreeT detects two frees|  location double_free_no_input.c:8, location double_free_no_input.c:9\n'
+                          )
+    runACFileWithoutInput("stack_load_store_ob.c", dfreeXpvi,
+                          b'ProdRight||PVI || StoreT tag_eq_dec Failure at stack_load_store_ob.c:8')
 
     print("\n=======\ndfree tests without input\n=======")
     runACFileWithoutInput("double_free_no_input.c", doublefree,
