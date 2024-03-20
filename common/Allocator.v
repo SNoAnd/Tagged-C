@@ -159,8 +159,6 @@ Module ConcreteAllocator (P : Policy) : Allocator P.
       live := live m
     |}.
   
-  Variable DefHT : loc_tag.
-
   Definition init_heap (m: Mem.mem) (base: Z) (sz: Z) : Mem.mem :=
     let contents' := setN (repeat (Undef,DefHT) (Z.to_nat sz)) base m.(mem_contents) in
     let m' := {|
