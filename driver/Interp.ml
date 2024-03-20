@@ -167,7 +167,9 @@ let print_mem p m =
                       print_at (i+1) max
       | A.Mem.MD.Fragment ((v,vt), q, n) -> fprintf p "| %a |" print_val v; print_at (i+(camlint_of_coqnat (Memdata.size_quantity_nat q))) max)
     else () in
-  print_at 1000 1016;
+  print_at 1000 1015;
+  fprintf p "\n";
+  print_at 2984 2999;
   fprintf p "\n"
 
 let print_failure failure =
