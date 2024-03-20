@@ -159,12 +159,19 @@ Module ConcreteAllocator (P : Policy) : Allocator P.
       live := live m
     |}.
   
-  Definition init_record (m: Mem.mem) (base: Z) (sz: Z) : Mem.mem :=
+  Variable DefHT : loc_tag.
+
+  Definition init_heap (m: Mem.mem) (base: Z) (sz: Z) : Mem.mem :=
+    let contents' := setN (repeat (Undef,DefHT) (Z.to_nat sz)) base m.(mem_contents) in
+    let m' := {|
+      mem_contents := contents';
+      mem_access := m.(mem_access);
+      live := m.(live) |} in
     let szv := Vlong (Int64.neg (Int64.repr sz)) in
-    superstore Mint64 m base (szv, InitT) [DefLT; DefLT; DefLT; DefLT; DefLT; DefLT; DefLT; DefLT].
-  
+    superstore Mint64 m' base (szv, InitT) [DefLT; DefLT; DefLT; DefLT; DefLT; DefLT; DefLT; DefLT].
+
   Definition empty :=
-    let m := init_record empty 1000 1000 in
+    let m := init_heap empty 1000 1000 in
     (m, init).
   
   Definition stkalloc (m: mem) (al sz: Z) : PolicyResult (mem*Z*Z) :=

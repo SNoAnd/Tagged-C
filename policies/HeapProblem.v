@@ -195,6 +195,7 @@ Module HeapProblem <: Policy.
 *)
  Definition InitPCT : control_tag := PC_Extra 0.
  Definition DefLT   : loc_tag := NotHeap. (* @TODO who sets the heap? tt (unit) was not allowed*)
+ Definition DefHT   : loc_tag := NotHeap. (* @TODO who sets the heap? tt (unit) was not allowed*)
  Definition InitT   : val_tag := N. (* nothing is a malloc'ed pointer until MalloT *)
 
 (* This is a helper to print locations for human & fuzzer ingestion *)

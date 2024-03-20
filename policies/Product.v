@@ -34,6 +34,7 @@ Module PolProduct (P1:Policy) (P2: Policy) <: Policy.
   Definition InitT : val_tag := (P1.InitT, P2.InitT).
 
   Definition DefLT : loc_tag := (P1.DefLT, P2.DefLT).
+  Definition DefHT : loc_tag := (P1.DefHT, P2.DefHT).
 
   (* one print() for each tag type *)
   Definition print_vt (t:val_tag) : string := "(" ++ (P1.print_vt (fst t)) ++ ", "

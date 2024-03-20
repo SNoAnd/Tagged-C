@@ -24,6 +24,7 @@ Module NullPolicy <: Policy.
   Definition def_tag : val_tag := tt.
   Definition InitPCT : control_tag := tt.
   Definition DefLT   : loc_tag := tt.
+  Definition DefHT   : loc_tag := tt.
   Definition InitT   : val_tag := tt.
   
   Definition print_vt (t:val_tag) : string := "tt".

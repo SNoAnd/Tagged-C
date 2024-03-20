@@ -83,6 +83,7 @@ Module Type Policy.
   Parameter def_tag : val_tag.
   Parameter InitPCT : control_tag.
   Parameter DefLT   : loc_tag.
+  Parameter DefHT   : loc_tag.
   Parameter InitT   : val_tag.
   
   (* CallT executes at the transition from an expression state to a call state. *)

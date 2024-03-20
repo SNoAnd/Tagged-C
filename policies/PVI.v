@@ -34,6 +34,7 @@ Module PVI <: Policy.
   Definition def_tag : val_tag := N.
   Definition InitPCT : control_tag := O.
   Definition DefLT   : loc_tag := N.
+  Definition DefHT   : loc_tag := N.
   Definition InitT   : val_tag := N.
 
   Definition print_vt (t : val_tag) : string :=

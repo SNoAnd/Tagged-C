@@ -63,6 +63,7 @@ Module DoubleFree <: Policy.
  (* nothing has a color to start *)
  Definition InitPCT : control_tag := tt.
  Definition DefLT   : loc_tag := tt.
+ Definition DefHT   : loc_tag := tt.
  Definition InitT   : val_tag := N.
 
 (* This is a helper to print locations for human & fuzzer ingestion *)
