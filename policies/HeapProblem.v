@@ -196,9 +196,9 @@ Module HeapProblem <: Policy.
     of nats is expensive. It's good for proofs, bad for us. 
 *)
  Definition InitPCT : control_tag := PC_Extra 0.
- Definition DefLT   : loc_tag := NotHeap. (* @TODO who sets the heap? tt (unit) was not allowed*)
- Definition DefHT   : loc_tag := NotHeap. (* @TODO who sets the heap? tt (unit) was not allowed*)
- Definition InitT   : val_tag := N. (* nothing is a malloc'ed pointer until MalloT *)
+ Definition DefLT   : loc_tag := NotHeap. (* stack et al *)
+ Definition DefHT   : loc_tag := UnallocatedHeap.  (* the whole heap to start is unallocated. Allocator.v will need this*)
+ Definition InitT   : val_tag := N. (* nothing is a malloc'ed pointer or header until MalloT *)
 
 (* This is a helper to print locations for human & fuzzer ingestion *)
  Definition inj_loc (s:string) (l:loc) : string :=
