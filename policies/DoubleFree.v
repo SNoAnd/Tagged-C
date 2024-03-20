@@ -174,7 +174,7 @@ Definition log := log policy_state.
  (* Required for policy interface. Not relevant to this particular policy, pass values through *)
  Definition LocalT (l:loc) (ce : composite_env) (pct : control_tag) (ty : type) :
    PolicyResult (control_tag * val_tag * (list loc_tag))%type :=
-   ret (tt, N, []).
+   ret (tt, N, repeat tt (Z.to_nat (sizeof ce ty))).
  
    (* Passthrough rules *)
   Definition CallT      := Passthrough.CallT policy_state val_tag control_tag.  
