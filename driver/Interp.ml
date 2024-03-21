@@ -161,17 +161,21 @@ let print_mem p m =
       | A.Mem.MostlyDead -> fprintf p "/");
       let (mv,t) = (ZMap.get (coqint_of_camlint (Int32.of_int i)) (A.Mem.mem_contents m)) in
       match mv with
-      | A.Mem.MD.Undef -> fprintf p " U @ %s|" (print_lt t); print_at (i+1) max
-      | A.Mem.MD.Byte (b,t) -> fprintf p " %lu |" (camlint_of_coqint b); print_at (i+1) max
-      | A.Mem.MD.Fragment ((v,_), q, n) -> fprintf p "| %a |" print_val v; print_at (i+(camlint_of_coqnat (Memdata.size_quantity_nat q))) max)
+      | A.Mem.MD.Undef -> fprintf p " U '@' %s|" (print_lt t); print_at (i+1) max
+      | A.Mem.MD.Byte (b,vt) ->
+                      fprintf p " %lu '@' %s|" (camlint_of_coqint b) (print_vt vt);
+                      print_at (i+1) max
+      | A.Mem.MD.Fragment ((v,vt), q, n) -> fprintf p "| %a |" print_val v; print_at (i+(camlint_of_coqnat (Memdata.size_quantity_nat q))) max)
     else () in
-  print_at 2960 3000;
+  print_at 1000 1015;
+  fprintf p "\n";
+  print_at 2984 2999;
   fprintf p "\n"
 
 let print_failure failure =
   match failure with
-  | OtherFailure -> ""
-  | PolicyFailure -> ""
+  | OtherFailure msg -> (Camlcoq.camlstring_of_coqstring msg)
+  | PolicyFailure msg -> (Camlcoq.camlstring_of_coqstring msg)
   | PrivateLoad ofs ->
     sprintf "Private Load at address %Ld" (Camlcoq.camlint64_of_coqint ofs)
   | PrivateStore ofs ->
@@ -209,13 +213,10 @@ let print_state p (prog, ge, s) =
               print_val (fst res)
   | Csem.Stuckstate ->
       fprintf p "stuck after an undefined expression"
-  | Csem.Failstop(msg, PolicyFailure) ->
-      fprintf p "@[failstop on policy @ %s @]@."
-      (String.of_seq (List.to_seq msg))
-  | Csem.Failstop(msg, failure) ->
-      fprintf p "@[failstop @ %s %s@]@."
-      (String.of_seq (List.to_seq msg))
+  | Csem.Failstop(failure, logs) ->
+      fprintf p "@[failstop @ %s @]@."
       (print_failure failure)
+      (* SNA: what should we do with the log here? Print it? Dump it to a file? *)
 
 
 	(* APT: may be nicer ways to format, as comment below suggests *)
@@ -360,8 +361,8 @@ let (>>=) opt f = match opt with None -> None | Some arg -> f arg
 let extract_string m ofs =
   let b = Buffer.create 80 in
   let rec extract ofs =
-    match A.load Mint8unsigned m ofs with
-    | Success (Vint n,_) ->
+    match A.load Mint8unsigned m ofs (Pol.init_state,[]) with
+    | (Success (Vint n,_),_) ->
         let c = Char.chr (Z.to_int n) in
         if c = '\000' then begin
           Some(Buffer.contents b)
@@ -467,8 +468,8 @@ let store_string m ofs buff size =
   let rec store m i = 
     if i < size then (* use default value and location tags for now; this is probably bogus *)
       (match A.store Mint8unsigned m  (Z.add ofs (Z.of_sint i))
-	  (Vint (Z.of_uint (Char.code (Bytes.get buff i))),Pol.def_tag) [Pol.coq_DefLT] with
-      | Success m' -> store m' (i+1)
+          (Vint (Z.of_uint (Char.code (Bytes.get buff i))),Pol.def_tag) [Pol.coq_DefLT] (Pol.init_state,[]) with
+      | (Success m', _) -> store m' (i+1)
       | _ -> None)
     else Some m in
   store m 0 
@@ -530,7 +531,7 @@ let rec convert_external_args ge vl tl =
       convert_external_args ge vl tyl >>= fun el -> Some (e1 :: el)
   | _, _ -> None
 
-let do_external_function id sg ge w args pstate pct fpt m =
+let do_external_function id sg ge w args pct fpt m =
   match camlstring_of_coqstring id, args with
   | "printf", (Vlong ofs,pt) :: args' ->
       extract_string m ofs >>= fun fmt ->
@@ -539,14 +540,14 @@ let do_external_function id sg ge w args pstate pct fpt m =
       Format.print_string fmt';
       flush stdout;
       convert_external_args ge args sg.sig_args >>= fun eargs ->
-      Some((w,[Events.Event_syscall(id, eargs, Events.EVint len)]),
-          (Success(((Vint len, Pol.def_tag), pct), m)))
+      let res = fun ps -> (Success(((Vint len, Pol.def_tag), pct), m),ps) in
+      Some((w,[Events.Event_syscall(id, eargs, Events.EVint len)]), res)
   | "fgets", (Vlong ofs,pt) :: (Vint siz,vt) :: args' ->
       do_fgets m ofs pt siz >>= fun (p,m') ->
       convert_external_args ge args sg.sig_args >>= fun eargs ->
       convert_external_arg ge (fst p) (proj_rettype sg.sig_res) >>= fun eres -> 
-      Some((w,[Events.Event_syscall(id, eargs, eres)]),
-          (Success((p, pct), m')))
+      let res = fun ps -> (Success((p, pct), m'),ps) in
+      Some((w,[Events.Event_syscall(id, eargs, eres)]),res)
   | _ ->
       None
 
@@ -565,8 +566,8 @@ and world_vload ge m chunk id ofs =
           fun res ->
                 match res with
                 | Genv.SymGlob(base,bound,t,gv) ->
-                        (match A.load chunk m ofs with
-                         | Success v ->
+                         (match A.load chunk m ofs (Pol.init_state,[]) with
+                         | (Success v,_) ->
                            Cexec.InterpreterEvents.eventval_of_atom ge v (type_of_chunk chunk) >>= fun ev ->
                            Some(ev, world ge m)
                          | _ -> None)
@@ -578,8 +579,8 @@ and world_vstore ge m chunk id ofs ev =
                 match res with
                 | Genv.SymGlob(base,bound,t,gv) ->
                         Cexec.InterpreterEvents.atom_of_eventval ge ev (type_of_chunk chunk) >>= fun v ->
-                        (match A.store chunk m ofs v [] with
-                         | Success m' -> Some(world ge m')
+                         (match A.store chunk m ofs v [] (Pol.init_state,[]) with
+                         | (Success m',_) -> Some(world ge m')
                          | _ -> None)
                 | _ -> None
 
@@ -607,7 +608,7 @@ let (|||) a b = a || b (* strict boolean or *)
 
 let is_stuck r =
   match r with
-  | Cexec.Stuckred msg -> true
+  | Cexec.Stuckred -> true
   | _ -> false
 
 let diagnose_stuck_expr p ge ce w f a kont pstate pct l e te m =
@@ -674,14 +675,14 @@ let do_step p prog ge ce time s w =
           fprintf p "ERROR: Undefined behavior@.";
           exit 126
         end
-      | Csem.Failstop(msg,failure) ->
+      | Csem.Failstop(failure,lg) ->
         if !trace >= 1 then
         (* AMN This is the version without -trace, easier to consume (by fuzzer)
             goes to stderr, which also goes to stdout? *)
         (*fprintf p "@[<hov 2>Failstop on policy @ %s %s@]@."
         (String.of_seq (List.to_seq msg)) (String.concat ", " (List.map print_tag params));*)
-        eprintf "@[<hov 2>Failstop on policy @ %s@]@."
-        (String.of_seq (List.to_seq msg));
+        eprintf "@[<hov 2>%s@]@."
+        (print_failure failure);
         exit 42 (* error*)
       | _ ->
         let l = Cexec.do_step ge ce do_external_function (*do_inline_assembly*) w s in
@@ -838,21 +839,21 @@ let execute prog =
      (let wprog = world_program prog1 in
       let wprog' = program_of_program wprog in
       let ce = prog1.prog_comp_env in
-      match Genv.globalenv ce wprog' with
-      | Success (wge,wm) ->
+      match Genv.globalenv ce wprog' (Pol.init_state,[]) with
+      | (Success (wge,wm),ps) ->
       (*match Genv.init_mem wprog' with
       | Mem.MemoryFail(msg) ->
           fprintf p "ERROR: World memory state undefined@."; exit 126
       | Mem.MemorySuccess(wm) -> *)
        (match Cexec.do_initial_state prog1 with
-        | Some (Success(ge, s)) ->
+        | Some (ge, s) ->
            (*(match !mode with
             | First | Random ->*)
                 explore_one p prog1 ge ce 0 s (world wge wm)
            (*| All ->
                 explore_all p prog1 ge ce 0 [(1, s, world wge wm)])*)
         | _ -> fprintf p "ERROR: Initial state undefined@."; exit 126)
-      | Fail (msg,failure) ->
+      | _ ->
         fprintf p "ERROR: Initial state undefined@."; exit 126)
   
 end

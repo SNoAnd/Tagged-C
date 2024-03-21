@@ -46,6 +46,8 @@
  *      - the value tag on the pointer is colored with the location of the malloc and the current color from the pc tag
  *      - the location tags on the block are marked with the same location + color, marked AllocatedDirty (to detect Heap Problem #4)
  *     APT: Including the header location tag??
+       AMN: well, its equivalent val_tag, vht is not a loc_tag
+ *      - the val_tag on the header, vht, is set to AllocatedHeader (location, color)
  *      - color counter is increased
  *  - When memory is written via StoreT
  *      - If pt is not a pointer tag, error
@@ -74,7 +76,8 @@
  *      - If the header tag is N, L_NotHeap, or L_UnallocatedHeap, fail
  *      - If the header tag is AllocatedDirty, or AllocatedwithColor and the location+color are the same, success
  *      - If the header tag is Allocated, but the location+color do not match, that is heap corruption.
- *      APT: What happens to the location tags on the header and data? 
+ *      APT: What happens to the location tags on the header and data?
+        AMN:  
  *  - Binary Operations & Unary Operations
  *      - most of the unary ones don't make a lot of sense with pointers 
  *      - classic arthimetic ops that make sense with ptrs preserve pointerness
@@ -103,7 +106,6 @@
  *  - @TODO there are some questions throughout
  *  - @TODO test that the failures have _enough_ information, but not too much
  *  - @TODO heap tests are not hooked into run all tests.py
- *  - @TODO alter concrete allocator to not clear memory
  *  - @WAITING - Sean is working on logging, which should emit the bytes not the tags.
  *      - We need it for improper secret disclosure. 
  *      - Hack up whatever kinda works, and may also support different ways of initing bytes,
@@ -119,6 +121,7 @@ Require Import Ctypes.
 Require Import Cabs.
 Require Import String.
 Require Import Tags.
+Require Import ExtLib.Structures.Monads. Import MonadNotation.
 
 Require Import List. Import ListNotations. 
 (* list notations is a module inside list *)
@@ -183,8 +186,11 @@ Module HeapProblem <: Policy.
 
  Definition policy_state : Type := unit.
  Definition init_state : policy_state := tt.
- Definition log (pstate: policy_state) (msg: string) : policy_state := tt.
- Definition dump (pstate: policy_state) : list string := [].
+
+ Definition PolicyResult := PolicyResult policy_state.
+ Definition log := log policy_state.
+
+ Local Open Scope monad_scope.
  
  Definition def_tag := N.
 (* Initialize color counter to 0. Using Integers (Z) because gallina's repsentation
@@ -192,6 +198,7 @@ Module HeapProblem <: Policy.
 *)
  Definition InitPCT : control_tag := PC_Extra 0.
  Definition DefLT   : loc_tag := NotHeap. (* @TODO who sets the heap? tt (unit) was not allowed*)
+ Definition DefHT   : loc_tag := NotHeap. (* @TODO who sets the heap? tt (unit) was not allowed*)
  Definition InitT   : val_tag := N. (* nothing is a malloc'ed pointer until MalloT *)
 
 (* This is a helper to print locations for human & fuzzer ingestion *)
@@ -249,32 +256,32 @@ Module HeapProblem <: Policy.
   Fixpoint CheckforColorMatchOnLoad (ptr_color: Z) (ptr_l load_l:loc) (vt : val_tag) (lts : list loc_tag) : PolicyResult val_tag :=
   match lts with
   (* bc. hit end of list and all the tags are correct. Return success (based on pass through) *)
-  | []   => (Success vt)
+  | []   => (ret vt)
   (* ic. recurse on a perfect match only  *)
   | h::t => (
     match h with 
-    | NotHeap => Fail (inj_loc "HeapProblem|| Pointer corruption|LoadT tried to read nonheap memory|" load_l) PolicyFailure
-    | UnallocatedHeap => Fail (inj_loc "HeapProblem|| Pointer corruption|LoadT tried to read unallocated heap memory|" load_l) PolicyFailure
+    | NotHeap => raise (PolicyFailure (inj_loc "HeapProblem|| Pointer corruption|LoadT tried to read nonheap memory|" load_l))
+    | UnallocatedHeap => raise (PolicyFailure (inj_loc "HeapProblem|| Pointer corruption|LoadT tried to read unallocated heap memory|" load_l))
     (* @TODO when we have "log with success" it will go here. 
         We also need to be able to write out the contents of memory to that log
         For now, we fail *)
-    | AllocatedDirty l2 c2 => Fail (inj_loc "HeapProblem|| potential secret disclosure| Memory not yet written to is read" load_l) PolicyFailure
+    | AllocatedDirty l2 c2 => raise (PolicyFailure (inj_loc "HeapProblem|| potential secret disclosure| Memory not yet written to is read" load_l))
     | Allocated l2 c2  => (
         (* if the color & the locations match, recurse on tail (caled t)*)
         if (Z.eqb c2 ptr_color) && (Cabs.loc_eqb l2 ptr_l)
         then (CheckforColorMatchOnLoad ptr_color ptr_l load_l vt t )
         (* right kind of tag, but this memory belongs to someone else *)
-        else Fail (inj_loc "HeapProblem|| Pointer corruption|LoadT tried to read memory with a different color|" load_l) PolicyFailure
+        else raise (PolicyFailure (inj_loc "HeapProblem|| Pointer corruption|LoadT tried to read memory with a different color|" load_l))
       )
     end
   )
   end.
 
- Definition LoadT (l:loc) (pstate: policy_state) (pct : control_tag) (pt vt: val_tag) (lts : list loc_tag) : PolicyResult val_tag := 
+ Definition LoadT (l:loc) (pct : control_tag) (pt vt: val_tag) (lts : list loc_tag) : PolicyResult val_tag := 
   match pt with 
   (* location the ptr was assigned memory != location of this load *)
   | PointerWithColor ptr_l ptr_color => (CheckforColorMatchOnLoad ptr_color ptr_l l vt lts)
-  | _ => Fail (inj_loc "HeapProblem|| LoadT tried to load an invalid pointer tag " l) PolicyFailure 
+  | _ => raise (PolicyFailure (inj_loc "HeapProblem|| LoadT tried to load an invalid pointer tag " l)) 
   end.
   
 (* Store == write. based on policy in the paper 
@@ -296,77 +303,73 @@ Module HeapProblem <: Policy.
 Fixpoint ConvertDirtyAllocOnStore (pct: control_tag) (vt : val_tag) (cur_lts new_lts : list loc_tag) (checkres : PolicyResult (control_tag * val_tag * list loc_tag)) 
     : PolicyResult (control_tag * val_tag * list loc_tag) 
     :=
-    match checkres with
-    | Success _ => (
-      match cur_lts with
-      | [] => Success (pct, vt, new_lts)
-      | h::t => (
-        match h with
-        | (AllocatedDirty l2 c2) => ConvertDirtyAllocOnStore pct vt t (new_lts ++ [(Allocated l2 c2)]) checkres
-        | _ => ConvertDirtyAllocOnStore pct vt t (new_lts ++ [h]) checkres
-        end
-        )
-      end
-    )
-    | Fail _ _ => checkres (* if we already failed, pass it on *)
-    end. 
+    checkres;;
+    match cur_lts with
+    | [] => ret (pct, vt, new_lts)
+    | h::t => (
+               match h with
+               | (AllocatedDirty l2 c2) => ConvertDirtyAllocOnStore pct vt t (new_lts ++ [(Allocated l2 c2)]) checkres
+               | _ => ConvertDirtyAllocOnStore pct vt t (new_lts ++ [h]) checkres
+               end
+             )
+    end.
+ 
 (* Helper function for StoreT. Checks that the tags in lts are the right type & color *) 
 Fixpoint CheckforColorMatchOnStore (ptr_color: Z) (ptr_l store_l :loc) (pct : control_tag) (vt : val_tag) (lts : list loc_tag) : PolicyResult (control_tag * val_tag * list loc_tag):=
   match lts with
     (* this case is not quite correct, but it will be overwritten by ConvertDirtyAllocOnStore*)
-  | [] => Success (pct,vt,lts)
+  | [] => ret (pct,vt,lts)
   | h::t => (
       match h with
-      | NotHeap => Fail (inj_loc "HeapProblem|| Pointer corruption |StoreT tried to write nonheap memory|" store_l) PolicyFailure
-      | UnallocatedHeap => Fail (inj_loc "HeapProblem|| Pointer corruption|StoreT tried to write unallocated heap memory|" store_l) PolicyFailure
+      | NotHeap => raise (PolicyFailure (inj_loc "HeapProblem|| Pointer corruption |StoreT tried to write nonheap memory|" store_l))
+      | UnallocatedHeap => raise (PolicyFailure (inj_loc "HeapProblem|| Pointer corruption|StoreT tried to write unallocated heap memory|" store_l))
     
       | (AllocatedDirty l2 c2) => (
         (* sigh. pure languages are a bad fit for impure problems *)
         if (Z.eqb c2 ptr_color) && (Cabs.loc_eqb l2 ptr_l)
         then (CheckforColorMatchOnStore ptr_color ptr_l store_l pct vt t)
-        else Fail (inj_loc "HeapProblem|| Pointer corruption |StoreT tried to write (dirty) memory with a different color|" store_l) PolicyFailure
+        else raise (PolicyFailure (inj_loc "HeapProblem|| Pointer corruption |StoreT tried to write (dirty) memory with a different color|" store_l))
         )
       | (Allocated l2 c2)  => (
           (* if the color & the locations match, recurse on tail (caled t)*)
           if (Z.eqb c2 ptr_color) && (Cabs.loc_eqb l2 ptr_l)
           then (CheckforColorMatchOnStore ptr_color ptr_l store_l pct vt t )
           (* right kind of tag, but this memory belongs to someone else *)
-          else Fail (inj_loc "HeapProblem|| Pointer corruption |StoreT tried to write memory with a different color|" store_l) PolicyFailure
+          else raise (PolicyFailure (inj_loc "HeapProblem|| Pointer corruption |StoreT tried to write memory with a different color|" store_l))
         )
       end   
   ) 
   end. 
 
- Definition StoreT (l:loc) (pstate: policy_state) (pct : control_tag) (pt vt : val_tag) (lts : list loc_tag) : PolicyResult (control_tag * val_tag * list loc_tag) := 
+ Definition StoreT (l:loc) (pct : control_tag) (pt vt : val_tag) (lts : list loc_tag) : PolicyResult (control_tag * val_tag * list loc_tag) := 
   match pt with 
   (* we need to know the pointer's location and the store operations location if something goes wrong *)
   | PointerWithColor ptr_l ptr_color => (
       ConvertDirtyAllocOnStore pct vt lts [] (CheckforColorMatchOnStore ptr_color ptr_l l pct vt lts)
     )
     (* @TODO - if this is real, should we print both locations? the one for teh store and the one where the header got assigned? *)
-  | AllocatedHeader _ _ => Fail (inj_loc "HeapProblem|| StoreT tried to write through a header tag " l) PolicyFailure 
+  | AllocatedHeader _ _ => raise (PolicyFailure (inj_loc "HeapProblem|| StoreT tried to write through a header tag " l))
   (*probably shouldn't write through an N *)
-  | N => Fail (inj_loc "HeapProblem|| StoreT tried to write through a nonpointer tag " l) PolicyFailure
+  | N => raise (PolicyFailure (inj_loc "HeapProblem|| StoreT tried to write through a nonpointer tag " l))
   end.
-
 
  (*
   There is only one unary operation that is reasonably applied to pointers
  *)
- Definition UnopT (l:loc) (pstate: policy_state) (op : unary_operation) (pct: control_tag) (vt : val_tag) : PolicyResult (control_tag * val_tag) := 
+ Definition UnopT (l:loc) (op : unary_operation) (pct: control_tag) (vt : val_tag) : PolicyResult (control_tag * val_tag) := 
   match op with
     | Onotbool (* boolean negation ([!] in C) *)
         (* used sometimes to convert pointer into a bool 
             if(!!a_ptr) or if (!a_ptr && a-ptr_val == 5)
             propagate pointerness through*)
-        => Success (pct, vt)
+        => ret (pct, vt)
     | Onotint (* integer complement ([~] in C) *)
         (* does not make sense as a ptr operation, strip pointerness from
           pointers and leave everything else alone *)
         => (
           match vt with
-          | PointerWithColor _ _ => Success (pct, N)
-          | _ => Success (pct, vt)
+          | PointerWithColor _ _ => ret (pct, N)
+          | _ => ret (pct, vt)
           end
         )
     | Oneg (* opposite (unary [-]) *)
@@ -374,8 +377,8 @@ Fixpoint CheckforColorMatchOnStore (ptr_color: Z) (ptr_l store_l :loc) (pct : co
           pointers and leave everything else alone *)
         => (
           match vt with
-          | PointerWithColor _ _ => Success (pct, N)
-          | _ => Success (pct, vt)
+          | PointerWithColor _ _ => ret (pct, N)
+          | _ => ret (pct, vt)
           end
         )
     | Oabsfloat (* floating-point absolute value *)
@@ -383,8 +386,8 @@ Fixpoint CheckforColorMatchOnStore (ptr_color: Z) (ptr_l store_l :loc) (pct : co
           pointers and leave everything else alone *)
         => (
           match vt with
-          | PointerWithColor _ _ => Success (pct, N)
-          | _ => Success (pct, vt)
+          | PointerWithColor _ _ => ret (pct, N)
+          | _ => ret (pct, vt)
           end
         )
   end.
@@ -396,26 +399,26 @@ Fixpoint CheckforColorMatchOnStore (ptr_color: Z) (ptr_l store_l :loc) (pct : co
     Allow lots of things but turn nonsense into Ns
     
     *)
-  Definition BinopT (l:loc) (pstate: policy_state) (op : binary_operation) (pct: control_tag) (vt1 vt2 : val_tag) : PolicyResult (control_tag * val_tag) := 
+  Definition BinopT (l:loc) (op : binary_operation) (pct: control_tag) (vt1 vt2 : val_tag) : PolicyResult (control_tag * val_tag) := 
     match op with
     (* classic arthimetic ops *)
     | Oadd (* addition (binary [+]) *)
            (* should preserve pointerness *)
         => (
           match vt1, vt2 with 
-          | (PointerWithColor _ _), N => Success (pct, vt1) (* ptr + num = ptr*)
-          |  N, (PointerWithColor _ _) => Success (pct, vt2) (* num + ptr = ptr*)
-          |  _ , _ => Success (pct, vt2) (* anything else, default behavior*)
+          | (PointerWithColor _ _), N => ret (pct, vt1) (* ptr + num = ptr*)
+          |  N, (PointerWithColor _ _) => ret (pct, vt2) (* num + ptr = ptr*)
+          |  _ , _ => ret (pct, vt2) (* anything else, default behavior*)
           end
         )
     | Osub (* subtraction (binary [-]) *)
            (* some should preserve pointerness *)
         => (
           match vt1, vt2 with 
-          | (PointerWithColor _ _), (PointerWithColor _ _) => Success (pct, N) (*ptr - ptr = num (N) *)
-          | (PointerWithColor _ _), N => Success (pct, vt1) (* ptr - num = ptr *)
-          |  N, (PointerWithColor _ _) => Success(pct, N) (* num - ptr = num (N)*)
-          |  _ , _ => Success (pct, vt2) (*anything else, default behavior*)
+          | (PointerWithColor _ _), (PointerWithColor _ _) => ret (pct, N) (*ptr - ptr = num (N) *)
+          | (PointerWithColor _ _), N => ret (pct, vt1) (* ptr - num = ptr *)
+          |  N, (PointerWithColor _ _) => ret(pct, N) (* num - ptr = num (N)*)
+          |  _ , _ => ret (pct, vt2) (*anything else, default behavior*)
           end
         )
     | Omul (* multiplication (binary [*]) *)
@@ -424,10 +427,10 @@ Fixpoint CheckforColorMatchOnStore (ptr_color: Z) (ptr_l store_l :loc) (pct : co
            (* division anything with a ptr is nonsense. turn nonsense into Ns *)
            =>  (
             match vt1, vt2 with 
-            | (PointerWithColor _ _), (PointerWithColor _ _) => Success (pct, N) 
-            | (PointerWithColor _ _), N => Success (pct, N)
-            |  N, (PointerWithColor _ _) => Success(pct, N)
-            |  _ , _ => Success (pct, vt2) (*anything else, default behavior*)
+            | (PointerWithColor _ _), (PointerWithColor _ _) => ret (pct, N) 
+            | (PointerWithColor _ _), N => ret (pct, N)
+            |  N, (PointerWithColor _ _) => ret(pct, N)
+            |  _ , _ => ret (pct, vt2) (*anything else, default behavior*)
             end
           )
     | Omod (* remainder ([%]) *)
@@ -436,10 +439,10 @@ Fixpoint CheckforColorMatchOnStore (ptr_color: Z) (ptr_l store_l :loc) (pct : co
               don't throw a tantrum, but strip pointerness *)
         =>  (
           match vt1, vt2 with 
-          | (PointerWithColor _ _), (PointerWithColor _ _) => Success (pct, N) (* ptr % ptr = nonsense N*)
-          | (PointerWithColor _ _), N => Success (pct, N) (* ptr % 8 = bit flag ? stil nums *)
-          |  N, (PointerWithColor _ _) => Success(pct, N) (* num % ptr = nonsense *)
-          |  _ , _ => Success (pct, vt2) (*anything else, default behavior*)
+          | (PointerWithColor _ _), (PointerWithColor _ _) => ret (pct, N) (* ptr % ptr = nonsense N*)
+          | (PointerWithColor _ _), N => ret (pct, N) (* ptr % 8 = bit flag ? stil nums *)
+          |  N, (PointerWithColor _ _) => ret(pct, N) (* num % ptr = nonsense *)
+          |  _ , _ => ret (pct, vt2) (*anything else, default behavior*)
           end
         )
     
@@ -452,10 +455,10 @@ Fixpoint CheckforColorMatchOnStore (ptr_color: Z) (ptr_l store_l :loc) (pct : co
     | Oshr (* right shift ([>>]) *)
         =>  (
           match vt1, vt2 with 
-          | (PointerWithColor _ _), (PointerWithColor _ _) => Success (pct, N) 
-          | (PointerWithColor _ _), N => Success (pct, vt1)
-          |  N, (PointerWithColor _ _) => Success(pct, vt2)
-          |  _ , _ => Success (pct, vt2) (*anything else, default behavior*)
+          | (PointerWithColor _ _), (PointerWithColor _ _) => ret (pct, N) 
+          | (PointerWithColor _ _), N => ret (pct, vt1)
+          |  N, (PointerWithColor _ _) => ret(pct, vt2)
+          |  _ , _ => ret (pct, vt2) (*anything else, default behavior*)
           end
         )
     
@@ -476,19 +479,19 @@ Fixpoint CheckforColorMatchOnStore (ptr_color: Z) (ptr_l store_l :loc) (pct : co
         match vt1, vt2 with 
         | (PointerWithColor l1 c1), (PointerWithColor l2 c2) => (
             if (Z.eqb c1 c2) && (Cabs.loc_eqb l1 l2)
-            then Success (pct, vt1)
+            then ret (pct, vt1)
             else (
               (* @TODO this is very suss, UB, when there is a log, log it *)
                 (* APT: not as suspect as all that. Not sure worth logging this case *)
               (* choice of color to pass on is arbitrary APT: no: see above *)
-              Success (pct, vt2) 
+              ret (pct, vt2) 
             )
           )
           (* @TODO this is very suss, UB, when there is a log, log it *)
-        | (PointerWithColor l1 c1), N => Success (pct, vt1)
+        | (PointerWithColor l1 c1), N => ret (pct, vt1)
           (* @TODO this is very suss, UB, when there is a log, log it *)
-        |  N, (PointerWithColor l2 c2) => Success(pct, vt2)
-        |  _ , _ => Success (pct, vt2) (*anything else, default behavior*)
+        |  N, (PointerWithColor l2 c2) => ret(pct, vt2)
+        |  _ , _ => ret (pct, vt2) (*anything else, default behavior*)
         end
       )
   end.
@@ -520,11 +523,11 @@ Fixpoint CheckforColorMatchOnStore (ptr_color: Z) (ptr_l store_l :loc) (pct : co
            Free in this policy does not look at these at all, so it does not really
            matter was value goes here. 
   *)
-  Definition MallocT (l:loc) (pstate: policy_state) (pct: control_tag)  (fptrt st : val_tag) : PolicyResult (control_tag * val_tag * val_tag * val_tag * loc_tag) :=
+  Definition MallocT (l:loc) (pct: control_tag) (fptrt : val_tag) : PolicyResult (control_tag * val_tag * val_tag * val_tag * loc_tag) :=
    match pct with
    | PC_Extra currcolor => (
-      (* Success (pct', pt, vtb, vht', lt) *)
-      Success ((PC_Extra (currcolor +1 )), (PointerWithColor l currcolor), ( N), 
+      (* ret (pct', pt, vtb, vht', lt) *)
+      ret ((PC_Extra (currcolor +1 )), (PointerWithColor l currcolor), ( N), 
           (AllocatedHeader l currcolor), (AllocatedDirty l currcolor))
    )
    end.
@@ -568,49 +571,58 @@ Fixpoint CheckforColorMatchOnStore (ptr_color: Z) (ptr_l store_l :loc) (pct : co
     add header ctype to val tags
 
  *)
- (* @TODO - need helpder function to loop over lts here stubbing this out so we can get a merge 
-    will need to make a list of same length as lts in the success case*)
-  Definition FreeT (l:loc) (pstate: policy_state) (pct: control_tag) (fptrt pt vht : val_tag) (lts: list loc_tag) : 
-    PolicyResult (control_tag * val_tag * val_tag * list loc_tag) :=
-  (*
-  match pt, lts with 
-    (* code probably did something wrong *)
-    | PointerWithColor _ _, NotHeap => Fail (inj_loc "HeapProblem||FreeT detects free of memory not in the heap| " l) [pct;fptrt;pt;vht]
-    | PointerWithColor _ _, UnallocatedHeap => Fail (inj_loc "HeapProblem||FreeT detects free of unallocated heap memory| " l) [pct;fptrt;pt;vht]
 
-    (* You can legally malloc, never use it and free, though it is a waste *)
-    | PointerWithColor ptr_l ptr_c, AllocatedDirty mem_l mem_c => 
-        if ((Z.eqb ptr_c mem_c) && (Cabs.loc_eqb ptr_l mem_l)) then
-                        (* (pct', vtb, vth', lt) *)
-          Success (pct, N, VT , UnallocatedHeap)
-        else 
-          (* @TODO this one could probably use all 3 locations printed eventually *)
-          Fail (inj_loc "HeapProblem|| FreeT tried to free someone else's allocated memory " l) [pct;fptrt;pt;vht]
+  (* helper to check all the tags in the heap block match the intended tag*)
+  Fixpoint checkFreeLocTags (expectedtag: loc_tag) (lts: list loc_tag): 
+    bool :=
+    match lts with 
+    | [] => true
+    | h::tail => 
+      (
+        if (lt_eq_dec expectedtag h)
+        then checkFreeLocTags expectedtag tail
+        else false 
+      )
+    end.
+  
+    Definition FreeT (l:loc) (pct: control_tag) (pt vht : val_tag) (lts: list loc_tag) : 
+    PolicyResult (control_tag * val_tag * list loc_tag) :=
+      match pt, vht with 
+      (* pointer points to an allocated header *)
+      | PointerWithColor ptr_l ptr_c, AllocatedHeader hdr_l hdr_c => 
+          (
+            (* header color/loc, pointer color/loc, and lts color/loc should match *)
+            if ((Z.eqb ptr_c hdr_c) && (Cabs.loc_eqb ptr_l hdr_l)) 
+            then
+              (
+                (* lts tags should all be AllocatedDirty or Allocated. If any tag is anything else,
+                   there's heap corruption *)
+                if ((checkFreeLocTags (Allocated ptr_l ptr_c) lts) || (checkFreeLocTags (AllocatedDirty ptr_l ptr_c) lts))
+                then ret (pct, N, (repeat UnallocatedHeap (length lts)))
+                else raise (PolicyFailure (inj_loc "HeapProblem|| Corrupted Heap |FreeT's block has unexpected tags" l))
+              )
+            else raise (PolicyFailure (inj_loc "HeapProblem| Corrupted Heap | FreeT tried to free someone else's allocated memory at " l))
+          )
+    
+      (* Invalid header. Trying to free nonlegal block*)
+      | PointerWithColor _ _, N => raise (PolicyFailure (inj_loc "HeapProblem|| FreeT Misuse| FreeT Nonsense free: " l))
+                                        
+      (* Tried to free through somethign that is not a pointer (N, header) *)
+      | _ , _ =>  raise (PolicyFailure (inj_loc "HeapProblem|| FreeT Misuse| FreeT tried to free through a nonpointer : " l))
+      end.
 
-    | PointerWithColor ptr_l ptr_c, Allocated mem_l mem_c => (
-        if ((Z.eqb ptr_c mem_c) && (Cabs.loc_eqb ptr_l mem_l)) then
-                        (* (pct', vtb, vth', lt) *)
-          Success (pct, N, UnallocatedHeap, UnallocatedHeap)
-        else 
-          (* @TODO this one could probably use all 3 locations printed eventually *)
-          Fail (inj_loc "HeapProblem|| FreeT tried to free someone else's allocated memory " l) [pct;fptrt;pt;vht]
-        )
-    | PointerWithColor _ _, _ => 
-    (* I probably did something wrong. t*)
-    | _ , _ =>  Fail (inj_loc "HeapProblem|| FreeT Misuse| FreeT tried to free a nonpointer : " l) [pct;fptrt;pt;vht]
-  end.
-  *)
-  Success (pct, N, N, lts).
-
+    Definition ClearT (l:loc) (pct: control_tag) (n: nat) : PolicyResult (control_tag * list loc_tag) :=
+   ret (pct, repeat UnallocatedHeap n).
+  
   (* These are required, but cannot "passthrough" because they don't get tags to start with.
     In other words, they have to make tags out of thin air. *)
  
   (* Constants are never pointers to malloced memory. *)
-  Definition ConstT (l:loc) (pstate: policy_state) (pct : control_tag) : PolicyResult val_tag := Success N.
+  Definition ConstT (l:loc) (pct : control_tag) : PolicyResult val_tag := ret N.
 
   (* NB this is for stack allocated variables. Not relevant to dynamic memory. Tag as "Not Heap" *)
-  Definition DeallocT (l:loc) (ce : composite_env) (pstate: policy_state) (pct : control_tag) (ty : type) :
-    PolicyResult (control_tag * val_tag * loc_tag) := Success (pct, N, NotHeap).
+  Definition DeallocT (l:loc) (ce : composite_env) (pct : control_tag) (ty : type) :
+    PolicyResult (control_tag * val_tag * loc_tag) := ret (pct, N, NotHeap).
 
   (* Globals are "Not Heap" either *)
   Definition GlobalT (ce : composite_env) (id : ident) (ty : type) :
@@ -620,14 +632,10 @@ Fixpoint CheckforColorMatchOnStore (ptr_color: Z) (ptr_l store_l :loc) (pct : co
   Definition FunT (ce: composite_env) (id : ident) (ty : type) : val_tag := N.
 
   (* Required for policy interface. Not relevant to this particular policy, pass values through *)
-  Definition LocalT (l:loc) (ce : composite_env) (pstate: policy_state) (pct : control_tag) (ty : type) :
+  Definition LocalT (l:loc) (ce : composite_env) (pct : control_tag) (ty : type) :
     PolicyResult (control_tag * val_tag * (list loc_tag))%type :=
-    Success (pct, N, []).  
+    ret (pct, N, []).  
 
-  Definition ExtCallT (l:loc) (pstate: policy_state) (fn : string) (pct : control_tag) (args : list val_tag)
-    : PolicyResult (control_tag*val_tag) :=
-    Success (pct,N).
- 
   (* Passthrough rules *)
   Definition CallT := Passthrough.CallT policy_state val_tag control_tag.  
   Definition ArgT := Passthrough.ArgT policy_state val_tag control_tag.
@@ -639,6 +647,8 @@ Fixpoint CheckforColorMatchOnStore (ptr_color: Z) (ptr_l store_l :loc) (pct : co
   Definition ExprSplitT := Passthrough.ExprSplitT policy_state val_tag control_tag.
   Definition ExprJoinT := Passthrough.ExprJoinT policy_state val_tag control_tag.
   Definition FieldT := Passthrough.FieldT policy_state val_tag control_tag. 
+  Definition ExtCallT   := Passthrough.ExtCallT policy_state val_tag control_tag.
+  Definition ExtRetT    := Passthrough.ExtRetT policy_state val_tag control_tag.
 
   (* Allowing these to pass through for now *)
   Definition PICastT := Passthrough.PICastT policy_state val_tag control_tag loc_tag.

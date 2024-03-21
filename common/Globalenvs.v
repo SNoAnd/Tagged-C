@@ -61,12 +61,6 @@ Parameter ext : ident -> option (external_function * typelist * rettype * callin
 
 Module Genv (Ptr: Pointer) (Pol: Policy) (M:Memory Ptr Pol) (A: Allocator Ptr Pol M).
   Import M.
-  Notation mem := A.mem.
-  Notation store := A.store.
-  Notation load := A.load.
-  Notation load_ltags := A.load_ltags.
-  Notation load_all := A.load_all.
-  Notation empty := A.empty.
   Import MD.
   Import A.
   Import TLib.
@@ -188,13 +182,13 @@ Module Genv (Ptr: Pointer) (Pol: Policy) (M:Memory Ptr Pol) (A: Allocator Ptr Po
         | Init_float64 n => store Mfloat64 m p (Vfloat n, vt) [lt;lt;lt;lt;lt;lt;lt;lt]
         | Init_addrof symb ofs =>
             match find_symbol ge symb with
-            | None => Fail "Symbol not found" OtherFailure
+            | None => raise (OtherFailure "Symbol not found")
             | Some (SymGlob base bound pt gv) =>
                 store Mptr m p (Vptr base, vt) [lt;lt;lt;lt;lt;lt;lt;lt]
-            | Some (SymIFun b pt) => Success m
-            | Some (SymEFun ef tyargs tyres cc pt) => Success m
+            | Some (SymIFun b pt) => ret m
+            | Some (SymEFun ef tyargs tyres cc pt) => ret m
             end
-        | Init_space n => Success m
+        | Init_space n => ret m
         end.
 
       Fixpoint store_init_data_list (ge: t) (m: mem) (p: ptr) (idl: list init_data) (vt: val_tag) (lt: loc_tag)
@@ -221,31 +215,28 @@ Module Genv (Ptr: Pointer) (Pol: Policy) (M:Memory Ptr Pol) (A: Allocator Ptr Po
             let padded := pad_init_data_list (Pos.to_nat sz) init in
             m2 <- store_init_data_list ge m (base c) padded vt lt;;
             ret (base c,m2)
-        | None => Fail "Globals weren't allocated correctly" OtherFailure
+        | None => raise (OtherFailure "Globals weren't allocated correctly")
         end.
 
       Program Definition add_global (ge: t) (m: mem) (c: context)
               (tree: PTree.t (context -> ptr)) (idg: ident * globdef F V)
-        : (t*mem) :=
+        : PolicyResult (t*mem) :=
         match idg#2 with
         | Gvar gv =>
             let '(pt, vt, lt) := GlobalT ce (idg#1) Tvoid in (* TODO: if we're going to do things based on type here, need to concretize V *)
-            match alloc_global ge m c tree (idg#1) gv vt lt with
-            | Success (base', m') =>
-                let size := Int64.repr (Zpos gv.(gvar_size)) in
-                let bound := off base' size in
-                let genv_symb' := PTree.set idg#1 (SymGlob base' bound pt gv) ge.(genv_symb) in
-                let ge' := @mkgenv
-                             ge.(genv_public)
-                             genv_symb'
-                             ge.(genv_fun_defs)
-                             ge.(genv_ef_defs)
-                             ge.(genv_next_block)
-                             _ _
-                in
-                (ge', m')
-            | _ => (ge, m)
-            end
+            '(base', m') <- alloc_global ge m c tree (idg#1) gv vt lt;;
+            let size := Int64.repr (Zpos gv.(gvar_size)) in
+            let bound := off base' size in
+            let genv_symb' := PTree.set idg#1 (SymGlob base' bound pt gv) ge.(genv_symb) in
+            let ge' := @mkgenv
+                       ge.(genv_public)
+                       genv_symb'
+                       ge.(genv_fun_defs)
+                       ge.(genv_ef_defs)
+                       ge.(genv_next_block)
+                       _ _
+            in
+            ret (ge', m')
         | Gfun _ =>
             match ext (idg#1) with
             | Some (ef,tyargs,tyres,cconv) =>
@@ -253,28 +244,28 @@ Module Genv (Ptr: Pointer) (Pol: Policy) (M:Memory Ptr Pol) (A: Allocator Ptr Po
                 let genv_symb' := PTree.set idg#1 (SymEFun ef tyargs tyres cconv pt)
                                             ge.(genv_symb) in
                 let ge' := @mkgenv
-                             ge.(genv_public)
-                             genv_symb'
-                             ge.(genv_fun_defs)
-                             ((ef,tyargs,tyres,cconv)::ge.(genv_ef_defs))
-                             ge.(genv_next_block)
-                             _ _
+                           ge.(genv_public)
+                           genv_symb'
+                           ge.(genv_fun_defs)
+                           ((ef,tyargs,tyres,cconv)::ge.(genv_ef_defs))
+                           ge.(genv_next_block)
+                           _ _
                 in
-                (ge', m)
+                ret (ge', m)
             | None =>
                 let genv_symb' := PTree.set idg#1 (SymIFun ge.(genv_next_block) def_tag)
                                             ge.(genv_symb) in
                 let genv_fun_defs' := PTree.set ge.(genv_next_block) idg#2 ge.(genv_fun_defs) in
                 let genv_next_block' := Pos.succ ge.(genv_next_block) in
                 let ge' := @mkgenv
-                             ge.(genv_public)
-                             genv_symb'
-                             genv_fun_defs'
-                             ge.(genv_ef_defs)
-                             genv_next_block'
-                             _ _
+                           ge.(genv_public)
+                           genv_symb'
+                           genv_fun_defs'
+                           ge.(genv_ef_defs)
+                           genv_next_block'
+                           _ _
                 in
-                (ge', m)
+                ret (ge', m)
             end
         end.
       Next Obligation.
@@ -322,11 +313,11 @@ Module Genv (Ptr: Pointer) (Pol: Policy) (M:Memory Ptr Pol) (A: Allocator Ptr Po
       
       Fixpoint add_globals (ge: t) (cs: ident -> context) (m: mem)
                (tree: PTree.t (context -> ptr)) (gl: list (ident * globdef F V))
-        : (t*mem) :=
+        : PolicyResult (t*mem) :=
         match gl with
-        | [] => (ge,m)
+        | [] => ret (ge,m)
         | g::gl' =>
-            let '(ge', m') := add_globals ge cs m tree gl' in
+           '(ge', m') <- add_globals ge cs m tree gl';;
             add_global ge' m' (cs (fst g)) tree g
         end.
       
@@ -343,7 +334,7 @@ Module Genv (Ptr: Pointer) (Pol: Policy) (M:Memory Ptr Pol) (A: Allocator Ptr Po
       Definition globalenv (p: AST.program F V) (cs: ident -> context) :
         PolicyResult (t * mem) :=
         let (m,tree) := A.globalalloc A.empty (filter_var_sizes p.(AST.prog_defs)) in
-        ret (add_globals (empty_genv p.(AST.prog_public)) cs m tree p.(AST.prog_defs)).
+        (add_globals (empty_genv p.(AST.prog_public)) cs m tree p.(AST.prog_defs)).
       Section WITH_GE.
 
         Variable ge : t.

@@ -115,7 +115,7 @@ End Extracted.
   
   (* Per Policies.md, add new policies here *)
   Separate Extraction
-           Tags NullPolicy PVI DoubleFree HeapProblem
+           Tags NullPolicy PVI DoubleFree HeapProblem PolProduct
            Allocator
            Extracted
            Ctypes.merge_attributes Ctypes.remove_attributes

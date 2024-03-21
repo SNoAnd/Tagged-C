@@ -15,7 +15,7 @@ int main() {
     
     // You should only free the pointer to the start of the block malloced
     // (ab)use pointer arthimetic 
-    free(input+2); 
+    free(input+8); 
     // fuzzer should not get here
     printf("You entered %s. Hope it doesn't have a problem!", input);
 	return (EXIT_SUCCESS);
