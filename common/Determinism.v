@@ -29,10 +29,14 @@ Require Import Behaviors.
 Require Import Tags.
 Require Import Values.
 Require Import Memory.
+Require Import Csem.
 
-Module Deterministic (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Allocator Ptr Pol M).
-  Module Behaviors := Behaviors Ptr Pol M A.
+Module Deterministic (Ptr: Pointer) (Pol: Policy)
+       (M: Memory Ptr Pol) (A: Allocator Ptr Pol M) (Sem: Semantics Ptr Pol M A).
+  Module Behaviors := Behaviors Ptr Pol M A Sem.
   Export Behaviors.
+  Import Sem.
+  Import Smallstep.
   Import Ptr.
   
 (** * Deterministic worlds *)
@@ -207,6 +211,13 @@ Proof.
   simpl. econstructor. eauto. apply COINDHYP.
   inv H3. simpl. auto. econstructor; eauto. econstructor; eauto. unfold E0; congruence.
 Qed.
+
+  Notation " 'Step' L " := (step L (globalenv L) (ce L)) (at level 1) : smallstep_scope.
+  Notation " 'Star' L " := (star (step L) (globalenv L) (ce L)) (at level 1) : smallstep_scope.
+  Notation " 'Plus' L " := (plus (step L) (globalenv L) (ce L)) (at level 1) : smallstep_scope.
+  Notation " 'Forever_silent' L " := (forever_silent (step L) (globalenv L) (ce L)) (at level 1) : smallstep_scope.
+  Notation " 'Forever_reactive' L " := (forever_reactive (step L) (globalenv L) (ce L)) (at level 1) : smallstep_scope.
+  Notation " 'Nostep' L " := (nostep (step L) (globalenv L) (ce L)) (at level 1) : smallstep_scope.
 
 (** * Definition and properties of deterministic semantics *)
 
@@ -448,7 +459,7 @@ Definition same_behaviors (beh1 beh2: program_behavior) : Prop :=
 
 Lemma state_behaves_deterministic:
   forall s beh1 beh2,
-  state_behaves L s beh1 -> state_behaves L s beh2 -> same_behaviors beh1 beh2.
+  state_behaves L L.(ce) s beh1 -> state_behaves L L.(ce) s beh2 -> same_behaviors beh1 beh2.
 Proof.
   generalize (det_final_nostep L DET); intro dfns.
   intros until beh2; intros BEH1 BEH2.
@@ -495,8 +506,8 @@ Qed.
 
 Theorem program_behaves_deterministic:
   forall beh1 beh2,
-  program_behaves L beh1 -> program_behaves L beh2 ->
-  same_behaviors beh1 beh2.
+    program_behaves L L.(ce) beh1 -> program_behaves L L.(ce) beh2 ->
+    same_behaviors beh1 beh2.
 Proof.
   intros until beh2; intros BEH1 BEH2. inv BEH1; inv BEH2.
 (* both initial states defined *)
@@ -532,13 +543,14 @@ Definition world_sem : semantics := @Semantics_gen
   (state L * world)%type
   (funtype L)
   (vartype L)
-  (fun ge s t s' => step L ge s#1 t s'#1 /\ possible_trace s#2 t s'#2)
+  (fun ge ce s t s' => step L ge ce s#1 t s'#1 /\ possible_trace s#2 t s'#2)
   (fun s => initial_state L s#1 /\ s#2 = initial_world)
   (fun s r => final_state L s#1 r)
-  (Smallstep.globalenv L).
+  (Smallstep.globalenv L)
+  (Smallstep.ce L).
 
 (** If the original semantics is determinate, the world-aware semantics is deterministic. *)
-
+(*
 Hypothesis D: determinate L.
 
 Theorem world_sem_deterministic: sem_deterministic world_sem.
@@ -560,7 +572,7 @@ Proof.
 (* final no step *)
   red; simpl; intros. red; intros [A B]. exploit (sd_final_nostep D); eauto.
 Qed.
-
+*)
 End WORLD_SEM.
 
 End Deterministic.

@@ -33,7 +33,6 @@ Module Extracted (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Allocator 
   Import I.
   Import Cexec.
   Import InterpreterEvents.
-  Import Cstrategy.
   Import Ctyping.
   Import Csem.
   Import Csyntax.

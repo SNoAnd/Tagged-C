@@ -16,7 +16,7 @@ Require Import FunInd.
 Require Import Axioms Classical.
 Require Import String Coqlib Decidableplus.
 Require Import Errors Maps Integers Floats.
-Require Import AST Values Memory Allocator Events Globalenvs Builtins Determinism.
+Require Import AST Values Memory Allocator Events Globalenvs Builtins Csem.
 Require Import Tags.
 Require Import List. Import ListNotations.
 Require Import InterpreterEvents Ctypes.
@@ -35,22 +35,13 @@ Notation " 'check' A ; B" := (if A then B else nil)
   (at level 200, A at level 100, B at level 200)
   : list_monad_scope.
 
-Module Cexec (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Allocator Ptr Pol M).
-  Module InterpreterEvents := InterpreterEvents Ptr Pol M A.
-  Import InterpreterEvents.
-  Import Cstrategy.
-  Import Ctyping.
-  Import Csem.
-  Import Csyntax.
-  Import Cop.
-  Import Deterministic.
-  Import Behaviors.
-  Import Smallstep.
-  Import Events.
-  Import Genv.
-  Import A.
-  Import P.
-  Import Csem.TLib.
+Module Cexec (Pol: Policy) (A: Allocator).
+  Module InterpreterEvents := InterpreterEvents Pol A.
+  Export InterpreterEvents.
+  Import Sem.
+  Import M.
+  Import A'.
+  Import TLib.
   
   (* Policy-agnostic Tactics *)
   Ltac mydestr :=
@@ -89,7 +80,7 @@ Module Cexec (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Allocator Ptr 
       destruct e eqn:?
   | [ |- context [match ?e with
                   | PRIV _ => _
-                  | PUB _ _ _ _ => _
+                  | PUB _ _ _ => _
                   end] ] =>
       destruct e eqn:?
   | [ |- context [match ?ty with
@@ -250,7 +241,7 @@ Module Cexec (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Allocator Ptr 
     Local Open Scope memory_monad_scope.
     (** Accessing locations *)
 
-    Definition do_deref_loc (w: world) (ty: type) (m: mem) (ofs: int64) (pt:val_tag) (bf: bitfield)
+    Definition do_deref_loc (w: world) (ty: type) (m: mem) (p:ptr) (pt:val_tag) (bf: bitfield)
       : option (world * trace * PolicyResult (atom * list loc_tag)) :=
       match bf with
       | Full =>
@@ -258,20 +249,20 @@ Module Cexec (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Allocator Ptr 
           | By_value chunk =>
               match type_is_volatile ty with
               | false =>
-                  Some (w, E0, load_all chunk m (Int64.unsigned ofs))
+                  Some (w, E0, load_all chunk m p)
               | true =>
-                  match do_volatile_load ge w chunk m ofs with
+                  match do_volatile_load ge w chunk m p with
                   | Some (w', tr, res) =>
                       let res' :=
                         '(v,vt) <- res;;
-                        lts <- load_ltags chunk m (Int64.unsigned ofs);;
+                        lts <- load_ltags chunk m p;;
                         ret ((v,vt), lts) in
                         Some (w', tr, res')
                   | None => None
                   end                      
               end
-          | By_reference => Some (w, E0, ret ((Vlong ofs,pt), []))
-          | By_copy => Some (w, E0, ret ((Vlong ofs,pt),[]))
+          | By_reference => Some (w, E0, ret ((Vptr p,pt), []))
+          | By_copy => Some (w, E0, ret ((Vptr p,pt),[]))
           | _ => None
           end
       | Bits sz sg pos width =>
@@ -283,8 +274,7 @@ Module Cexec (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Allocator Ptr 
               zle 0 pos && zlt 0 width && zle width (bitsize_intsize sz) &&
                        zle (pos + width) (bitsize_carrier sz));
               let res :=
-                '((v,vt),lts) <- load_all (chunk_for_carrier sz) m
-                                          (Int64.unsigned ofs);;
+                '((v,vt),lts) <- load_all (chunk_for_carrier sz) m p;;
                 let v' :=
                   match v with
                   | Vint c => Vint (bitfield_extract sz sg pos width c)
@@ -322,7 +312,7 @@ Module Cexec (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Allocator Ptr 
       destruct Y... left; intuition lia.
     Defined.
 
-    Definition do_assign_loc (w: world) (ty: type) (m: mem) (ofs: int64)
+    Definition do_assign_loc (w: world) (ty: type) (m: mem) (p: ptr)
                (pt:val_tag) (bf: bitfield) (v: atom) (lts: list loc_tag)
       : option (world * trace * PolicyResult (mem * atom)) :=
       match bf with
@@ -332,11 +322,11 @@ Module Cexec (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Allocator Ptr 
               match type_is_volatile ty with
               | false =>
                   let res :=
-                    m' <- store chunk m (Int64.unsigned ofs) v lts;;
+                    m' <- store chunk m p v lts;;
                     ret (m',v) in
                   Some (w, E0, res)
               | true =>
-                  '(w', tr, res) <- do_volatile_store ge w chunk m ofs v lts;;
+                  '(w', tr, res) <- do_volatile_store ge w chunk m p v lts;;
                   let res' :=
                     m' <- res;;
                     ret (m',v) in
@@ -344,12 +334,12 @@ Module Cexec (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Allocator Ptr 
               end
           | By_copy =>
               match v with
-              | (Vlong ofs',vt) =>
-                  let ofs'' := ofs' in
-                  check (check_assign_copy ty ofs ofs'');
+              | (Vptr p',vt) =>
+                  let p'' := p' in
+                  check (check_assign_copy ty p p'');
                   let res :=
-                    bytes <- loadbytes m (Int64.unsigned ofs'') (sizeof ce ty);;
-                    m' <- storebytes m (Int64.unsigned ofs) bytes lts;;
+                    bytes <- loadbytes m p'' (sizeof ce ty);;
+                    m' <- storebytes m p bytes lts;;
                     ret (m',v) in
                   Some (w, E0, res)
               | _ => None
@@ -367,7 +357,7 @@ Module Cexec (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Allocator Ptr 
                        signedness_eq sg1 (if zlt width (bitsize_intsize sz)
                                           then Signed else sg));
               let res :=
-                '(v,ovt) <- load (chunk_for_carrier sz) m (Int64.unsigned ofs);;
+                '(v,ovt) <- load (chunk_for_carrier sz) m p;;
                 let v' :=
                   match v with
                   | Vint c => Vint ((Int.bitfield_insert
@@ -375,7 +365,7 @@ Module Cexec (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Allocator Ptr 
                                        width c n))
                   | _ => Vundef
                   end in
-                m' <- store (chunk_for_carrier sz) m (Int64.unsigned ofs) (v',vt) lts;;
+                m' <- store (chunk_for_carrier sz) m p (v',vt) lts;;
                 ret (m', (Vint (bitfield_normalize sz sg width n),vt)) in
               Some (w, E0, res)
           | _, _ => None
@@ -625,10 +615,10 @@ Section EXPRS.
     | LV, Eloc l ty => []
     | LV, Evar x ty =>
         match e!x with
-        | Some (PUB base bound pt ty') =>
+        | Some (PUB base pt ty') =>
             top <<=
                 check (type_eq ty ty');
-                Lred "red_var_local" (Eloc (Lmem (Int64.repr base) pt Full) ty) te m ps
+                Lred "red_var_local" (Eloc (Lmem base pt Full) ty) te m ps
         | Some (PRIV ty') =>
             top <<=
                 check (type_eq ty ty');
@@ -636,7 +626,7 @@ Section EXPRS.
         | None =>
             match Genv.find_symbol ge x with
             | Some (SymGlob base bound pt gv) =>
-                topred (Lred "red_var_global" (Eloc (Lmem (Int64.repr base) pt Full) ty) te m ps)
+                topred (Lred "red_var_global" (Eloc (Lmem base pt Full) ty) te m ps)
             | Some (SymIFun _ b pt) =>
                 topred (Lred "red_func" (Eloc (Lifun b pt) ty) te m ps)
             | Some (SymEFun _ ef tyargs tyres cc pt) =>
@@ -1061,6 +1051,8 @@ Section EXPRS.
                         (fun x => Econs r1 x) (step_exprlist lc ps pct rs te m)
          end.
   
+  Definition context := Sem.context.
+
   (** Technical properties on safe expressions. *)
   Inductive imm_safe_t: kind -> Cabs.loc -> expr -> pstate -> control_tag ->
                         tenv -> mem -> Prop :=
@@ -1114,7 +1106,7 @@ Definition invert_expr_prop (lc:Cabs.loc) (a: expr) (ps: pstate) (pct: control_t
   | Eloc l ty => False
   | Evar x ty =>
       e!x = Some (PRIV ty)
-      \/ (exists base bound pt, e!x = Some (PUB base bound pt ty))
+      \/ (exists base bound pt, e!x = Some (PUB base pt ty))
       \/ (e!x = None /\ exists base bound pt gv,
              Genv.find_symbol ge x = Some (SymGlob base bound pt gv))
       \/ (e!x = None /\ exists b pt, Genv.find_symbol ge x = Some (SymIFun _ b pt))
@@ -1516,10 +1508,10 @@ Qed.
 
 Lemma wrong_kind_ok:
   forall lc k ps pct a te m,
-  k <> Cstrategy.expr_kind a ->
+  k <> expr_kind a ->
   reducts_ok k lc ps pct  a te m stuck.
 Proof.
-  intros. apply stuck_ok. red; intros. exploit Cstrategy.imm_safe_kind; eauto.
+  intros. apply stuck_ok. red; intros. exploit imm_safe_kind; eauto.
   eapply imm_safe_t_imm_safe; eauto.
 Qed.
 

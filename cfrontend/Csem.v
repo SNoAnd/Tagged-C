@@ -856,6 +856,133 @@ Module TaggedCsem (Pol: Policy).
       forall k C e' pct,
         context k RV C -> e = C e' -> imm_safe k e' pct te m.
 
+    (* Property that safe expressions must have the right kind*)
+        Definition expr_kind (a: expr) : kind :=
+      match a with
+      | Eloc _ _ => LV
+      | Evar _ _ => LV
+      | Ederef _ _ => LV
+      | Efield _ _ _ => LV
+      | Ebuiltin _ _ _ _ => LV
+      | _ => RV
+      end.
+
+  Lemma lred_kind:
+    forall a te m ps ps' PCT a' te' m',
+      lred a te m PCT a' te' m' ps ps'->
+      expr_kind a = LV.
+  Proof.
+    induction 1; auto.
+  Qed.
+
+  Lemma lfailred_kind:
+    forall a pstate PCT tr msg failure,
+      lfailred a pstate PCT tr msg failure ->
+      expr_kind a = LV.
+  Proof.
+    induction 1; auto.
+Qed.
+
+  Lemma rred_kind:
+    forall ps ps' PCT a m e t PCT' a' e' m',
+      rred PCT a e m t PCT' a' e' m' ps ps' ->
+      expr_kind a = RV.
+  Proof.
+    induction 1; auto.
+  Qed.
+
+  Lemma rfailred_kind:
+    forall ps ps' PCT a m e tr failure,
+      rfailred PCT a e m tr failure ps ps' ->
+      expr_kind a = RV.
+  Proof.
+    induction 1; auto.
+  Qed.
+
+  Lemma callred_kind:
+    forall ps ps' pct ft a m pct' fd args ty,
+      callred pct a m ft fd args ty pct' ps ps' ->
+      expr_kind a = RV.
+  Proof.
+    induction 1; auto.
+  Qed.
+
+  Lemma context_kind:
+    forall a from to C, context from to C ->
+      expr_kind a = from -> expr_kind (C a) = to.
+  Proof.
+    induction 1; intros; simpl; auto.
+  Qed.
+
+  Lemma imm_safe_kind:
+    forall te k a PCT m,
+      imm_safe k a PCT te m ->
+      expr_kind a = k.
+  Proof.
+    induction 1.
+    auto.
+    auto.
+    eapply context_kind; eauto. eapply lred_kind; eauto.
+    eapply context_kind; eauto. eapply lfailred_kind; eauto.
+    eapply context_kind; eauto. eapply rred_kind; eauto.
+    eapply context_kind; eauto. eapply rfailred_kind; eauto.
+    eapply context_kind; eauto. eapply callred_kind; eauto.
+  Qed.
+
+
+(** ** Derived forms. *)
+
+(** The following are admissible reduction rules for some derived forms
+  of the CompCert C language.  They help showing that the derived forms
+  make sense. *)
+
+(*Lemma red_selection:
+  forall v1 ty1 v2 ty2 v3 ty3 ty m b v2' v3',
+  ty <> Tvoid ->
+  bool_val v1 ty1 m = Some b ->
+  sem_cast v2 ty2 ty m = Some v2' ->
+  sem_cast v3 ty3 ty m = Some v3' ->
+  rred (Eselection (Eval v1 ty1) (Eval v2 ty2) (Eval v3 ty3) ty) m
+    E0 (Eval (if b then v2' else v3') ty) m.
+Proof.
+  intros. unfold Eselection.
+  set (t := typ_of_type ty).
+  set (sg := mksignature (AST.Tint :: t :: t :: nil) t cc_default).
+  assert (LK: lookup_builtin_function "__builtin_sel"%string sg = Some (BI_standard (BI_select t))).
+  { unfold sg, t; destruct ty as   [ | ? ? ? | ? | [] ? | ? ? | ? ? ? | ? ? ? | ? ? | ? ? ];
+    simpl; unfold Tptr; destruct Archi.ptr64; reflexivity. }
+  set (v' := if b then v2' else v3').
+  assert (C: val_casted v' ty).
+  { unfold v'; destruct b; eapply cast_val_is_casted; eauto. }
+  assert (EQ: Val.normalize v' t = v').
+  { apply Val.normalize_idem. apply val_casted_has_type; auto. }
+  econstructor.
+- constructor. rewrite cast_bool_bool_val, H0. eauto.
+  constructor. eauto.
+  constructor. eauto.
+  constructor.
+- red. red. rewrite LK. constructor. simpl. rewrite <- EQ.
+  destruct b; auto.
+Qed.*)
+
+(*Lemma ctx_selection_1:
+  forall k C r2 r3 ty, context k RV C -> context k RV (fun x => Eselection (C x) r2 r3 ty).
+Proof.
+  intros. apply ctx_builtin. constructor; auto.
+Qed.*)
+
+(*Lemma ctx_selection_2:
+  forall k r1 C r3 ty, context k RV C -> context k RV (fun x => Eselection r1 (C x) r3 ty).
+Proof.
+  intros. apply ctx_builtin. constructor; constructor; auto.
+Qed.*)
+
+(*Lemma ctx_selection_3:
+  forall k r1 r2 C ty, context k RV C -> context k RV (fun x => Eselection r1 r2 (C x) ty).
+Proof.
+  intros. apply ctx_builtin. constructor; constructor; constructor; auto.
+Qed.*)
+
 End EXPR.
 
 Inductive cont: Type :=
@@ -1312,11 +1439,11 @@ End SEM.
   End Inner.
 End TaggedCsem.
 
+(*
 Module FA := FLAllocator NullPolicy.
 Module M := FA.M.
 Module A := FA.AllocDef.
 
-(*
 Module CompartmentCsem <: Semantics SemiconcretePointer NullPolicy M A.
   Module Csyntax := Csyntax SemiconcretePointer NullPolicy M A.
   Export Csyntax.

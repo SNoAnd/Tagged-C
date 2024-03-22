@@ -24,17 +24,7 @@ Module Initializers (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Allocat
   Import TLib.
   Module Cexec := Cexec Ptr Pol M A.
   Export Cexec.
-  Import InterpreterEvents.
-  Import Cstrategy.
-  Import Ctyping.  
   Import Csem.
-  Import Csyntax.
-  Import Cop.
-  Import Deterministic.
-  Import Behaviors.
-  Import Smallstep.
-  Import Events.
-  Import Genv.
   Import P.
 
 (** * Evaluation of compile-time constant expressions *)

@@ -2,11 +2,11 @@ Require Import FunInd.
 Require Import Axioms Classical.
 Require Import String Coqlib Decidableplus.
 Require Import Errors Maps Integers Floats.
-Require Import AST Values Memory Allocator Events Globalenvs Builtins Determinism.
+Require Import AST Values Memory Allocator Events Globalenvs Builtins.
 Require Import Csem.
 Require Import Tags.
 Require Import List. Import ListNotations.
-Require Import Cstrategy Ctypes.
+Require Import Determinism Ctypes.
 Require Import ExtLib.Structures.Monads. Import MonadNotation.
 Require Import ExtLib.Data.Monads.OptionMonad.
 
@@ -18,22 +18,17 @@ Notation " 'check' A ; B" := (if A then B else None)
   (at level 200, A at level 100, B at level 200)
   : option_monad_scope.
 
-Module InterpreterEvents (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Allocator Ptr Pol M).
-  Module Cstrategy := Cstrategy Ptr Pol M A.
-  Export Cstrategy.
-  Import Ctyping.
-  Import Csem.
-  Import Csyntax.
-  Import Cop.
-  Import Deterministic.
-  Import Behaviors.
-  Import Smallstep.
-  Import Events.
-  Import Genv.
-  Import A.
-  Import Mem.MD.
-  Import P.
-  Import Csem.TLib.
+Module InterpreterEvents (Pol: Policy) (A: Allocator).
+  Module Outer := TaggedCsem Pol.
+  Module M := Outer.M.
+  Module A' := A ConcretePointer Pol M.
+  Module Sem := Outer.Inner A'.
+  Module Deterministic := Deterministic ConcretePointer Pol M A' Sem.
+  Export Deterministic.
+  Import Sem.
+  Import M.
+  Import TLib.
+  Import A'.
   
   Local Open Scope option_monad_scope.
 
@@ -229,8 +224,8 @@ Module InterpreterEvents (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Al
 
     (** Volatile memory accesses. *)
     Definition do_volatile_load (w: world) (chunk: memory_chunk) (m: mem)
-               (ofs: int64) : option (world * trace * PolicyResult atom) :=
-      let id_if_vol := match invert_symbol_ofs ge ofs with
+               (p: ptr) : option (world * trace * PolicyResult atom) :=
+      let id_if_vol := match invert_symbol_ptr ge p with
                        | Some (id, gv) =>
                            if gv.(gvar_volatile)
                            then Some id
@@ -239,19 +234,19 @@ Module InterpreterEvents (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Al
                        end in
       match id_if_vol with
       | Some id =>
-          '(res,w') <- nextworld_vload w chunk id ofs;;
+          '(res,w') <- nextworld_vload w chunk id p;;
           '(vres,vt) <- atom_of_eventval res (type_of_chunk chunk);;
-          Some (w', Event_vload chunk id ofs res :: nil,
-                 (fun s => (Success (Val.load_result chunk vres, vt), s)))
+          Some (w', Event_vload chunk id p res :: nil,
+                 (fun s => (Success (Values.load_result chunk vres, vt), s)))
       | None =>
-          let res := load chunk m (Int64.unsigned ofs) in
+          let res := load chunk m p in
           Some (w, E0, res)
       end.
 
     Definition do_volatile_store (w: world) (chunk: memory_chunk) (m: mem)
-               (ofs: int64) (v: atom) (lts: list loc_tag) :
+               (p: ptr) (v: atom) (lts: list loc_tag) :
       option (world * trace * PolicyResult mem) :=
-      let id_if_vol := match invert_symbol_ofs ge ofs with
+      let id_if_vol := match invert_symbol_ptr ge p with
                        | Some (id, gv) =>
                            if gv.(gvar_volatile)
                            then Some id
@@ -260,19 +255,19 @@ Module InterpreterEvents (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Al
                        end in
       match id_if_vol with
       | Some id =>
-          ev <- eventval_of_atom (atom_map (Val.load_result chunk) v) (type_of_chunk chunk);;
-          w' <- nextworld_vstore w chunk id ofs ev;;
-          Some(w', Event_vstore chunk id ofs ev :: nil,
+          ev <- eventval_of_atom (atom_map (Values.load_result chunk) v) (type_of_chunk chunk);;
+          w' <- nextworld_vstore w chunk id p ev;;
+          Some(w', Event_vstore chunk id p ev :: nil,
                 (fun s => (Success m, s)))
       | None =>
-          let res := store chunk m (Int64.unsigned ofs) v lts in
+          let res := store chunk m p v lts in
           Some (w, E0, res)
       end.
 
     Lemma do_volatile_load_sound:
-      forall w chunk m ofs w' t res,
-        do_volatile_load w chunk m ofs = Some (w', t, res) ->
-        volatile_load ge chunk m ofs t res /\ possible_trace w t w'.
+      forall w chunk m p w' t res,
+        do_volatile_load w chunk m p = Some (w', t, res) ->
+        volatile_load ge chunk m p t res /\ possible_trace w t w'.
     Proof.
       intros until res. unfold do_volatile_load. mydestr.
       - generalize Heqo. mydestr.
@@ -287,26 +282,26 @@ Module InterpreterEvents (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Al
     Qed.
           
     Lemma do_volatile_load_complete:
-      forall w chunk m ofs w' t res,
-        volatile_load ge chunk m ofs t res -> possible_trace w t w' ->
-        do_volatile_load w chunk m ofs = Some (w', t, res).
+      forall w chunk m p w' t res,
+        volatile_load ge chunk m p t res -> possible_trace w t w' ->
+        do_volatile_load w chunk m p = Some (w', t, res).
     Proof.
       unfold do_volatile_load; intros. inv H.
       - rewrite H1. rewrite H2.
         inv H0. inv H6. rewrite H10.
         eapply atom_of_eventval_complete in H3.
         simpl. rewrite H3. inv H8. auto.
-      - destruct (invert_symbol_ofs ge ofs) as [[id gv] |].
+      - destruct (invert_symbol_ptr ge p) as [[id gv] |].
         + inv H0.
           specialize H1 with id gv.
           rewrite H1; auto.
         + inv H0. auto.
     Qed.
-            
+
     Lemma do_volatile_store_sound:
-      forall w chunk m ofs v vt w' t res lts,
-        do_volatile_store w chunk m ofs (v,vt) lts = Some (w', t, res) ->
-        volatile_store ge chunk m ofs (v,vt) lts t res /\ possible_trace w t w'.
+      forall w chunk m p v vt w' t res lts,
+        do_volatile_store w chunk m p (v,vt) lts = Some (w', t, res) ->
+        volatile_store ge chunk m p (v,vt) lts t res /\ possible_trace w t w'.
     Proof.
       intros until lts. unfold do_volatile_store. mydestr.
       - generalize Heqo; mydestr.
@@ -320,19 +315,19 @@ Module InterpreterEvents (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Al
     Qed.
 
     Lemma do_volatile_store_complete:
-      forall w chunk m ofs v vt w' t res lts,
-        volatile_store ge chunk m ofs (v,vt) lts t res -> possible_trace w t w' ->
-        do_volatile_store w chunk m ofs (v,vt) lts = Some (w', t, res).
+      forall w chunk m p v vt w' t res lts,
+        volatile_store ge chunk m p (v,vt) lts t res -> possible_trace w t w' ->
+        do_volatile_store w chunk m p (v,vt) lts = Some (w', t, res).
     Proof.
       unfold do_volatile_store. intros. inv H.
       - rewrite H3. rewrite H7.
         unfold atom_map. eapply eventval_of_atom_complete in H11. rewrite H11.
         inv H0. inv H6. inv H4. simpl. rewrite H8. auto.
-      - destruct (invert_symbol_ofs ge ofs) as [[id gv] |].
+      - destruct (invert_symbol_ptr ge p) as [[id gv] |].
         + inv H0.
           specialize H6 with id gv.
           rewrite H6; auto.
-        + inv H0. destruct (store chunk m (Int64.unsigned ofs) (v,vt) lts); auto.
+        + inv H0. destruct (store chunk m p (v,vt) lts); auto.
     Admitted. (*Qed.*)
 
     (** External calls *)
@@ -384,20 +379,20 @@ Module InterpreterEvents (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Al
       unfold alloc_size. unfold do_alloc_size. split; intros; destruct v; inv H; auto.
     Qed.
 
-    Definition do_ef_malloc (l: Cabs.loc) (w: world) (vargs: list atom) (pct: control_tag) (fpt: val_tag) (m: mem)
+    Definition do_ef_malloc (l: Cabs.loc) (c:context) (w: world) (vargs: list atom) (pct: control_tag) (fpt: val_tag) (m: mem)
       : option (world * trace * (PolicyResult (atom * control_tag * mem))) :=
       match vargs with
       | [(v,st)] =>
           sz <- do_alloc_size v;;
-          Some (w, E0, do_extcall_malloc l pct fpt st m sz)          
+          Some (w, E0, do_extcall_malloc l c pct fpt st m sz)          
       | _ => None
       end.
 
     Lemma do_ef_malloc_complete :
-      forall l vargs pct fpt m tr res w w',
-        extcall_malloc_sem l ge vargs pct fpt m tr res ->
+      forall l c vargs pct fpt m tr res w w',
+        extcall_malloc_sem l ge c vargs pct fpt m tr res ->
         possible_trace w tr w' ->
-        do_ef_malloc l w vargs pct fpt m = Some (w', tr, res).
+        do_ef_malloc l c w vargs pct fpt m = Some (w', tr, res).
     Admitted.
     (*Proof.
       intros. unfold do_ef_malloc. inv H; apply do_alloc_size_correct in H1; rewrite H1; inv H0.
@@ -407,9 +402,9 @@ Module InterpreterEvents (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Al
     Qed.*)
     
     Lemma do_ef_malloc_sound :
-      forall l vargs pct fpt m tr res w w',
-        do_ef_malloc l w vargs pct fpt m = Some (w', tr, res) ->
-        extcall_malloc_sem l ge vargs pct fpt m tr res /\ possible_trace w tr w'.
+      forall l c vargs pct fpt m tr res w w',
+        do_ef_malloc l c w vargs pct fpt m = Some (w', tr, res) ->
+        extcall_malloc_sem l ge c vargs pct fpt m tr res /\ possible_trace w tr w'.
 (*    Proof.
       unfold do_ef_malloc. intros.
       destruct vargs as [| [v vt]]; try congruence.
@@ -433,19 +428,19 @@ Module InterpreterEvents (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Al
       - inv H.*)
     Admitted.
     
-    Definition do_ef_free (l: Cabs.loc) (w: world) (vargs: list atom) (pct: control_tag) (fpt: val_tag) (m: mem)
+    Definition do_ef_free (l: Cabs.loc) (c:context) (w: world) (vargs: list atom) (pct: control_tag) (fpt: val_tag) (m: mem)
       : option (world * trace * (PolicyResult (atom * control_tag * mem))) :=
       match vargs with
       | [(Vlong addr,pt)] =>
-          Some (w, E0, do_extcall_free l pct fpt pt addr m)
+          Some (w, E0, do_extcall_free l c pct fpt pt addr m)
       | _ => None
       end.
 
     Lemma do_ef_free_complete :
-      forall l vargs pct fpt m tr res w w',
-        extcall_free_sem l ge vargs pct fpt m tr res ->
+      forall l c vargs pct fpt m tr res w w',
+        extcall_free_sem l ge c vargs pct fpt m tr res ->
         possible_trace w tr w' ->
-        do_ef_free l w vargs pct fpt m = Some (w', tr, res).
+        do_ef_free l c w vargs pct fpt m = Some (w', tr, res).
     Admitted.
     (*Proof.
       intros. unfold do_ef_free. inv H.
@@ -459,9 +454,9 @@ Module InterpreterEvents (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Al
     Qed.*)
 
     Lemma do_ef_free_sound :
-      forall l vargs pct fpt m tr res w w',
-        do_ef_free l w vargs pct fpt m = Some (w', tr, res) ->
-        extcall_free_sem l ge vargs pct fpt m tr res /\ possible_trace w tr w'.
+      forall l c vargs pct fpt m tr res w w',
+        do_ef_free l c w vargs pct fpt m = Some (w', tr, res) ->
+        extcall_free_sem l ge c vargs pct fpt m tr res /\ possible_trace w tr w'.
     Admitted.
     (*Proof.
       unfold do_ef_free. intros.
@@ -479,7 +474,7 @@ Module InterpreterEvents (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Al
           rewrite H in Heqb; rewrite Int64.eq_true in Heqb; discriminate.
     Qed.*)
 
-    Definition do_external (ef: external_function) (l: Cabs.loc) :
+    Definition do_external (ef: external_function) (l: Cabs.loc) (c: context) :
       world -> list atom -> control_tag -> val_tag -> mem -> option (world * trace * (PolicyResult (atom * control_tag * mem))) :=
       match ef with
       | EF_external name sg =>
@@ -488,14 +483,14 @@ Module InterpreterEvents (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Al
   (*| EF_builtin name sg => do_builtin_or_external name sg
     | EF_vload chunk => do_ef_volatile_load chunk
     | EF_vstore chunk => do_ef_volatile_store chunk*)
-      | EF_malloc => do_ef_malloc l
-      | EF_free => do_ef_free l
+      | EF_malloc => do_ef_malloc l c
+      | EF_free => do_ef_free l c
       end.
 
     Lemma do_ef_external_sound:
-      forall ef l w vargs pct fpt m w' t res,
-        do_external ef l w vargs pct fpt m = Some (w', t, res) ->
-        external_call l ef ge vargs pct fpt m t res /\ possible_trace w t w'.
+      forall ef l c w vargs pct fpt m w' t res,
+        do_external ef l c w vargs pct fpt m = Some (w', t, res) ->
+        external_call l ef c ge vargs pct fpt m t res /\ possible_trace w t w'.
     Proof with try congruence.
       intros until res.
       destruct ef; simpl...
@@ -508,9 +503,9 @@ Module InterpreterEvents (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Al
     Qed.
 
     Lemma do_ef_external_complete:
-      forall ef w l vargs pct fpt m w' t res,
-        external_call l ef ge vargs pct fpt m t res -> possible_trace w t w' ->
-        do_external ef l w vargs pct fpt m = Some (w', t, res).
+      forall ef w l c vargs pct fpt m w' t res,
+        external_call l ef c ge vargs pct fpt m t res -> possible_trace w t w' ->
+        do_external ef l c w vargs pct fpt m = Some (w', t, res).
     Proof.
       intros. destruct ef eqn:?; simpl in *.
       - (* EF_external *)

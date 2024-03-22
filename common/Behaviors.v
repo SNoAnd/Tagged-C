@@ -28,6 +28,8 @@ Require Import Tags.
 Require Import Values.
 Require Import Memory.
 Require Import Ctypes.
+Require Import Ctyping.
+Require Import Csem.
 
 Set Implicit Arguments.
 Set Asymmetric Patterns.
@@ -47,8 +49,10 @@ Set Asymmetric Patterns.
   performed before the program gets stuck.
 *)
 
-Module Behaviors (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Allocator Ptr Pol M).
-  Module Smallstep := Smallstep Ptr Pol M A.
+Module Behaviors (Ptr: Pointer) (Pol: Policy)
+       (M: Memory Ptr Pol) (A: Allocator Ptr Pol M) (Sem: Semantics Ptr Pol M A).
+  Module Ctyping := Ctyping Ptr Pol M A Sem.
+  Export Ctyping.
   Export Smallstep.
   
 Inductive program_behavior: Type :=

@@ -31,7 +31,7 @@ module PrintCsyntaxP =
 
 module C2CPInst = C2CP (Pol) (Alloc)
 module Init = C2CPInst.Init
-module Ctyping = Init.Cexec.InterpreterEvents.Cstrategy.Ctyping
+module Ctyping = Init.Cexec.InterpreterEvents.Ctyping
 module Csyntax = Ctyping.Csem.Csyntax
 module Cop = Csyntax.Cop
 
