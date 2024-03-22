@@ -37,22 +37,15 @@ Require Import Csem.
 Require Import Ctyping.
 Require Import Tags.
 
-Module Cstrategy (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Allocator Ptr Pol M).
-  Module TLib := TagLib P.
-  Import TLib.
-  Module Ctyping := Ctyping Ptr Pol M A.
-  Import Ctyping.
-  Import Csem.
-  Import Csyntax.
-  Import Cop.
-  Import Deterministic.
-  Import Behaviors.
-  Import Smallstep.
-  Import Events.
-  Import Genv.
-  Import A.
-  Import P.
+Module Cstrategy (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol)
+       (A: Allocator Ptr Pol M) (Sem: Semantics Ptr Pol M A).
+  
+  Module Ctyping := Ctyping Ptr Pol M A Sem.
+  Export Ctyping.
 
+  Import A.
+  Import M.
+  Import TLib.
 
   Section STRATEGY.
 
@@ -109,47 +102,32 @@ Module Cstrategy (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Allocator 
       Variable te: tenv.
       Variable m: mem.
       Variable PCT: control_tag.
-
+  
       Inductive eval_simple_lvalue: expr -> loc_kind -> Prop :=
       | esl_loc: forall loc ty,
           eval_simple_lvalue (Eloc loc ty) loc
-      | esl_var_local: forall x base bound pt ty,
-          e!x = Some (PUB base bound pt ty) ->
-          eval_simple_lvalue (Evar x ty) (Lmem (Int64.repr base) pt Full)
+      | esl_var_local: forall x base pt ty,
+          e!x = Some (PUB base pt ty) ->
+          eval_simple_lvalue (Evar x ty) (Lmem base pt Full)
       | esl_var_global: forall x ty base bound pt gv,
           e!x = None ->
           Genv.find_symbol ge x = Some (SymGlob base bound pt gv) ->
-          eval_simple_lvalue (Evar x ty) (Lmem (Int64.repr base) pt Full)
-      | esl_deref_short: forall r ty ofs pt,
-          eval_simple_rvalue PCT r (Vint ofs, pt) ->
-          eval_simple_lvalue (Ederef r ty) (Lmem (cast_int_long Unsigned ofs) pt Full)
-      | esl_deref_long: forall r ty ofs pt,
-          eval_simple_rvalue PCT r (Vlong ofs, pt) ->
-          eval_simple_lvalue (Ederef r ty) (Lmem ofs pt Full)
-      | esl_field_struct_short: forall r f ty ofs pt id co a delta bf,
-          eval_simple_rvalue PCT r (Vint ofs, pt) ->
+          eval_simple_lvalue (Evar x ty) (Lmem base pt Full)
+      | esl_deref: forall r ty p pt,
+          eval_simple_rvalue PCT r (Vptr p, pt) ->
+          eval_simple_lvalue (Ederef r ty) (Lmem p pt Full)
+      | esl_field_struct: forall r f ty p pt id co a delta bf,
+          eval_simple_rvalue PCT r (Vptr p, pt) ->
           typeof r = Tstruct id a ->
           ce!id = Some co ->
           field_offset ce f (co_members co) = OK (delta, bf) ->
-          eval_simple_lvalue (Efield r f ty) (Lmem (Int64.add (cast_int_long Unsigned ofs) (Int64.repr delta)) pt bf)
-      | esl_field_struct_long: forall r f ty ofs pt id co a delta bf,
-          eval_simple_rvalue PCT r (Vlong ofs, pt) ->
-          typeof r = Tstruct id a ->
-          ce!id = Some co ->
-          field_offset ce f (co_members co) = OK (delta, bf) ->
-          eval_simple_lvalue (Efield r f ty) (Lmem (Int64.add ofs (Int64.repr delta)) pt bf)
-      | esl_field_union_short: forall r f ty ofs pt id co a delta bf,
-          eval_simple_rvalue PCT r (Vint ofs, pt) ->
+          eval_simple_lvalue (Efield r f ty) (Lmem (off p (Int64.repr delta)) pt bf)
+      | esl_field_union: forall r f ty p pt id co a delta bf,
+          eval_simple_rvalue PCT r (Vptr p, pt) ->
           typeof r = Tunion id a ->
           union_field_offset ce f (co_members co) = OK (delta, bf) ->
           ce!id = Some co ->
-          eval_simple_lvalue (Efield r f ty) (Lmem (Int64.add (cast_int_long Unsigned ofs) (Int64.repr delta)) def_tag bf)
-      | esl_field_union_long: forall r f ty ofs pt id co a delta bf,
-          eval_simple_rvalue PCT r (Vlong ofs, pt) ->
-          typeof r = Tunion id a ->
-          union_field_offset ce f (co_members co) = OK (delta, bf) ->
-          ce!id = Some co ->
-          eval_simple_lvalue (Efield r f ty) (Lmem (Int64.add ofs (Int64.repr delta)) def_tag bf)
+          eval_simple_lvalue (Efield r f ty) (Lmem (off p (Int64.repr delta)) def_tag bf)
 
       with eval_simple_rvalue: control_tag -> expr -> atom -> Prop :=
       | esr_val: forall v ty,

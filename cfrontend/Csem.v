@@ -25,6 +25,8 @@ Require Import String.
 Require Import ExtLib.Structures.Monads. Import MonadNotation.
 Require Import NullPolicy.
 
+Inductive kind : Type := LV | RV.
+
 Module Type Semantics (Ptr: Pointer) (Pol: Policy)
        (M: Memory Ptr Pol) (A: Allocator Ptr Pol M).
   Module Csyntax := Csyntax Ptr Pol M A.
@@ -35,14 +37,27 @@ Module Type Semantics (Ptr: Pointer) (Pol: Policy)
   Module Smallstep := Smallstep Ptr Pol M A.
   Export Smallstep.
   
+  Definition genv : Type := Genv.t fundef type.
+  
   Parameter state : Type.
-  Parameter step : Genv.t fundef type -> composite_env ->
+  Parameter step : genv -> composite_env ->
                    state -> trace -> state -> Prop.
 
   Parameter initial_state: program -> state -> Prop.
   Parameter final_state: state -> int -> Prop.
-  Parameter semantics: program -> Genv.t fundef type -> composite_env -> semantics.
+  Parameter semantics: program -> genv -> composite_env -> semantics.
+ 
+  Inductive var_entry : Type :=
+  | PRIV (ty: type)
+  | PUB (base: ptr) (pt:val_tag) (ty:type)
+  .
   
+  Definition env := PTree.t var_entry. (* map variable -> base address & bound & ptr tag *)
+  Definition empty_env: env := (PTree.empty var_entry).
+
+  Definition tenv := PTree.t atom. (* map variable -> tagged value *)
+  Definition empty_tenv: tenv := (PTree.empty atom).
+   
 End Semantics.
 
 Module TaggedCsem (Pol: Policy).
@@ -65,18 +80,18 @@ Module TaggedCsem (Pol: Policy).
       '(ge,m) <- Genv.globalenv ce p cs;;
       ret (ge, ce, m).
 
-  Inductive var_entry : Type :=
-  | PRIV (ty: type)
-  | PUB (base: ptr) (pt:val_tag) (ty:type)
-  .
+    Inductive var_entry : Type :=
+    | PRIV (ty: type)
+    | PUB (base: ptr) (pt:val_tag) (ty:type)
+    .
   
-  Definition env := PTree.t var_entry. (* map variable -> base address & bound & ptr tag *)
-  Definition empty_env: env := (PTree.empty var_entry).
+    Definition env := PTree.t var_entry. (* map variable -> base address & bound & ptr tag *)
+    Definition empty_env: env := (PTree.empty var_entry).
 
-  Definition tenv := PTree.t atom. (* map variable -> tagged value *)
-  Definition empty_tenv: tenv := (PTree.empty atom).
-  
-  Definition pstate : Type := policy_state * logs.
+    Definition tenv := PTree.t atom. (* map variable -> tagged value *)
+    Definition empty_tenv: tenv := (PTree.empty atom).
+ 
+    Definition pstate : Type := policy_state * logs.
   
   Section SEM.
 
@@ -759,8 +774,6 @@ Module TaggedCsem (Pol: Policy).
         callred pct (Ecall (Eval (Vefptr ef tyargs tyres cconv,vft) tyf) el ty)
                 m (External ef tyargs ty cconv) vft vargs ty pct' ps0 ps1.
    
-    Inductive kind : Type := LV | RV.
-
     Inductive context: kind -> kind -> (expr -> expr) -> Prop :=
     | ctx_top: forall k,
         context k k (fun x => x)
