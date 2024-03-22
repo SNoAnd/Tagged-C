@@ -33,7 +33,6 @@ Module Extracted (P : Policy) (A : Allocator P).
   Import I.
   Import Cexec.
   Import InterpreterEvents.
-  Import Cstrategy.
   Import Ctyping.
   Import Csem.
   Import Csyntax.

@@ -6,7 +6,7 @@ Require Import AST Values Memory Allocator Events Globalenvs Builtins Determinis
 Require Import Csem.
 Require Import Tags.
 Require Import List. Import ListNotations.
-Require Import Cstrategy Ctypes.
+Require Import Ctyping Ctypes.
 Require Import ExtLib.Structures.Monads. Import MonadNotation.
 Require Import ExtLib.Data.Monads.OptionMonad.
 
@@ -19,21 +19,10 @@ Notation " 'check' A ; B" := (if A then B else None)
   : option_monad_scope.
 
 Module InterpreterEvents (P:Policy) (A:Allocator P).
-  Module Cstrategy := Cstrategy P A.
-  Export Cstrategy.
-  Import Ctyping.
+  Module Ctyping := Ctyping P A.
+  Export Ctyping.
   Import Csem.
-  Import Csyntax.
-  Import Cop.
-  Import Deterministic.
-  Import Behaviors.
-  Import Smallstep.
-  Import Events.
-  Import Genv.
-  Import A.
-  Import Mem.MD.
-  Import P.
-  Import Csem.TLib.
+  Import TLib.
   
   Local Open Scope option_monad_scope.
 

@@ -896,6 +896,80 @@ Module Csem (P: Policy) (A: Allocator P).
       forall k C e' pct,
         context k RV C -> e = C e' -> imm_safe k e' pct te m.
 
+    (* Property that safe expressions must have the right kind*)
+        Definition expr_kind (a: expr) : kind :=
+      match a with
+      | Eloc _ _ => LV
+      | Evar _ _ => LV
+      | Ederef _ _ => LV
+      | Efield _ _ _ => LV
+      | Ebuiltin _ _ _ _ => LV
+      | _ => RV
+      end.
+
+  Lemma lred_kind:
+    forall a te m ps ps' PCT a' te' m',
+      lred a te m PCT a' te' m' ps ps'->
+      expr_kind a = LV.
+  Proof.
+    induction 1; auto.
+  Qed.
+
+  Lemma lfailred_kind:
+    forall a pstate PCT tr msg failure,
+      lfailred a pstate PCT tr msg failure ->
+      expr_kind a = LV.
+  Proof.
+    induction 1; auto.
+Qed.
+
+  Lemma rred_kind:
+    forall ps ps' PCT a m e t PCT' a' e' m',
+      rred PCT a e m t PCT' a' e' m' ps ps' ->
+      expr_kind a = RV.
+  Proof.
+    induction 1; auto.
+  Qed.
+
+  Lemma rfailred_kind:
+    forall ps ps' PCT a m e tr failure,
+      rfailred PCT a e m tr failure ps ps' ->
+      expr_kind a = RV.
+  Proof.
+    induction 1; auto.
+  Qed.
+
+  Lemma callred_kind:
+    forall ps ps' pct ft a m pct' fd args ty,
+      callred pct a m ft fd args ty pct' ps ps' ->
+      expr_kind a = RV.
+  Proof.
+    induction 1; auto.
+  Qed.
+
+  Lemma context_kind:
+    forall a from to C, context from to C ->
+      expr_kind a = from -> expr_kind (C a) = to.
+  Proof.
+    induction 1; intros; simpl; auto.
+  Qed.
+
+  Lemma imm_safe_kind:
+    forall te k a PCT m,
+      imm_safe k a PCT te m ->
+      expr_kind a = k.
+  Proof.
+    induction 1.
+    auto.
+    auto.
+    eapply context_kind; eauto. eapply lred_kind; eauto.
+    eapply context_kind; eauto. eapply lfailred_kind; eauto.
+    eapply context_kind; eauto. eapply rred_kind; eauto.
+    eapply context_kind; eauto. eapply rfailred_kind; eauto.
+    eapply context_kind; eauto. eapply callred_kind; eauto.
+  Qed.
+
+
 (** ** Derived forms. *)
 
 (** The following are admissible reduction rules for some derived forms

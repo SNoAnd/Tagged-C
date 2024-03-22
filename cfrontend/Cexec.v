@@ -37,20 +37,10 @@ Notation " 'check' A ; B" := (if A then B else nil)
 
 Module Cexec (P:Policy) (A:Allocator P).
   Module InterpreterEvents := InterpreterEvents P A.
-  Import InterpreterEvents.
-  Import Cstrategy.
-  Import Ctyping.
+  Export InterpreterEvents.
   Import Csem.
-  Import Csyntax.
-  Import Cop.
-  Import Deterministic.
-  Import Behaviors.
-  Import Smallstep.
-  Import Events.
-  Import Genv.
   Import A.
-  Import P.
-  Import Csem.TLib.
+  Import TLib.
   
   (* Policy-agnostic Tactics *)
   Ltac mydestr :=
@@ -1516,10 +1506,10 @@ Qed.
 
 Lemma wrong_kind_ok:
   forall lc k ps pct a te m,
-  k <> Cstrategy.expr_kind a ->
+  k <> expr_kind a ->
   reducts_ok k lc ps pct  a te m stuck.
 Proof.
-  intros. apply stuck_ok. red; intros. exploit Cstrategy.imm_safe_kind; eauto.
+  intros. apply stuck_ok. red; intros. exploit imm_safe_kind; eauto.
   eapply imm_safe_t_imm_safe; eauto.
 Qed.
 

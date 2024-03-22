@@ -29,7 +29,7 @@ module C2CP =
 
 module A = Alloc (Pol)
 module Init = Initializers.Initializers (Pol) (A)
-module Ctyping = Init.Cexec.InterpreterEvents.Cstrategy.Ctyping
+module Ctyping = Init.Cexec.InterpreterEvents.Ctyping
 module Csyntax = Ctyping.Csem.Csyntax
 module Cop = Csyntax.Cop
 
