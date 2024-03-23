@@ -94,89 +94,45 @@ need a {\em trace semantics} that provides a simple description of how compartme
 one another in a given execution. This semantics needs enable reasoning about program behavior
 in the presence of shared memory.
 
+Our contributions are as follows:
+\begin{itemize}
+\item A novel compartmentalization policy for Tagged C that supports cross-compartment
+  sharing with fewer constraints on available tags than similar systems from the literature.
+\item A formal model of C compartmentalization in the form of an abstract machine that
+  supports sharing between compartments while keeping their memories isolated by construction.
+\item A proof that the compartmentalization policy is safe with respect to the abstract semantics.
+\end{itemize}
+
 \subsection{Related Work}
 
-There are three main works that we need to compare in detail: ``When Good Components Go Bad,''
-from Abate et al., ``SecurePtrs,'' from El-Korashy et al., and ``SECOMP,'' from Thibault et al.
-These works all present mechanized proofs of some compartmentalization scheme in C, while we
-only have a pen-and-paper proof. We consider them in the following other dimensions:
-\begin{enumerate}
-\item How much of the C language do they cover?
-\item Do they support shared memory? Are there any restrictions?
-\item How strong is their specification? How does it handle non-standard C (i.e., UB)?
-  Is it different in trusted vs. untrusted compartments? Ideally it should be strong enough
-  to rule out bad cross-compartment behavior but not so strong as to fail when behavior
-  is only internal.
-\item What hardware assumptions do we need to make for their implementations to be supported
-  by tags?
-\end{enumerate}
+There are many compartmentalization mechanisms in the literature, and several formal
+characterizations of compartmentalized systems.
 
-\paragraph{Good Components}
+Abate et al. \cite{} characterize compartmentalization in the presence of undefined
+behavior, treating UB as equivalent to compromise by an adversary. Their model does
+not support shared memory, and their policy places strong constraints on potential
+hardware implementations: they assume linear tags, which are unlikely to appear
+in realistic implementations.
 
-\begin{enumerate}
-\item Their language is the epitome of a toy, it isn't even really C-like.
-\item There is no shared memory, only a small number of shared registers.
-\item They model UB in the traditional C sense of ``anything might happen'', by replacing
-  components that encounter UB with hypothetical arbitrary components. Their aim is to keep
-  the UB restricted to the compartment in which it occurred. Therefore, their model is not
-  useful for reasoning about the specific behavior of compartments that contain UB but that
-  may nonetheless have consistent behavior. Their trust model is dynamic, and therefore very
-  precise: trusted compartments become untrusted if they reach UB.
-  This makes their specification too strong for us.
-\item They propose a tag policy based on linear tags, which are unlikely to be technically
-  feasible (in their words, ``folklore.'') However, without too much trouble, they could be
-  implemented using techniques from Roessler and DeHon. Their model does not depend on protecting
-  memory internally, and they don't support sharing, so they could implement it on tagged hardware
-  with a relatively small number of tags, that number being linear in the number of compartments.
-\end{enumerate}
+Building on their work, El-Korashy et al. \cite{} present a compartmentalization
+scheme that does support shared memory. They use a much more restrictive specification
+than Abate et al.: their source language is fully memory-safe and has no UB. Their
+focus is on showing that they can enforce their compartmentalized calling convention
+in a memory safe setting. They are not focused on the underlying enforcement hardware,
+but we can assume that any hardware implementation would need to be of similar complexity
+to others capable of enforcing full memory-safety, e.g. Acevedo de Amorim et al. \cite{}. 
 
-\(\Delta:\) our language is full C, our policy supports sharing, and our property supports
-internal UB with more specificity.
+Thibault et al. \cite{} go deeper into their prove effort: they prove safe compilation of a
+compartmentalized version of CompCert C down to a compartmentalized assembly language.
+In the process they give up sharing. Their treatment of UB is similar to Abate et al.,
+but they add new UB in the form of violations of the compartment interfaces.
 
-\paragraph{SecurePtrs}
-
-\begin{enumerate}
-\item They cover more of C than above, but they still are fairly restricted.
-\item They fully support shared memory.
-\item Their specification is RSP from a fully-defined source language with safe pointers,
-  which is very strong. They mention in passing that they could deal with UB along the lines
-  of the paper above, but because all pointers are safe by construction, would not include
-  memory UB. This is even more restrictive than above. As a result of the relatively
-  narrow gap between their machines, they don't really need to make a distinction
-  between trusted and untrusted compartments. Everyone is equally well-behaved.
-\item Their target machine is fully memory safe, so we must assume that implementing it in
-  tagged hardware would require a number of tags linear in the number of simultaneously live
-  allocations, a fairly high bar.
-\end{enumerate}
-
-\(\Delta:\) our language is full C, our policy does not require as many tags as the likely
-implementation of theirs, and our property property supports internal UB.
-
-\paragraph{SECOMP}
-
-\begin{enumerate}
-\item They cover all of CompCert C.
-\item Shared memory is not supported.
-\item {\em How strong is their specification?}
-  They handle UB similarly to ``Good Components'', while adding new UB in the form of
-  violations of the compartment interfaces. But, because they are focused on secure compilation
-  rather than compiler correctness, the question of UB is primarily focused on their ``blame''
-  theorem, which states that any UB encountered by a source compartment must have originated
-  in that compartment. As with ``Good Components,'' we consider this too strong, as we would
-  like to preserve a semantics that allows us to reason about what happens in the presence of UB.
-\item This appears to be the same as ``Good Components'': it can be done with lightweight hardware,
-  because it doesn't require individual object tags.
-\end{enumerate}
-
-\(\Delta:\) our policy supports sharing, and our property supports
-internal UB with more specificity.
-
-\paragraph{Distinguishing Our Work}
-
-Compared to these works in total, ours supports cross-compartment sharing with fewer constraints
-on available tags. Our property is tighter: the source model that it is based on gives definition
-to some UB, and therefore we can describe more precisely what happens in the presence of that UB.
-We also support cross-compartment sharing in a full C setting, not merely a toy.
+Compared to these works in total, our model supports cross-compartment sharing while placing
+fewer constraints on the hardware than El-Korashy et al. We also support a full C setting,
+though instead of a full compilation chain we attach our policy directly to the Tagged C
+source semantics. Our abstract machine is also more precise about its treatment of UB than
+the others: it gives definition to some UB, and so can be used to reason about the behavior
+of compartments that contain it but still display consistent internal behavior.
 
 \section{Abstract Sharing Semantics}
 
@@ -548,24 +504,5 @@ Then, by proving that for any program, its initial states in both machines are r
 by \(\mathfrak{R}\), we can show by coinduction that every trace produced by one machine
 has a related trace produced by the other.
 
-\sna{And then I started to write out the relation itself, but I need to do another pass for it
-  to make sense, so I'm commenting it out for now. That's next on my list, though: including
-  enough concrete state stuff that it will make sense.}
-
-\begin{comment}
-
-Recall that \(\alpha\) contains a live-list
-that maps allocations to concrete base addresses. A shared pointer
-\(\mathit{sptr} ~ b ~ \mathit{off}\) is related to a tagged value \(v \tagat \vt[]\) if
-\(b\) maps to some base address \(\mathit{addr}\) and \(\mathit{addr} + \mathit{off} = v\).
-
-Two addresses are related by
-\(\mathfrak{R}\) if:
-
-\begin{itemize}
-  \item 
-\end{itemize}
-
-\end{comment}
 
 \end{document}
