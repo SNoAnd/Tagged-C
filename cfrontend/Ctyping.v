@@ -24,12 +24,14 @@ Require Import Ctypes Cop Csyntax Csem.
 
 Local Open Scope error_monad_scope.
 
-Module Ctyping (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol)
-       (A: Allocator Ptr Pol M) (Sem: Semantics Ptr Pol M A).
+Module Ctyping (Pol: Policy) (A: Allocator).
+  Module Outer := TaggedCsem Pol.
+  Module M := Outer.M.
+  Module A' := A ConcretePointer Pol M.
+  Module Csem := Outer.Inner A'.
   
-  Export Sem.
+  Export Csem.
   Import M.
-  Import A.
   Import TLib.
 
   Definition strict := false.

@@ -53,6 +53,7 @@ Module Behaviors (Ptr: Pointer) (Pol: Policy)
        (M: Memory Ptr Pol) (A: Allocator Ptr Pol M) (Sem: Semantics Ptr Pol M A).
   Module Ctyping := Ctyping Ptr Pol M A Sem.
   Export Ctyping.
+  Export Csem.
   Export Smallstep.
   
 Inductive program_behavior: Type :=

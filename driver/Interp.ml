@@ -25,6 +25,8 @@ open Maps
 open Tags
 open PrintCsyntax
 open Allocator
+open Memory
+open Csem
 
 (* Configuration *)
 
@@ -40,15 +42,21 @@ module InterpP =
         functor (Pol: Policy) (Alloc: Allocator) ->
         struct
 
-module A = Alloc (Pol)
+module M0 = ConcMem (ConcretePointer) (Pol)
+module A0 = Alloc (ConcretePointer) (Pol) (M0)
 module Printing = PrintCsyntaxP (Pol) (Alloc)
 module Init = Printing.Init
 module Cexec = Init.Cexec
-module Csem = Cexec.InterpreterEvents.Ctyping.Csem
+module Deterministic = Cexec.InterpreterEvents.Deterministic
+module Ctyping = Deterministic.Ctyping
+module Csem = Ctyping.Csem
 module Csyntax = Csem.Csyntax
-module Determinism = Csyntax.Cop.Deterministic
-module Events = Determinism.Behaviors.Smallstep.Events
+module Events = Csyntax.Cop.Smallstep.Events
 module Genv = Events.Genv
+module M = Ctyping.Outer.M
+module A = Ctyping.A'
+module Val = M.MD.TLib.Switch.BI.BI1.BI0.Values
+open Val
 
 (* Printing events *)
 
@@ -155,17 +163,17 @@ let print_mem p m =
   let rec print_at i max =
     if i <= max then
      (fprintf p " %ld " (Int32.of_int i);
-      (match (A.Mem.mem_access m) (coqint_of_camlint (Int32.of_int i)) with
-      | A.Mem.Live -> fprintf p "L"
-      | A.Mem.Dead -> fprintf p "D"
-      | A.Mem.MostlyDead -> fprintf p "/");
-      let (mv,t) = (ZMap.get (coqint_of_camlint (Int32.of_int i)) (A.Mem.mem_contents m)) in
+      (match ZMap.get (coqint_of_camlint (Int32.of_int i)) (M.mem_access m) with
+      | M.Live -> fprintf p "L"
+      | M.Dead -> fprintf p "D"
+      | M.MostlyDead -> fprintf p "/");
+      let (mv,t) = (ZMap.get (coqint_of_camlint (Int32.of_int i)) (M.mem_contents m)) in
       match mv with
-      | A.Mem.MD.Undef -> fprintf p " U '@' %s|" (print_lt t); print_at (i+1) max
-      | A.Mem.MD.Byte (b,vt) ->
+      | M.MD.Undef -> fprintf p " U '@' %s|" (print_lt t); print_at (i+1) max
+      | M.MD.Byte (b,vt) ->
                       fprintf p " %lu '@' %s|" (camlint_of_coqint b) (print_vt vt);
                       print_at (i+1) max
-      | A.Mem.MD.Fragment ((v,vt), q, n) -> fprintf p "| %a |" print_val v; print_at (i+(camlint_of_coqnat (Memdata.size_quantity_nat q))) max)
+      | M.MD.Fragment ((v,vt), q, n) -> fprintf p "| %a |" print_val v; print_at (i+(camlint_of_coqnat (Encoding.size_quantity_nat q))) max)
     else () in
   print_at 1000 1015;
   fprintf p "\n";
@@ -556,7 +564,7 @@ let do_inline_assembly txt sg ge w args m = None
 (* Implementing external functions producing observable events *)
 
 let rec world ge m =
-  lazy (Determinism.World(world_io ge m, world_vload ge m, world_vstore ge m))
+  lazy (Deterministic.World(world_io ge m, world_vload ge m, world_vstore ge m))
 
 and world_io ge m id args =
   None
@@ -591,7 +599,7 @@ let do_event p ge time w ev =
   (* Return new world after external action *)
   match ev with
   | Events.Event_vstore(chunk, id, ofs, v) ->
-      begin match Determinism.nextworld_vstore w chunk id ofs v with
+      begin match Deterministic.nextworld_vstore w chunk id ofs v with
       | None -> assert false
       | Some w' -> w'
       end
@@ -616,20 +624,20 @@ let diagnose_stuck_expr p ge ce w f a kont pstate pct l e te m =
   (* diagnose subexpressions first *)
   let found =
     match k, a with
-    | Csem.LV, Csyntax.Ederef(r, ty) -> diagnose Csem.RV r
-    | Csem.LV, Csyntax.Efield(r, f, ty) -> diagnose Csem.RV r
-    | Csem.RV, Csyntax.Evalof(l, ty) -> diagnose Csem.LV l
-    | Csem.RV, Csyntax.Eaddrof(l, ty) -> diagnose Csem.LV l
-    | Csem.RV, Csyntax.Eunop(op, r1, ty) -> diagnose Csem.RV r1
-    | Csem.RV, Csyntax.Ebinop(op, r1, r2, ty) -> diagnose Csem.RV r1 ||| diagnose Csem.RV r2
-    | Csem.RV, Csyntax.Ecast(r1, ty) -> diagnose Csem.RV r1
-    | Csem.RV, Csyntax.Econdition(r1, r2, r3, ty) -> diagnose Csem.RV r1
-    | Csem.RV, Csyntax.Eassign(l1, r2, ty) -> diagnose Csem.LV l1 ||| diagnose Csem.RV r2
-    | Csem.RV, Csyntax.Eassignop(op, l1, r2, tyres, ty) -> diagnose Csem.LV l1 ||| diagnose Csem.RV r2
-    | Csem.RV, Csyntax.Epostincr(id, l, ty) -> diagnose Csem.LV l
-    | Csem.RV, Csyntax.Ecomma(r1, r2, ty) -> diagnose Csem.RV r1
-    | Csem.RV, Csyntax.Eparen(r1, tycast, ty) -> diagnose Csem.RV r1
-    | Csem.RV, Csyntax.Ecall(r1, rargs, ty) -> diagnose Csem.RV r1 ||| diagnose_list rargs
+    | LV, Csyntax.Ederef(r, ty) -> diagnose RV r
+    | LV, Csyntax.Efield(r, f, ty) -> diagnose RV r
+    | RV, Csyntax.Evalof(l, ty) -> diagnose LV l
+    | RV, Csyntax.Eaddrof(l, ty) -> diagnose LV l
+    | RV, Csyntax.Eunop(op, r1, ty) -> diagnose RV r1
+    | RV, Csyntax.Ebinop(op, r1, r2, ty) -> diagnose RV r1 ||| diagnose RV r2
+    | RV, Csyntax.Ecast(r1, ty) -> diagnose RV r1
+    | RV, Csyntax.Econdition(r1, r2, r3, ty) -> diagnose RV r1
+    | RV, Csyntax.Eassign(l1, r2, ty) -> diagnose LV l1 ||| diagnose RV r2
+    | RV, Csyntax.Eassignop(op, l1, r2, tyres, ty) -> diagnose LV l1 ||| diagnose RV r2
+    | RV, Csyntax.Epostincr(id, l, ty) -> diagnose LV l
+    | RV, Csyntax.Ecomma(r1, r2, ty) -> diagnose RV r1
+    | RV, Csyntax.Eparen(r1, tycast, ty) -> diagnose RV r1
+    | RV, Csyntax.Ecall(r1, rargs, ty) -> diagnose RV r1 ||| diagnose_list rargs
     | _, _ -> false in
   if found then true else begin
     let l = Cexec.step_expr ge ce (*do_inline_assembly*) e w k pstate pct l a te m in
@@ -644,9 +652,9 @@ let diagnose_stuck_expr p ge ce w f a kont pstate pct l e te m =
   and diagnose_list al =
     match al with
     | Csyntax.Enil -> false
-    | Csyntax.Econs(a1, al') -> diagnose Csem.RV a1 ||| diagnose_list al'
+    | Csyntax.Econs(a1, al') -> diagnose RV a1 ||| diagnose_list al'
 
-  in diagnose Csem.RV a
+  in diagnose RV a
 
 let diagnose_stuck_state p ge ce w = function
   | Csem.ExprState(f,l,pstate,pct,a,k,e,te,m) -> ignore(diagnose_stuck_expr p ge ce w f a k l pstate pct e te m)

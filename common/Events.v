@@ -483,12 +483,12 @@ Definition alloc_size (v: val) (z:Z) : Prop :=
   | _ => False
   end.
 
-  Definition do_extcall_malloc (l:Cabs.loc) (c: context) (pct: control_tag) (fpt st: val_tag) (m: mem) (sz: Z)
+  Definition do_extcall_malloc (l:Cabs.loc) (pct: control_tag) (fpt st: val_tag) (m: mem) (sz: Z)
   : PolicyResult (atom * control_tag * mem) :=
   (*let sz_aligned := align sz 8 in*)
   pct' <- ExtCallT l "malloc" pct fpt [st];;
   '(pct'', pt, vt_body, vt_head, lt) <- MallocT l pct' fpt;;
-  '(m', base) <- heapalloc m c sz vt_head;;
+  '(m', base) <- heapalloc m sz vt_head;;
   mvs <- loadbytes m' base sz;;
   let mvs' := map (fun mv =>
                      match mv with
@@ -500,33 +500,33 @@ Definition alloc_size (v: val) (z:Z) : Prop :=
   '(pct''', pt') <- ExtRetT l "malloc" pct pct'' pt;;
   ret ((Vptr base, pt'), pct''', m'').
 
-Inductive extcall_malloc_sem (l:Cabs.loc) (ge: Genv.t F V) (c: context):
+Inductive extcall_malloc_sem (l:Cabs.loc) (ge: Genv.t F V):
   list atom -> control_tag -> val_tag -> mem -> trace ->
   (PolicyResult (atom * control_tag * mem)) -> Prop :=
 | extcall_malloc_sem_intro: forall v sz st pct fpt m,
     alloc_size v sz ->
-    extcall_malloc_sem l ge c ((v,st) :: nil) pct fpt m E0
-                       (do_extcall_malloc l c pct fpt st m sz).
+    extcall_malloc_sem l ge ((v,st) :: nil) pct fpt m E0
+                       (do_extcall_malloc l pct fpt st m sz).
 
-Definition do_extcall_free (l:Cabs.loc) (c:context) (pct: control_tag)  (fpt pt: val_tag) (p: ptr) (m: mem)
+Definition do_extcall_free (l:Cabs.loc) (pct: control_tag)  (fpt pt: val_tag) (p: ptr) (m: mem)
   : PolicyResult (atom * control_tag * mem) :=
   if Int64.eq (concretize p) Int64.zero
   then ret ((Vundef,InitT), pct, m)
   else
     pct' <- ExtCallT l "free" pct fpt [pt];;
-    '(sz,pct'',m') <- heapfree l pct' m c p pt;;
+    '(sz,pct'',m') <- heapfree l pct' m p pt;;
     mvs <- loadbytes m' p sz;;
     '(pct''',lts') <- ClearT l pct'' (Z.to_nat sz);;
     m'' <- storebytes m' p mvs lts';;
     '(vt,pct'') <- ExtRetT l "free" pct pct' InitT;;
     ret ((Vundef,InitT), pct', m'').
 
-Inductive extcall_free_sem (l:Cabs.loc) (ge: Genv.t F V) (c: context):
+Inductive extcall_free_sem (l:Cabs.loc) (ge: Genv.t F V):
   list atom -> control_tag -> val_tag -> mem -> trace ->
   (PolicyResult (atom * control_tag * mem)) -> Prop :=
 | extcall_free_sem_intro: forall p pct fpt pt m,
-    extcall_free_sem l ge c ((Vptr p,pt) :: nil) pct fpt m E0
-                     (do_extcall_free l c pct fpt pt p m).
+    extcall_free_sem l ge ((Vptr p,pt) :: nil) pct fpt m E0
+                     (do_extcall_free l pct fpt pt p m).
 
 (** ** Semantics of [memcpy] operations. *)
 
@@ -758,14 +758,14 @@ Qed.*)
 
 This predicate is used in the semantics of all CompCert languages. *)
 
-Definition external_call (l:Cabs.loc) (ef: external_function) (c: context): extcall_sem :=
+Definition external_call (l:Cabs.loc) (ef: external_function): extcall_sem :=
   match ef with
   | EF_external name sg  => external_functions_sem name sg
 (*  | EF_builtin name sg   => builtin_or_external_sem name sg
   | EF_vload chunk       => volatile_load_sem chunk
   | EF_vstore chunk      => volatile_store_sem chunk*)
-  | EF_malloc            => fun ge => extcall_malloc_sem l ge c
-  | EF_free              => fun ge => extcall_free_sem l ge c
+  | EF_malloc            => fun ge => extcall_malloc_sem l ge
+  | EF_free              => fun ge => extcall_free_sem l ge
 (*  | EF_memcpy sz al      => extcall_memcpy_sem sz al
   | EF_annot kind txt targs   => extcall_annot_sem txt targs
   | EF_annot_val kind txt targ => extcall_annot_val_sem txt targ

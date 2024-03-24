@@ -26,12 +26,13 @@ Require Import Ctypes.
 Require Import Tags.
 Require Import Values.
 Require Import Events.
+Require Import Smallstep.
 Require Archi.
 Require Import ExtLib.Structures.Monads. Import MonadNotation.
 
 Module Cop (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Allocator Ptr Pol M).
-  Module Events := Events Ptr Pol M A.
-  Export Events.
+  Module Smallstep := Smallstep Ptr Pol M A.
+  Export Smallstep.
   Import M.
   Import TLib.
   Import Values.

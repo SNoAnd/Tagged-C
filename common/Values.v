@@ -25,7 +25,6 @@ Require Import AST.
 
 Module Type Pointer.
   Parameter ptr : Type.
-  Parameter context : Type.
   
   Parameter concretize : ptr -> int64.
   Parameter off : ptr -> int64 -> ptr.
@@ -48,7 +47,6 @@ End Pointer.
 
 Module ConcretePointer <: Pointer.
   Definition ptr : Type := int64.
-  Definition context : Type := unit.
   
   Definition concretize (p: ptr) : int64 := p.
   Definition off (p: ptr) (i: int64) : ptr := Int64.add p i.
@@ -94,8 +92,6 @@ Module SemiconcretePointer <: Pointer.
   | S (b:block)
   .
 
-  Definition context := myContext.
-  
   Definition ptr : Type := (index * int64).
   
   Lemma ptr_eq_dec : forall (p1 p2:ptr), {p1 = p2} + {p1 <> p2}.

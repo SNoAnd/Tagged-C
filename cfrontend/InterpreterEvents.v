@@ -6,7 +6,7 @@ Require Import AST Values Memory Allocator Events Globalenvs Builtins.
 Require Import Csem.
 Require Import Tags.
 Require Import List. Import ListNotations.
-Require Import Determinism Ctypes.
+Require Import Determinism Ctypes Ctyping.
 Require Import ExtLib.Structures.Monads. Import MonadNotation.
 Require Import ExtLib.Data.Monads.OptionMonad.
 
@@ -19,13 +19,9 @@ Notation " 'check' A ; B" := (if A then B else None)
   : option_monad_scope.
 
 Module InterpreterEvents (Pol: Policy) (A: Allocator).
-  Module Outer := TaggedCsem Pol.
-  Module M := Outer.M.
-  Module A' := A ConcretePointer Pol M.
-  Module Sem := Outer.Inner A'.
-  Module Deterministic := Deterministic ConcretePointer Pol M A' Sem.
+  Module Deterministic := Deterministic Pol A.
   Export Deterministic.
-  Import Sem.
+  Export Csem.
   Import M.
   Import TLib.
   Import A'.
@@ -379,20 +375,20 @@ Module InterpreterEvents (Pol: Policy) (A: Allocator).
       unfold alloc_size. unfold do_alloc_size. split; intros; destruct v; inv H; auto.
     Qed.
 
-    Definition do_ef_malloc (l: Cabs.loc) (c:context) (w: world) (vargs: list atom) (pct: control_tag) (fpt: val_tag) (m: mem)
+    Definition do_ef_malloc (l: Cabs.loc) (w: world) (vargs: list atom) (pct: control_tag) (fpt: val_tag) (m: mem)
       : option (world * trace * (PolicyResult (atom * control_tag * mem))) :=
       match vargs with
       | [(v,st)] =>
           sz <- do_alloc_size v;;
-          Some (w, E0, do_extcall_malloc l c pct fpt st m sz)          
+          Some (w, E0, do_extcall_malloc l pct fpt st m sz)          
       | _ => None
       end.
 
     Lemma do_ef_malloc_complete :
-      forall l c vargs pct fpt m tr res w w',
-        extcall_malloc_sem l ge c vargs pct fpt m tr res ->
+      forall l vargs pct fpt m tr res w w',
+        extcall_malloc_sem l ge vargs pct fpt m tr res ->
         possible_trace w tr w' ->
-        do_ef_malloc l c w vargs pct fpt m = Some (w', tr, res).
+        do_ef_malloc l w vargs pct fpt m = Some (w', tr, res).
     Admitted.
     (*Proof.
       intros. unfold do_ef_malloc. inv H; apply do_alloc_size_correct in H1; rewrite H1; inv H0.
@@ -402,9 +398,9 @@ Module InterpreterEvents (Pol: Policy) (A: Allocator).
     Qed.*)
     
     Lemma do_ef_malloc_sound :
-      forall l c vargs pct fpt m tr res w w',
-        do_ef_malloc l c w vargs pct fpt m = Some (w', tr, res) ->
-        extcall_malloc_sem l ge c vargs pct fpt m tr res /\ possible_trace w tr w'.
+      forall l vargs pct fpt m tr res w w',
+        do_ef_malloc l w vargs pct fpt m = Some (w', tr, res) ->
+        extcall_malloc_sem l ge vargs pct fpt m tr res /\ possible_trace w tr w'.
 (*    Proof.
       unfold do_ef_malloc. intros.
       destruct vargs as [| [v vt]]; try congruence.
@@ -428,19 +424,19 @@ Module InterpreterEvents (Pol: Policy) (A: Allocator).
       - inv H.*)
     Admitted.
     
-    Definition do_ef_free (l: Cabs.loc) (c:context) (w: world) (vargs: list atom) (pct: control_tag) (fpt: val_tag) (m: mem)
+    Definition do_ef_free (l: Cabs.loc) (w: world) (vargs: list atom) (pct: control_tag) (fpt: val_tag) (m: mem)
       : option (world * trace * (PolicyResult (atom * control_tag * mem))) :=
       match vargs with
       | [(Vlong addr,pt)] =>
-          Some (w, E0, do_extcall_free l c pct fpt pt addr m)
+          Some (w, E0, do_extcall_free l pct fpt pt addr m)
       | _ => None
       end.
 
     Lemma do_ef_free_complete :
-      forall l c vargs pct fpt m tr res w w',
-        extcall_free_sem l ge c vargs pct fpt m tr res ->
+      forall l vargs pct fpt m tr res w w',
+        extcall_free_sem l ge vargs pct fpt m tr res ->
         possible_trace w tr w' ->
-        do_ef_free l c w vargs pct fpt m = Some (w', tr, res).
+        do_ef_free l w vargs pct fpt m = Some (w', tr, res).
     Admitted.
     (*Proof.
       intros. unfold do_ef_free. inv H.
@@ -454,9 +450,9 @@ Module InterpreterEvents (Pol: Policy) (A: Allocator).
     Qed.*)
 
     Lemma do_ef_free_sound :
-      forall l c vargs pct fpt m tr res w w',
-        do_ef_free l c w vargs pct fpt m = Some (w', tr, res) ->
-        extcall_free_sem l ge c vargs pct fpt m tr res /\ possible_trace w tr w'.
+      forall l vargs pct fpt m tr res w w',
+        do_ef_free l w vargs pct fpt m = Some (w', tr, res) ->
+        extcall_free_sem l ge vargs pct fpt m tr res /\ possible_trace w tr w'.
     Admitted.
     (*Proof.
       unfold do_ef_free. intros.
@@ -474,7 +470,7 @@ Module InterpreterEvents (Pol: Policy) (A: Allocator).
           rewrite H in Heqb; rewrite Int64.eq_true in Heqb; discriminate.
     Qed.*)
 
-    Definition do_external (ef: external_function) (l: Cabs.loc) (c: context) :
+    Definition do_external (ef: external_function) (l: Cabs.loc) :
       world -> list atom -> control_tag -> val_tag -> mem -> option (world * trace * (PolicyResult (atom * control_tag * mem))) :=
       match ef with
       | EF_external name sg =>
@@ -483,14 +479,14 @@ Module InterpreterEvents (Pol: Policy) (A: Allocator).
   (*| EF_builtin name sg => do_builtin_or_external name sg
     | EF_vload chunk => do_ef_volatile_load chunk
     | EF_vstore chunk => do_ef_volatile_store chunk*)
-      | EF_malloc => do_ef_malloc l c
-      | EF_free => do_ef_free l c
+      | EF_malloc => do_ef_malloc l
+      | EF_free => do_ef_free l
       end.
 
     Lemma do_ef_external_sound:
-      forall ef l c w vargs pct fpt m w' t res,
-        do_external ef l c w vargs pct fpt m = Some (w', t, res) ->
-        external_call l ef c ge vargs pct fpt m t res /\ possible_trace w t w'.
+      forall ef l w vargs pct fpt m w' t res,
+        do_external ef l w vargs pct fpt m = Some (w', t, res) ->
+        external_call l ef ge vargs pct fpt m t res /\ possible_trace w t w'.
     Proof with try congruence.
       intros until res.
       destruct ef; simpl...
@@ -503,9 +499,9 @@ Module InterpreterEvents (Pol: Policy) (A: Allocator).
     Qed.
 
     Lemma do_ef_external_complete:
-      forall ef w l c vargs pct fpt m w' t res,
-        external_call l ef c ge vargs pct fpt m t res -> possible_trace w t w' ->
-        do_external ef l c w vargs pct fpt m = Some (w', t, res).
+      forall ef w l vargs pct fpt m w' t res,
+        external_call l ef ge vargs pct fpt m t res -> possible_trace w t w' ->
+        do_external ef l w vargs pct fpt m = Some (w', t, res).
     Proof.
       intros. destruct ef eqn:?; simpl in *.
       - (* EF_external *)

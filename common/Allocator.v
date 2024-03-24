@@ -42,7 +42,6 @@ Module Type Allocator (Ptr: Pointer) (Pol : Policy) (M : Memory Ptr Pol).
   Definition empty := (M.empty, init).
   
   Parameter stkalloc : mem
-                       -> context
                        -> Z (* align *)
                        -> Z (* size *)
                        -> PolicyResult (
@@ -50,13 +49,11 @@ Module Type Allocator (Ptr: Pointer) (Pol : Policy) (M : Memory Ptr Pol).
                            * ptr (* base *)).
 
   Parameter stkfree : mem
-                      -> context
                       -> Z (* align *)
                       -> Z (* size *)
                       -> PolicyResult mem.
 
   Parameter heapalloc : mem
-                        -> context
                         -> Z (* size *)
                         -> val_tag (* val tag (head) *)
                         -> PolicyResult
@@ -66,7 +63,6 @@ Module Type Allocator (Ptr: Pointer) (Pol : Policy) (M : Memory Ptr Pol).
   Parameter heapfree : Cabs.loc
                         -> control_tag      (* pct *)
                         -> mem
-                        -> context
                         -> ptr
                         -> val_tag          (* pointer tag *)
                         -> PolicyResult
@@ -75,7 +71,7 @@ Module Type Allocator (Ptr: Pointer) (Pol : Policy) (M : Memory Ptr Pol).
                              * mem).
 
   Parameter globalalloc : mem -> list (ident*Z) ->
-                          (mem * PTree.t (context -> ptr)).
+                          (mem * PTree.t ptr).
   
   Definition load (chunk:memory_chunk) (m:mem) (p:ptr) : PolicyResult atom :=
     match M.load chunk (fst m) (of_ptr p) with
@@ -128,7 +124,7 @@ Module Type Allocator (Ptr: Pointer) (Pol : Policy) (M : Memory Ptr Pol).
     end.
 End Allocator.
 
-Module FLAllocator (Pol : Policy).
+(*Module FLAllocator (Pol : Policy).
   Module M := MultiMem Pol.
   Module AllocDef : Allocator SemiconcretePointer Pol M.
     Import M.
@@ -159,7 +155,7 @@ Module FLAllocator (Pol : Policy).
     
     (* Note that the stack can absolutely clobber the heap here.
        Probably should fix that. *)
-    Definition stkalloc (m: mem) (c: context) (al sz: Z) :
+    Definition stkalloc (m: mem) (al sz: Z) :
       PolicyResult (mem*addr) :=
       let '(m,(sp,heap)) := m in
       let sp' := ((Int64.unsigned sp) - sz)%Z in
@@ -299,3 +295,4 @@ Module FLAllocator (Pol : Policy).
 
   End AllocDef.
 End FLAllocator.
+*)

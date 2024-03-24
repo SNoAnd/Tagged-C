@@ -25,8 +25,9 @@ Require Csyntax.
 Require Parser.
 Require Initializers.
 (* Per Policies.md, add new policies here*)
-Require Import Tags Product NullPolicy PVI DoubleFree HeapProblem Allocator Initializers Csem.
-
+Require Import Values Tags Product NullPolicy PVI DoubleFree
+               HeapProblem Memory Allocator Initializers Csem.
+(*
 Module Extracted (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Allocator Ptr Pol M).
 
   Module I := Initializers Ptr Pol M A.
@@ -45,7 +46,7 @@ Module Extracted (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Allocator 
   Import A.
   Import Mem.
   
-End Extracted.
+End Extracted.*)
   
   (* Standard lib *)
   Require Import ExtrOcamlBasic.
@@ -114,9 +115,13 @@ End Extracted.
   
   (* Per Policies.md, add new policies here *)
   Separate Extraction
+           ConcretePointer
            Tags NullPolicy PVI DoubleFree HeapProblem PolProduct
+           ConcMem
            Allocator
-           Extracted
+           Ctyping
+           TaggedCsem
+           Initializers
            Ctypes.merge_attributes Ctypes.remove_attributes
            Ctypes.build_composite_env Ctypes.signature_of_type Ctypes.typlist_of_typelist
            Cabs
@@ -130,4 +135,4 @@ End Extracted.
            Floats
            (*invert_symbol*)
            Parser.translation_unit_file
-           Values.Vnullptr.
+           (*Values.Vnullptr*).

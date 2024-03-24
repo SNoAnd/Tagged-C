@@ -25,20 +25,22 @@ Require Import Allocator.
 Require Import Events.
 Require Import Globalenvs.
 Require Import Smallstep.
-Require Import Behaviors.
 Require Import Tags.
 Require Import Values.
 Require Import Memory.
 Require Import Csem.
+Require Import Ctyping.
 
-Module Deterministic (Ptr: Pointer) (Pol: Policy)
-       (M: Memory Ptr Pol) (A: Allocator Ptr Pol M) (Sem: Semantics Ptr Pol M A).
-  Module Behaviors := Behaviors Ptr Pol M A Sem.
-  Export Behaviors.
-  Import Sem.
+Module Deterministic (Pol: Policy) (A: Allocator).
+  Module Ctyping := Ctyping Pol A.
+  Export Ctyping.
+  Export Csem.
+  Import M.
+  Import TLib.
+  Import A'.
+ 
   Import Smallstep.
-  Import Ptr.
-  
+
 (** * Deterministic worlds *)
 
 (** One source of possible nondeterminism is that our semantics leave
@@ -190,13 +192,13 @@ Ltac possibleTraceInv :=
   | _ => idtac
   end.
 
-Definition possible_behavior (w: world) (b: program_behavior) : Prop :=
+(*Definition possible_behavior (w: world) (b: program_behavior) : Prop :=
   match b with
   | Terminates t r => exists w', possible_trace w t w'
   | Diverges t => exists w', possible_trace w t w'
   | Reacts T => possible_traceinf w T
   | Goes_wrong t => exists w', possible_trace w t w'
-  end.
+  end.*)
 
 CoInductive possible_traceinf': world -> traceinf -> Prop :=
   | possible_traceinf'_app: forall w1 t w2 T,
@@ -448,16 +450,16 @@ Qed.
 
 (** Determinism for program executions *)
 
-Definition same_behaviors (beh1 beh2: program_behavior) : Prop :=
+(*Definition same_behaviors (beh1 beh2: program_behavior) : Prop :=
   match beh1, beh2 with
   | Terminates t1 r1, Terminates t2 r2 => t1 = t2 /\ r1 = r2
   | Diverges t1, Diverges t2 => t1 = t2
   | Reacts t1, Reacts t2 => traceinf_sim t1 t2
   | Goes_wrong t1, Goes_wrong t2 => t1 = t2
   | _, _ => False
-  end.
+  end.*)
 
-Lemma state_behaves_deterministic:
+(*Lemma state_behaves_deterministic:
   forall s beh1 beh2,
   state_behaves L L.(ce) s beh1 -> state_behaves L L.(ce) s beh2 -> same_behaviors beh1 beh2.
 Proof.
@@ -502,9 +504,9 @@ Proof.
 (* goes wrong, goes wrong *)
   assert (t0 = t1 /\ s' = s'0). eapply steps_deterministic; eauto.
   tauto.
-Qed.
+Qed.*)
 
-Theorem program_behaves_deterministic:
+(*Theorem program_behaves_deterministic:
   forall beh1 beh2,
     program_behaves L L.(ce) beh1 -> program_behaves L L.(ce) beh2 ->
     same_behaviors beh1 beh2.
@@ -518,7 +520,7 @@ Proof.
   elim (H _ H0).
 (* both initial states undefined *)
   red; auto.
-Qed.
+Qed.*)
 
 End DETERM_SEM.
 

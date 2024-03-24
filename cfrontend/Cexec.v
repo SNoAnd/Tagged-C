@@ -38,7 +38,8 @@ Notation " 'check' A ; B" := (if A then B else nil)
 Module Cexec (Pol: Policy) (A: Allocator).
   Module InterpreterEvents := InterpreterEvents Pol A.
   Export InterpreterEvents.
-  Import Sem.
+  About Csem.
+  Export Csem.
   Import M.
   Import A'.
   Import TLib.
@@ -638,10 +639,8 @@ Section EXPRS.
         topred (Lred "red_builtin" (Eloc (Lefun ef tyargs (Tret Tany64) cc def_tag) ty) te m ps)
     | LV, Ederef r ty =>
         match is_val r with
-        | Some (Vint ofs, t, ty') =>
-            topred (Lred "red_deref_short" (Eloc (Lmem (cast_int_long Unsigned ofs) t Full) ty) te m ps)    
-        | Some (Vlong ofs, t, ty') =>
-            topred (Lred "red_deref_long" (Eloc (Lmem ofs t Full) ty) te m ps)
+        | Some (Vptr p, pt, ty') =>
+            topred (Lred "red_deref" (Eloc (Lmem p pt Full) ty) te m ps)    
         | Some _ =>
             stuck
         | None =>
@@ -649,7 +648,7 @@ Section EXPRS.
         end
     | LV, Efield r f ty =>
         match is_val r with
-        | Some (Vlong ofs, pt, ty') =>
+        | Some (Vptr p, pt, ty') =>
             match ty' with
             | Tstruct id _ =>
                 top <<=
@@ -659,9 +658,8 @@ Section EXPRS.
                     | OK (delta, bf) =>
                         try pt',ps' <- FieldT lc ce pct pt ty id ps;
                         catch "failred_field_struct", E0;
-                        Lred "red_field_struct" (Eloc (Lmem (Int64.add
-                                                               ofs
-                                                               (Int64.repr delta))
+                        Lred "red_field_struct" (Eloc (Lmem (off p
+                                                              (Int64.repr delta))
                                                             pt' bf) ty) te m ps'
                     end
             | Tunion id _ =>
@@ -672,9 +670,8 @@ Section EXPRS.
                 | OK (delta, bf) =>
                     try pt',ps' <- FieldT lc ce pct pt ty id ps;
                     catch "failred_field_union", E0;
-                    Lred "red_field_union" (Eloc (Lmem (Int64.add
-                                                          ofs
-                                                          (Int64.repr delta))
+                    Lred "red_field_union" (Eloc (Lmem (off p
+                                                        (Int64.repr delta))
                                                        pt' bf) ty) te m ps'
                 end
             | _ => stuck
@@ -1050,9 +1047,7 @@ Section EXPRS.
              incontext2 (fun x => Econs x rs) (step_expr RV lc ps pct r1 te m)
                         (fun x => Econs r1 x) (step_exprlist lc ps pct rs te m)
          end.
-  
-  Definition context := Sem.context.
-
+ 
   (** Technical properties on safe expressions. *)
   Inductive imm_safe_t: kind -> Cabs.loc -> expr -> pstate -> control_tag ->
                         tenv -> mem -> Prop :=
@@ -1106,14 +1101,14 @@ Definition invert_expr_prop (lc:Cabs.loc) (a: expr) (ps: pstate) (pct: control_t
   | Eloc l ty => False
   | Evar x ty =>
       e!x = Some (PRIV ty)
-      \/ (exists base bound pt, e!x = Some (PUB base pt ty))
+      \/ (exists base pt, e!x = Some (PUB base pt ty))
       \/ (e!x = None /\ exists base bound pt gv,
              Genv.find_symbol ge x = Some (SymGlob base bound pt gv))
       \/ (e!x = None /\ exists b pt, Genv.find_symbol ge x = Some (SymIFun _ b pt))
       \/ (e!x = None /\ exists ef tyargs tyres cc pt,
              Genv.find_symbol ge x = Some (SymEFun _ ef tyargs tyres cc pt))
   | Ederef (Eval v ty1) ty =>
-      (exists ofs pt, v = (Vint ofs,pt)) \/ (exists ofs pt, v = (Vlong ofs,pt))
+      exists p pt, v = (Vptr p,pt)
   | Eaddrof (Eloc (Lmem ofs pt bf) ty1) ty =>
       bf = Full
   | Eaddrof (Eloc (Ltmp b) ty1) ty =>
@@ -1122,13 +1117,14 @@ Definition invert_expr_prop (lc:Cabs.loc) (a: expr) (ps: pstate) (pct: control_t
       ty = ty1
   | Eaddrof (Eloc (Lefun _ _ _ _ pt) ty1) ty =>
       ty = ty1
-  | Efield (Eval v ty1) f ty =>
-      match v,ty1 with
-      | (Vlong ofs,vt), Tstruct id _ => exists co delta bf, ce!id = Some co /\
-                                                  field_offset ce f (co_members co) = OK (delta, bf)
-      | (Vlong ofs,vt), Tunion id _ => exists co delta bf, ce!id = Some co /\
-                                             union_field_offset ce f (co_members co) = OK (delta, bf)
-      | _, _ => False
+  | Efield (Eval (v,vt) ty1) f ty =>
+      exists p, v = Vptr p /\
+      match ty1 with
+      | Tstruct id _ => exists co delta bf, ce!id = Some co /\
+                                            field_offset ce f (co_members co) = OK (delta, bf)
+      | Tunion id _ => exists co delta bf, ce!id = Some co /\
+                                            union_field_offset ce f (co_members co) = OK (delta, bf)
+      | _ => False
       end
   | Eval v ty => False
   | Evalof (Eloc (Lmem ofs pt bf) ty1) ty
@@ -1229,14 +1225,13 @@ Lemma lred_invert:
   forall lc l pct te m l' te' m' ps ps', lred ge ce e lc l pct te m l' te' m' ps ps' -> invert_expr_prop lc l ps pct te m.
 Proof.
   induction 1; red; auto.
-  - right; left; exists base, bound, pt; auto.
+  - right; left; exists base, pt; auto.
   - right; right; left; split; auto; exists base, bound, pt, gv; auto.
   - right; right; right; left; split; auto; exists b, pt; auto.
   - right; right; right; right; split; auto; exists ef, tyargs, tyres, cc, pt; auto.
-  - left; exists ofs, vt; auto.
-  - right; exists ofs, vt; auto.
-  - exists co, delta, bf. split;auto.
-  - exists co, delta, bf; auto.
+  - exists p, vt; auto.
+  - exists p. intuition. exists co, delta, bf. split;auto.
+  - exists p. intuition. exists co, delta, bf; auto.
 Qed.
 
 Lemma lfailred_invert:
@@ -1244,8 +1239,8 @@ Lemma lfailred_invert:
     lfailred ce lc l pct tr failure ps ps' -> invert_expr_prop lc l ps pct te m.
 Proof.
   induction 1; red; auto.
-  - exists co, delta, bf; auto.
-  - exists co, delta, bf; auto.
+  - exists p. intuition. exists co, delta, bf; auto.
+  - exists p. intuition. exists co, delta, bf; auto.
 Qed.
 
 Ltac chomp :=
@@ -1316,7 +1311,7 @@ Qed.
 
 Scheme context_ind2 := Minimality for context Sort Prop
   with contextlist_ind2 := Minimality for contextlist Sort Prop.
-Combined Scheme context_contextlist_ind from context_ind2, contextlist_ind2.
+Combined Scheme context_contextlist_ind from context_ind2, contextlist_ind2. 
 
 Lemma invert_expr_context:
   (forall from to C, context from to C ->
@@ -1380,9 +1375,9 @@ with contextlist_compose:
   forall k1 C1, context k1 k2 C1 ->
   contextlist k1 (fun x => C2(C1 x)).
 Proof.
-  induction 1; intros; try (constructor; eauto).
-  replace (fun x => C1 x) with C1. auto. apply extensionality; auto.
-  induction 1; intros; constructor; eauto.
+  - induction 1; intros; try (constructor; eauto).
+    replace (fun x => C1 x) with C1. auto. apply extensionality; auto.
+  - induction 1; intros; constructor; eauto.
 Qed.
 
 Local Hint Constructors context contextlist : core.
@@ -1772,10 +1767,8 @@ Ltac solve_red :=
       eapply topred_ok; auto; eapply red_field_struct; eauto
   | [ |- reducts_ok _ _ _ _ _ _ _ (topred (Lred "red_field_union" _ _ _)) ] => 
       eapply topred_ok; auto; eapply red_field_union; eauto
-  | [ |- reducts_ok _ _ _ _ _ _ _ (topred (Lred "red_deref_short" _ _ _)) ] => 
-      eapply topred_ok; auto; eapply red_deref_short; eauto
-  | [ |- reducts_ok _ _ _ _ _ _ _ (topred (Lred "red_deref_long" _ _ _)) ] => 
-      eapply topred_ok; auto; eapply red_deref_long; eauto
+  | [ |- reducts_ok _ _ _ _ _ _ _ (topred (Lred "red_deref_" _ _ _)) ] => 
+      eapply topred_ok; auto; eapply red_deref; eauto
 
   (* Lfailred *)
 

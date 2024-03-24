@@ -18,7 +18,6 @@ open C
 
 open Camlcoq
 open! Floats
-open Values
 open Ctypes
 open Tags
 open Allocator
@@ -27,11 +26,12 @@ module C2CP =
         functor (Pol: Policy) (Alloc: Allocator) ->
                 struct
 
-module A = Alloc (Pol)
-module Init = Initializers.Initializers (Pol) (A)
-module Ctyping = Init.Cexec.InterpreterEvents.Ctyping
+module Init = Initializers.Initializers (Pol) (Alloc)
+module Ctyping = Init.Cexec.InterpreterEvents.Deterministic.Ctyping
 module Csyntax = Ctyping.Csem.Csyntax
 module Cop = Csyntax.Cop
+module Val = Ctyping.Outer.M.MD.TLib.Switch.BI.BI1.BI0.Values
+open Val
 
 (** ** Extracting information about global variables from their atom *)
 
@@ -347,8 +347,8 @@ let name_for_wide_string_literal s =
     Hashtbl.add decl_atom id
       { a_storage = C.Storage_static;
         a_alignment = Some wchar_size;
-        a_size = Some (Int64.(mul (of_int (List.length s + 1))
-                                  (of_int wchar_size)));
+        a_size = Some (Int64.mul (Int64.of_int (List.length s + 1))
+                                  (Int64.of_int wchar_size));
         a_sections = [Sections.for_stringlit()];
         a_access = Sections.Access_default;
         a_inline = No_specifier;
