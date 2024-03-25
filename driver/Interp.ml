@@ -19,13 +19,10 @@ open Format
 open Camlcoq
 open AST
 (*open! Integers*)
-open Values
 open! Ctypes
 open Maps
 open Tags
 open PrintCsyntax
-open Allocator
-open Memory
 open Csem
 
 (* Configuration *)
@@ -38,13 +35,10 @@ let mode = ref First
 
 let timeoutMaxSteps = ref 0
 
-module InterpP =
-        functor (Pol: Policy) (Alloc: Allocator) ->
-        struct
+module InterpP (Pol: Policy) (A: module type of FLAllocator.TaggedCFL) =
+struct
 
-module M0 = ConcMem (ConcretePointer) (Pol)
-module A0 = Alloc (ConcretePointer) (Pol) (M0)
-module Printing = PrintCsyntaxP (Pol) (Alloc)
+module Printing = PrintCsyntaxP (Pol) (A)
 module Init = Printing.Init
 module Cexec = Init.Cexec
 module Deterministic = Cexec.InterpreterEvents.Deterministic
@@ -53,9 +47,9 @@ module Csem = Ctyping.Csem
 module Csyntax = Csem.Csyntax
 module Events = Csyntax.Cop.Smallstep.Events
 module Genv = Events.Genv
-module M = Ctyping.Outer.M
-module A = Ctyping.A'
-module Val = M.MD.TLib.Switch.BI.BI1.BI0.Values
+module A = Printing.C2CPInst.TC.A.A
+module M = Printing.C2CPInst.TC.A.CM
+module Val = Printing.Val
 open Val
 
 (* Printing events *)

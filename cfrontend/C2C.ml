@@ -20,17 +20,16 @@ open Camlcoq
 open! Floats
 open Ctypes
 open Tags
-open Allocator
 
-module C2CP =
-        functor (Pol: Policy) (Alloc: Allocator) ->
-                struct
+module C2CP (Pol: Policy) (A: module type of FLAllocator.TaggedCFL) =
+struct
 
-module Init = Initializers.Initializers (Pol) (Alloc)
+module TC = A (Pol)
+module Init = TC.Init
 module Ctyping = Init.Cexec.InterpreterEvents.Deterministic.Ctyping
 module Csyntax = Ctyping.Csem.Csyntax
 module Cop = Csyntax.Cop
-module Val = Ctyping.Outer.M.MD.TLib.Switch.BI.BI1.BI0.Values
+module Val = TC.A.CM.MD.TLib.Switch.BI.BI1.BI0.Values
 open Val
 
 (** ** Extracting information about global variables from their atom *)

@@ -173,6 +173,19 @@ Module ConcMem (Ptr: Pointer) (Pol:Policy) <: Memory Ptr Pol.
   
   Definition get_perm (m: mem) (a: addr) : permission :=
     ZMap.get (Int64.unsigned a) m.(mem_access).
+
+  Definition set_perm (m: mem) (a: addr) (p: permission) : mem :=
+    mkmem m.(mem_contents) (ZMap.set (Int64.unsigned a) p m.(mem_access)) m.(live).
+
+  Definition set_perm_range (m: mem) (base: addr) (size: Z) (p: permission) : mem :=
+    let fix loop n m :=
+      match n with
+      | O => set_perm m base p
+      | S n' =>
+        let a := addr_off base (Int64.repr (Z.of_nat n)) in
+        set_perm (loop n' m) a p
+      end in
+    loop (Z.to_nat size) m.
   
   Definition perm (m: mem) (a: addr) (p: permission) : Prop :=
     get_perm m a = p.

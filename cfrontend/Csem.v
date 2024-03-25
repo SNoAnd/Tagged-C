@@ -60,9 +60,9 @@ Module Type Semantics (Ptr: Pointer) (Pol: Policy)
    
 End Semantics.
 
-Module TaggedCsem (Pol: Policy).
-  Module M := ConcMem ConcretePointer Pol.
-  Module Inner (A: Allocator ConcretePointer Pol M) <:
+Module TaggedCsem (Pol: Policy)
+                  (M : Memory ConcretePointer Pol)
+                  (A: Allocator ConcretePointer Pol M) <:
     Semantics ConcretePointer Pol M A.
     Module Smallstep := Smallstep ConcretePointer Pol M A.
     Export Smallstep.
@@ -139,8 +139,8 @@ Module TaggedCsem (Pol: Policy).
       assign_loc ty m p pt lts Full v t res'
   | assign_loc_copy: forall p' bytes pt',
       access_mode ty = By_copy ->
-      (alignof_blockcopy ce ty = align p') ->
-      (alignof_blockcopy ce ty = align p) ->
+      (alignof_blockcopy ce ty = alignp p') ->
+      (alignof_blockcopy ce ty = alignp p) ->
       p' = p
       \/ le (off p' (Int64.repr (sizeof ce ty))) p
       \/ le (off p (Int64.repr (sizeof ce ty))) p' ->
@@ -1435,7 +1435,6 @@ End SEM.
   Definition semantics (p: program) (ge: Genv.t fundef type) (ce: composite_env) :=
     Semantics_gen step (initial_state p) final_state ge ce.
 
-  End Inner.
 End TaggedCsem.
 
 (*

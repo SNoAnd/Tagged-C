@@ -19,13 +19,15 @@ Require Import Cexec Tags.
 
 Open Scope error_monad_scope.
 
-Module Initializers (Pol: Policy) (A: Allocator).
-  Module Cexec := Cexec Pol A.
+Module Initializers (Pol: Policy)
+                    (M : Memory ConcretePointer Pol)
+                    (A: Allocator ConcretePointer Pol M).
+  Module Cexec := Cexec Pol M A.
   Export Cexec.
   Import Csem.
   Import M.
   Import MD.
-  Import A'.
+  Import A.
   Import TLib.
  
 (** * Evaluation of compile-time constant expressions *)

@@ -31,13 +31,16 @@ Require Import Memory.
 Require Import Csem.
 Require Import Ctyping.
 
-Module Deterministic (Pol: Policy) (A: Allocator).
-  Module Ctyping := Ctyping Pol A.
+Module Deterministic (Pol: Policy)
+                     (M : Memory ConcretePointer Pol)
+                     (A: Allocator ConcretePointer Pol M).
+ 
+  Module Ctyping := Ctyping Pol M A.
   Export Ctyping.
   Export Csem.
   Import M.
   Import TLib.
-  Import A'.
+  Import A.
  
   Import Smallstep.
 

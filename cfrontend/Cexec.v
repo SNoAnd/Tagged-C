@@ -35,13 +35,16 @@ Notation " 'check' A ; B" := (if A then B else nil)
   (at level 200, A at level 100, B at level 200)
   : list_monad_scope.
 
-Module Cexec (Pol: Policy) (A: Allocator).
-  Module InterpreterEvents := InterpreterEvents Pol A.
+Module Cexec (Pol: Policy)
+             (M : Memory ConcretePointer Pol)
+             (A: Allocator ConcretePointer Pol M).
+ 
+  Module InterpreterEvents := InterpreterEvents Pol M A.
   Export InterpreterEvents.
   About Csem.
   Export Csem.
   Import M.
-  Import A'.
+  Import A.
   Import TLib.
   
   (* Policy-agnostic Tactics *)

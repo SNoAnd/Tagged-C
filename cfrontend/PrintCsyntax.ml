@@ -22,18 +22,16 @@ open AST
 open! Ctypes
 open Tags
 open C2C
-open Allocator
 
-module PrintCsyntaxP =
-        functor (Pol: Policy) (Alloc: Allocator) ->
-                struct
+module PrintCsyntaxP (Pol: Policy) (A: module type of FLAllocator.TaggedCFL) =
+struct
 
-module C2CPInst = C2CP (Pol) (Alloc)
+module C2CPInst = C2CP (Pol) (A)
 module Init = C2CPInst.Init
 module Ctyping = Init.Cexec.InterpreterEvents.Deterministic.Ctyping
 module Csyntax = Ctyping.Csem.Csyntax
 module Cop = Csyntax.Cop
-module Val = Ctyping.Outer.M.MD.TLib.Switch.BI.BI1.BI0.Values
+module Val = C2CPInst.Val
 open Val
 
 let name_unop = function

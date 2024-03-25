@@ -18,13 +18,17 @@ Notation " 'check' A ; B" := (if A then B else None)
   (at level 200, A at level 100, B at level 200)
   : option_monad_scope.
 
-Module InterpreterEvents (Pol: Policy) (A: Allocator).
-  Module Deterministic := Deterministic Pol A.
+
+Module InterpreterEvents (Pol: Policy)
+                         (M : Memory ConcretePointer Pol)
+                         (A: Allocator ConcretePointer Pol M).
+ 
+  Module Deterministic := Deterministic Pol M A.
   Export Deterministic.
   Export Csem.
   Import M.
   Import TLib.
-  Import A'.
+  Import A.
   
   Local Open Scope option_monad_scope.
 

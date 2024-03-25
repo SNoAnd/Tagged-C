@@ -29,7 +29,7 @@ Module Type Pointer.
   Parameter concretize : ptr -> int64.
   Parameter off : ptr -> int64 -> ptr.
   
-  Parameter align : ptr -> Z.
+  Parameter alignp : ptr -> Z.
 
   Parameter lt : ptr -> ptr -> Prop.
   Parameter ltb : ptr -> ptr -> bool.
@@ -50,7 +50,7 @@ Module ConcretePointer <: Pointer.
   
   Definition concretize (p: ptr) : int64 := p.
   Definition off (p: ptr) (i: int64) : ptr := Int64.add p i.
-  Definition align (p: ptr) : Z := 8.
+  Definition alignp (p: ptr) : Z := 8.
 
   Definition lt (p1 p2: ptr) := Int64.lt p1 p2 = true.
   Definition ltb := Int64.lt.
@@ -111,7 +111,7 @@ Module SemiconcretePointer <: Pointer.
   Definition off (p: ptr) (i: int64) : ptr :=
     let (ind, pos) := p in (ind, Int64.add pos i).
 
-  Definition align (p: ptr) : Z := 8.
+  Definition alignp (p: ptr) : Z := 8.
 
   Definition ltb (p1 p2: ptr) :=
     match p1, p2 with

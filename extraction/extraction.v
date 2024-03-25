@@ -25,29 +25,10 @@ Require Csyntax.
 Require Parser.
 Require Initializers.
 (* Per Policies.md, add new policies here*)
-Require Import Values Tags Product NullPolicy PVI DoubleFree
-               HeapProblem Memory Allocator Initializers Csem.
-(*
-Module Extracted (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Allocator Ptr Pol M).
-
-  Module I := Initializers Ptr Pol M A.
-  Import I.
-  Import Cexec.
-  Import InterpreterEvents.
-  Import Ctyping.
-  Import Csem.
-  Import Csyntax.
-  Import Cop.
-  Import Deterministic.
-  Import Behaviors.
-  Import Smallstep.
-  Import Events.
-  Import Genv.
-  Import A.
-  Import Mem.
-  
-End Extracted.*)
-  
+Require Import Values Tags Memory Allocator Csem Initializers
+               Product NullPolicy PVI DoubleFree HeapProblem
+               FLAllocator ConcreteAllocator. 
+ 
   (* Standard lib *)
   Require Import ExtrOcamlBasic.
   Require Import ExtrOcamlString.
@@ -117,11 +98,7 @@ End Extracted.*)
   Separate Extraction
            ConcretePointer
            Tags NullPolicy PVI DoubleFree HeapProblem PolProduct
-           ConcMem
-           Allocator
-           Ctyping
-           TaggedCsem
-           Initializers
+           Allocator TaggedCConcrete TaggedCFL
            Ctypes.merge_attributes Ctypes.remove_attributes
            Ctypes.build_composite_env Ctypes.signature_of_type Ctypes.typlist_of_typelist
            Cabs
