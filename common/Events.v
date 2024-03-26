@@ -513,13 +513,13 @@ Definition do_extcall_free (l:Cabs.loc) (pct: control_tag)  (fpt pt: val_tag) (p
   if Int64.eq (concretize p) Int64.zero
   then ret ((Vundef,InitT), pct, m)
   else
-    pct' <- ExtCallT l "free" pct fpt [pt];;
-    '(sz,pct'',m') <- heapfree l pct' m p pt;;
+    pct0 <- ExtCallT l "free" pct fpt [pt];;
+    '(sz,pct1,m') <- heapfree l pct0 m p pt;;
     mvs <- loadbytes m' p sz;;
-    '(pct''',lts') <- ClearT l pct'' (Z.to_nat sz);;
+    '(pct2,lts') <- ClearT l pct1 (Z.to_nat sz);;
     m'' <- storebytes m' p mvs lts';;
-    '(vt,pct'') <- ExtRetT l "free" pct pct' InitT;;
-    ret ((Vundef,InitT), pct', m'').
+    '(pct3,vt) <- ExtRetT l "free" pct pct2 InitT;;
+    ret ((Vundef,InitT), pct3, m'').
 
 Inductive extcall_free_sem (l:Cabs.loc) (ge: Genv.t F V):
   list atom -> control_tag -> val_tag -> mem -> trace ->

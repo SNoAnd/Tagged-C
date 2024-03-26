@@ -167,7 +167,8 @@ let print_mem p m =
       | M.MD.Byte (b,vt) ->
                       fprintf p " %lu '@' %s|" (camlint_of_coqint b) (print_vt vt);
                       print_at (i+1) max
-      | M.MD.Fragment ((v,vt), q, n) -> fprintf p "| %a |" print_val v; print_at (i+(camlint_of_coqnat (Encoding.size_quantity_nat q))) max)
+      | M.MD.Fragment ((v,vt), q, n) -> fprintf p "| %a '@' %s |" print_val v (print_vt vt);
+         print_at (i+(camlint_of_coqnat (Encoding.size_quantity_nat q))) max)
     else () in
   print_at 1000 1015;
   fprintf p "\n";
@@ -407,20 +408,20 @@ let format_value m flags length conv arg =
       format_float (flags ^ conv) (camlfloat_of_coqfloat f)
   | ('f'|'e'|'E'|'g'|'G'|'a'), "", _ ->
       "<float argument expected"
-  | 's', "", Vlong ofs ->
+  | 's', "", Vptr ofs ->
       begin match extract_string m ofs with
       | Some s -> s
       | None -> "<bad string>"
       end
   | 's', "", _ ->
       "<pointer argument expected>"
-  | 'p', "", Vlong ofs ->
+  | 'p', "", Vptr ofs ->
       Printf.sprintf "<%ld>" (camlint_of_coqint ofs)
   | 'p', "", Vint i ->
       format_int32 (flags ^ "x") (camlint_of_coqint i)
-(*  | 'p', "", Vlong l ->
+  | 'p', "", Vlong l ->
       format_int64 (flags ^ "x") (camlint64_of_coqint l)
-*)
+
   | 'p', "", _ ->
       "<int or pointer argument expected>"
   | _, _, _ ->
@@ -510,7 +511,7 @@ let do_fgets m ofs pt size =
       Some ((coq_Vnullptr,Pol.def_tag), m)
   | Some (buff,count) ->
       store_string m ofs buff count >>= fun m' ->
-      Some ((Vlong ofs,pt), m')
+      Some ((Vptr ofs,pt), m')
 
 (* Like eventval_of_val, but accepts static globals as well *)
 
@@ -520,6 +521,7 @@ let convert_external_arg ge v t =
   | Vfloat f -> Some (Events.EVfloat f)
   | Vsingle f -> Some (Events.EVsingle f)
   | Vlong n -> Some (Events.EVlong n)
+  | Vptr n -> Some (Events.EVlong n)
   (*| Vptr(b, ofs) ->
       Genv.invert_symbol ge b ofs >>= fun id -> Some (Events.EVptr_global(id, ofs,t))*)
   (* TODO *)
@@ -535,7 +537,7 @@ let rec convert_external_args ge vl tl =
 
 let do_external_function id sg ge w args pct fpt m =
   match camlstring_of_coqstring id, args with
-  | "printf", (Vlong ofs,pt) :: args' ->
+  | "printf", (Vptr ofs,pt) :: args' ->
       extract_string m ofs >>= fun fmt ->
       let fmt' = do_printf m fmt (List.map fst args') in
       let len = coqint_of_camlint (Int32.of_int (String.length fmt')) in
@@ -544,7 +546,7 @@ let do_external_function id sg ge w args pct fpt m =
       convert_external_args ge args sg.sig_args >>= fun eargs ->
       let res = fun ps -> (Success(((Vint len, Pol.def_tag), pct), m),ps) in
       Some((w,[Events.Event_syscall(id, eargs, Events.EVint len)]), res)
-  | "fgets", (Vlong ofs,pt) :: (Vint siz,vt) :: args' ->
+  | "fgets", (Vptr ofs,pt) :: (Vint siz,vt) :: args' ->
       do_fgets m ofs pt siz >>= fun (p,m') ->
       convert_external_args ge args sg.sig_args >>= fun eargs ->
       convert_external_arg ge (fst p) (proj_rettype sg.sig_res) >>= fun eres -> 

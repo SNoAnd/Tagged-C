@@ -216,6 +216,7 @@ Definition sem_cast (v: val) (t1 t2: type) (m: mem): option val :=
       | Vfptr _ => Some v
       | Vint _ => Some v
       | Vlong _ => Some v
+      | Vptr _ => Some v
       | _ => None
       end
   | cast_case_i2i sz2 si2 =>
@@ -618,30 +619,26 @@ Definition classify_add (ty1: type) (ty2: type) :=
   | _, _ => add_default
   end.
 
-Definition ptrofs_of_int (si: signedness) (n: int) : ptrofs :=
+Definition int64_of_int (si: signedness) (n: int) : int64 :=
   match si with
-  | Signed => Ptrofs.of_ints n
-  | Unsigned => Ptrofs.of_intu n
+  | Signed => Int64.repr (Int.signed n)
+  | Unsigned => Int64.repr (Int.unsigned n)
   end.
 
-Definition sem_add_ptr_int (cenv: composite_env) (ty: type) (si: signedness) (v1 v2: val): option val :=
+Definition sem_add_ptr_int (cenv: composite_env) (ty: type)
+           (si: signedness) (v1 v2: val): option val :=
   match v1, v2 with
-  | Vint n1, Vint n2 =>
-      Some (Vint (Int.add n1 (Int.mul (Int.repr (sizeof cenv ty)) n2)))
-  | Vlong n1, Vint n2 =>
-      let n2 := cast_int_long si n2 in
-      Some (Vlong (Int64.add n1 (Int64.mul (Int64.repr (sizeof cenv ty)) n2)))
+  | Vptr p, Vint n =>
+    let n' := Int64.mul (Int64.repr (sizeof cenv ty)) (int64_of_int si n) in
+    Some (Vptr (off p n'))
   | _,  _ => None
   end.
 
 Definition sem_add_ptr_long (cenv: composite_env) (ty: type) (v1 v2: val): option val :=
   match v1, v2 with
-  | Vfptr b1, Vlong n2 => None
-  | Vint n1, Vlong n2 =>
-      let n2 := Int.repr (Int64.unsigned n2) in
-      Some (Vint (Int.add n1 (Int.mul (Int.repr (sizeof cenv ty)) n2)))
-  | Vlong n1, Vlong n2 =>
-      Some (Vlong (Int64.add n1 (Int64.mul (Int64.repr (sizeof cenv ty)) n2)))
+  | Vptr p, Vlong n =>
+    let n' := Int64.mul (Int64.repr (sizeof cenv ty)) n in
+    Some (Vptr (off p n'))
   | _,  _ => None
   end.
 

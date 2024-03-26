@@ -263,7 +263,7 @@ Module TaggedCsem (Pol: Policy)
     | Econs _ el' => S (exprlist_len el')
     end.
   
-  (** Extract the values from a list of function arguments *)
+    (** Extract the values from a list of function arguments *)
   Inductive cast_arguments (l:Cabs.loc) (pct: control_tag) (fpt: val_tag) (m: mem):
     exprlist -> typelist -> PolicyResult (control_tag * list atom) -> Prop :=
   | cast_args_nil:
@@ -391,7 +391,7 @@ Module TaggedCsem (Pol: Policy)
              pct (Eval (v,vt') ty) te m ps0 ps1
     | red_addrof_loc: forall ofs pt ty1 ty te m ps,
         rred pct (Eaddrof (Eloc (Lmem ofs pt Full) ty1) ty) te m E0
-             pct (Eval (Vlong ofs, pt) ty) te m ps ps
+             pct (Eval (Vptr ofs, pt) ty) te m ps ps
     | red_addrof_fptr: forall b pt ty te m ps,
         rred pct (Eaddrof (Eloc (Lifun b pt) ty) ty) te m E0
              pct (Eval (Vfptr b, pt) ty) te m ps ps
@@ -419,7 +419,7 @@ Module TaggedCsem (Pol: Policy)
         (forall ty' attr, ty1 <> Tpointer ty' attr) ->
         ty = Tpointer ty' attr ->
         sem_cast v1 ty1 ty m = Some v ->
-        v = Vlong ofs ->
+        v = Vptr ofs ->
         deref_loc ty m ofs vt1 Full tr <<ps0>> (Success ((v2,vt2), lts)) <<ps1>> ->
         IPCastT l pct vt1 lts ty ps1 = (Success pt', ps2) ->
         rred pct (Ecast (Eval (v1,vt1) ty1) ty) te m tr
@@ -428,7 +428,7 @@ Module TaggedCsem (Pol: Policy)
         ty1 = Tpointer ty' attr ->
         (forall ty' attr, ty <> Tpointer ty' attr) ->
         sem_cast v1 ty1 ty m = Some v ->
-        v1 = Vlong ofs ->
+        v1 = Vptr ofs ->
         deref_loc ty1 m ofs vt1 Full tr <<ps0>> (Success ((v2,vt2), lts)) <<ps1>> ->
         PICastT l pct vt1 lts ty ps1 = (Success vt',ps2) ->
         rred pct (Ecast (Eval (v1,vt1) ty1) ty) te m tr
@@ -438,7 +438,7 @@ Module TaggedCsem (Pol: Policy)
         ty1 = Tpointer ty1' attr1 ->
         ty = Tpointer ty' attr2 ->
         sem_cast v1 ty1 ty m = Some v ->
-        v1 = Vlong ofs1 -> v = Vlong ofs ->
+        v1 = Vptr ofs1 -> v = Vptr ofs ->
         deref_loc ty1 m ofs1 vt1 Full tr1 <<ps0>> (Success ((v2,vt2),lts1)) <<ps1>> ->
         deref_loc ty m ofs vt1 Full tr <<ps1>> (Success ((v3,vt3),lts)) <<ps2>> ->
         PPCastT l pct vt1 lts1 lts ty ps2 = (Success pt',ps3) ->
@@ -721,7 +721,7 @@ Module TaggedCsem (Pol: Policy)
         (forall ty' attr, ty1 <> Tpointer ty' attr) ->
         ty = Tpointer ty' attr ->
         sem_cast v1 ty1 ty m = Some v ->
-        v = Vlong ofs ->
+        v = Vptr ofs ->
         deref_loc ty m ofs vt1 Full tr <<ps0>> (Success ((v2,vt2), lts)) <<ps1>> ->
         IPCastT l pct vt1 lts ty ps0 = (Fail failure,ps2) ->
         rfailred pct (Ecast (Eval (v1,vt1) ty1) ty) te m tr failure ps0 ps2
@@ -730,7 +730,7 @@ Module TaggedCsem (Pol: Policy)
         ty1 = Tpointer ty' attr ->
         (forall ty' attr, ty <> Tpointer ty' attr) ->
         sem_cast v1 ty1 ty m = Some v ->
-        v1 = Vlong ofs ->
+        v1 = Vptr ofs ->
         deref_loc ty1 m ofs vt1 Full tr <<ps0>> (Success ((v2,vt2), lts)) <<ps1>> ->
         PICastT l pct vt1 lts ty ps1 = (Fail failure, ps2) ->
         rfailred pct (Ecast (Eval (v1,vt1) ty1) ty) te m tr failure ps0 ps2
@@ -739,8 +739,8 @@ Module TaggedCsem (Pol: Policy)
         ty1 = Tpointer ty1' attr1 ->
         ty = Tpointer ty' attr2 ->
         sem_cast v1 ty1 ty m = Some v ->
-        v1 = Vlong ofs1 ->
-        v = Vlong ofs ->
+        v1 = Vptr ofs1 ->
+        v = Vptr ofs ->
         deref_loc ty1 m ofs1 vt1 Full tr1 <<ps0>> (Success ((v2,vt2), lts1)) <<ps1>> ->
         deref_loc ty m ofs vt1 Full tr <<ps1>> (Success ((v3,vt3), lts)) <<ps2>> ->
         PPCastT l pct vt1 lts1 lts ty ps2 = (Fail failure,ps3) ->

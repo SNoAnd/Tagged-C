@@ -104,8 +104,12 @@ Definition encode_val (chunk: memory_chunk) (a:atom) : list memval :=
   | (Vint n, t), (Mint16signed | Mint16unsigned) => inj_bytes (encode_int 2%nat (Int.unsigned n)) t
   | (Vint n, t), Mint32 => inj_bytes (encode_int 4%nat (Int.unsigned n)) t
   | (Vfptr b, t), Mint32 => List.repeat Undef 4%nat
+  | (Vefptr _ _ _ _, t), Mint32 => List.repeat Undef 4%nat
+  | (Vptr b, t), Mint32 => List.repeat Undef 4%nat
   | (Vlong n, t), Mint64 => inj_bytes (encode_int 8%nat (Int64.unsigned n)) t
-  | (Vfptr b, t), Mint64 => List.repeat Undef 8%nat
+  | (Vfptr b, t), Mint64 => inj_value Q64 a
+  | (Vefptr _ _ _ _, t), Mint64 => inj_value Q64 a
+  | (Vptr p, t), Mint64 => inj_value Q64 a
   | (Vsingle n, t), Mfloat32 => inj_bytes (encode_int 4%nat (Int.unsigned (Float32.to_bits n))) t
   | (Vfloat n, t), Mfloat64 => inj_bytes (encode_int 8%nat (Int64.unsigned (Float.to_bits n))) t
   | (v, t), Many32 => inj_value Q32 a
@@ -129,13 +133,21 @@ Definition decode_val (chunk: memory_chunk) (vl: list memval) : atom :=
       | Many64 => Vundef
       end, t)
   | (None,None) =>
-      (match chunk with
-      | Mint32 => Vundef
-      | Many32 => Values.load_result chunk (fst (proj_value Q32 vl))
-      | Mint64 => Values.load_result chunk (fst (proj_value Q64 vl))
-      | Many64 => Values.load_result chunk (fst (proj_value Q64 vl))
-      | _ => Vundef
-      end, def_tag)
+      match chunk with
+      | Mint32 =>
+          let (v,vt) := proj_value Q32 vl in
+          (Values.load_result chunk v, vt)
+      | Many32 =>
+          let (v,vt) := proj_value Q32 vl in
+          (Values.load_result chunk v, vt)
+      | Mint64 =>
+          let (v,vt) := proj_value Q64 vl in
+          (Values.load_result chunk v, vt)
+      | Many64 =>
+          let (v,vt) := proj_value Q64 vl in
+          (Values.load_result chunk v, vt)
+      | _ => (Vundef, def_tag)
+      end
   | _ => (Vundef, def_tag)
   end.
 

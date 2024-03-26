@@ -431,8 +431,8 @@ Module InterpreterEvents (Pol: Policy)
     Definition do_ef_free (l: Cabs.loc) (w: world) (vargs: list atom) (pct: control_tag) (fpt: val_tag) (m: mem)
       : option (world * trace * (PolicyResult (atom * control_tag * mem))) :=
       match vargs with
-      | [(Vlong addr,pt)] =>
-          Some (w, E0, do_extcall_free l pct fpt pt addr m)
+      | [(Vptr p,pt)] =>
+          Some (w, E0, do_extcall_free l pct fpt pt p m)
       | _ => None
       end.
 

@@ -99,7 +99,7 @@ Module Cexec (Pol: Policy)
       destruct e eqn:?
   | [ |- context [if ?e then _ else _] ] => destruct e
   | [ |- context [match ?v with
-                  | Vlong _ => _
+                  | Vptr _ => _
                   | _ => _
                   end] ] => destruct v
   | [ |- context [match ?l with
@@ -150,8 +150,8 @@ Module Cexec (Pol: Policy)
            end = _ ] => rewrite H
     | [ H: ?e = true |- (if ?e then _ else _) = _ ] => rewrite H
     | [ H: ?e = false |- (if ?e then _ else _) = _ ] => rewrite H
-    | [ H: ?v = Vlong ?v' |- match ?v with
-                             | Vlong _ => _
+    | [ H: ?v = Vptr ?v' |- match ?v with
+                             | Vptr _ => _
                              | _ => _
                              end = _ ] =>
         rewrite H
@@ -724,7 +724,7 @@ Section EXPRS.
         match is_loc l with
         | Some (Lmem ofs t bf, ty') =>
             match bf with Full => topred (Rred "red_addrof_loc" pct
-                                               (Eval (Vlong ofs, t) ty) te m E0 ps)
+                                               (Eval (Vptr ofs, t) ty) te m E0 ps)
                      | Bits _ _ _ _ => stuck
             end
         | Some (Ltmp _, _) => stuck
@@ -769,8 +769,8 @@ Section EXPRS.
             | Tpointer _ _, Tpointer _ _ =>
                 top <<=
                 let! v <- sem_cast v1 ty1 ty m;
-                let! ofs1 <- match v1 with Vlong ofs1 => Some ofs1 | _ => None end;
-                let! ofs <- match v with Vlong ofs => Some ofs | _ => None end;
+                let! ofs1 <- match v1 with Vptr ofs1 => Some ofs1 | _ => None end;
+                let! ofs <- match v with Vptr ofs => Some ofs | _ => None end;
                 let! (w', tr1, res) <- do_deref_loc w ty1 m ofs1 vt1 Full;
                 match res ps with
                 | (Success (_,lts1), ps') =>
@@ -788,7 +788,7 @@ Section EXPRS.
             | Tpointer _ _, _ =>
                 top <<=
                 let! v <- sem_cast v1 ty1 ty m;
-                let! ofs <- match v1 with Vlong ofs => Some ofs | _ => None end;
+                let! ofs <- match v1 with Vptr ofs => Some ofs | _ => None end;
                 let! (w',tr,res) <- do_deref_loc w ty1 m ofs vt1 Full;
                 match res ps with
                 | (Success (_, lts), ps') =>
@@ -800,7 +800,7 @@ Section EXPRS.
             | _, Tpointer _ _ =>
                 top <<=
                 let! v <- sem_cast v1 ty1 ty m;
-                let! ofs <- match v with Vlong ofs => Some ofs | _ => None end;
+                let! ofs <- match v with Vptr ofs => Some ofs | _ => None end;
                 let! (w', tr, res) <- do_deref_loc w ty m ofs vt1 Full;
                 match res ps with
                 | (Success (_, lts), ps') =>
@@ -1154,7 +1154,7 @@ Definition invert_expr_prop (lc:Cabs.loc) (a: expr) (ps: pstate) (pct: control_t
   | Ecast (Eval (v1,vt1) (Tpointer ty1 attr1)) (Tpointer ty attr) =>
       exists v ofs1 ofs tr1 w' res v2 vt2 lts1 tr w'' res' v3 vt3 lts ps' ps'',
       sem_cast v1 (Tpointer ty1 attr1) (Tpointer ty attr) m = Some v /\
-        v1 = Vlong ofs1 /\ v = Vlong ofs /\
+        v1 = Vptr ofs1 /\ v = Vptr ofs /\
         deref_loc ge (Tpointer ty1 attr1) m ofs1 vt1 Full tr1 res /\
         res ps = (Success ((v2,vt2), lts1),ps') /\
         possible_trace w tr1 w' /\
@@ -1164,14 +1164,14 @@ Definition invert_expr_prop (lc:Cabs.loc) (a: expr) (ps: pstate) (pct: control_t
   | Ecast (Eval (v1,vt1) (Tpointer ty1 attr1)) ty =>
       exists v ofs1 tr1 w' res v2 vt2 lts1 ps',
       sem_cast v1 (Tpointer ty1 attr1) ty m = Some v /\
-        v1 = Vlong ofs1 /\
+        v1 = Vptr ofs1 /\
         deref_loc ge (Tpointer ty1 attr1) m ofs1 vt1 Full tr1 res /\
         res ps = (Success ((v2,vt2), lts1), ps') /\
         possible_trace w tr1 w'
   | Ecast (Eval (v1,vt1) ty1) (Tpointer ty attr) =>
       exists v ofs tr w' res v2 vt2 lts ps',
       sem_cast v1 ty1 (Tpointer ty attr) m = Some v /\
-        v = Vlong ofs /\
+        v = Vptr ofs /\
         deref_loc ge (Tpointer ty attr) m ofs vt1 Full tr res /\
         res ps = (Success ((v2,vt2), lts), ps') /\
         possible_trace w tr w'
@@ -1932,8 +1932,8 @@ Ltac solve_red :=
 
 Lemma step_cast_sound_ptr_ptr:
   forall lc ps pct ofs vt ty ty1 attr attr1 te m,
-    reducts_ok RV lc ps pct (Ecast (Eval (Vlong ofs,vt) (Tpointer ty attr)) (Tpointer ty1 attr1)) te m
-               (step_expr RV lc ps pct (Ecast (Eval (Vlong ofs,vt) (Tpointer ty attr)) (Tpointer ty1 attr1)) te m).
+    reducts_ok RV lc ps pct (Ecast (Eval (Vptr ofs,vt) (Tpointer ty attr)) (Tpointer ty1 attr1)) te m
+               (step_expr RV lc ps pct (Ecast (Eval (Vptr ofs,vt) (Tpointer ty attr)) (Tpointer ty1 attr1)) te m).
 Admitted.
 (*Proof.
   intros. unfold step_expr; simpl.

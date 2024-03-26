@@ -39,7 +39,7 @@ Module Type Allocator (Ptr: Pointer) (Pol : Policy) (M : Memory Ptr Pol).
   Parameter t : Type.  
   Parameter init : t.
   Definition mem : Type := (M.mem * t).
-  Definition empty := (M.empty, init).
+  Parameter empty : mem.
   
   Parameter stkalloc : mem
                        -> Z (* align *)

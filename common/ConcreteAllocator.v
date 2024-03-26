@@ -60,9 +60,9 @@ Module ConcreteAllocator (Pol : Policy).
       mem_access := m.(mem_access);
       live := m.(live) |} in
     let szv := Vlong (Int64.neg (Int64.repr sz)) in
-    superstore Mint64 m' base (szv, InitT) [DefLT; DefLT; DefLT; DefLT; DefLT; DefLT; DefLT; DefLT].
+    superstore Mint64 m' base (szv, InitT) (repeat DefHT 8).
 
-  Definition empty := (CM.empty, init).
+  Definition empty := (init_heap CM.empty 1000 1000, init).
 
   Definition stkalloc (m: mem) (al sz: Z) : PolicyResult (mem*ptr) :=
     let '(m,sp) := m in
