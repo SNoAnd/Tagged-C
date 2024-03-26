@@ -25,13 +25,25 @@ Require Import Allocator.
 Require Import Events.
 Require Import Globalenvs.
 Require Import Smallstep.
-Require Import Behaviors.
 Require Import Tags.
+Require Import Values.
+Require Import Memory.
+Require Import Csem.
+Require Import Ctyping.
 
-Module Deterministic (P:Policy) (A:Allocator P).
-  Module Behaviors := Behaviors P A.
-  Export Behaviors.
-  
+Module Deterministic (Pol: Policy)
+                     (M : Memory ConcretePointer Pol)
+                     (A: Allocator ConcretePointer Pol M).
+ 
+  Module Ctyping := Ctyping Pol M A.
+  Export Ctyping.
+  Export Csem.
+  Import M.
+  Import TLib.
+  Import A.
+ 
+  Import Smallstep.
+
 (** * Deterministic worlds *)
 
 (** One source of possible nondeterminism is that our semantics leave
@@ -49,20 +61,20 @@ Module Deterministic (P:Policy) (A:Allocator P).
 
 CoInductive world: Type :=
   World (io: string -> list eventval -> option (eventval * world))
-        (vload: memory_chunk -> ident -> int64 -> option (eventval * world))
-        (vstore: memory_chunk -> ident -> int64 -> eventval -> option world).
+        (vload: memory_chunk -> ident -> ptr -> option (eventval * world))
+        (vstore: memory_chunk -> ident -> ptr -> eventval -> option world).
 
 Definition nextworld_io (w: world) (evname: string) (evargs: list eventval) :
                      option (eventval * world) :=
   match w with World io vl vs => io evname evargs end.
 
-Definition nextworld_vload (w: world) (chunk: memory_chunk) (id: ident) (ofs: int64) :
+Definition nextworld_vload (w: world) (chunk: memory_chunk) (id: ident) (p: ptr) :
                      option (eventval * world) :=
-  match w with World io vl vs => vl chunk id ofs end.
+  match w with World io vl vs => vl chunk id p end.
 
-Definition nextworld_vstore (w: world) (chunk: memory_chunk) (id: ident) (ofs: int64) (v: eventval):
+Definition nextworld_vstore (w: world) (chunk: memory_chunk) (id: ident) (p: ptr) (v: eventval):
                      option world :=
-  match w with World io vl vs => vs chunk id ofs v end.
+  match w with World io vl vs => vs chunk id p v end.
 
 (** A trace is possible in a given world if all events correspond
   to non-stuck external calls according to the given world.
@@ -78,12 +90,12 @@ Inductive possible_event: world -> event -> world -> Prop :=
   | possible_event_syscall: forall w1 evname evargs evres w2,
       nextworld_io w1 evname evargs = Some (evres, w2) ->
       possible_event w1 (Event_syscall evname evargs evres) w2
-  | possible_event_vload: forall w1 chunk id ofs evres w2,
-      nextworld_vload w1 chunk id ofs = Some (evres, w2) ->
-      possible_event w1 (Event_vload chunk id ofs evres) w2
-  | possible_event_vstore: forall w1 chunk id ofs evarg w2,
-      nextworld_vstore w1 chunk id ofs evarg = Some w2 ->
-      possible_event w1 (Event_vstore chunk id ofs evarg) w2
+  | possible_event_vload: forall w1 chunk id p evres w2,
+      nextworld_vload w1 chunk id p = Some (evres, w2) ->
+      possible_event w1 (Event_vload chunk id p evres) w2
+  | possible_event_vstore: forall w1 chunk id p evarg w2,
+      nextworld_vstore w1 chunk id p evarg = Some w2 ->
+      possible_event w1 (Event_vstore chunk id p evarg) w2
   | possible_event_annot: forall w1 id args,
       possible_event w1 (Event_annot id args) w1.
 
@@ -183,13 +195,13 @@ Ltac possibleTraceInv :=
   | _ => idtac
   end.
 
-Definition possible_behavior (w: world) (b: program_behavior) : Prop :=
+(*Definition possible_behavior (w: world) (b: program_behavior) : Prop :=
   match b with
   | Terminates t r => exists w', possible_trace w t w'
   | Diverges t => exists w', possible_trace w t w'
   | Reacts T => possible_traceinf w T
   | Goes_wrong t => exists w', possible_trace w t w'
-  end.
+  end.*)
 
 CoInductive possible_traceinf': world -> traceinf -> Prop :=
   | possible_traceinf'_app: forall w1 t w2 T,
@@ -204,6 +216,13 @@ Proof.
   simpl. econstructor. eauto. apply COINDHYP.
   inv H3. simpl. auto. econstructor; eauto. econstructor; eauto. unfold E0; congruence.
 Qed.
+
+  Notation " 'Step' L " := (step L (globalenv L) (ce L)) (at level 1) : smallstep_scope.
+  Notation " 'Star' L " := (star (step L) (globalenv L) (ce L)) (at level 1) : smallstep_scope.
+  Notation " 'Plus' L " := (plus (step L) (globalenv L) (ce L)) (at level 1) : smallstep_scope.
+  Notation " 'Forever_silent' L " := (forever_silent (step L) (globalenv L) (ce L)) (at level 1) : smallstep_scope.
+  Notation " 'Forever_reactive' L " := (forever_reactive (step L) (globalenv L) (ce L)) (at level 1) : smallstep_scope.
+  Notation " 'Nostep' L " := (nostep (step L) (globalenv L) (ce L)) (at level 1) : smallstep_scope.
 
 (** * Definition and properties of deterministic semantics *)
 
@@ -434,18 +453,18 @@ Qed.
 
 (** Determinism for program executions *)
 
-Definition same_behaviors (beh1 beh2: program_behavior) : Prop :=
+(*Definition same_behaviors (beh1 beh2: program_behavior) : Prop :=
   match beh1, beh2 with
   | Terminates t1 r1, Terminates t2 r2 => t1 = t2 /\ r1 = r2
   | Diverges t1, Diverges t2 => t1 = t2
   | Reacts t1, Reacts t2 => traceinf_sim t1 t2
   | Goes_wrong t1, Goes_wrong t2 => t1 = t2
   | _, _ => False
-  end.
+  end.*)
 
-Lemma state_behaves_deterministic:
+(*Lemma state_behaves_deterministic:
   forall s beh1 beh2,
-  state_behaves L s beh1 -> state_behaves L s beh2 -> same_behaviors beh1 beh2.
+  state_behaves L L.(ce) s beh1 -> state_behaves L L.(ce) s beh2 -> same_behaviors beh1 beh2.
 Proof.
   generalize (det_final_nostep L DET); intro dfns.
   intros until beh2; intros BEH1 BEH2.
@@ -488,12 +507,12 @@ Proof.
 (* goes wrong, goes wrong *)
   assert (t0 = t1 /\ s' = s'0). eapply steps_deterministic; eauto.
   tauto.
-Qed.
+Qed.*)
 
-Theorem program_behaves_deterministic:
+(*Theorem program_behaves_deterministic:
   forall beh1 beh2,
-  program_behaves L beh1 -> program_behaves L beh2 ->
-  same_behaviors beh1 beh2.
+    program_behaves L L.(ce) beh1 -> program_behaves L L.(ce) beh2 ->
+    same_behaviors beh1 beh2.
 Proof.
   intros until beh2; intros BEH1 BEH2. inv BEH1; inv BEH2.
 (* both initial states defined *)
@@ -504,7 +523,7 @@ Proof.
   elim (H _ H0).
 (* both initial states undefined *)
   red; auto.
-Qed.
+Qed.*)
 
 End DETERM_SEM.
 
@@ -529,13 +548,14 @@ Definition world_sem : semantics := @Semantics_gen
   (state L * world)%type
   (funtype L)
   (vartype L)
-  (fun ge s t s' => step L ge s#1 t s'#1 /\ possible_trace s#2 t s'#2)
+  (fun ge ce s t s' => step L ge ce s#1 t s'#1 /\ possible_trace s#2 t s'#2)
   (fun s => initial_state L s#1 /\ s#2 = initial_world)
   (fun s r => final_state L s#1 r)
-  (Smallstep.globalenv L).
+  (Smallstep.globalenv L)
+  (Smallstep.ce L).
 
 (** If the original semantics is determinate, the world-aware semantics is deterministic. *)
-
+(*
 Hypothesis D: determinate L.
 
 Theorem world_sem_deterministic: sem_deterministic world_sem.
@@ -557,7 +577,7 @@ Proof.
 (* final no step *)
   red; simpl; intros. red; intros [A B]. exploit (sd_final_nostep D); eauto.
 Qed.
-
+*)
 End WORLD_SEM.
 
 End Deterministic.

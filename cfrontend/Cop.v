@@ -24,18 +24,20 @@ Require Import Memory.
 Require Import Allocator.
 Require Import Ctypes.
 Require Import Tags.
-Require Import Determinism.
 Require Import Values.
+Require Import Events.
+Require Import Smallstep.
 Require Archi.
 Require Import ExtLib.Structures.Monads. Import MonadNotation.
 
-Module Cop (P:Policy) (A:Allocator P).
-  Module TLib := TagLib P.
+Module Cop (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Allocator Ptr Pol M).
+  Module Smallstep := Smallstep Ptr Pol M A.
+  Export Smallstep.
+  Import M.
   Import TLib.
-  Module Deterministic := Deterministic P A.
-  Export Deterministic.
+  Import Values.
+  Import Genv.
   Import A.
-  Import P.
 
 Inductive incr_or_decr : Type := Incr | Decr.
 
@@ -214,6 +216,7 @@ Definition sem_cast (v: val) (t1 t2: type) (m: mem): option val :=
       | Vfptr _ => Some v
       | Vint _ => Some v
       | Vlong _ => Some v
+      | Vptr _ => Some v
       | _ => None
       end
   | cast_case_i2i sz2 si2 =>
@@ -413,7 +416,7 @@ Definition bool_val (v: val) (t: type) (m: mem) : option bool :=
 (** *** Boolean negation *)
 
 Definition sem_notbool (v: val) (ty: type) (m: mem): option val :=
-  option_map (fun b => Val.of_bool (negb b)) (bool_val v ty m).
+  option_map (fun b => Values.of_bool (negb b)) (bool_val v ty m).
 
 (** *** Opposite and absolute value *)
 
@@ -616,30 +619,26 @@ Definition classify_add (ty1: type) (ty2: type) :=
   | _, _ => add_default
   end.
 
-Definition ptrofs_of_int (si: signedness) (n: int) : ptrofs :=
+Definition int64_of_int (si: signedness) (n: int) : int64 :=
   match si with
-  | Signed => Ptrofs.of_ints n
-  | Unsigned => Ptrofs.of_intu n
+  | Signed => Int64.repr (Int.signed n)
+  | Unsigned => Int64.repr (Int.unsigned n)
   end.
 
-Definition sem_add_ptr_int (cenv: composite_env) (ty: type) (si: signedness) (v1 v2: val): option val :=
+Definition sem_add_ptr_int (cenv: composite_env) (ty: type)
+           (si: signedness) (v1 v2: val): option val :=
   match v1, v2 with
-  | Vint n1, Vint n2 =>
-      Some (Vint (Int.add n1 (Int.mul (Int.repr (sizeof cenv ty)) n2)))
-  | Vlong n1, Vint n2 =>
-      let n2 := cast_int_long si n2 in
-      Some (Vlong (Int64.add n1 (Int64.mul (Int64.repr (sizeof cenv ty)) n2)))
+  | Vptr p, Vint n =>
+    let n' := Int64.mul (Int64.repr (sizeof cenv ty)) (int64_of_int si n) in
+    Some (Vptr (off p n'))
   | _,  _ => None
   end.
 
 Definition sem_add_ptr_long (cenv: composite_env) (ty: type) (v1 v2: val): option val :=
   match v1, v2 with
-  | Vfptr b1, Vlong n2 => None
-  | Vint n1, Vlong n2 =>
-      let n2 := Int.repr (Int64.unsigned n2) in
-      Some (Vint (Int.add n1 (Int.mul (Int.repr (sizeof cenv ty)) n2)))
-  | Vlong n1, Vlong n2 =>
-      Some (Vlong (Int64.add n1 (Int64.mul (Int64.repr (sizeof cenv ty)) n2)))
+  | Vptr p, Vlong n =>
+    let n' := Int64.mul (Int64.repr (sizeof cenv ty)) n in
+    Some (Vptr (off p n'))
   | _,  _ => None
   end.
 
@@ -895,9 +894,9 @@ Definition classify_cmp (ty1: type) (ty2: type) :=
 
 Definition cmp_ptr (m: mem) (c: comparison) (v1 v2: val): option val :=
   match v1, v2 with
-  | Vint _, Vint _ => option_map Val.of_bool (Val.cmpu_bool c v1 v2)
-  | Vlong _, Vlong _ => option_map Val.of_bool (Val.cmplu_bool c v1 v2)
-  | Vfptr _, Vfptr _ => option_map Val.of_bool (Val.cmplu_bool c v1 v2)
+  | Vint _, Vint _ => option_map Values.of_bool (Values.cmpu_bool c v1 v2)
+  | Vlong _, Vlong _ => option_map Values.of_bool (Values.cmplu_bool c v1 v2)
+  | Vfptr _, Vfptr _ => option_map Values.of_bool (Values.cmplu_bool c v1 v2)
   | _, _ => None
   end.
 
@@ -914,13 +913,13 @@ Definition sem_cmp (c:comparison)
   | cmp_default =>
       sem_binarith
         (fun sg n1 n2 =>
-            Some(Val.of_bool(match sg with Signed => Int.cmp c n1 n2 | Unsigned => Int.cmpu c n1 n2 end)))
+            Some(Values.of_bool(match sg with Signed => Int.cmp c n1 n2 | Unsigned => Int.cmpu c n1 n2 end)))
         (fun sg n1 n2 =>
-            Some(Val.of_bool(match sg with Signed => Int64.cmp c n1 n2 | Unsigned => Int64.cmpu c n1 n2 end)))
+            Some(Values.of_bool(match sg with Signed => Int64.cmp c n1 n2 | Unsigned => Int64.cmpu c n1 n2 end)))
         (fun n1 n2 =>
-            Some(Val.of_bool(Float.cmp c n1 n2)))
+            Some(Values.of_bool(Float.cmp c n1 n2)))
         (fun n1 n2 =>
-            Some(Val.of_bool(Float32.cmp c n1 n2)))
+            Some(Values.of_bool(Float32.cmp c n1 n2)))
         v1 t1 v2 t2 m
   end.
 
@@ -1047,41 +1046,41 @@ Definition bitfield_normalize (sz: intsize) (sg: signedness) (width: Z) (n: int)
   then Int.zero_ext width n
   else Int.sign_ext width n.
 
-Definition do_load_bitfield (sz: intsize) (sg: signedness) (pos width addr: Z) (m:mem)
-  :=
-  '((v, vt), lts) <- load_all (chunk_for_carrier sz) m addr;;
+Definition do_load_bitfield (sz: intsize) (sg: signedness) (pos width: Z)
+  (p:ptr) (m:mem) : PolicyResult (atom * list loc_tag) :=
+  '((v, vt), lts) <- load_all (chunk_for_carrier sz) m p;;
   match v with
   | Vint c => ret ((Vint (bitfield_extract sz sg pos width c), vt), lts)
   | _ => ret ((Vundef, vt), lts)
   end.
 
-Inductive load_bitfield: type -> intsize -> signedness -> Z -> Z -> mem -> Z ->
+Inductive load_bitfield: type -> intsize -> signedness -> Z -> Z -> mem -> ptr ->
                          PolicyResult (atom * list loc_tag) -> Prop :=
-| load_bitfield_intro: forall sz sg1 attr sg pos width m addr,
+| load_bitfield_intro: forall sz sg1 attr sg pos width m p,
     0 <= pos -> 0 < width <= bitsize_intsize sz -> pos + width <= bitsize_carrier sz ->
     sg1 = (if zlt width (bitsize_intsize sz) then Signed else sg) ->
-    load_bitfield (Tint sz sg1 attr) sz sg pos width m addr
-                  (do_load_bitfield sz sg pos width addr m).
+    load_bitfield (Tint sz sg1 attr) sz sg pos width m p
+                  (do_load_bitfield sz sg pos width p m).
 
 Definition do_store_bitfield (sz: intsize) (sg: signedness)
-           (pos width addr: Z) (m:mem) (n: int) (lts: list loc_tag) :=
-  '(v, vt) <- load (chunk_for_carrier sz) m addr;;
+           (pos width: Z) (p: ptr) (m:mem) (n: int) (lts: list loc_tag) :=
+  '(v, vt) <- load (chunk_for_carrier sz) m p;;
   let v' := match v with
             | Vint c =>
                 Vint (Int.bitfield_insert (first_bit sz pos width) width c n)
             | _ => Vundef
             end in
-  m' <- store (chunk_for_carrier sz) m addr (v', vt) lts;;
+  m' <- store (chunk_for_carrier sz) m p (v', vt) lts;;
   ret (m', (v',vt)).
   
 Inductive store_bitfield: type -> intsize -> signedness -> Z -> Z -> mem ->
-                          Z -> val_tag -> atom -> list loc_tag ->
+                          ptr -> val_tag -> atom -> list loc_tag ->
                           PolicyResult (mem * atom) -> Prop :=
-  | store_bitfield_intro: forall sz sg1 attr sg pos width m addr pt n vt lts,
+  | store_bitfield_intro: forall sz sg1 attr sg pos width m p pt n vt lts,
       0 <= pos -> 0 < width <= bitsize_intsize sz -> pos + width <= bitsize_carrier sz ->
       sg1 = (if zlt width (bitsize_intsize sz) then Signed else sg) ->
-      store_bitfield (Tint sz sg1 attr) sz sg pos width m addr pt (Vint n,vt) lts
-                     (do_store_bitfield sz sg pos width addr m n lts).
+      store_bitfield (Tint sz sg1 attr) sz sg pos width m p pt (Vint n,vt) lts
+                     (do_store_bitfield sz sg pos width p m n lts).
 
 (** * Some properties of operator semantics *)
 
@@ -1153,7 +1152,7 @@ Qed.*)
 Lemma notbool_bool_val:
   forall v t m,
   sem_notbool v t m =
-  match bool_val v t m with None => None | Some b => Some(Val.of_bool (negb b)) end.
+  match bool_val v t m with None => None | Some b => Some(Values.of_bool (negb b)) end.
 Proof.
   intros. unfold sem_notbool. destruct (bool_val v t0 m) as [[] | ]; reflexivity.
 Qed.

@@ -13,20 +13,23 @@
 (** Compile-time evaluation of initializers for global C variables. *)
 
 Require Import Coqlib Maps Errors.
-Require Import Integers Floats Values AST Memory Allocator Globalenvs.
+Require Import Integers Floats Values AST Encoding Memory Allocator Globalenvs.
 Require Import Ctypes Cop Csyntax Csem.
 Require Import Cexec Tags.
 
 Open Scope error_monad_scope.
 
-Module Initializers (P:Policy) (A:Allocator P).
-  Module TLib := TagLib P.
-  Import TLib.
-  Module Cexec := Cexec P A.
+Module Initializers (Pol: Policy)
+                    (M : Memory ConcretePointer Pol)
+                    (A: Allocator ConcretePointer Pol M).
+  Module Cexec := Cexec Pol M A.
   Export Cexec.
   Import Csem.
-  Import P.
-
+  Import M.
+  Import MD.
+  Import A.
+  Import TLib.
+ 
 (** * Evaluation of compile-time constant expressions *)
 
 (** To evaluate constant expressions at compile-time, we use the same [value]
@@ -62,7 +65,7 @@ Fixpoint constval (ce: composite_env) (a: expr) : res val :=
   match a with
   | Eval (v,vt) ty =>
       match v with
-      | Vint _ | Vfloat _ | Vsingle _ | Vlong _ => OK v
+      | Vptr _ | Vint _ | Vfloat _ | Vsingle _ | Vlong _ => OK v
       | Vfptr _ | Vefptr _ _ _ _ | Vundef => Error(msg "illegal constant")
       end
   | Evalof l ty =>
@@ -136,8 +139,8 @@ Fixpoint constval (ce: composite_env) (a: expr) : res val :=
       match bf with
       | Full =>
           OK (if Archi.ptr64
-              then Val.addl v (Vlong (Int64.repr delta))
-              else Val.add v (Vint (Int.repr delta)))
+              then Values.addl v (Vlong (Int64.repr delta))
+              else Values.add v (Vint (Int.repr delta)))
       | Bits _ _ _ _ =>
           Error(msg "taking the address of a bitfield")
       end

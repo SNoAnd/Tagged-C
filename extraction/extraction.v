@@ -25,28 +25,10 @@ Require Csyntax.
 Require Parser.
 Require Initializers.
 (* Per Policies.md, add new policies here*)
-Require Import Tags Product NullPolicy PVI DoubleFree HeapProblem Allocator Initializers Csem.
-
-Module Extracted (P : Policy) (A : Allocator P).
-
-  Module I := Initializers P A.
-  Import I.
-  Import Cexec.
-  Import InterpreterEvents.
-  Import Ctyping.
-  Import Csem.
-  Import Csyntax.
-  Import Cop.
-  Import Deterministic.
-  Import Behaviors.
-  Import Smallstep.
-  Import Events.
-  Import Genv.
-  Import A.
-  Import Mem.
-  
-End Extracted.
-  
+Require Import Values Tags Memory Allocator Csem Initializers
+               Product NullPolicy PVI DoubleFree HeapProblem
+               FLAllocator ConcreteAllocator. 
+ 
   (* Standard lib *)
   Require Import ExtrOcamlBasic.
   Require Import ExtrOcamlString.
@@ -114,9 +96,9 @@ End Extracted.
   
   (* Per Policies.md, add new policies here *)
   Separate Extraction
+           ConcretePointer
            Tags NullPolicy PVI DoubleFree HeapProblem PolProduct
-           Allocator
-           Extracted
+           Allocator TaggedCConcrete TaggedCFL
            Ctypes.merge_attributes Ctypes.remove_attributes
            Ctypes.build_composite_env Ctypes.signature_of_type Ctypes.typlist_of_typelist
            Cabs
@@ -130,4 +112,4 @@ End Extracted.
            Floats
            (*invert_symbol*)
            Parser.translation_unit_file
-           Values.Vnullptr.
+           (*Values.Vnullptr*).

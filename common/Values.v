@@ -23,6 +23,123 @@ Require Import Floats.
 Require Import Ctypes.
 Require Import AST.
 
+Module Type Pointer.
+  Parameter ptr : Type.
+  
+  Parameter concretize : ptr -> int64.
+  Parameter off : ptr -> int64 -> ptr.
+  
+  Parameter alignp : ptr -> Z.
+
+  Parameter lt : ptr -> ptr -> Prop.
+  Parameter ltb : ptr -> ptr -> bool.
+  
+  Parameter le : ptr -> ptr -> Prop.
+  Parameter leb : ptr -> ptr -> bool.
+
+  Parameter twixt : ptr -> ptr -> ptr -> Prop.  
+  Parameter twixtb : ptr -> ptr -> ptr -> bool.
+  Parameter twixt_correct : forall p1 p2 p3,
+      twixt p1 p2 p3 <-> twixtb p1 p2 p3 = true.
+  
+  Parameter ptr_eq_dec : forall (p1 p2:ptr), {p1 = p2} + {p1 <> p2}.
+End Pointer.
+
+Module ConcretePointer <: Pointer.
+  Definition ptr : Type := int64.
+  
+  Definition concretize (p: ptr) : int64 := p.
+  Definition off (p: ptr) (i: int64) : ptr := Int64.add p i.
+  Definition alignp (p: ptr) : Z := 8.
+
+  Definition lt (p1 p2: ptr) := Int64.lt p1 p2 = true.
+  Definition ltb := Int64.lt.
+
+  Definition le (p1 p2: ptr) := (Int64.lt p1 p2) || (Int64.eq p1 p2) = true.
+  Definition leb (p1 p2: ptr) := (Int64.lt p1 p2) || (Int64.eq p1 p2).
+
+  Definition twixt (p1 p2 p3: ptr) := le p1 p2 /\ le p2 p3.  
+  Definition twixtb (p1 p2 p3: ptr) := leb p1 p2 && leb p2 p3.
+  Lemma twixt_correct : forall p1 p2 p3,
+      twixt p1 p2 p3 <-> twixtb p1 p2 p3 = true.
+  Proof.
+    intros. unfold twixt. unfold twixtb. split.
+    - intuition.
+    - intuition; unfold le; unfold leb in H;
+        destruct (Int64.lt p1 p2); destruct (Int64.eq p1 p2); simpl in *; auto.
+      discriminate.
+  Qed.
+      
+  Lemma ptr_eq_dec : forall (p1 p2:ptr), {p1 = p2} + {p1 <> p2}.
+  Proof. intros. destruct (Int64.eq p1 p2) eqn:?.
+         - left. apply Int64.same_if_eq; auto.
+         - right. intro. subst.
+           rewrite Int64.eq_true in Heqb. discriminate.
+  Qed.
+End ConcretePointer.
+
+Module SemiconcretePointer <: Pointer.
+  Definition Comp := ident.
+  Definition block := ident.
+  
+  Inductive index : Type :=
+  | LocInd (C:Comp)
+  | ShareInd (b:block) (base:int64)
+  .
+
+  Inductive myContext : Type :=
+  | L (C:Comp)
+  | S (b:block)
+  .
+
+  Definition ptr : Type := (index * int64).
+  
+  Lemma ptr_eq_dec : forall (p1 p2:ptr), {p1 = p2} + {p1 <> p2}.
+  Proof. repeat decide equality.
+         - destruct (Int64.eq b i0) eqn:?.
+           + left. apply Int64.same_if_eq; auto.
+           + right. intro. subst.
+           rewrite Int64.eq_true in Heqb0. discriminate.
+         - destruct (Int64.eq base base0) eqn:?.
+           + left. apply Int64.same_if_eq; auto.
+           + right. intro. subst.
+             rewrite Int64.eq_true in Heqb2. discriminate.
+  Qed.
+
+  Definition concretize (p: ptr) : int64 := snd p.
+
+  Definition off (p: ptr) (i: int64) : ptr :=
+    let (ind, pos) := p in (ind, Int64.add pos i).
+
+  Definition alignp (p: ptr) : Z := 8.
+
+  Definition ltb (p1 p2: ptr) :=
+    match p1, p2 with
+    | (LocInd C1, i1), (LocInd C2, i2) => peq C1 C2 && Int64.lt i1 i2
+    | (ShareInd b1 _, i1), (ShareInd b2 _, i2) => peq b1 b2 && Int64.lt i1 i2
+    | _, _ => false
+    end.
+
+  Definition lt (p1 p2: ptr) := ltb p1 p2 = true.
+
+  Definition leb (p1 p2: ptr) := ltb p1 p2 || ptr_eq_dec p1 p2.
+  Definition le (p1 p2: ptr) := leb p1 p2 = true.
+
+  Definition twixt (p1 p2 p3: ptr) := le p1 p2 /\ le p2 p3.  
+  Definition twixtb (p1 p2 p3: ptr) := leb p1 p2 && leb p2 p3.
+  Lemma twixt_correct : forall p1 p2 p3,
+      twixt p1 p2 p3 <-> twixtb p1 p2 p3 = true.
+  Proof.
+    intros. unfold twixt. unfold twixtb. split.
+    - intuition.
+    - intuition; unfold le in *; unfold leb in *;
+        destruct (ltb p1 p2); destruct (ptr_eq_dec p1 p2);
+        destruct (ltb p2 p3); destruct (ptr_eq_dec p2 p3);
+        simpl in *; auto.
+  Qed.
+      
+End SemiconcretePointer.
+
 Definition block : Type := positive.
 Definition eq_block := peq.
 
@@ -35,12 +152,16 @@ Definition eq_block := peq.
   value of an uninitialized variable.
 *)
 
+Module Val (Ptr:Pointer).
+  Import Ptr.
+
 Inductive val: Type :=
 | Vundef: val
 | Vint: int -> val
 | Vlong: int64 -> val
 | Vfloat: float -> val
 | Vsingle: float32 -> val
+| Vptr: ptr -> val
 | Vfptr: block -> val
 | Vefptr: external_function -> typelist -> rettype -> calling_convention -> val
 .
@@ -61,8 +182,6 @@ Definition Vofptrsize (z:Z) := Vlong (Int64.repr z).
   over type [val].  Most of these operations are straightforward extensions
   of the corresponding integer or floating-point operations. *)
 
-Module Val.
-
 Definition eq (x y: val): {x=y} + {x<>y}.
 Proof.
   decide equality.
@@ -70,6 +189,7 @@ Proof.
   apply Int64.eq_dec.
   apply Float.eq_dec.
   apply Float32.eq_dec.
+  apply ptr_eq_dec.
   apply eq_block.
   repeat decide equality.
   repeat decide equality.
@@ -87,6 +207,7 @@ Definition has_type (v: val) (t: typ) : Prop :=
   | Vlong _, Tlong => True
   | Vfloat _, Tfloat => True
   | Vsingle _, Tsingle => True
+  | Vptr _, Tlong => True
   | Vfptr _, Tlong => True
   | Vefptr _ _ _ _, Tlong => True
   | (Vint _ | Vsingle _), Tany32 => True
@@ -133,20 +254,9 @@ Proof.
 - destruct t; auto.
 - destruct t; auto.
 - destruct t; auto.
-- destruct t.
-  right; auto.
-  right; auto.
-  left; auto.
-  right; auto.
-  right; auto.
-  left; auto.
-- destruct t.
-  right; auto.
-  right; auto.
-  left; auto.
-  right; auto.
-  right; auto.
-  left; auto.
+- destruct t; try (left; auto; fail); try (right; auto; fail).
+- destruct t; try (left; auto; fail); try (right; auto; fail).
+- destruct t; try (left; auto; fail); try (right; auto; fail).
 Defined.
 
 Definition has_rettype (v: val) (r: rettype) : Prop :=
@@ -899,6 +1009,7 @@ Definition normalize (v: val) (ty: typ) : val :=
   | Vlong _, Tlong => v
   | Vfloat _, Tfloat => v
   | Vsingle _, Tsingle => v
+  | Vptr _, Tlong => v
   | Vfptr _, Tlong => v
   | Vefptr _ _ _ _, Tlong => v
   | (Vint _ | Vsingle _), Tany32 => v
@@ -917,6 +1028,7 @@ Proof.
 - destruct ty; exact I.
 - unfold has_type; destruct ty; auto.
 - destruct ty; exact I.
+- destruct ty; exact I.
 Qed.
 
 Lemma normalize_idem:
@@ -924,6 +1036,7 @@ Lemma normalize_idem:
 Proof.
   unfold has_type, normalize; intros. destruct v.
 - auto.
+- destruct ty; intuition auto.
 - destruct ty; intuition auto.
 - destruct ty; intuition auto.
 - destruct ty; intuition auto.
@@ -958,6 +1071,7 @@ Definition load_result (chunk: memory_chunk) (v: val) :=
   | Mint32, Vint n => Vint n
   | Mint64, Vlong _
   | Mint64, Vfptr _
+  | Mint64, Vptr _
   | Mint64, Vefptr _ _ _ _ => v 
   | Mfloat32, Vsingle f => Vsingle f
   | Mfloat64, Vfloat f => Vfloat f
@@ -1867,192 +1981,6 @@ Lemma rolm_ge_zero:
 Proof.
   intros. rewrite rolm_lt_zero. destruct v; simpl; auto.
   unfold cmp; simpl. destruct (Int.lt i Int.zero); auto.
-Qed.
-
-(** The ``is less defined'' relation between values.
-    A value is less defined than itself, and [Vundef] is
-    less defined than any value. *)
-
-Inductive lessdef: val -> val -> Prop :=
-  | lessdef_refl: forall v, lessdef v v
-  | lessdef_undef: forall v, lessdef Vundef v.
-
-Lemma lessdef_same:
-  forall v1 v2, v1 = v2 -> lessdef v1 v2.
-Proof.
-  intros. subst v2. constructor.
-Qed.
-
-Lemma lessdef_trans:
-  forall v1 v2 v3, lessdef v1 v2 -> lessdef v2 v3 -> lessdef v1 v3.
-Proof.
-  intros. inv H. auto. constructor.
-Qed.
-
-Inductive lessdef_list: list val -> list val -> Prop :=
-  | lessdef_list_nil:
-      lessdef_list nil nil
-  | lessdef_list_cons:
-      forall v1 v2 vl1 vl2,
-      lessdef v1 v2 -> lessdef_list vl1 vl2 ->
-      lessdef_list (v1 :: vl1) (v2 :: vl2).
-
-Global Hint Resolve lessdef_refl lessdef_undef lessdef_list_nil lessdef_list_cons : core.
-
-Lemma lessdef_list_inv:
-  forall vl1 vl2, lessdef_list vl1 vl2 -> vl1 = vl2 \/ In Vundef vl1.
-Proof.
-  induction 1; simpl.
-  tauto.
-  inv H. destruct IHlessdef_list.
-  left; congruence. tauto. tauto.
-Qed.
-
-Lemma lessdef_list_trans:
-  forall vl1 vl2, lessdef_list vl1 vl2 -> forall vl3, lessdef_list vl2 vl3 -> lessdef_list vl1 vl3.
-Proof.
-  induction 1; intros vl3 LD; inv LD; constructor; eauto using lessdef_trans.
-Qed.
-
-(** Compatibility of operations with the [lessdef] relation. *)
-
-Lemma load_result_lessdef:
-  forall chunk v1 v2,
-  lessdef v1 v2 -> lessdef (load_result chunk v1) (load_result chunk v2).
-Proof.
-  intros. inv H. auto. destruct chunk; simpl; auto.
-Qed.
-
-Lemma zero_ext_lessdef:
-  forall n v1 v2, lessdef v1 v2 -> lessdef (zero_ext n v1) (zero_ext n v2).
-Proof.
-  intros; inv H; simpl; auto.
-Qed.
-
-Lemma sign_ext_lessdef:
-  forall n v1 v2, lessdef v1 v2 -> lessdef (sign_ext n v1) (sign_ext n v2).
-Proof.
-  intros; inv H; simpl; auto.
-Qed.
-
-Lemma singleoffloat_lessdef:
-  forall v1 v2, lessdef v1 v2 -> lessdef (singleoffloat v1) (singleoffloat v2).
-Proof.
-  intros; inv H; simpl; auto.
-Qed.
-
-Lemma add_lessdef:
-  forall v1 v1' v2 v2',
-  lessdef v1 v1' -> lessdef v2 v2' -> lessdef (add v1 v2) (add v1' v2').
-Proof.
-  intros. inv H. inv H0. auto. destruct v1'; simpl; auto. simpl; auto.
-Qed.
-
-Lemma addl_lessdef:
-  forall v1 v1' v2 v2',
-  lessdef v1 v1' -> lessdef v2 v2' -> lessdef (addl v1 v2) (addl v1' v2').
-Proof.
-  intros. inv H. inv H0. auto. destruct v1'; simpl; auto. simpl; auto.
-Qed.
-
-Lemma cmpu_bool_lessdef:
-  forall c v1 v1' v2 v2' b,
-  lessdef v1 v1' -> lessdef v2 v2' ->
-  cmpu_bool c v1 v2 = Some b ->
-  cmpu_bool c v1' v2' = Some b.
-Proof.
-  intros.
-  inv H; [ | discriminate].
-  inv H0; [ | destruct v1'; discriminate ].
-  unfold cmpu_bool in *. remember Archi.ptr64 as ptr64.
-  destruct v1'; auto; destruct v2'; auto; destruct ptr64; auto.
-Qed.
-
-Lemma cmplu_bool_lessdef:
-  forall c v1 v1' v2 v2' b,
-  lessdef v1 v1' -> lessdef v2 v2' ->
-  cmplu_bool c v1 v2 = Some b ->
-  cmplu_bool c v1' v2' = Some b.
-Proof.
-  intros.
-  inv H; [ | discriminate].
-  inv H0; [ | destruct v1'; discriminate ].
-  unfold cmplu_bool in *. remember Archi.ptr64 as ptr64.
-  destruct v1'; auto; destruct v2'; auto; destruct ptr64; auto.
-Qed.
-
-Lemma of_optbool_lessdef:
-  forall ob ob',
-  (forall b, ob = Some b -> ob' = Some b) ->
-  lessdef (of_optbool ob) (of_optbool ob').
-Proof.
-  intros. destruct ob; simpl; auto. rewrite (H b); auto.
-Qed.
-
-Lemma longofwords_lessdef:
-  forall v1 v2 v1' v2',
-  lessdef v1 v1' -> lessdef v2 v2' -> lessdef (longofwords v1 v2) (longofwords v1' v2').
-Proof.
-  intros. unfold longofwords. inv H; auto. inv H0; auto. destruct v1'; auto.
-Qed.
-
-Lemma loword_lessdef:
-  forall v v', lessdef v v' -> lessdef (loword v) (loword v').
-Proof.
-  intros. inv H; auto.
-Qed.
-
-Lemma hiword_lessdef:
-  forall v v', lessdef v v' -> lessdef (hiword v) (hiword v').
-Proof.
-  intros. inv H; auto.
-Qed.
-
-Lemma offset_ptr_zero:
-  forall v, lessdef (offset_ptr v Ptrofs.zero) v.
-Proof.
-  intros. unfold offset_ptr; destruct v; simpl; auto.
-  - unfold Ptrofs.to_int. unfold Ptrofs.zero. rewrite Ptrofs.unsigned_repr.
-    replace (Int.repr 0) with Int.zero by auto.
-    rewrite Int.add_zero; auto. split.
-    + lia.
-    + unfold Ptrofs.max_unsigned. unfold Ptrofs.modulus. unfold two_power_nat. lia.
-  - unfold Ptrofs.to_int64. unfold Ptrofs.zero. rewrite Ptrofs.unsigned_repr.
-    replace (Int64.repr 0) with Int64.zero by auto.
-    rewrite Int64.add_zero; auto. split.
-    + lia.
-    + unfold Ptrofs.max_unsigned. unfold Ptrofs.modulus. unfold two_power_nat. lia.
-Qed.
-
-Lemma lessdef_normalize:
-  forall v ty, lessdef (normalize v ty) v.
-Proof.
-  intros. destruct v; simpl.
-  - auto.
-  - destruct ty; auto.
-  - destruct ty; auto.
-  - destruct ty; auto.
-  - destruct ty; auto.
-  - destruct ty, Archi.ptr64; auto.
-  - destruct ty; auto.
-Qed.
-
-Lemma normalize_lessdef:
-  forall v v' ty, lessdef v v' -> lessdef (normalize v ty) (normalize v' ty).
-Proof.
-  intros. inv H; auto.
-Qed.
-
-Lemma select_lessdef:
-  forall ob ob' v1 v1' v2 v2' ty,
-  ob = None \/ ob = ob' ->
-  lessdef v1 v1' -> lessdef v2 v2' ->
-  lessdef (select ob v1 v2 ty) (select ob' v1' v2' ty).
-Proof.
-  intros; unfold select. destruct H.
-- subst ob; auto.
-- subst ob'; destruct ob as [b|]; auto.
-  apply normalize_lessdef. destruct b; auto.
 Qed.
 
 End Val.

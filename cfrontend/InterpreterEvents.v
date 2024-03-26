@@ -2,11 +2,11 @@ Require Import FunInd.
 Require Import Axioms Classical.
 Require Import String Coqlib Decidableplus.
 Require Import Errors Maps Integers Floats.
-Require Import AST Values Memory Allocator Events Globalenvs Builtins Determinism.
+Require Import AST Values Memory Allocator Events Globalenvs Builtins.
 Require Import Csem.
 Require Import Tags.
 Require Import List. Import ListNotations.
-Require Import Ctyping Ctypes.
+Require Import Determinism Ctypes Ctyping.
 Require Import ExtLib.Structures.Monads. Import MonadNotation.
 Require Import ExtLib.Data.Monads.OptionMonad.
 
@@ -18,11 +18,17 @@ Notation " 'check' A ; B" := (if A then B else None)
   (at level 200, A at level 100, B at level 200)
   : option_monad_scope.
 
-Module InterpreterEvents (P:Policy) (A:Allocator P).
-  Module Ctyping := Ctyping P A.
-  Export Ctyping.
-  Import Csem.
+
+Module InterpreterEvents (Pol: Policy)
+                         (M : Memory ConcretePointer Pol)
+                         (A: Allocator ConcretePointer Pol M).
+ 
+  Module Deterministic := Deterministic Pol M A.
+  Export Deterministic.
+  Export Csem.
+  Import M.
   Import TLib.
+  Import A.
   
   Local Open Scope option_monad_scope.
 
@@ -218,8 +224,8 @@ Module InterpreterEvents (P:Policy) (A:Allocator P).
 
     (** Volatile memory accesses. *)
     Definition do_volatile_load (w: world) (chunk: memory_chunk) (m: mem)
-               (ofs: int64) : option (world * trace * PolicyResult atom) :=
-      let id_if_vol := match invert_symbol_ofs ge ofs with
+               (p: ptr) : option (world * trace * PolicyResult atom) :=
+      let id_if_vol := match invert_symbol_ptr ge p with
                        | Some (id, gv) =>
                            if gv.(gvar_volatile)
                            then Some id
@@ -228,19 +234,19 @@ Module InterpreterEvents (P:Policy) (A:Allocator P).
                        end in
       match id_if_vol with
       | Some id =>
-          '(res,w') <- nextworld_vload w chunk id ofs;;
+          '(res,w') <- nextworld_vload w chunk id p;;
           '(vres,vt) <- atom_of_eventval res (type_of_chunk chunk);;
-          Some (w', Event_vload chunk id ofs res :: nil,
-                 (fun s => (Success (Val.load_result chunk vres, vt), s)))
+          Some (w', Event_vload chunk id p res :: nil,
+                 (fun s => (Success (Values.load_result chunk vres, vt), s)))
       | None =>
-          let res := load chunk m (Int64.unsigned ofs) in
+          let res := load chunk m p in
           Some (w, E0, res)
       end.
 
     Definition do_volatile_store (w: world) (chunk: memory_chunk) (m: mem)
-               (ofs: int64) (v: atom) (lts: list loc_tag) :
+               (p: ptr) (v: atom) (lts: list loc_tag) :
       option (world * trace * PolicyResult mem) :=
-      let id_if_vol := match invert_symbol_ofs ge ofs with
+      let id_if_vol := match invert_symbol_ptr ge p with
                        | Some (id, gv) =>
                            if gv.(gvar_volatile)
                            then Some id
@@ -249,19 +255,19 @@ Module InterpreterEvents (P:Policy) (A:Allocator P).
                        end in
       match id_if_vol with
       | Some id =>
-          ev <- eventval_of_atom (atom_map (Val.load_result chunk) v) (type_of_chunk chunk);;
-          w' <- nextworld_vstore w chunk id ofs ev;;
-          Some(w', Event_vstore chunk id ofs ev :: nil,
+          ev <- eventval_of_atom (atom_map (Values.load_result chunk) v) (type_of_chunk chunk);;
+          w' <- nextworld_vstore w chunk id p ev;;
+          Some(w', Event_vstore chunk id p ev :: nil,
                 (fun s => (Success m, s)))
       | None =>
-          let res := store chunk m (Int64.unsigned ofs) v lts in
+          let res := store chunk m p v lts in
           Some (w, E0, res)
       end.
 
     Lemma do_volatile_load_sound:
-      forall w chunk m ofs w' t res,
-        do_volatile_load w chunk m ofs = Some (w', t, res) ->
-        volatile_load ge chunk m ofs t res /\ possible_trace w t w'.
+      forall w chunk m p w' t res,
+        do_volatile_load w chunk m p = Some (w', t, res) ->
+        volatile_load ge chunk m p t res /\ possible_trace w t w'.
     Proof.
       intros until res. unfold do_volatile_load. mydestr.
       - generalize Heqo. mydestr.
@@ -276,26 +282,26 @@ Module InterpreterEvents (P:Policy) (A:Allocator P).
     Qed.
           
     Lemma do_volatile_load_complete:
-      forall w chunk m ofs w' t res,
-        volatile_load ge chunk m ofs t res -> possible_trace w t w' ->
-        do_volatile_load w chunk m ofs = Some (w', t, res).
+      forall w chunk m p w' t res,
+        volatile_load ge chunk m p t res -> possible_trace w t w' ->
+        do_volatile_load w chunk m p = Some (w', t, res).
     Proof.
       unfold do_volatile_load; intros. inv H.
       - rewrite H1. rewrite H2.
         inv H0. inv H6. rewrite H10.
         eapply atom_of_eventval_complete in H3.
         simpl. rewrite H3. inv H8. auto.
-      - destruct (invert_symbol_ofs ge ofs) as [[id gv] |].
+      - destruct (invert_symbol_ptr ge p) as [[id gv] |].
         + inv H0.
           specialize H1 with id gv.
           rewrite H1; auto.
         + inv H0. auto.
     Qed.
-            
+
     Lemma do_volatile_store_sound:
-      forall w chunk m ofs v vt w' t res lts,
-        do_volatile_store w chunk m ofs (v,vt) lts = Some (w', t, res) ->
-        volatile_store ge chunk m ofs (v,vt) lts t res /\ possible_trace w t w'.
+      forall w chunk m p v vt w' t res lts,
+        do_volatile_store w chunk m p (v,vt) lts = Some (w', t, res) ->
+        volatile_store ge chunk m p (v,vt) lts t res /\ possible_trace w t w'.
     Proof.
       intros until lts. unfold do_volatile_store. mydestr.
       - generalize Heqo; mydestr.
@@ -309,19 +315,19 @@ Module InterpreterEvents (P:Policy) (A:Allocator P).
     Qed.
 
     Lemma do_volatile_store_complete:
-      forall w chunk m ofs v vt w' t res lts,
-        volatile_store ge chunk m ofs (v,vt) lts t res -> possible_trace w t w' ->
-        do_volatile_store w chunk m ofs (v,vt) lts = Some (w', t, res).
+      forall w chunk m p v vt w' t res lts,
+        volatile_store ge chunk m p (v,vt) lts t res -> possible_trace w t w' ->
+        do_volatile_store w chunk m p (v,vt) lts = Some (w', t, res).
     Proof.
       unfold do_volatile_store. intros. inv H.
       - rewrite H3. rewrite H7.
         unfold atom_map. eapply eventval_of_atom_complete in H11. rewrite H11.
         inv H0. inv H6. inv H4. simpl. rewrite H8. auto.
-      - destruct (invert_symbol_ofs ge ofs) as [[id gv] |].
+      - destruct (invert_symbol_ptr ge p) as [[id gv] |].
         + inv H0.
           specialize H6 with id gv.
           rewrite H6; auto.
-        + inv H0. destruct (store chunk m (Int64.unsigned ofs) (v,vt) lts); auto.
+        + inv H0. destruct (store chunk m p (v,vt) lts); auto.
     Admitted. (*Qed.*)
 
     (** External calls *)
@@ -425,8 +431,8 @@ Module InterpreterEvents (P:Policy) (A:Allocator P).
     Definition do_ef_free (l: Cabs.loc) (w: world) (vargs: list atom) (pct: control_tag) (fpt: val_tag) (m: mem)
       : option (world * trace * (PolicyResult (atom * control_tag * mem))) :=
       match vargs with
-      | [(Vlong addr,pt)] =>
-          Some (w, E0, do_extcall_free l pct fpt pt addr m)
+      | [(Vptr p,pt)] =>
+          Some (w, E0, do_extcall_free l pct fpt pt p m)
       | _ => None
       end.
 

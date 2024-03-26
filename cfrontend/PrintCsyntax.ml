@@ -18,22 +18,21 @@
 
 open Format
 open Camlcoq
-open Values
 open AST
 open! Ctypes
 open Tags
 open C2C
-open Allocator
 
-module PrintCsyntaxP =
-        functor (Pol: Policy) (Alloc: Allocator) ->
-                struct
+module PrintCsyntaxP (Pol: Policy) (A: module type of FLAllocator.TaggedCFL) =
+struct
 
-module C2CPInst = C2CP (Pol) (Alloc)
+module C2CPInst = C2CP (Pol) (A)
 module Init = C2CPInst.Init
-module Ctyping = Init.Cexec.InterpreterEvents.Ctyping
+module Ctyping = Init.Cexec.InterpreterEvents.Deterministic.Ctyping
 module Csyntax = Ctyping.Csem.Csyntax
 module Cop = Csyntax.Cop
+module Val = C2CPInst.Val
+open Val
 
 let name_unop = function
   | Values.Onotbool -> "!"
@@ -199,6 +198,8 @@ let print_typed_value p vty =
   | (Vlong n, Ctypes.Tlong(Unsigned, _)) ->
       fprintf p "%LuLLU" (camlint64_of_coqint n)
   | (Vlong n, _) ->
+      fprintf p "%LdLL" (camlint64_of_coqint n)
+  | (Vptr n, _) ->
       fprintf p "%LdLL" (camlint64_of_coqint n)
   | (Vfptr b, _) ->
       fprintf p "<ptr%a>" !print_pointer_hook (b,coqint_of_camlint 0l)

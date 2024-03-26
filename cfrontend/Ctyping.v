@@ -24,22 +24,15 @@ Require Import Ctypes Cop Csyntax Csem.
 
 Local Open Scope error_monad_scope.
 
-Module Ctyping (P: Policy) (A: Allocator P).
-  Module TLib := TagLib P.
+Module Ctyping (Pol: Policy)
+               (M : Memory ConcretePointer Pol)
+               (A: Allocator ConcretePointer Pol M).
+ 
+  Module Csem := TaggedCsem Pol M A.
+  
+  Export Csem.
+  Import M.
   Import TLib.
-  Module Csem := Csem P A.
-  Import Csem.
-  Import Csyntax.
-  Import Cop.
-  Import Deterministic.
-  Import Behaviors.
-  Import Smallstep.
-  Import Events.
-  Import Genv.
-  Import A.
-  Import A.Mem.
-  Import MD.
-  Import P.
 
   Definition strict := false.
   Opaque strict.
@@ -349,12 +342,6 @@ Section WT_EXPR_STMT.
 
   Variable ce: composite_env.
   Variable  e: typenv.
-
-  Definition wt_tenv (te: tenv) : Prop :=
-    forall x v vt ty,
-      e!x = Some ty ->
-      te!x = Some (v,vt) ->
-      wt_val v ty.
 
 Inductive wt_rvalue : expr -> Prop :=
 | wt_Eval: forall v vt ty,

@@ -19,13 +19,11 @@
 open Camlcoq
 open Tags
 open C2C
-open Allocator
 
-module Pragma =
-        functor (Pol: Policy) (Alloc: Allocator) ->
-                struct
+module Pragma (Pol: Policy) (A: module type of FLAllocator.TaggedCFL) =
+struct
 
-module C2CPInst = C2CP (Pol) (Alloc)
+module C2CPInst = C2CP (Pol) (A)
 
 (* #pragma section *)
 

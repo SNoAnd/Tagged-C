@@ -16,7 +16,7 @@ Require Import FunInd.
 Require Import Axioms Classical.
 Require Import String Coqlib Decidableplus.
 Require Import Errors Maps Integers Floats.
-Require Import AST Values Memory Allocator Events Globalenvs Builtins Determinism.
+Require Import AST Values Memory Allocator Events Globalenvs Builtins Csem.
 Require Import Tags.
 Require Import List. Import ListNotations.
 Require Import InterpreterEvents Ctypes.
@@ -35,10 +35,15 @@ Notation " 'check' A ; B" := (if A then B else nil)
   (at level 200, A at level 100, B at level 200)
   : list_monad_scope.
 
-Module Cexec (P:Policy) (A:Allocator P).
-  Module InterpreterEvents := InterpreterEvents P A.
+Module Cexec (Pol: Policy)
+             (M : Memory ConcretePointer Pol)
+             (A: Allocator ConcretePointer Pol M).
+ 
+  Module InterpreterEvents := InterpreterEvents Pol M A.
   Export InterpreterEvents.
-  Import Csem.
+  About Csem.
+  Export Csem.
+  Import M.
   Import A.
   Import TLib.
   
@@ -79,7 +84,7 @@ Module Cexec (P:Policy) (A:Allocator P).
       destruct e eqn:?
   | [ |- context [match ?e with
                   | PRIV _ => _
-                  | PUB _ _ _ _ => _
+                  | PUB _ _ _ => _
                   end] ] =>
       destruct e eqn:?
   | [ |- context [match ?ty with
@@ -94,7 +99,7 @@ Module Cexec (P:Policy) (A:Allocator P).
       destruct e eqn:?
   | [ |- context [if ?e then _ else _] ] => destruct e
   | [ |- context [match ?v with
-                  | Vlong _ => _
+                  | Vptr _ => _
                   | _ => _
                   end] ] => destruct v
   | [ |- context [match ?l with
@@ -145,8 +150,8 @@ Module Cexec (P:Policy) (A:Allocator P).
            end = _ ] => rewrite H
     | [ H: ?e = true |- (if ?e then _ else _) = _ ] => rewrite H
     | [ H: ?e = false |- (if ?e then _ else _) = _ ] => rewrite H
-    | [ H: ?v = Vlong ?v' |- match ?v with
-                             | Vlong _ => _
+    | [ H: ?v = Vptr ?v' |- match ?v with
+                             | Vptr _ => _
                              | _ => _
                              end = _ ] =>
         rewrite H
@@ -240,7 +245,7 @@ Module Cexec (P:Policy) (A:Allocator P).
     Local Open Scope memory_monad_scope.
     (** Accessing locations *)
 
-    Definition do_deref_loc (w: world) (ty: type) (m: mem) (ofs: int64) (pt:val_tag) (bf: bitfield)
+    Definition do_deref_loc (w: world) (ty: type) (m: mem) (p:ptr) (pt:val_tag) (bf: bitfield)
       : option (world * trace * PolicyResult (atom * list loc_tag)) :=
       match bf with
       | Full =>
@@ -248,20 +253,20 @@ Module Cexec (P:Policy) (A:Allocator P).
           | By_value chunk =>
               match type_is_volatile ty with
               | false =>
-                  Some (w, E0, load_all chunk m (Int64.unsigned ofs))
+                  Some (w, E0, load_all chunk m p)
               | true =>
-                  match do_volatile_load ge w chunk m ofs with
+                  match do_volatile_load ge w chunk m p with
                   | Some (w', tr, res) =>
                       let res' :=
                         '(v,vt) <- res;;
-                        lts <- load_ltags chunk m (Int64.unsigned ofs);;
+                        lts <- load_ltags chunk m p;;
                         ret ((v,vt), lts) in
                         Some (w', tr, res')
                   | None => None
                   end                      
               end
-          | By_reference => Some (w, E0, ret ((Vlong ofs,pt), []))
-          | By_copy => Some (w, E0, ret ((Vlong ofs,pt),[]))
+          | By_reference => Some (w, E0, ret ((Vptr p,pt), []))
+          | By_copy => Some (w, E0, ret ((Vptr p,pt),[]))
           | _ => None
           end
       | Bits sz sg pos width =>
@@ -273,8 +278,7 @@ Module Cexec (P:Policy) (A:Allocator P).
               zle 0 pos && zlt 0 width && zle width (bitsize_intsize sz) &&
                        zle (pos + width) (bitsize_carrier sz));
               let res :=
-                '((v,vt),lts) <- load_all (chunk_for_carrier sz) m
-                                          (Int64.unsigned ofs);;
+                '((v,vt),lts) <- load_all (chunk_for_carrier sz) m p;;
                 let v' :=
                   match v with
                   | Vint c => Vint (bitfield_extract sz sg pos width c)
@@ -312,7 +316,7 @@ Module Cexec (P:Policy) (A:Allocator P).
       destruct Y... left; intuition lia.
     Defined.
 
-    Definition do_assign_loc (w: world) (ty: type) (m: mem) (ofs: int64)
+    Definition do_assign_loc (w: world) (ty: type) (m: mem) (p: ptr)
                (pt:val_tag) (bf: bitfield) (v: atom) (lts: list loc_tag)
       : option (world * trace * PolicyResult (mem * atom)) :=
       match bf with
@@ -322,11 +326,11 @@ Module Cexec (P:Policy) (A:Allocator P).
               match type_is_volatile ty with
               | false =>
                   let res :=
-                    m' <- store chunk m (Int64.unsigned ofs) v lts;;
+                    m' <- store chunk m p v lts;;
                     ret (m',v) in
                   Some (w, E0, res)
               | true =>
-                  '(w', tr, res) <- do_volatile_store ge w chunk m ofs v lts;;
+                  '(w', tr, res) <- do_volatile_store ge w chunk m p v lts;;
                   let res' :=
                     m' <- res;;
                     ret (m',v) in
@@ -334,12 +338,12 @@ Module Cexec (P:Policy) (A:Allocator P).
               end
           | By_copy =>
               match v with
-              | (Vlong ofs',vt) =>
-                  let ofs'' := ofs' in
-                  check (check_assign_copy ty ofs ofs'');
+              | (Vptr p',vt) =>
+                  let p'' := p' in
+                  check (check_assign_copy ty p p'');
                   let res :=
-                    bytes <- loadbytes m (Int64.unsigned ofs'') (sizeof ce ty);;
-                    m' <- storebytes m (Int64.unsigned ofs) bytes lts;;
+                    bytes <- loadbytes m p'' (sizeof ce ty);;
+                    m' <- storebytes m p bytes lts;;
                     ret (m',v) in
                   Some (w, E0, res)
               | _ => None
@@ -357,7 +361,7 @@ Module Cexec (P:Policy) (A:Allocator P).
                        signedness_eq sg1 (if zlt width (bitsize_intsize sz)
                                           then Signed else sg));
               let res :=
-                '(v,ovt) <- load (chunk_for_carrier sz) m (Int64.unsigned ofs);;
+                '(v,ovt) <- load (chunk_for_carrier sz) m p;;
                 let v' :=
                   match v with
                   | Vint c => Vint ((Int.bitfield_insert
@@ -365,7 +369,7 @@ Module Cexec (P:Policy) (A:Allocator P).
                                        width c n))
                   | _ => Vundef
                   end in
-                m' <- store (chunk_for_carrier sz) m (Int64.unsigned ofs) (v',vt) lts;;
+                m' <- store (chunk_for_carrier sz) m p (v',vt) lts;;
                 ret (m', (Vint (bitfield_normalize sz sg width n),vt)) in
               Some (w, E0, res)
           | _, _ => None
@@ -615,10 +619,10 @@ Section EXPRS.
     | LV, Eloc l ty => []
     | LV, Evar x ty =>
         match e!x with
-        | Some (PUB base bound pt ty') =>
+        | Some (PUB base pt ty') =>
             top <<=
                 check (type_eq ty ty');
-                Lred "red_var_local" (Eloc (Lmem (Int64.repr base) pt Full) ty) te m ps
+                Lred "red_var_local" (Eloc (Lmem base pt Full) ty) te m ps
         | Some (PRIV ty') =>
             top <<=
                 check (type_eq ty ty');
@@ -626,7 +630,7 @@ Section EXPRS.
         | None =>
             match Genv.find_symbol ge x with
             | Some (SymGlob base bound pt gv) =>
-                topred (Lred "red_var_global" (Eloc (Lmem (Int64.repr base) pt Full) ty) te m ps)
+                topred (Lred "red_var_global" (Eloc (Lmem base pt Full) ty) te m ps)
             | Some (SymIFun _ b pt) =>
                 topred (Lred "red_func" (Eloc (Lifun b pt) ty) te m ps)
             | Some (SymEFun _ ef tyargs tyres cc pt) =>
@@ -638,10 +642,8 @@ Section EXPRS.
         topred (Lred "red_builtin" (Eloc (Lefun ef tyargs (Tret Tany64) cc def_tag) ty) te m ps)
     | LV, Ederef r ty =>
         match is_val r with
-        | Some (Vint ofs, t, ty') =>
-            topred (Lred "red_deref_short" (Eloc (Lmem (cast_int_long Unsigned ofs) t Full) ty) te m ps)    
-        | Some (Vlong ofs, t, ty') =>
-            topred (Lred "red_deref_long" (Eloc (Lmem ofs t Full) ty) te m ps)
+        | Some (Vptr p, pt, ty') =>
+            topred (Lred "red_deref" (Eloc (Lmem p pt Full) ty) te m ps)    
         | Some _ =>
             stuck
         | None =>
@@ -649,7 +651,7 @@ Section EXPRS.
         end
     | LV, Efield r f ty =>
         match is_val r with
-        | Some (Vlong ofs, pt, ty') =>
+        | Some (Vptr p, pt, ty') =>
             match ty' with
             | Tstruct id _ =>
                 top <<=
@@ -659,9 +661,8 @@ Section EXPRS.
                     | OK (delta, bf) =>
                         try pt',ps' <- FieldT lc ce pct pt ty id ps;
                         catch "failred_field_struct", E0;
-                        Lred "red_field_struct" (Eloc (Lmem (Int64.add
-                                                               ofs
-                                                               (Int64.repr delta))
+                        Lred "red_field_struct" (Eloc (Lmem (off p
+                                                              (Int64.repr delta))
                                                             pt' bf) ty) te m ps'
                     end
             | Tunion id _ =>
@@ -672,9 +673,8 @@ Section EXPRS.
                 | OK (delta, bf) =>
                     try pt',ps' <- FieldT lc ce pct pt ty id ps;
                     catch "failred_field_union", E0;
-                    Lred "red_field_union" (Eloc (Lmem (Int64.add
-                                                          ofs
-                                                          (Int64.repr delta))
+                    Lred "red_field_union" (Eloc (Lmem (off p
+                                                        (Int64.repr delta))
                                                        pt' bf) ty) te m ps'
                 end
             | _ => stuck
@@ -724,7 +724,7 @@ Section EXPRS.
         match is_loc l with
         | Some (Lmem ofs t bf, ty') =>
             match bf with Full => topred (Rred "red_addrof_loc" pct
-                                               (Eval (Vlong ofs, t) ty) te m E0 ps)
+                                               (Eval (Vptr ofs, t) ty) te m E0 ps)
                      | Bits _ _ _ _ => stuck
             end
         | Some (Ltmp _, _) => stuck
@@ -769,8 +769,8 @@ Section EXPRS.
             | Tpointer _ _, Tpointer _ _ =>
                 top <<=
                 let! v <- sem_cast v1 ty1 ty m;
-                let! ofs1 <- match v1 with Vlong ofs1 => Some ofs1 | _ => None end;
-                let! ofs <- match v with Vlong ofs => Some ofs | _ => None end;
+                let! ofs1 <- match v1 with Vptr ofs1 => Some ofs1 | _ => None end;
+                let! ofs <- match v with Vptr ofs => Some ofs | _ => None end;
                 let! (w', tr1, res) <- do_deref_loc w ty1 m ofs1 vt1 Full;
                 match res ps with
                 | (Success (_,lts1), ps') =>
@@ -788,7 +788,7 @@ Section EXPRS.
             | Tpointer _ _, _ =>
                 top <<=
                 let! v <- sem_cast v1 ty1 ty m;
-                let! ofs <- match v1 with Vlong ofs => Some ofs | _ => None end;
+                let! ofs <- match v1 with Vptr ofs => Some ofs | _ => None end;
                 let! (w',tr,res) <- do_deref_loc w ty1 m ofs vt1 Full;
                 match res ps with
                 | (Success (_, lts), ps') =>
@@ -800,7 +800,7 @@ Section EXPRS.
             | _, Tpointer _ _ =>
                 top <<=
                 let! v <- sem_cast v1 ty1 ty m;
-                let! ofs <- match v with Vlong ofs => Some ofs | _ => None end;
+                let! ofs <- match v with Vptr ofs => Some ofs | _ => None end;
                 let! (w', tr, res) <- do_deref_loc w ty m ofs vt1 Full;
                 match res ps with
                 | (Success (_, lts), ps') =>
@@ -1050,7 +1050,7 @@ Section EXPRS.
              incontext2 (fun x => Econs x rs) (step_expr RV lc ps pct r1 te m)
                         (fun x => Econs r1 x) (step_exprlist lc ps pct rs te m)
          end.
-  
+ 
   (** Technical properties on safe expressions. *)
   Inductive imm_safe_t: kind -> Cabs.loc -> expr -> pstate -> control_tag ->
                         tenv -> mem -> Prop :=
@@ -1104,14 +1104,14 @@ Definition invert_expr_prop (lc:Cabs.loc) (a: expr) (ps: pstate) (pct: control_t
   | Eloc l ty => False
   | Evar x ty =>
       e!x = Some (PRIV ty)
-      \/ (exists base bound pt, e!x = Some (PUB base bound pt ty))
+      \/ (exists base pt, e!x = Some (PUB base pt ty))
       \/ (e!x = None /\ exists base bound pt gv,
              Genv.find_symbol ge x = Some (SymGlob base bound pt gv))
       \/ (e!x = None /\ exists b pt, Genv.find_symbol ge x = Some (SymIFun _ b pt))
       \/ (e!x = None /\ exists ef tyargs tyres cc pt,
              Genv.find_symbol ge x = Some (SymEFun _ ef tyargs tyres cc pt))
   | Ederef (Eval v ty1) ty =>
-      (exists ofs pt, v = (Vint ofs,pt)) \/ (exists ofs pt, v = (Vlong ofs,pt))
+      exists p pt, v = (Vptr p,pt)
   | Eaddrof (Eloc (Lmem ofs pt bf) ty1) ty =>
       bf = Full
   | Eaddrof (Eloc (Ltmp b) ty1) ty =>
@@ -1120,13 +1120,14 @@ Definition invert_expr_prop (lc:Cabs.loc) (a: expr) (ps: pstate) (pct: control_t
       ty = ty1
   | Eaddrof (Eloc (Lefun _ _ _ _ pt) ty1) ty =>
       ty = ty1
-  | Efield (Eval v ty1) f ty =>
-      match v,ty1 with
-      | (Vlong ofs,vt), Tstruct id _ => exists co delta bf, ce!id = Some co /\
-                                                  field_offset ce f (co_members co) = OK (delta, bf)
-      | (Vlong ofs,vt), Tunion id _ => exists co delta bf, ce!id = Some co /\
-                                             union_field_offset ce f (co_members co) = OK (delta, bf)
-      | _, _ => False
+  | Efield (Eval (v,vt) ty1) f ty =>
+      exists p, v = Vptr p /\
+      match ty1 with
+      | Tstruct id _ => exists co delta bf, ce!id = Some co /\
+                                            field_offset ce f (co_members co) = OK (delta, bf)
+      | Tunion id _ => exists co delta bf, ce!id = Some co /\
+                                            union_field_offset ce f (co_members co) = OK (delta, bf)
+      | _ => False
       end
   | Eval v ty => False
   | Evalof (Eloc (Lmem ofs pt bf) ty1) ty
@@ -1153,7 +1154,7 @@ Definition invert_expr_prop (lc:Cabs.loc) (a: expr) (ps: pstate) (pct: control_t
   | Ecast (Eval (v1,vt1) (Tpointer ty1 attr1)) (Tpointer ty attr) =>
       exists v ofs1 ofs tr1 w' res v2 vt2 lts1 tr w'' res' v3 vt3 lts ps' ps'',
       sem_cast v1 (Tpointer ty1 attr1) (Tpointer ty attr) m = Some v /\
-        v1 = Vlong ofs1 /\ v = Vlong ofs /\
+        v1 = Vptr ofs1 /\ v = Vptr ofs /\
         deref_loc ge (Tpointer ty1 attr1) m ofs1 vt1 Full tr1 res /\
         res ps = (Success ((v2,vt2), lts1),ps') /\
         possible_trace w tr1 w' /\
@@ -1163,14 +1164,14 @@ Definition invert_expr_prop (lc:Cabs.loc) (a: expr) (ps: pstate) (pct: control_t
   | Ecast (Eval (v1,vt1) (Tpointer ty1 attr1)) ty =>
       exists v ofs1 tr1 w' res v2 vt2 lts1 ps',
       sem_cast v1 (Tpointer ty1 attr1) ty m = Some v /\
-        v1 = Vlong ofs1 /\
+        v1 = Vptr ofs1 /\
         deref_loc ge (Tpointer ty1 attr1) m ofs1 vt1 Full tr1 res /\
         res ps = (Success ((v2,vt2), lts1), ps') /\
         possible_trace w tr1 w'
   | Ecast (Eval (v1,vt1) ty1) (Tpointer ty attr) =>
       exists v ofs tr w' res v2 vt2 lts ps',
       sem_cast v1 ty1 (Tpointer ty attr) m = Some v /\
-        v = Vlong ofs /\
+        v = Vptr ofs /\
         deref_loc ge (Tpointer ty attr) m ofs vt1 Full tr res /\
         res ps = (Success ((v2,vt2), lts), ps') /\
         possible_trace w tr w'
@@ -1227,14 +1228,13 @@ Lemma lred_invert:
   forall lc l pct te m l' te' m' ps ps', lred ge ce e lc l pct te m l' te' m' ps ps' -> invert_expr_prop lc l ps pct te m.
 Proof.
   induction 1; red; auto.
-  - right; left; exists base, bound, pt; auto.
+  - right; left; exists base, pt; auto.
   - right; right; left; split; auto; exists base, bound, pt, gv; auto.
   - right; right; right; left; split; auto; exists b, pt; auto.
   - right; right; right; right; split; auto; exists ef, tyargs, tyres, cc, pt; auto.
-  - left; exists ofs, vt; auto.
-  - right; exists ofs, vt; auto.
-  - exists co, delta, bf. split;auto.
-  - exists co, delta, bf; auto.
+  - exists p, vt; auto.
+  - exists p. intuition. exists co, delta, bf. split;auto.
+  - exists p. intuition. exists co, delta, bf; auto.
 Qed.
 
 Lemma lfailred_invert:
@@ -1242,8 +1242,8 @@ Lemma lfailred_invert:
     lfailred ce lc l pct tr failure ps ps' -> invert_expr_prop lc l ps pct te m.
 Proof.
   induction 1; red; auto.
-  - exists co, delta, bf; auto.
-  - exists co, delta, bf; auto.
+  - exists p. intuition. exists co, delta, bf; auto.
+  - exists p. intuition. exists co, delta, bf; auto.
 Qed.
 
 Ltac chomp :=
@@ -1314,7 +1314,7 @@ Qed.
 
 Scheme context_ind2 := Minimality for context Sort Prop
   with contextlist_ind2 := Minimality for contextlist Sort Prop.
-Combined Scheme context_contextlist_ind from context_ind2, contextlist_ind2.
+Combined Scheme context_contextlist_ind from context_ind2, contextlist_ind2. 
 
 Lemma invert_expr_context:
   (forall from to C, context from to C ->
@@ -1378,9 +1378,9 @@ with contextlist_compose:
   forall k1 C1, context k1 k2 C1 ->
   contextlist k1 (fun x => C2(C1 x)).
 Proof.
-  induction 1; intros; try (constructor; eauto).
-  replace (fun x => C1 x) with C1. auto. apply extensionality; auto.
-  induction 1; intros; constructor; eauto.
+  - induction 1; intros; try (constructor; eauto).
+    replace (fun x => C1 x) with C1. auto. apply extensionality; auto.
+  - induction 1; intros; constructor; eauto.
 Qed.
 
 Local Hint Constructors context contextlist : core.
@@ -1770,10 +1770,8 @@ Ltac solve_red :=
       eapply topred_ok; auto; eapply red_field_struct; eauto
   | [ |- reducts_ok _ _ _ _ _ _ _ (topred (Lred "red_field_union" _ _ _)) ] => 
       eapply topred_ok; auto; eapply red_field_union; eauto
-  | [ |- reducts_ok _ _ _ _ _ _ _ (topred (Lred "red_deref_short" _ _ _)) ] => 
-      eapply topred_ok; auto; eapply red_deref_short; eauto
-  | [ |- reducts_ok _ _ _ _ _ _ _ (topred (Lred "red_deref_long" _ _ _)) ] => 
-      eapply topred_ok; auto; eapply red_deref_long; eauto
+  | [ |- reducts_ok _ _ _ _ _ _ _ (topred (Lred "red_deref_" _ _ _)) ] => 
+      eapply topred_ok; auto; eapply red_deref; eauto
 
   (* Lfailred *)
 
@@ -1934,8 +1932,8 @@ Ltac solve_red :=
 
 Lemma step_cast_sound_ptr_ptr:
   forall lc ps pct ofs vt ty ty1 attr attr1 te m,
-    reducts_ok RV lc ps pct (Ecast (Eval (Vlong ofs,vt) (Tpointer ty attr)) (Tpointer ty1 attr1)) te m
-               (step_expr RV lc ps pct (Ecast (Eval (Vlong ofs,vt) (Tpointer ty attr)) (Tpointer ty1 attr1)) te m).
+    reducts_ok RV lc ps pct (Ecast (Eval (Vptr ofs,vt) (Tpointer ty attr)) (Tpointer ty1 attr1)) te m
+               (step_expr RV lc ps pct (Ecast (Eval (Vptr ofs,vt) (Tpointer ty attr)) (Tpointer ty1 attr1)) te m).
 Admitted.
 (*Proof.
   intros. unfold step_expr; simpl.

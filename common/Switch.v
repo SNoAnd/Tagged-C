@@ -22,6 +22,12 @@ Require Import Coqlib.
 Require Import Maps.
 Require Import Integers.
 Require Import Values.
+Require Import Builtins.
+
+Module Switch (Ptr: Pointer).
+  Module BI := Builtins Ptr.
+  Export BI.
+  Import Values.
 
 (** A multi-way branch is composed of a list of (key, action) pairs,
   plus a default action.  *)
@@ -351,3 +357,5 @@ Proof.
 Qed.
 
 End COMPTREE.
+
+End Switch.

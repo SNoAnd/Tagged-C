@@ -17,8 +17,11 @@
 (** Associating semantics to built-in functions *)
 
 Require Import String Coqlib.
-Require Import AST Integers Floats Values Memdata.
+Require Import AST Integers Floats Values Encoding.
 
+Module Builtins0 (Ptr: Pointer).
+  Module Values := Val Ptr.
+  Import Values.
 (** This module provides definitions and mechanisms to associate semantics
   with names of built-in functions.
 
@@ -28,7 +31,7 @@ Require Import AST Integers Floats Values Memdata.
 *)
 
 Definition val_opt_has_rettype (ov: option val) (t: rettype) : Prop :=
-  match ov with Some v => Val.has_rettype v t | None => True end.
+  match ov with Some v => Values.has_rettype v t | None => True end.
 
 (** The semantics of a built-in function is a partial function
   from list of values to values.  
@@ -51,7 +54,7 @@ Record builtin_sem (tret: rettype) : Type := mkbuiltin {
 
 Program Definition mkbuiltin_v1t 
      (tret: rettype) (f: val -> val)
-     (WT: forall v1, Val.has_rettype (f v1) tret) :=
+     (WT: forall v1, Values.has_rettype (f v1) tret) :=
   mkbuiltin tret (fun vl => match vl with v1 :: nil => Some (f v1) | _ => None end) _.
 Next Obligation.
   red; destruct vl; auto. destruct vl; auto.
@@ -59,7 +62,7 @@ Qed.
 
 Program Definition mkbuiltin_v2t 
      (tret: rettype) (f: val -> val -> val)
-     (WT: forall v1 v2, Val.has_rettype (f v1 v2) tret) :=
+     (WT: forall v1 v2, Values.has_rettype (f v1 v2) tret) :=
   mkbuiltin tret (fun vl => match vl with v1 :: v2 :: nil => Some (f v1 v2) | _ => None end) _.
 Next Obligation.
   red; destruct vl; auto. destruct vl; auto. destruct vl; auto.
@@ -67,7 +70,7 @@ Qed.
 
 Program Definition mkbuiltin_v3t 
      (tret: rettype) (f: val -> val -> val -> val)
-     (WT: forall v1 v2 v3, Val.has_rettype (f v1 v2 v3) tret) :=
+     (WT: forall v1 v2 v3, Values.has_rettype (f v1 v2 v3) tret) :=
   mkbuiltin tret (fun vl => match vl with v1 :: v2 :: v3 :: nil => Some (f v1 v2 v3) | _ => None end) _.
 Next Obligation.
   red; destruct vl; auto. destruct vl; auto. destruct vl; auto. destruct vl; auto.
@@ -141,7 +144,7 @@ Definition proj_num {A: Type} (t: typ) (k0: A) (v: val): (valty t -> A) -> A :=
   | Tany32 | Tany64 => fun k1 => k0
   end.
 
-Lemma inj_num_wt: forall t x, Val.has_rettype (inj_num t x) t.
+Lemma inj_num_wt: forall t x, Values.has_rettype (inj_num t x) t.
 Proof.
   destruct t; intros; simpl; auto; try (apply proj2_sig).
   destruct t; exact I.
@@ -154,11 +157,11 @@ Qed.
 
 Lemma proj_num_wt:
   forall tres t k1 v,
-  (forall x, Val.has_rettype (k1 x) tres) ->
-  Val.has_rettype (proj_num t Vundef v k1) tres.
+  (forall x, Values.has_rettype (k1 x) tres) ->
+  Values.has_rettype (proj_num t Vundef v k1) tres.
 Proof.
   intros.
-  assert (U: Val.has_rettype Vundef tres).
+  assert (U: Values.has_rettype Vundef tres).
   { destruct tres; exact I. }
   intros. destruct t; simpl; destruct v; auto.
 Qed.
@@ -371,16 +374,16 @@ Program Definition standard_builtin_sem (b: standard_builtin) : builtin_sem (sig
   | BI_select t =>
       mkbuiltin t 
        (fun vargs => match vargs with
-          | Vint n :: v1 :: v2 :: nil => Some (Val.normalize (if Int.eq n Int.zero then v2 else v1) t)
+          | Vint n :: v1 :: v2 :: nil => Some (Values.normalize (if Int.eq n Int.zero then v2 else v1) t)
           | _ => None
         end) _
   | BI_fabs => mkbuiltin_n1t Tfloat Tfloat Float.abs
   | BI_fabsf => mkbuiltin_n1t Tsingle Tsingle Float32.abs
   | BI_fsqrt => mkbuiltin_n1t Tfloat Tfloat Float.sqrt
   | BI_negl => mkbuiltin_n1t Tlong Tlong Int64.neg
-  | BI_addl => mkbuiltin_v2t Tlong Val.addl _ 
-  | BI_subl => mkbuiltin_v2t Tlong Val.subl _
-  | BI_mull => mkbuiltin_v2t Tlong Val.mull' _
+  | BI_addl => mkbuiltin_v2t Tlong Values.addl _ 
+  | BI_subl => mkbuiltin_v2t Tlong Values.subl _
+  | BI_mull => mkbuiltin_v2t Tlong Values.mull' _
   | BI_i16_bswap =>
     mkbuiltin_n1t Tint Tint
                   (fun n => Int.repr (decode_int (List.rev (encode_int 2%nat (Int.unsigned n)))))
@@ -393,13 +396,13 @@ Program Definition standard_builtin_sem (b: standard_builtin) : builtin_sem (sig
   | BI_unreachable => mkbuiltin Tvoid (fun vargs => None) _
   | BI_i64_umulh => mkbuiltin_n2t Tlong Tlong Tlong Int64.mulhu
   | BI_i64_smulh => mkbuiltin_n2t Tlong Tlong Tlong Int64.mulhs
-  | BI_i64_sdiv => mkbuiltin_v2p Tlong Val.divls _
-  | BI_i64_udiv => mkbuiltin_v2p Tlong Val.divlu _
-  | BI_i64_smod => mkbuiltin_v2p Tlong Val.modls _
-  | BI_i64_umod => mkbuiltin_v2p Tlong Val.modlu _
-  | BI_i64_shl => mkbuiltin_v2t Tlong Val.shll _
-  | BI_i64_shr => mkbuiltin_v2t Tlong Val.shrlu _
-  | BI_i64_sar => mkbuiltin_v2t Tlong Val.shrl _
+  | BI_i64_sdiv => mkbuiltin_v2p Tlong Values.divls _
+  | BI_i64_udiv => mkbuiltin_v2p Tlong Values.divlu _
+  | BI_i64_smod => mkbuiltin_v2p Tlong Values.modls _
+  | BI_i64_umod => mkbuiltin_v2p Tlong Values.modlu _
+  | BI_i64_shl => mkbuiltin_v2t Tlong Values.shll _
+  | BI_i64_shr => mkbuiltin_v2t Tlong Values.shrlu _
+  | BI_i64_sar => mkbuiltin_v2t Tlong Values.shrl _
   | BI_i64_dtos => mkbuiltin_n1p Tfloat Tlong Float.to_long
   | BI_i64_dtou => mkbuiltin_n1p Tfloat Tlong Float.to_longu
   | BI_i64_stod => mkbuiltin_n1t Tlong Tfloat Float.of_long
@@ -410,17 +413,17 @@ Program Definition standard_builtin_sem (b: standard_builtin) : builtin_sem (sig
 Next Obligation. 
   red. destruct vl; auto. destruct v; auto. 
   destruct vl; auto. destruct vl; auto. destruct vl; auto.
-  apply Val.normalize_type.
+  apply Values.normalize_type.
 Qed.
 Next Obligation.
-  unfold Val.addl, Val.has_type; destruct v1; auto; destruct v2; auto; destruct Archi.ptr64; auto.
+  unfold Values.addl, Values.has_type; destruct v1; auto; destruct v2; auto; destruct Archi.ptr64; auto.
 Qed.
 Next Obligation.
-  unfold Val.subl, Val.has_type, negb; destruct v1; auto; destruct v2; auto;
+  unfold Values.subl, Values.has_type, negb; destruct v1; auto; destruct v2; auto;
   destruct Archi.ptr64; auto; destruct (eq_block b0 b1); auto.
 Qed.
 Next Obligation.
-  unfold Val.mull', Val.has_type; destruct v1; simpl; auto; destruct v2; auto.
+  unfold Values.mull', Values.has_type; destruct v1; simpl; auto; destruct v2; auto.
 Qed.
 Next Obligation.
   red. destruct v1; simpl; auto. destruct v2; auto. destruct orb; exact I.
@@ -444,3 +447,4 @@ Next Obligation.
   red. destruct v1; simpl; auto. destruct v2; auto. destruct Int.ltu; auto.
 Qed.
 
+End Builtins0.

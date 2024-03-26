@@ -42,6 +42,7 @@ Require Import List. Import ListNotations.
 Require Import Ctypes.
 Require Import Tags.
 Require Import Layout.
+Require Import Encoding.
 Require Import ExtLib.Structures.Monads. Import MonadNotation.
 
 Notation "s #1" := (fst s) (at level 9, format "s '#1'") : pair_scope.
@@ -58,19 +59,11 @@ Local Unset Case Analysis Schemes.
 
 Parameter ext : ident -> option (external_function * typelist * rettype * calling_convention)%type.
 
-Module Genv (P:Policy) (A:Allocator P).
-  Module TLib := TagLib P.
-  Import TLib.
-  Import A.Mem.
-  Notation mem := A.mem.
-  Notation store := A.store.
-  Notation load := A.load.
-  Notation load_ltags := A.load_ltags.
-  Notation load_all := A.load_all.
-  Notation empty := A.empty.
+Module Genv (Ptr: Pointer) (Pol: Policy) (M:Memory Ptr Pol) (A: Allocator Ptr Pol M).
+  Import M.
   Import MD.
   Import A.
-  Import P.
+  Import TLib.
   
   (** * Global environments *)
   Section GENV.
@@ -82,7 +75,7 @@ Module Genv (P:Policy) (A:Allocator P).
     Inductive symb_kind : Type :=
     | SymIFun (b:block) (pt:val_tag)
     | SymEFun (ef:external_function) (tyargs:typelist) (tyres:rettype) (cc:calling_convention) (pt:val_tag)
-    | SymGlob (base bound:Z) (pt:val_tag) (gv:globvar V)
+    | SymGlob (base bound:ptr) (pt:val_tag) (gv:globvar V)
     .
       
     (** The type of global environments. *)
@@ -119,7 +112,8 @@ Module Genv (P:Policy) (A:Allocator P).
       | Some (SymEFun ef tyargs tyres cc pt) => if Int64.eq ofs Int64.zero
                                                 then (Vefptr ef tyargs tyres cc, pt)
                                                 else (Vundef, def_tag)
-      | Some (SymGlob base block pt gv) => (Vlong (Int64.add (Int64.repr base) ofs), pt)
+      | Some (SymGlob base block pt gv) =>
+          (Vptr (off base ofs), pt)
       | None => (Vundef, def_tag)
       end.
 
@@ -140,13 +134,12 @@ Module Genv (P:Policy) (A:Allocator P).
            | SymEFun _ _ _ _ _ => res
            end) ge.(genv_symb) None.
 
-    Definition invert_symbol_ofs (ge: t) (ofs: int64) : option (ident * globvar V) :=
-      let z := Int64.unsigned ofs in
+    Definition invert_symbol_ptr (ge: t) (p: ptr) : option (ident * globvar V) :=
       PTree.fold
         (fun res id stuff =>
            match stuff with
            | SymGlob base bound _ gv =>
-               if (base <=? z) && (z <? bound) then Some (id, gv) else res
+               if twixtb base p bound then Some (id, gv) else res
            | SymIFun b' _ => res
            | SymEFun _ _ _ _ _ => res
            end)
@@ -178,7 +171,7 @@ Module Genv (P:Policy) (A:Allocator P).
 
     Section CONSTRUCTION.
 
-      Definition store_init_data (ge: t) (m: mem) (p: Z) (id: init_data) (vt: val_tag) (lt: loc_tag) :
+      Definition store_init_data (ge: t) (m: mem) (p: ptr) (id: init_data) (vt: val_tag) (lt: loc_tag) :
         PolicyResult mem :=
         match id with
         | Init_int8 n => store Mint8unsigned m p (Vint n, vt) [lt]
@@ -191,57 +184,57 @@ Module Genv (P:Policy) (A:Allocator P).
             match find_symbol ge symb with
             | None => raise (OtherFailure "Symbol not found")
             | Some (SymGlob base bound pt gv) =>
-                store Mptr m p (Vint (Int.repr base), vt) [lt;lt;lt;lt;lt;lt;lt;lt]
+                store Mptr m p (Vptr base, vt) [lt;lt;lt;lt;lt;lt;lt;lt]
             | Some (SymIFun b pt) => ret m
             | Some (SymEFun ef tyargs tyres cc pt) => ret m
             end
         | Init_space n => ret m
         end.
 
-      Fixpoint store_init_data_list (ge: t) (m: mem) (p: Z) (idl: list init_data) (vt: val_tag) (lt: loc_tag)
+      Fixpoint store_init_data_list (ge: t) (m: mem) (p: ptr) (idl: list init_data) (vt: val_tag) (lt: loc_tag)
                {struct idl}: PolicyResult mem :=
         match idl with
         | [] => ret m
         | id :: idl' =>
             m' <- store_init_data ge m p id vt lt;;
-            store_init_data_list ge m' (p + init_data_size id) idl' vt lt
+            store_init_data_list ge m' (off p (Int64.repr (init_data_size id))) idl' vt lt
         end.
 
       Definition pad_init_data_list (n: nat) (idl: list init_data) :=
         let diff := Nat.sub n (length idl) in
         idl ++ (repeat (Init_int8 Int.zero) diff).
-      
-      Definition perm_globvar (gv: globvar V) : permission := Live.
-      
-      Definition alloc_global (ge: t) (m: mem) (tree: PTree.t (Z*Z)) (id: ident)
-                 (v: globvar V) (vt : val_tag) (lt : loc_tag) : PolicyResult (Z * mem) :=
+            
+      Definition alloc_global (ge: t) (m: mem)
+                 (tree: PTree.t ptr) (id: ident) (v: globvar V)
+                 (vt : val_tag) (lt : loc_tag) : PolicyResult (ptr * mem) :=
         let init := v.(gvar_init) in
         let sz := v.(gvar_size) in
         let init_sz := init_data_list_size init in
         match PTree.get id tree with
-        | Some (base, bound) =>
+        | Some base =>
             let padded := pad_init_data_list (Pos.to_nat sz) init in
             m2 <- store_init_data_list ge m base padded vt lt;;
             ret (base,m2)
         | None => raise (OtherFailure "Globals weren't allocated correctly")
         end.
 
-      Program Definition add_global (ge: t) (m: mem) (tree: PTree.t (Z*Z)) (idg: ident * globdef F V)
+      Program Definition add_global (ge: t) (m: mem)
+              (tree: PTree.t ptr) (idg: ident * globdef F V)
         : PolicyResult (t*mem) :=
         match idg#2 with
         | Gvar gv =>
             let '(pt, vt, lt) := GlobalT ce (idg#1) Tvoid in (* TODO: if we're going to do things based on type here, need to concretize V *)
-            '(base',m') <- alloc_global ge m tree (idg#1) gv vt lt;;
-            let size := Zpos gv.(gvar_size) in
-            let bound := base' + size in
+            '(base', m') <- alloc_global ge m tree (idg#1) gv vt lt;;
+            let size := Int64.repr (Zpos gv.(gvar_size)) in
+            let bound := off base' size in
             let genv_symb' := PTree.set idg#1 (SymGlob base' bound pt gv) ge.(genv_symb) in
             let ge' := @mkgenv
-                         ge.(genv_public)
-                             genv_symb'
-                             ge.(genv_fun_defs)
-                             ge.(genv_ef_defs)
-                             ge.(genv_next_block)
-                             _ _
+                       ge.(genv_public)
+                       genv_symb'
+                       ge.(genv_fun_defs)
+                       ge.(genv_ef_defs)
+                       ge.(genv_next_block)
+                       _ _
             in
             ret (ge', m')
         | Gfun _ =>
@@ -251,12 +244,12 @@ Module Genv (P:Policy) (A:Allocator P).
                 let genv_symb' := PTree.set idg#1 (SymEFun ef tyargs tyres cconv pt)
                                             ge.(genv_symb) in
                 let ge' := @mkgenv
-                             ge.(genv_public)
-                             genv_symb'
-                             ge.(genv_fun_defs)
-                             ((ef,tyargs,tyres,cconv)::ge.(genv_ef_defs))
-                             ge.(genv_next_block)
-                             _ _
+                           ge.(genv_public)
+                           genv_symb'
+                           ge.(genv_fun_defs)
+                           ((ef,tyargs,tyres,cconv)::ge.(genv_ef_defs))
+                           ge.(genv_next_block)
+                           _ _
                 in
                 ret (ge', m)
             | None =>
@@ -265,12 +258,12 @@ Module Genv (P:Policy) (A:Allocator P).
                 let genv_fun_defs' := PTree.set ge.(genv_next_block) idg#2 ge.(genv_fun_defs) in
                 let genv_next_block' := Pos.succ ge.(genv_next_block) in
                 let ge' := @mkgenv
-                             ge.(genv_public)
-                             genv_symb'
-                             genv_fun_defs'
-                             ge.(genv_ef_defs)
-                             genv_next_block'
-                             _ _
+                           ge.(genv_public)
+                           genv_symb'
+                           genv_fun_defs'
+                           ge.(genv_ef_defs)
+                           genv_next_block'
+                           _ _
                 in
                 ret (ge', m)
             end
@@ -318,12 +311,13 @@ Module Genv (P:Policy) (A:Allocator P).
         - eapply ge.(genv_funs_inj); eauto.        
       Defined.
       
-      Fixpoint add_globals (ge: t) (m: mem) (tree: PTree.t (Z*Z)) (gl: list (ident * globdef F V))
+      Fixpoint add_globals (ge: t) (m: mem)
+               (tree: PTree.t ptr) (gl: list (ident * globdef F V))
         : PolicyResult (t*mem) :=
         match gl with
         | [] => ret (ge,m)
         | g::gl' =>
-            '(ge', m') <- add_globals ge m tree gl';;
+           '(ge', m') <- add_globals ge m tree gl';;
             add_global ge' m' tree g
         end.
       
@@ -337,10 +331,10 @@ Module Genv (P:Policy) (A:Allocator P).
         | _::idgs' => filter_var_sizes idgs'
         end.
       
-      Definition globalenv (p: AST.program F V) : PolicyResult (t * mem) :=
-        let (m',tree) := A.globalalloc (A.empty) (filter_var_sizes p.(AST.prog_defs)) in
-        add_globals (empty_genv p.(AST.prog_public)) m' tree p.(AST.prog_defs).
-
+      Definition globalenv (p: AST.program F V) :
+        PolicyResult (t * mem) :=
+        let (m,tree) := A.globalalloc A.empty (filter_var_sizes p.(AST.prog_defs)) in
+        (add_globals (empty_genv p.(AST.prog_public)) m tree p.(AST.prog_defs)).
       Section WITH_GE.
 
         Variable ge : t.
@@ -357,8 +351,10 @@ Module Genv (P:Policy) (A:Allocator P).
           | Init_addrof id ofs =>
               match find_symbol ge id with
               | Some (SymIFun b pt) => inj_value Q64 (Vfptr b, pt)
-              | Some (SymEFun ef tyargs tyres cc pt) => inj_value Q64 (Vefptr ef tyargs tyres cc, pt)
-              | Some (SymGlob base bound pt gv) => inj_value Q64 (Vint (Int.repr base), t)
+              | Some (SymEFun ef tyargs tyres cc pt) =>
+                  inj_value Q64 (Vefptr ef tyargs tyres cc, pt)
+              | Some (SymGlob base bound pt gv) =>
+                  inj_value Q64 (Vptr base, t)
               | None   => List.repeat Undef 8%nat
               end
           end.
@@ -425,12 +421,13 @@ Module Genv (P:Policy) (A:Allocator P).
     Qed.
               
     Theorem invert_find_symbol_ofs:
-      forall ge id gv ofs,
-        invert_symbol_ofs ge ofs = Some (id, gv) ->
-        exists base bound pt gv, find_symbol ge id = Some (SymGlob base bound pt gv) /\
-                                   base <= (Int64.unsigned ofs) /\ (Int64.unsigned ofs) < bound.
+      forall ge id gv p,
+        invert_symbol_ptr ge p = Some (id, gv) ->
+        exists base bound pt gv, find_symbol ge id =
+                                   Some (SymGlob base bound pt gv) /\
+                                   twixt base p bound.
     Proof.
-      intros until ofs; unfold find_symbol, invert_symbol_ofs.
+      intros until p; unfold find_symbol, invert_symbol_ptr.
       apply PTree_Properties.fold_rec.
       - intros. rewrite H in H0; auto.
       - congruence.
@@ -442,18 +439,16 @@ Module Genv (P:Policy) (A:Allocator P).
           + destruct v.
             * apply H1. apply H2.
             * apply H1. apply H2.
-            * destruct ((base <=? (Int64.unsigned ofs))
-                        && ((Int64.unsigned ofs) <? bound)) eqn:?; try congruence.
+            * destruct (twixtb base p bound) eqn:?; try congruence.
               apply H1. apply H2.
           + destruct v.
             * apply H1 in H2. destruct H2 as [base [bound [pt' [gv' [A B]]]]]. inv A.
             * apply H1 in H2. destruct H2 as [base [bound [pt' [gv' [A B]]]]]. inv A.
-            * destruct ((base <=? (Int64.unsigned ofs))
-                        && ((Int64.unsigned ofs) <? bound)) eqn:?.
-              -- exists base, bound, pt, gv0. intuition.
+            * destruct (twixtb base p bound) eqn:?.
+              -- exists base, bound, pt, gv0. intuition. apply twixt_correct. auto.
               -- apply H1 in H2. destruct H2 as [base' [bound' [pt' [gv' [A B]]]]]. inv A.
           + destruct v; auto. apply H1.
-            destruct ((base <=? (Int64.unsigned ofs)) && ((Int64.unsigned ofs) <? bound));
+            destruct (twixtb base p bound);
               congruence.
       Qed.
       

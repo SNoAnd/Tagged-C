@@ -17,7 +17,6 @@ open Commandline
 open Driveraux
 open CPragmas
 open Interp
-open Allocator
 
 (* Common frontend functions between clightgen and ccomp *)
 
@@ -188,18 +187,18 @@ let init () =
     | _         -> assert false
   end
  
-module FrontendP =
-        functor (Pol: Tags.Policy) (Alloc: Allocator) -> struct
+module FrontendP (Pol: Tags.Policy) (A: module type of FLAllocator.TaggedCFL) =
+struct
 
-                module InterpInst = InterpP (Pol) (Alloc)
-                module Printing = InterpInst.Printing
-                module C2CPInst = Printing.C2CPInst
-                module PragmaInst = Pragma (Pol) (Alloc)
+  module InterpInst = InterpP (Pol) (A)
+  module Printing = InterpInst.Printing
+  module C2CPInst = Printing.C2CPInst
+  module PragmaInst = Pragma (Pol) (A)
  
-                let init_with () =
-                Env.set_builtins C2CPInst.builtins;
-                Cutil.declare_attributes C2CPInst.attributes;
-                PragmaInst.initialize()
+  let init_with () =
+  Env.set_builtins C2CPInst.builtins;
+  Cutil.declare_attributes C2CPInst.attributes;
+  PragmaInst.initialize()
 
   (* From preprocessed C to Csyntax *)
 
@@ -231,10 +230,10 @@ end
 (* Per Policies.md, add new policies in combination of module + desired allocator *)
 
 (* Single policies *)
-module WithNull = FrontendP (NullPolicy.NullPolicy) (FLAllocator)
-module WithPVI = FrontendP (PVI.PVI) (FLAllocator)
-module WithDoubleFree = FrontendP (DoubleFree.DoubleFree) (ConcreteAllocator)
-module WithHeapProblem = FrontendP (HeapProblem.HeapProblem) (ConcreteAllocator)
+module WithNull = FrontendP (NullPolicy.NullPolicy) (FLAllocator.TaggedCFL)
+module WithPVI = FrontendP (PVI.PVI) (FLAllocator.TaggedCFL)
+module WithDoubleFree = FrontendP (DoubleFree.DoubleFree) (ConcreteAllocator.TaggedCConcrete)
+module WithHeapProblem = FrontendP (HeapProblem.HeapProblem) (ConcreteAllocator.TaggedCConcrete)
 
 (* Multiple Policies  
   In general, combined policies should all use (or be known to function with) 
@@ -247,9 +246,7 @@ module WithHeapProblem = FrontendP (HeapProblem.HeapProblem) (ConcreteAllocator)
 
     Perhaps an ugrad or masters student would like to help in the future? *)
 module DFxHP = Product.PolProduct (DoubleFree.DoubleFree) (HeapProblem.HeapProblem)
-module WithDFxHP = FrontendP (DFxHP) (ConcreteAllocator)
+module WithDFxHP = FrontendP (DFxHP) (ConcreteAllocator.TaggedCConcrete)
 
-(* PVI should be ok with the ConcreteAllocator here, but pairing a policy with
-   an allocator it's not neccessarily designed for isn't encouraged. *)
 module DFxPVI = Product.PolProduct (PVI.PVI) (DoubleFree.DoubleFree)
-module WithDFxPVI = FrontendP (DFxPVI) (ConcreteAllocator)
+module WithDFxPVI = FrontendP (DFxPVI) (ConcreteAllocator.TaggedCConcrete)

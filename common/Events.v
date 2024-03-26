@@ -31,12 +31,12 @@ Require Import Tags.
 Require Import ExtLib.Structures.Monads. Import MonadNotation.
 Require Import List. Import ListNotations.
 
-Module Events (P:Policy) (A:Allocator P).
-  Module Genv := Genv P A.
+Module Events (Ptr: Pointer) (Pol: Policy) (M:Memory Ptr Pol) (A: Allocator Ptr Pol M).
+  Module Genv := Genv Ptr Pol M A.
   Export Genv.
   Import A.
-  Import TLib.
-
+  Import Ptr.
+  
 (** * Events and traces *)
 
 (** The observable behaviour of programs is stated in terms of
@@ -71,13 +71,13 @@ Inductive eventval: Type :=
 | EVlong: int64 -> eventval
 | EVfloat: float -> eventval
 | EVsingle: float32 -> eventval
-| EVptr_global: ident -> int64 -> eventval
+| EVptr_global: ident -> ptr -> eventval
 | EVptr_fun: ident -> eventval.
 
 Inductive event: Type :=
   | Event_syscall: string -> list eventval -> eventval -> event
-  | Event_vload: memory_chunk -> ident -> int64 -> eventval -> event
-  | Event_vstore: memory_chunk -> ident -> int64 -> eventval -> event
+  | Event_vload: memory_chunk -> ident -> ptr -> eventval -> event
+  | Event_vstore: memory_chunk -> ident -> ptr -> eventval -> event
   | Event_annot: string -> list eventval -> event.
 
 (** The dynamic semantics for programs collect traces of events.
@@ -398,34 +398,34 @@ Fixpoint output_trace (t: trace) : Prop :=
 
 (** * Semantics of volatile memory accesses *)
 Inductive volatile_load (ge: Genv.t F V):
-  memory_chunk -> mem -> int64 -> trace -> PolicyResult atom -> Prop :=
-| volatile_load_vol: forall chunk m ofs id gv ev v vt,
-      invert_symbol_ofs ge ofs = Some (id, gv) ->
+  memory_chunk -> mem -> ptr -> trace -> PolicyResult atom -> Prop :=
+  | volatile_load_vol: forall chunk m p id gv ev v vt,
+      invert_symbol_ptr ge p = Some (id, gv) ->
       gv.(gvar_volatile) = true ->
       eventval_match ge ev (type_of_chunk chunk) (v,vt) ->
-      volatile_load ge chunk m ofs
-                    (Event_vload chunk id ofs ev :: nil)
-                    (ret (Val.load_result chunk v,vt))
-  | volatile_load_nonvol: forall chunk m ofs res,
-      (forall id gv, invert_symbol_ofs ge ofs = Some (id, gv) ->
+      volatile_load ge chunk m p
+                    (Event_vload chunk id p ev :: nil)
+                    (ret (Values.load_result chunk v,vt))
+  | volatile_load_nonvol: forall chunk m p res,
+      (forall id gv, invert_symbol_ptr ge p = Some (id, gv) ->
                      gv.(gvar_volatile) = false) ->
-      load chunk m (Int64.unsigned ofs) = res ->
-      volatile_load ge chunk m ofs E0 res.
+      load chunk m p = res ->
+      volatile_load ge chunk m p E0 res.
 
 Inductive volatile_store (ge: Genv.t F V):
-  memory_chunk ->  mem -> int64 -> atom -> list loc_tag -> trace -> PolicyResult mem -> Prop :=
-  | volatile_store_vol: forall chunk m ofs id gv ev v vt lts,
-      invert_symbol_ofs ge ofs = Some (id, gv) ->
+  memory_chunk ->  mem -> ptr -> atom -> list loc_tag -> trace -> PolicyResult mem -> Prop :=
+  | volatile_store_vol: forall chunk m p id gv ev v vt lts,
+      invert_symbol_ptr ge p = Some (id, gv) ->
       gv.(gvar_volatile) = true ->
-      eventval_match ge ev (type_of_chunk chunk) (Val.load_result chunk v, vt) ->
-      volatile_store ge chunk m ofs (v,vt) lts
-                     (Event_vstore chunk id ofs ev :: nil)
+      eventval_match ge ev (type_of_chunk chunk) (Values.load_result chunk v, vt) ->
+      volatile_store ge chunk m p (v,vt) lts
+                     (Event_vstore chunk id p ev :: nil)
                      (ret m)
-  | volatile_store_nonvol: forall chunk m ofs  v vt lts res,
-      (forall id gv, invert_symbol_ofs ge ofs = Some (id, gv) ->
+  | volatile_store_nonvol: forall chunk m p v vt lts res,
+      (forall id gv, invert_symbol_ptr ge p = Some (id, gv) ->
                      gv.(gvar_volatile) = false) ->
-      store chunk m (Int64.unsigned ofs) (v,vt) lts = res ->
-      volatile_store ge chunk m ofs (v,vt) lts E0 res.
+      store chunk m p (v,vt) lts = res ->
+      volatile_store ge chunk m p (v,vt) lts E0 res.
   
 (** * Semantics of external functions *)
 
@@ -443,38 +443,37 @@ Definition extcall_sem : Type :=
   (PolicyResult (atom * control_tag * mem)) -> Prop.
 
 (** ** Semantics of volatile loads *)
-Definition volatile_load_tags (l:Cabs.loc) (chunk: memory_chunk) (m:mem) (ofs:Z)
+Definition volatile_load_tags (l:Cabs.loc) (chunk: memory_chunk) (m:mem) (p:ptr)
            (pt:val_tag) (vt:val_tag) (pct:control_tag) : PolicyResult val_tag :=
-  lts <- load_ltags chunk m ofs;;
+  lts <- load_ltags chunk m p;;
   vt' <- LoadT l pct pt vt lts;;
   AccessT l pct vt'.  
 
 Inductive volatile_load_sem (l:Cabs.loc) (chunk: memory_chunk) (ge: Genv.t F V):
-  list atom -> policy_state -> logs -> control_tag -> val_tag -> mem -> trace ->
+  list atom -> control_tag -> val_tag -> mem -> trace ->
   PolicyResult (atom * control_tag * mem) -> Prop :=
-| volatile_load_sem_intro:
-  forall ofs pt m pstate logs pct fpt t v vt vt',
-    volatile_load ge chunk m ofs t (ret (v,vt)) ->
-    volatile_load_tags l chunk m (Int64.unsigned ofs) pt vt pct = ret vt'->
-    volatile_load_sem l chunk ge ((Vlong ofs, pt) :: nil) pstate logs pct fpt m t
+| volatile_load_sem_intro: forall p pt m pct fpt t v vt vt',
+    volatile_load ge chunk m p t (ret (v,vt)) ->
+    volatile_load_tags l chunk m p pt vt pct = ret vt'->
+    volatile_load_sem l chunk ge ((Vptr p, pt) :: nil) pct fpt m t
                       (ret ((v,vt'), pct, m)).
 
 (** ** Semantics of volatile stores *)
 
-Definition volatile_store_tags (l:Cabs.loc) (chunk: memory_chunk) (m:mem) (ofs:Z)
+Definition volatile_store_tags (l:Cabs.loc) (chunk: memory_chunk) (m:mem) (p: ptr)
            (pt:val_tag) (vt:val_tag) (pct:control_tag) :
   PolicyResult (control_tag*val_tag*list loc_tag) :=
-  '((_,vt0),lts) <- load_all chunk m ofs;;
+  '((_,vt0),lts) <- load_all chunk m p;;
   '(pct',vt') <-  AssignT l pct vt0 vt;;
   StoreT l pct' pt vt' lts.
 
 Inductive volatile_store_sem (l:Cabs.loc) (chunk: memory_chunk) (ge: Genv.t F V):
   list atom -> control_tag -> val_tag -> mem -> trace ->
   PolicyResult (atom * control_tag * mem) -> Prop :=
-  | volatile_store_sem_intro: forall ofs pt m pct pct' pct'' fpt v vt vt' lts t m',
-      volatile_store_tags l chunk m (Int64.unsigned ofs) pt vt pct = ret (pct',vt',lts) ->
-      volatile_store ge chunk m ofs (v,vt') lts t (ret m') ->
-      volatile_store_sem l chunk ge ((Vlong ofs,pt) :: (v,vt) :: nil) pct fpt m t
+  | volatile_store_sem_intro: forall p pt m pct pct' pct'' fpt v vt vt' lts t m',
+      volatile_store_tags l chunk m p pt vt pct = ret (pct',vt',lts) ->
+      volatile_store ge chunk m p (v,vt') lts t (ret m') ->
+      volatile_store_sem l chunk ge ((Vptr p,pt) :: (v,vt) :: nil) pct fpt m t
                          (ret ((v,vt'), pct'', m')).
 
 Definition alloc_size (v: val) (z:Z) : Prop :=
@@ -484,24 +483,23 @@ Definition alloc_size (v: val) (z:Z) : Prop :=
   | _ => False
   end.
 
-Definition do_extcall_malloc (l:Cabs.loc) (pct: control_tag) (fpt st: val_tag) (m: mem) (sz: Z)
+  Definition do_extcall_malloc (l:Cabs.loc) (pct: control_tag) (fpt st: val_tag) (m: mem) (sz: Z)
   : PolicyResult (atom * control_tag * mem) :=
-  let sz_aligned := align sz 8 in
+  (*let sz_aligned := align sz 8 in*)
   pct' <- ExtCallT l "malloc" pct fpt [st];;
   '(pct'', pt, vt_body, vt_head, lt) <- MallocT l pct' fpt;;
-  '(m', lo, hi) <- heapalloc m sz_aligned vt_head;;
-  mvs <- loadbytes m' lo sz_aligned;;
+  '(m', base) <- heapalloc m sz vt_head;;
+  mvs <- loadbytes m' base sz;;
   let mvs' := map (fun mv =>
                      match mv with
-                     | Mem.MD.Byte b vt => Mem.MD.Byte b vt_body
-                     | Mem.MD.Fragment (v,vt) q n => Mem.MD.Fragment (v,vt_body) q n
+                     | M.MD.Byte b vt => M.MD.Byte b vt_body
+                     | M.MD.Fragment (v,vt) q n => M.MD.Fragment (v,vt_body) q n
                      | Undef => Undef
                      end) mvs in
-  m'' <- storebytes m' lo mvs' (repeat lt (Z.to_nat sz_aligned));;
+  m'' <- storebytes m' base mvs' (repeat lt (Z.to_nat sz));;
   '(pct''', pt') <- ExtRetT l "malloc" pct pct'' pt;;
-  ret ((Vlong (Int64.repr lo), pt'), pct''', m'').
+  ret ((Vptr base, pt'), pct''', m'').
 
-(** ** Semantics of dynamic memory allocation (malloc) *)
 Inductive extcall_malloc_sem (l:Cabs.loc) (ge: Genv.t F V):
   list atom -> control_tag -> val_tag -> mem -> trace ->
   (PolicyResult (atom * control_tag * mem)) -> Prop :=
@@ -510,25 +508,25 @@ Inductive extcall_malloc_sem (l:Cabs.loc) (ge: Genv.t F V):
     extcall_malloc_sem l ge ((v,st) :: nil) pct fpt m E0
                        (do_extcall_malloc l pct fpt st m sz).
 
-Definition do_extcall_free (l:Cabs.loc) (pct: control_tag)  (fpt pt: val_tag) (addr: int64) (m: mem)
+Definition do_extcall_free (l:Cabs.loc) (pct: control_tag)  (fpt pt: val_tag) (p: ptr) (m: mem)
   : PolicyResult (atom * control_tag * mem) :=
-  if Int64.eq addr Int64.zero
+  if Int64.eq (concretize p) Int64.zero
   then ret ((Vundef,InitT), pct, m)
   else
-    pct' <- ExtCallT l "free" pct fpt [pt];;
-    '(sz,pct'',m') <- heapfree l pct' m (Int64.unsigned addr) pt;;
-    mvs <- loadbytes m' (Int64.unsigned addr) sz;;
-    '(pct''',lts') <- ClearT l pct'' (Z.to_nat sz);;
-    m'' <- storebytes m' (Int64.unsigned addr) mvs lts';;
-    '(vt,pct'') <- ExtRetT l "free" pct pct' InitT;;
-    ret ((Vundef,InitT), pct', m'').
+    pct0 <- ExtCallT l "free" pct fpt [pt];;
+    '(sz,pct1,m') <- heapfree l pct0 m p pt;;
+    mvs <- loadbytes m' p sz;;
+    '(pct2,lts') <- ClearT l pct1 (Z.to_nat sz);;
+    m'' <- storebytes m' p mvs lts';;
+    '(pct3,vt) <- ExtRetT l "free" pct pct2 InitT;;
+    ret ((Vundef,InitT), pct3, m'').
 
-Inductive extcall_free_sem (l:Cabs.loc) (ge: Genv.t F V) :
+Inductive extcall_free_sem (l:Cabs.loc) (ge: Genv.t F V):
   list atom -> control_tag -> val_tag -> mem -> trace ->
   (PolicyResult (atom * control_tag * mem)) -> Prop :=
-| extcall_free_sem_intro: forall addr pct fpt pt m,
-    extcall_free_sem l ge ((Vlong addr,pt) :: nil) pct fpt m E0
-                     (do_extcall_free l pct fpt pt addr m).
+| extcall_free_sem_intro: forall p pct fpt pt m,
+    extcall_free_sem l ge ((Vptr p,pt) :: nil) pct fpt m E0
+                     (do_extcall_free l pct fpt pt p m).
 
 (** ** Semantics of [memcpy] operations. *)
 
@@ -766,8 +764,8 @@ Definition external_call (l:Cabs.loc) (ef: external_function): extcall_sem :=
 (*  | EF_builtin name sg   => builtin_or_external_sem name sg
   | EF_vload chunk       => volatile_load_sem chunk
   | EF_vstore chunk      => volatile_store_sem chunk*)
-  | EF_malloc            => extcall_malloc_sem l
-  | EF_free              => extcall_free_sem l
+  | EF_malloc            => fun ge => extcall_malloc_sem l ge
+  | EF_free              => fun ge => extcall_free_sem l ge
 (*  | EF_memcpy sz al      => extcall_memcpy_sem sz al
   | EF_annot kind txt targs   => extcall_annot_sem txt targs
   | EF_annot_val kind txt targ => extcall_annot_val_sem txt targ
@@ -784,7 +782,7 @@ End OUTPUT_EVENTS.
 Variable A F V: Type.
 Variable ge: Genv.t F V.
 Variable e: A -> val.
-Variable sp: Z.
+Variable sp: ptr.
 Variable m: mem.
 
 Inductive eval_builtin_arg: builtin_arg A -> val -> Prop :=
@@ -799,24 +797,24 @@ Inductive eval_builtin_arg: builtin_arg A -> val -> Prop :=
 | eval_BA_single: forall n,
     eval_builtin_arg (BA_single n) (Vsingle n)
 | eval_BA_loadstack: forall chunk ofs v vt,
-    load chunk m (sp + Ptrofs.signed ofs) = Success (v,vt) ->
+    load chunk m (off sp (Ptrofs.to_int64 ofs)) = Success (v,vt) ->
     eval_builtin_arg (BA_loadstack chunk ofs) v
 | eval_BA_addrstack: forall ofs,
-    eval_builtin_arg (BA_addrstack ofs) (Vofptrsize (sp + Ptrofs.signed ofs))
+    eval_builtin_arg (BA_addrstack ofs) (Vptr (off sp (Ptrofs.to_int64 ofs)))
 | eval_BA_loadglobal: forall chunk id base bound v vt pt gv,
     find_symbol ge id = Some (SymGlob base bound pt gv) ->
     load chunk m base = Success (v,vt) ->
-    eval_builtin_arg (BA_loadglobal chunk id (Ptrofs.repr base)) v
+    eval_builtin_arg (BA_loadglobal chunk id (Ptrofs.of_int64 (concretize base))) v
 | eval_BA_addrglobal: forall id base bound pt gv,
     find_symbol ge id = Some (SymGlob base bound pt gv) ->
-    eval_builtin_arg (BA_addrglobal id (Ptrofs.repr base)) (Vofptrsize base)
+    eval_builtin_arg (BA_addrglobal id (Ptrofs.of_int64 (concretize base))) (Vptr base)
 | eval_BA_splitlong: forall hi lo vhi vlo,
     eval_builtin_arg hi vhi -> eval_builtin_arg lo vlo ->
-    eval_builtin_arg (BA_splitlong hi lo) (Val.longofwords vhi vlo)
+    eval_builtin_arg (BA_splitlong hi lo) (Values.longofwords vhi vlo)
 | eval_BA_addptr: forall a1 a2 v1 v2,
     eval_builtin_arg a1 v1 -> eval_builtin_arg a2 v2 ->
     eval_builtin_arg (BA_addptr a1 a2)
-                     (if Archi.ptr64 then Val.addl v1 v2 else Val.add v1 v2).
+                     (if Archi.ptr64 then Values.addl v1 v2 else Values.add v1 v2).
 
 Definition eval_builtin_args (al: list (builtin_arg A)) (vl: list val) : Prop :=
   list_forall2 eval_builtin_arg al vl.

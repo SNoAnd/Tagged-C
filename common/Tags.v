@@ -6,6 +6,8 @@ Require Import Values.
 Require Import Ctypes.
 Require Import Cabs.
 Require Import String.
+Require Import Builtins.
+Require Import Switch.
 Require Import ExtLib.Structures.Monads.
 
 Require Import List. Import ListNotations. (* list notations is a module inside list *)
@@ -358,9 +360,11 @@ Module Type Policy.
                            val_tag          (* Tag on resulting value *).
 End Policy.
 
-Module TagLib (P:Policy).
-  Export P.
-
+Module TagLib (Ptr: Pointer) (Pol: Policy).
+  Export Pol.
+  Module Switch := Switch Ptr.
+  Export Switch.
+  Export Values.
   Definition PolicyResult := PolicyResult policy_state.
 
   Definition atom : Type := val * val_tag.
@@ -381,6 +385,7 @@ Module TagLib (P:Policy).
     apply Int64.eq_dec.
     apply Float.eq_dec.
     apply Float32.eq_dec.
+    apply Ptr.ptr_eq_dec.
     decide equality.
     repeat decide equality.
     repeat decide equality.
