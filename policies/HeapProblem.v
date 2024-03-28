@@ -5,9 +5,7 @@
  *      nodestructive. This policy is concerned with 3 types of heap problems: overreads, 
  *      overwrites, and secret recovery from memory that has been correctly freed but not cleaned
  *      or overwritten so the secret can be recovered by the next legal owner. 
- *  This policy operates very similiarly to the one discussed in "Micro-Policies: Formally Verified, Tag-Based Security Monitors"
- *      https://ieeexplore.ieee.org/document/7163062 , with an additional feature of tagging memory that has been  APT:???
- * 
+ *  
  * Problem: 
  *   A "heap leak" is very ambigous. There are at least 5 types, 3 of which this policy covers:
  *   (1) heap buffer overwrite (RCE)
@@ -18,9 +16,10 @@
  *   (4) heap secret recovery from dirty memory (steal keys that were correctly
  *          freed but not overwritten before being reused)
  *   (5) heap resource exhaustion/resource leak through memory (DOS by OOM)
- *          We are not covering this case. It is a bad fit for tags
+ *          We are not covering this case at all. 
+ *          It is a bad fit for tags
  * 
- * Current Solutions: 
+ * Current Solutions (and where they fall short): 
  *   (1)(2) are things that SOTA fuzzers can reasonably detect when augmented with 
  *         sanitizers like ASAN. However they cannot usually tell (1) and (2) apart from
  *         each other or from other segfaulting conditions. 
@@ -28,20 +27,25 @@
  *   (4) No fuzzer currently detects secret recovery from dirty heap memory as far as I know.
  * 
  * Related Work:
- *    - We will eagerly color memory. However, there is a lazy algorithm, based on the observation that
- *        memory is sometimes allocated in large chunks & never used. However, it is aimed at performance
- *        and this is aimed at diagnostic information to feed a fuzzer.
+ *    - This policy operates very similiarly to the one discussed in "Micro-Policies: Formally Verified, Tag-Based Security Monitors"
+ *      https://ieeexplore.ieee.org/document/7163062 
+ *
+ *    - We will eagerly color memory because that suits the diagnostic purpose. However, there is a lazy algorithm, 
+ *        based on the observation that memory is sometimes allocated in large chunks & never used. 
  *        See https://ic.ese.upenn.edu/pdf/stack_ieeesp2018.pdf 
  * 
  * 
  * Overall Policy Algorithm to detect heap problems (1),(2),(4):
  *  - Starting state:
- *      - PC counter is set to 0, nothing's been malloc'ed yet
- *      - heap mem is all set to L_UnallocatedHeap
- *      - stack mem et al. is set to L_NotHeap
- *      - data, globals, etc set to N  
- *      - The allocator is the concrete one. The intent is to
- *        emulate the real, nontagged system as closely as possible.
+ *      - Extra state is set to starting color = 0, nothing's been malloc'ed yet
+ *          - NB: in prior iterations, this state travelled in the pc tag.
+ *      - PC tag itself is not used in this policy.
+ *      - heap mem is all set to UnallocatedHeap
+ *          - The allocator is the concrete one. The intent is to
+ *            emulate the real, nontagged system as closely as possible.
+ *      - stack mem, globals, et al. are set to NotHeap, and should never change.
+ *          - unlike a real heap, there is sbrk() in this allocator. heap size is fixed.
+ *
  *  - When memory is allocated via MallocT
  *      - the value tag on the pointer is colored with the location of the malloc and the current color from the pc tag
  *      - the location tags on the block are marked with the same location + color, marked AllocatedDirty (to detect Heap Problem #4)
