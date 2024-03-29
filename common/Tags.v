@@ -12,6 +12,8 @@ Require Import ExtLib.Structures.Monads.
 
 Require Import List. Import ListNotations. (* list notations is a module inside list *)
 
+Parameter extern_atom : positive -> string.
+
 Inductive FailureClass : Type :=
 | MisalignedStore (alignment ofs : Z)
 | MisalignedLoad (alignment ofs : Z)
@@ -250,20 +252,10 @@ Module Type Policy.
                             policy_state    (* Outputs: *)
                             control_tag     (* New PC tag *).
 
-  Parameter ExtRetT : loc                   (* Inputs: *)
-                      -> string             (* External function name *)
-                      -> control_tag        (* PC tag at return time *)
-                      -> control_tag        (* Prior PC tag from before call *)
-                      -> val_tag            (* Tag on returned value *)
-                      -> PolicyResult
-                           policy_state     (* Outputs: *)
-                            (control_tag    (* New PC tag *)
-                             * val_tag)     (* Tag on return value *).                   
-
   (* This tag rule processes the body of malloc. So a call to malloc@fpt(sz@vt) is structured:
-     pct -> +========+ -> pct'   +=======+    pct ---> +=======+
-     fpt -> |ExtCallT| -> fpt -> |MallocT| -> pct'' -> |ExtRetT| -> pct'''
-     vt  -> +========+ -> vt -|  +=======+ -> pt ----> +=======+ -> pt'
+     pct -> +========+ -> pct'   +=======+    pct ---> +====+
+     fpt -> |ExtCallT| -> fpt -> |MallocT| -> pct'' -> |RetT| -> pct'''
+     vt  -> +========+ -> vt -|  +=======+ -> pt ----> +====+ -> pt'
                                vt1|  |vt2 |lt
                          [header@vt1][vt2.vt2.vt2...]
                          [lt.lt.lt.lt.lt.lt.lt.lt...] *)
@@ -284,9 +276,9 @@ Module Type Policy.
                               [   lts   ][...................]
                                  vt|  |lts
                                    v  v
-     pct -> +========+            +=====+          +======+    pct ----> +=======+
-     fpt -> |ExtCallT| -> pct' -> |FreeT| -> pct'' |ClearT| -> pct''' -> |RetT   | -> pct''''
-     pt  -> +========+ -> pt   -> +=====+          +======+     pt ----> +=======+ -> pt'
+     pct -> +========+            +=====+          +======+    pct ----> +====+
+     fpt -> |ExtCallT| -> pct' -> |FreeT| -> pct'' |ClearT| -> pct''' -> |RetT| -> pct''''
+     pt  -> +========+ -> pt   -> +=====+          +======+     pt ----> +====+ -> pt'
                                 vt1|  |lts'      vt2|  |lt
                                    v  v             v  v
                               [header'@vt1][...(v@vt2).......]
@@ -442,9 +434,6 @@ Module Passthrough.
 
   Definition ExtCallT (l:loc) (fn: string) (pct: control_tag) (fpt: val_tag) (args: list val_tag) :
     PolicyResult control_tag := ret pct.
-
-  Definition ExtRetT (l:loc) (fn: string) (pctclr pctcle: control_tag) (vt: val_tag) :
-    PolicyResult (control_tag*val_tag) := ret (pctcle,vt).
 
   Definition FreeT (l:loc) (pct: control_tag) (pt vht: val_tag) (lts: list loc_tag) :
     PolicyResult (control_tag * val_tag * list loc_tag) := ret (pct, vht, lts).

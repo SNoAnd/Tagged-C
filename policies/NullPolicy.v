@@ -12,6 +12,7 @@ Require Import ExtLib.Structures.Monads.
 Require Import List. Import ListNotations.
 
 Module NullPolicy <: Policy.
+  Import Passthrough.
 
   Definition val_tag := unit.
   Definition control_tag := unit.
@@ -36,61 +37,19 @@ Module NullPolicy <: Policy.
   
   Definition PolicyResult := PolicyResult policy_state.
   
-  Definition CallT (l:loc) (pct: control_tag) (pt: val_tag) :
-    PolicyResult control_tag := ret tt.
-
-  Definition ArgT (l:loc) (pct: control_tag) (fpt vt: val_tag) (idx:nat) (ty: type) :
-    PolicyResult (control_tag * val_tag) := ret (tt,tt).
-
-  Definition RetT (l:loc) (pct_clr pct_cle: control_tag) (vt : val_tag) :
-    PolicyResult (control_tag * val_tag) := ret (tt,tt).
-
-  Definition LoadT (l:loc) (pct: control_tag) (pt vt: val_tag) (lts: list loc_tag) :
-    PolicyResult val_tag := ret tt.
-
-  Definition StoreT (l:loc) (pct: control_tag) (pt vt: val_tag) (lts: list loc_tag) :
-    PolicyResult (control_tag * val_tag * list loc_tag) := ret (tt, tt, [tt]).
-
-  Definition AccessT (l:loc) (pct: control_tag) (vt: val_tag) :
-    PolicyResult val_tag := ret tt.
-
-  Definition AssignT (l:loc) (pct: control_tag) (vt1 vt2: val_tag) :
-    PolicyResult (control_tag * val_tag) := ret (tt,tt).
-
-  Definition UnopT (l:loc) (op : unary_operation) (pct: control_tag) (vt: val_tag) :
-    PolicyResult (control_tag * val_tag) := ret (tt, tt).
-
-  Definition BinopT (l:loc) (op : binary_operation) (pct: control_tag) (vt1 vt2: val_tag) :
-    PolicyResult (control_tag * val_tag) := ret (tt, tt).
-
   Definition ConstT (l:loc) (pct: control_tag) : PolicyResult val_tag := ret tt.
-
-  Definition SplitT (l:loc) (pct: control_tag) (vt: val_tag) (id : option ident) :
-    PolicyResult control_tag := ret tt.
-
-  Definition LabelT (l:loc) (pct: control_tag) (id : ident) : PolicyResult control_tag :=
-    ret tt.
-
-  Definition ExprSplitT (l:loc) (pct: control_tag) (vt : val_tag) : PolicyResult control_tag :=
-    ret tt.
-
-  Definition ExprJoinT (l:loc) (pct: control_tag) (vt: val_tag) :
-    PolicyResult (control_tag * val_tag) := ret (tt,tt).
-
   Definition GlobalT (ce : composite_env) (id : ident) (ty : type) : val_tag * val_tag * loc_tag :=
     (tt, tt, tt).
-
-  Definition FunT (ce:composite_env) (id: ident) (ty: type) : val_tag := tt.
-
+  Definition FunT (ce : composite_env) (id : ident) (ty : type) : val_tag :=
+    tt.
+  
   Definition LocalT (l:loc) (ce : composite_env) (pct: control_tag) (ty : type) :
     PolicyResult (control_tag * val_tag * list loc_tag)%type :=
     ret (tt, tt, repeat tt (Z.to_nat (sizeof ce ty))).
-  
-  Definition DeallocT (l:loc) (ce : composite_env) (pct: control_tag) (ty : type) :
+   Definition DeallocT (l:loc) (ce : composite_env) (pct: control_tag) (ty : type) :
     PolicyResult (control_tag * val_tag * loc_tag) :=
     ret (tt, tt, tt).
-
-  Definition MallocT (l:loc) (pct: control_tag) (fpt: val_tag) :
+ Definition MallocT (l:loc) (pct: control_tag) (fpt: val_tag) :
     PolicyResult (control_tag * val_tag * val_tag * val_tag * loc_tag) :=
     ret (tt, tt, tt, tt, tt).
 
@@ -102,22 +61,24 @@ Module NullPolicy <: Policy.
     PolicyResult (control_tag * list loc_tag) :=
     ret (tt, repeat tt sz).
   
-  Definition ExtCallT (l:loc) (fn: string) (pct: control_tag) (fpt: val_tag) (args : list val_tag) :
-    PolicyResult control_tag := ret tt.
-
-  Definition ExtRetT (l:loc) (fn: string) (clrpct clepct: control_tag) (vt: val_tag) :
-    PolicyResult (control_tag * val_tag) := ret (tt, tt).
-  
-  Definition FieldT (l:loc) (ce: composite_env) (pct: control_tag) (vt: val_tag) (ty: type) (id: ident)
-    : PolicyResult val_tag := ret tt.
-
-  Definition PICastT (l:loc) (pct: control_tag) (pt: val_tag)  (lts : list loc_tag) (ty : type) :
-    PolicyResult val_tag := ret tt.
-  Definition IPCastT (l:loc) (pct: control_tag) (vt: val_tag)  (lts : list loc_tag) (ty : type) :
-    PolicyResult val_tag := ret tt.
-  Definition PPCastT (l:loc) (pct: control_tag) (vt: val_tag) (lts1 lts2 : list loc_tag) (ty : type) :
-    PolicyResult val_tag := ret tt.
-  Definition IICastT (l:loc) (pct: control_tag) (vt: val_tag) (ty : type) : PolicyResult val_tag :=
-    ret tt.
+  Definition CallT      := Passthrough.CallT policy_state val_tag control_tag.  
+  Definition ArgT       := Passthrough.ArgT policy_state val_tag control_tag.
+  Definition RetT       := Passthrough.RetT policy_state val_tag control_tag.
+  Definition LoadT      := Passthrough.LoadT policy_state val_tag control_tag loc_tag.
+  Definition StoreT     := Passthrough.StoreT policy_state val_tag control_tag loc_tag.
+  Definition AccessT    := Passthrough.AccessT policy_state val_tag control_tag.
+  Definition AssignT    := Passthrough.AssignT policy_state val_tag control_tag.
+  Definition UnopT      := Passthrough.UnopT policy_state val_tag control_tag.
+  Definition BinopT     := Passthrough.BinopT policy_state val_tag control_tag.
+  Definition SplitT     := Passthrough.SplitT policy_state val_tag control_tag.
+  Definition LabelT     := Passthrough.LabelT policy_state control_tag.
+  Definition ExprSplitT := Passthrough.ExprSplitT policy_state val_tag control_tag.
+  Definition ExprJoinT  := Passthrough.ExprJoinT policy_state val_tag control_tag.
+  Definition FieldT     := Passthrough.FieldT policy_state val_tag control_tag.
+  Definition ExtCallT   := Passthrough.ExtCallT policy_state val_tag control_tag.
+  Definition PICastT    := Passthrough.PICastT policy_state val_tag control_tag loc_tag.
+  Definition IPCastT    := Passthrough.IPCastT policy_state val_tag control_tag loc_tag.
+  Definition PPCastT    := Passthrough.PPCastT policy_state val_tag control_tag loc_tag.
+  Definition IICastT    := Passthrough.IICastT policy_state val_tag control_tag.
 
 End NullPolicy.

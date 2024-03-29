@@ -486,8 +486,8 @@ Definition alloc_size (v: val) (z:Z) : Prop :=
   Definition do_extcall_malloc (l:Cabs.loc) (pct: control_tag) (fpt st: val_tag) (m: mem) (sz: Z)
   : PolicyResult (atom * control_tag * mem) :=
   (*let sz_aligned := align sz 8 in*)
-  pct' <- ExtCallT l "malloc" pct fpt [st];;
-  '(pct'', pt, vt_body, vt_head, lt) <- MallocT l pct' fpt;;
+  pct0 <- ExtCallT l "malloc" pct fpt [st];;
+  '(pct1, pt, vt_body, vt_head, lt) <- MallocT l pct0 fpt;;
   '(m', base) <- heapalloc m sz vt_head;;
   mvs <- loadbytes m' base sz;;
   let mvs' := map (fun mv =>
@@ -497,8 +497,7 @@ Definition alloc_size (v: val) (z:Z) : Prop :=
                      | Undef => Undef
                      end) mvs in
   m'' <- storebytes m' base mvs' (repeat lt (Z.to_nat sz));;
-  '(pct''', pt') <- ExtRetT l "malloc" pct pct'' pt;;
-  ret ((Vptr base, pt'), pct''', m'').
+  ret ((Vptr base, pt), pct1, m'').
 
 Inductive extcall_malloc_sem (l:Cabs.loc) (ge: Genv.t F V):
   list atom -> control_tag -> val_tag -> mem -> trace ->
@@ -518,8 +517,7 @@ Definition do_extcall_free (l:Cabs.loc) (pct: control_tag)  (fpt pt: val_tag) (p
     mvs <- loadbytes m' p sz;;
     '(pct2,lts') <- ClearT l pct1 (Z.to_nat sz);;
     m'' <- storebytes m' p mvs lts';;
-    '(pct3,vt) <- ExtRetT l "free" pct pct2 InitT;;
-    ret ((Vundef,InitT), pct3, m'').
+    ret ((Vundef,InitT), pct2, m'').
 
 Inductive extcall_free_sem (l:Cabs.loc) (ge: Genv.t F V):
   list atom -> control_tag -> val_tag -> mem -> trace ->

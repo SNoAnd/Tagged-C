@@ -205,12 +205,6 @@ Module PolProduct (P1:Policy) (P2: Policy) <: Policy.
                 (P2.ExtCallT l fn (snd pct) (snd fpt) (map snd args))
                 (fun pct1 pct2 => (pct1, pct2)).
 
-  Definition ExtRetT (l: loc) (fn: string) (pctclr pctcle: control_tag) (vt : val_tag) : 
-    PolicyResult (control_tag*val_tag) :=
-    double_bind (P1.ExtRetT l fn (fst pctclr) (fst pctcle) (fst vt))
-                (P2.ExtRetT l fn (snd pctclr) (snd pctcle) (snd vt))
-                (fun '(pct1,vt1) '(pct2,vt2) => ((pct1, pct2),(vt1,vt2))).
-  
   Definition FieldT (l: loc) (ce: composite_env) (pct: control_tag)
              (vt: val_tag) (ty : type) (id : ident) :
     PolicyResult val_tag :=

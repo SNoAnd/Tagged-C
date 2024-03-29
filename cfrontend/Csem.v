@@ -23,7 +23,6 @@ Require Import Smallstep.
 Require Import List. Import ListNotations.
 Require Import String.
 Require Import ExtLib.Structures.Monads. Import MonadNotation.
-Require Import NullPolicy.
 
 Inductive kind : Type := LV | RV.
 

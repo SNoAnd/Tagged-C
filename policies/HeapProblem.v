@@ -669,7 +669,6 @@ Module HeapProblem <: Policy.
   Definition ExprJoinT := Passthrough.ExprJoinT policy_state val_tag control_tag.
   Definition FieldT := Passthrough.FieldT policy_state val_tag control_tag. 
   Definition ExtCallT   := Passthrough.ExtCallT policy_state val_tag control_tag.
-  Definition ExtRetT    := Passthrough.ExtRetT policy_state val_tag control_tag.
 
   Definition PICastT := Passthrough.PICastT policy_state val_tag control_tag loc_tag.
   Definition IPCastT := Passthrough.IPCastT policy_state val_tag control_tag loc_tag.
