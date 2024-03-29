@@ -12,8 +12,6 @@ Require Import ExtLib.Structures.Monads.
 
 Require Import List. Import ListNotations. (* list notations is a module inside list *)
 
-Parameter extern_atom : positive -> string.
-
 Inductive FailureClass : Type :=
 | MisalignedStore (alignment ofs : Z)
 | MisalignedLoad (alignment ofs : Z)
@@ -287,7 +285,7 @@ Module Type Policy.
                                  vt|  |lts
                                    v  v
      pct -> +========+            +=====+          +======+    pct ----> +=======+
-     fpt -> |ExtCallT| -> pct' -> |FreeT| -> pct'' |ClearT| -> pct''' -> |ExtRetT| -> pct''''
+     fpt -> |ExtCallT| -> pct' -> |FreeT| -> pct'' |ClearT| -> pct''' -> |RetT   | -> pct''''
      pt  -> +========+ -> pt   -> +=====+          +======+     pt ----> +=======+ -> pt'
                                 vt1|  |lts'      vt2|  |lt
                                    v  v             v  v
