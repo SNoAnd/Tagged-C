@@ -87,7 +87,6 @@ the provenance of pointers that code can access. This model embraces that princi
     \end{tabular}
   \end{minipage}
 
-
   \caption{Definitions}
   \label{subfig:defs}
   \label{fig:memmod}
@@ -346,7 +345,7 @@ previously allocated.
   \textnormal{where } & \mathit{alloc\_locals} ~ M ~ C ~ \mathit{ls} = (M', e)
   \textnormal{ and } \mathit{stk\_alloc} ~ M' ~ C ~ sz = (i, M'') \\[0.75em]
   \end{split}\]
-      
+
   \judgmenttwo[FromCallstate]
               {\(f = (C,\mathit{locals},s)\)}
               {\(\mathit{alloc\_locals} ~ M ~ C ~ \mathit{locals} = (M',e)\)}
