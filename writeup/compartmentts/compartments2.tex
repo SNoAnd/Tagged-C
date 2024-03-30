@@ -136,69 +136,226 @@ of compartments that contain it but still display consistent internal behavior.
 
 \section{Abstract Sharing Semantics}
 
+In the example above, we discussed the security of a compartmentalized
+system in terms of which compartments have recieved pointers to which memory.
+We define a C semantics that builds this kind of reasoning into the memory model.
+The model aims to fulfill a few key criteria:
+
+\begin{itemize}
+\item Compartments are obviously and intuitively isolated from one another
+  by construction
+\item It is suitable for hardware enforcement without placing intensive constraints
+  on the target
+\item Inter-compartment interactions via shared memory are possible
+\item Compartments can only access shared memory if they have first obtained a
+  valid pointer to it, consistent with the C standard and ``capability reasoning''
+\end{itemize}
+
+We don't necessarily care that compartments' internal behavior
+conforms to the C standard. In fact our model explicitly gives compartments
+a concrete view of memory, giving definition to code that would be undefined behavior
+in the standard, such as described in Memarian et al. \cite{Memarian19:ExploringCSemantics}.
+
 \begin{figure}
-  \begin{subfigure}{0.5\textwidth}
+  \begin{minipage}[t]{0.5\textwidth}
+    \vspace{0em}
     \[\begin{split}
-    m \in & \mathit{mem}_{\mathit{flat}} \\
-    \mathit{read}_{\mathit{flat}} \in & \mathit{mem}_{\mathit{flat}} \rightarrow
-    \mathbb{Z} \rightharpoonup \mathit{val} \\
-    \mathit{write}_{\mathit{flat}} \in & \mathit{mem}_{\mathit{flat}} \rightarrow
-    \mathbb{Z} \rightarrow \mathit{val} \rightharpoonup \mathit{mem}_{\mathit{flat}} \\
-    \mathit{alloc}_{\mathit{flat}} \in & \mathit{oracle} \rightarrow
-    \mathit{mem}_{\mathit{flat}} \rightarrow \mathbb{Z} \rightharpoonup \\
-    & (\mathit{oracle} \times \mathbb{Z}
-    \times \mathit{mem}_{\mathit{flat}}) \\
-    \mathit{free}_{\mathit{flat}} \in & \mathit{oracle} \rightarrow \mathit{mem}_{\mathit{flat}} \rightarrow
-    \mathbb{Z} \rightharpoonup \\
-    & (\mathit{oracle} \times \mathit{mem}_{\mathit{flat}}) \\
+    m \in ~ & \mathit{mem} \\
+    \mathit{empty} \in ~ & \mathit{mem} \\
+    \mathit{read} \in ~ & \mathit{mem} \rightarrow \mathit{int} \rightharpoonup \mathit{val} \\
+    \mathit{write} \in ~ & \mathit{mem} \rightarrow \mathit{int} \rightarrow \mathit{val}
+    \rightharpoonup \mathit{mem} \\
+    M ::= ~ & \{
+      ms \in \mathcal{C} + \mathit{ident} \rightharpoonup \mathit{mem}; \\
+     & ~ stk \in list (\mathcal{C} + \mathit{ident} \times \mathit{int} \times \mathit{int}); \\
+     & ~ heap \in list (\mathcal{C} + \mathit{ident} \times \mathit{int} \times \mathit{int})
+    \} \\
+    \mathit{heap\_alloc} \in ~ & \mathcal{M} \rightarrow \mathcal{C} + \mathit{ident} \rightarrow
+    \mathit{int} \rightharpoonup (\mathit{int} \times \mathcal{M}) \\
+    \mathit{heap\_free} \in ~ & \mathcal{M} \rightarrow \mathcal{C} + \mathit{ident} \rightarrow
+    \mathit{int} \rightharpoonup \mathcal{M} \\
+    \mathit{stk\_alloc} \in ~ & \mathcal{M} \rightarrow \mathcal{C} + \mathit{ident} \rightarrow
+    \mathit{int} \rightharpoonup (\mathit{int} \times \mathcal{M}) \\
+    \mathit{stk\_free} \in ~ & \mathcal{M} \rightarrow \mathcal{C} + \mathit{ident} \rightharpoonup
+    \mathcal{M} \\
+    \mathit{perturb} \in ~ & \mathcal{M} \rightharpoonup \mathcal{M} \\
     \end{split}\]
+  \end{minipage}
+  \begin{minipage}[t]{0.49\textwidth}
+    \vspace{0em}
+    \(C \in \mathcal{C}~~~ id \in \mathit{ident}~~~ \)
+    \[\begin{aligned}
+    \mathcal{R} & ::= \mathbf{L}(C) \mid \mathbf{S}(id, \mathit{base}) &
+    \mathit{base} \in \mathit{int} \\
+    v \in \mathit{val} & ::= \ldots \mid \mathit{Vptr} ~ r ~ a &
+    r \in \mathcal{R}, a \in \mathit{int} \\
+    e & \in \mathit{ident} \rightharpoonup (\mathcal{R} \times \mathit{int}) \\
+    \end{aligned}\]
+    \begin{tabular}{l | l}
+      \multicolumn{2}{r}{\(\mathit{state} ::= C, M, e, \ldots \mid \mathtt{expr}\)} \\
+      \hspace{4em} & \(C, M, e, \ldots \mid \mathtt{stmt}\) \\
+      \hspace{4em} & \(\mathit{CALL}(f, M, \ldots)\)  \\
+      \hspace{4em} & \(\mathit{RET}(M, v, \ldots)\) \\
+      \multicolumn{2}{l}{} \\
+      \multicolumn{2}{l}{\hspace{1.5em}\((\longrightarrow) \in \mathit{state} \times \mathit{state}\)} \\
+    \end{tabular}
+  \end{minipage}
 
-    \caption{Flat Memory Operations}
-    \label{fig:flat}
-  \end{subfigure}
-  \begin{subfigure}{0.5\textwidth}
-    \[\begin{split}
-    b \in & \mathit{block} \\
-    m \in & \mathit{mem}_{bo} \\
-    \mathit{read}_{bo} \in & \mathit{mem}_{bo} \rightarrow \mathit{block} \rightarrow
-    \mathbb{Z} \rightharpoonup \mathit{val} \\
-    \mathit{write}_{bo} \in & \mathit{mem}_{bo} \rightarrow \mathit{block} \rightarrow
-    \mathbb{Z} \rightarrow \mathit{val} \rightharpoonup \mathit{mem}_{bo} \\
-    \mathit{alloc}_{bo} \in & \mathit{oracle} \rightarrow \mathit{mem}_{bo} \rightarrow
-    \mathbb{Z} \rightharpoonup \\
-    & (\mathit{oracle} \times \mathit{block} \times \mathit{mem}_{bo}) \\
-    \mathit{free}_{bo} \in & \mathit{mem}_{bo} \rightarrow \mathit{block} \rightarrow
-    \mathbb{Z} \rightharpoonup \\
-    & (\mathit{oracle} \times \mathit{mem}_{bo}) \\
-    \end{split}\]
-    
-    \caption{Block-Offset Memory Operations}
-    \label{fig:blockoff}
-  \end{subfigure}
-
-  \begin{subfigure}{1\textwidth}
-    \[\alpha \in \mathit{oracle}\]
-    \[M \in \mathcal{M} ::= (\mathit{oracle} \times (\mathit{comp} \rightarrow
-    \mathit{mem}_{\mathit{flat}}) \times \mathit{mem}_{bo})\]
-    
-    
-    \caption{Memory State}
-    \label{fig:integrated}
-  \end{subfigure}
-
-  \caption{Memory State}
+  \caption{Definitions}
   \label{fig:memmod}
 \end{figure}
 
-In the example above, we discussed the need to reason about the behavior of a compartmentalized
-system in terms of whether memory is being shared or is local to a compartment.
-We define a C semantics that builds this kind of reasoning into the memory model.
-As shown in Figure \ref{fig:memmod}, we separate the world
-into compartments, ranged over by \(A\), \(B\), \(C\), etc., each with its own flat memory.
-Additionally, there is a shared memory that follows the
-rules of a standard block-offset model. Any compartment may allocate objects in its own
-local memory with a call to {\tt malloc}, or in the shared memory with a call to a special
-{\tt malloc\_share}.
+Figure \ref{fig:memmod} defines the memory model that we use in our abstract machine.
+We separate the world into compartments, ranged over by \(C\), each with its own distinct
+concrete memory. A concrete memory \(m\) partially maps machine
+integer (\(\mathit{int}\)) addresses to values with a basic axiomatization given in
+Figure \ref{subfig:rwstep}. One memory of this kind is assigned to each compartment, and
+each shared object is allocated in its own separate concrete memory.
+
+\begin{figure}
+
+  \begin{minipage}[t]{0.3\textwidth}
+    \[\begin{aligned}
+    \mathbf{WR1} : \mathit{write} ~ m ~ a ~ v = m' \rightarrow & \\
+    \mathit{read} ~ m ~ a = v & \\[0.75em]
+    \mathbf{WR2} : \mathit{read} ~ m ~ a = v \rightarrow & \\
+    \mathit{write} ~ m ~ a' ~ v' = m' \rightarrow & \\
+    a \not = a' \rightarrow \mathit{read} ~ m' ~ a = v & \\[0.75em]
+    \end{aligned}\]
+  \end{minipage}
+  \begin{minipage}[t]{0.69\textwidth}
+    \judgmenttwo[ValOfL]
+                {\(M.ms ~ C = m\)}
+                {\(\mathit{read} ~ m ~ a = v\)}
+                {\(C,M,e \mid *(\mathit{Vptr} ~ \mathbf{L}(C) ~ a)
+                  \longrightarrow C,M,e \mid v\)}
+
+    \judgmenttwo[ValOfS]
+                {\(M.ms ~ id = m\)}
+                {\(\mathit{read} ~ m ~ a = v\)}
+                {\(C,M,e \mid *(\mathit{Vptr} ~ \mathbf{S}(id, \mathit{base}) ~ a)
+                  \longrightarrow C,M,e \mid v\)}
+
+    \judgmentthree[AssignL]
+                  {\(M.ms ~ C = m\)}
+                  {\(\mathit{write} ~ m ~ a ~ v = m'\)}
+                  {\(M' = M[ms ~ m \mapsto m']\)}
+                  {\(C,M,e \mid *(\mathit{Vptr} ~ \mathbf{L}(C) ~ a) := v
+                    \longrightarrow C,M',e \mid v\)}
+
+    \judgmentthree[AssignS]
+                  {\(M.ms ~ id = m\)}
+                  {\(\mathit{write} ~ m ~ a ~ v = m'\)}
+                  {\(M' = M[ms ~ id \mapsto m']\)}
+                  {\(C,M,e \mid *(\mathit{Vptr} ~ \mathbf{S}(id, \mathit{base}) ~ a) := v
+                    \longrightarrow C,M',e \mid v\)}
+  \end{minipage}
+
+  \caption{Reads and Writes}
+  \label{subfig:rwstep}
+\end{figure}
+
+
+Memories are kept totally separate, fulfilling our first requirement:
+compartments' local memories are definitely never accessible to other compartments.
+Shared memories are only accessible via valid pointers.
+
+Pointers into local and shared memories are distinguished from one another by construction.
+A pointer value consists of a pair: a region ranged over by \(r\) drawn from the set
+\(\mathcal{R}\) that determines which memory it accesses, and a machine integer address representing
+its concrete position. A region is either \(\mathbf{L}(C)\), for local pointers into
+the compartment \(C\), or \(\mathbf{S}(id,\mathit{base})\), where \(id\) is an
+abstract identifier and \(\mathit{base}\) is a machine integer. Regions are identified
+in general by their compartment identifiers or abstract identifiers, collectively
+the set \(\mathcal{C} + \mathit{ident}\). A ``super-memory'' \(M\)
+is a record containing a map from region identities to memories, \(ms\),
+and lists of allocated regions for both stack and heap, \(stk\) and \(heap\).
+
+\(M.heap\) and \(M.stk\) are lists of triples \((r, a_1, a_2)\) representing
+the allocated regions of the heap and stack, respectively.
+Once an object is allocated within a region, reads and writes are guaranteed to succeed
+within its bounds in that region's memory. Reads and writes to unallocated regions may
+failstop, but if they do not the behave consistently with the axioms in Figure \ref{subfig:rwstep}.
+The allocation and free operations for both stack and heap act on the super-memory
+as axiomatized in Figure \ref{subfig:alstep}.
+
+This axiomatization serves to abstract away concrete details about memory layout
+that may be specific to a given compiler-allocator-hardware combination. We can
+understand any particular instance of \(\mathcal{M}\) as an oracle that divines where
+the target system will place each allocation and, with knowledge of the full layout of
+memory, determines what happens in the event of an out-of-bounds read or write.
+
+\begin{figure}
+  \begin{minipage}[t]{0.4\textwidth}
+    \[\begin{aligned}
+    \mathbf{HA} :
+    \mathit{heap\_alloc} ~ M ~ r ~ sz = (a, M') \rightarrow & \\
+    M'.heap = (r,a,a+sz)::M.heap & \\
+    \land M'.stk = M.stk & \\[0.75em]
+    \mathbf{HF} : (r,a_1,a_2) \in M.heap \rightarrow & \\
+    \exists M' . \mathit{heap\_free} ~ M ~ B ~ a_1 = M' \land & \\
+    M'.heap = M.heap-(r,a_1,a_2) \land & \\
+    M'.stk = M.stk & \\[0.75em]
+    \mathbf{AM} : (r,a_1,a_2) \in M.heap \cup M.stk \rightarrow & \\
+    \exists ! m . M.ms ~ r = m & \\[0.75em]
+    \mathbf{AR} : (r,a_1,a_2) \in M.heap \cup M.stk \rightarrow & \\
+    m = M.ms ~ r \rightarrow a_1 \leq a < a_2 \rightarrow & \\
+    \exists v . \mathit{read} ~ m ~ a = v & \\[0.75em]
+    \mathbf{AW} : (r,a_1,a_2) \in M.heap \cup M.stk \rightarrow & \\
+    m = M.ms ~ r \rightarrow a_1 \leq a < a_2 \rightarrow & \\
+    \exists m' . \mathit{write} ~ m ~ a ~ v = m' & \\[0.75em]
+     \mathbf{DISJ} : (r,a_1,a_2) \in M.heap \cup M.stk \rightarrow & \\
+    (r,a_1',a_2') \in M.heap \cup M.stk \rightarrow & \\
+    a'+sz < a_1 \lor a_2 \leq a' & \\[0.75em]
+    \mathbf{PERT1} : \mathit{perturb} ~ M = M' \rightarrow & \\
+    M'.heap = M.heap \land M'.stk = H.stk \\[0.75em]
+ \end{aligned}\]
+  \end{minipage}
+  \begin{minipage}[t]{0.65\textwidth}
+  \judgmentbr[MallocL]
+             {\(\mathit{expr} = \mathtt{malloc}(\mathit{Vint} ~ sz)\)}
+             {\(\mathit{heap\_alloc} ~ M ~ C ~ sz = (a, M')\)}
+             {\(C,M,e\mid \mathit{expr} \longrightarrow
+               C,M',e \mid \mathit{Vptr} ~ \mathbf{L}(C) ~ a\)}
+
+  \judgmenttwobrlong[MallocS]
+                    {\(fresh ~ id\)}
+                    {\(\mathit{heap\_alloc} ~ M ~ id ~ sz = (a, M')\)}
+                    {\(\mathit{expr} = \mathtt{malloc\_share}(\mathit{Vint} ~ sz)\)}
+                    {\(C,M,e \mid \mathit{expr} \longrightarrow
+                      C,M',e \mid \mathit{Vptr} ~ \mathbf{S}(id,a) ~ a\)}
+
+  \judgmenttwo[FreeL]
+              {\(v = \mathit{Vptr} ~ \mathbf{L}(C) ~ a\)}
+              {\(\mathit{heap\_free} ~ M ~ C ~ a = M'\)}
+              {\(C,M,e \mid \mathtt{free}(v) \longrightarrow
+                C,M',e \mid \mathit{Vundef}\)}
+
+  \judgmentbr[FreeS]
+             {\(v = \mathit{Vptr} ~ (\mathbf{S}(id, \mathit{base})) ~ \mathit{base}\)}
+             {\(\mathit{heap\_free} ~ M ~ id ~ a = M'\)}
+             {\(C,M,e \mid \mathtt{free}(v)  \longrightarrow
+               C,M',e \mid \mathit{Vundef}\)}
+
+  \[\begin{split}
+    \mathbf{SA} : \mathit{stk\_alloc} ~ M ~ r ~ sz = (a, M') \rightarrow & \\
+    M'.stk = (r,a,a+sz)::M.stk & \\
+    \land M'.heap = M.heap & \\[0.75em]
+    \mathbf{SF} : M.stk = (r,a_1,a_2)::S' \rightarrow & \\
+    \exists M' . \mathit{stk\_free} ~ M ~ r ~ a_1 = M' \land & \\
+    M'.stk = S' \land M'.heap = M.heap & \\[0.75em]
+    \mathbf{PERT2} : (r,a_1,a_2) \in M.heap \cup M.stk \rightarrow & \\
+    \mathit{perturb} ~ M = M' \rightarrow
+    a_1 \leq a < a_2 \rightarrow & \\
+    \mathit{read} ~ (M.ms ~ r) ~ a = v \rightarrow 
+    \mathit{read} ~ (M'.ms ~ r) ~ a = v & \\[0.75em]
+  \end{split}\]
+  \end{minipage}
+
+  \caption{Allocation Steps and Axioms}
+  \label{subfig:alstep}
+\end{figure}
+
 
 Using a flat memory model inside of compartments gives two benefits. First, it is generally
 less expensive to enforce, and therefore can be implemented on tagged hardware that is more
@@ -222,274 +379,271 @@ passed or returned across a compartment boundary, nor written to shared memory. 
 is undefined behavior. This means that they will only ever be accessible to the compartment
 that owns them. \sna{Note: they could alternatively be forbidden from being recieved/read.}
 
-Load and store semantics differ based on which kind of pointer is being accessed.
-Shared pointers access their usual memory at the block and offset that they carry,
-while local pointers access the memory of the compartment they carry (which will also
-always be the active compartment, because they can't escape.)
+\paragraph{Allocation}
 
-[TODO: sample rules]
+The abstract operations \(\mathit{heap\_alloc}\) and \(\mathit{stk\_alloc}\)
+yield addresses at which they locate a newly allocated object, either within a
+compartment's local region or in its own isolated region. In the latter case,
+the address provided becomes the base tracked by that region's pointers.
+Since the \(\mathit{*\_alloc}\) operations are parameterized by the identity of
+the region they are allocating within, they are allowed to make decisions based on that
+information, such as clumping compartment-local allocations together to 
+protect them using a page-table-based enforcement mechanism.
+This is a nondeterministic semantics, but given any particular instantiation of
+the oracle, the semantics becomes deterministic.
 
-\paragraph{Allocation Axioms}
+Allocations are guaranteed to be disjoint from any prior allocations in the
+same region. (In fact, when targeting a system with a single address space, we further restrict
+them to be disjoint across all bases.) Addresses in allocated regions are guaranteed
+successful loads and stores, and once an unallocated address has been successfully accessed
+it will behave consistently until new memory is allocated anywhere in the system,
+at which point all unallocated memory again becomes unpredictable.
 
-[TODO: list out the normal Concrete C axioms here]
+The \(\mathit{perturb}\) operation similarly represents the possibility of compiler-generated
+code using unallocated memory and therefore changing its value or rendering it inaccessible.
+The only facts that are maintained over a call to perturb are those involving addresses in
+allocated regions. Perturb happens during every function call and return, because the compiler
+needs to be free to reallocate memory during those operations, but it may happen at other
+points in the semantics as well.
 
-\paragraph{Allocator Oracles and Realizability}
+\paragraph{Arithmetic and Integer-Pointer Casts}
 
-\sna{Trying something a little different: we define the flat memories as separate, but then
-  specify that we're going to restrict ourselves to allocators that we can realize
-  in a single memory. Then we use those allocators to index the relation between high and low
-  states.}
-
-In these abstract semantics, we quantify over all allocators that satisfy the above axioms.
-Many such allocators are not actually realizeable in a given concrete system: most obviously,
-because they allow more memory to be allocated than the system has. A related obstacle is that
-we cannot realize in a single address space an allocator that would assign the same internal
-address. To simplify our model, we will restrict all of our proofs to deal with a specific subset of
-allocators that correspond to realistic allocation systems and therefore are guaranteed to be
-realizable.
-
-Formally, we assume that such an allocator instantiates a ``live list'' that associates
-every allocation---local allocations in every compartment and shared allocations alike---to
-a range of addresses that are guaranteed not to overlap.
-
-\paragraph{Abstract Events and Traces}
-
-One advantage of defining a property in terms of this abstract machine is that we have a clear
-distinction between loads and stores that represent compartment interactions (and should appear
-in a trace) and those that are internal to a compartment and don't matter.
-
-We define the set of trace events as calls, returns, and cross-compartment loads and stores,
-as well as the terminal \(\mathit{stuck}\) event representing undefined behavior.
-\[\begin{split}
-e \in EvA ::= & \mathit{call} ~ f ~ \overline{v} \\
-& \mathit{return} ~ v \\
-& \mathit{store} ~ b ~ \mathit{off} ~ v \\
-& \mathit{load} ~ b ~ \mathit{off} ~ v \\
-& \mathit{stuck} \\
-\end{split}\]
-
-A trace is a (possibly infinite) sequence of events.
-We write that a particular combination of program \(A[B]\) and oracle \(\alpha\),
-produces a trace \(t\) as \(\alpha \vdash A[B] \rightsquigarrow t\).
-
-We describe the behavior of a given program via its trace set \(\llbracket A[B] \rrbracket\): 
-\[\llbracket A[B] \rrbracket \triangleq \bigcup_{\alpha}
-\{ t \mid \alpha \vdash A[B] \rightsquigarrow t \}\]
-
-\begin{comment}
-\paragraph{Properties In Safe Semantics}
-
-Now that we have a system of traces, we can attempt to define our trace property.
-Formally, a property \(\pi\) is a set of traces. A program is said to {\em satisfy}
-a property if all traces in its trace set are also in that property.
-
-For simplicity, in our example, we selected a pretty simple (hashed) password, just
-the repetition of {\tt 0x42} for some number of words; in this discussion let {\tt len = 1}.
-We can define the property \(\pi_{\mathit{launch\_safe}}\) as the set of all traces
-that do not contain \(\mathit{call} ~ \mathtt{\_\_sys\_fire\_missiles}\) and those in which
-that event is preceded by \(\mathit{store} ~ b ~ \mathit{ofs} ~ \mathtt{0x42}\)
-and \(\mathit{call} ~ \mathtt{check\_pwd} ~ [\mathit{sptr} ~ b ~ \mathit{ofs}]\).
-See Figure \ref{fig:ex_traces} for an example of code that might be in \(B\), and the
-resulting trace.
+Most arithmetic operations are typical of C. The interesting operations are those
+involving integers that have been cast from pointers. We give concrete definitions
+to all such operations based on their address. As shown in Figure \ref{fig:arith}, if they
+involve only a single former pointer, the result will also be a pointer into the
+same memory; otherwise the result is a plain integer. If the former pointer is cast
+back to a pointer type, it retains its value and is once again a valid pointer.
+Otherwise, if an integer value is cast to a pointer, the result is always a local
+pointer to the active compartment.
 
 \begin{figure}
-  \begin{subfigure}{0.5\textwidth}
-\begin{verbatim}
-\end{verbatim}
-    \caption{Log Code}
-  \end{subfigure}
-  \begin{subfigure}{0.5\textwidth}
-    \[\begin{split}
-    A[B] \rightsquigarrow & \ldots  \cdot \\
-    &  \cdot \\
-    &  \cdot \\
-    &  \cdot \\
-    &  \cdot \ldots \\
-    \end{split}\]
-    \caption{Partial Trace}
-  \end{subfigure}
+  \judgment[Unop]
+           {}
+           {\(C,M,e \mid \odot (\mathit{Vptr} ~ I ~ a) \longrightarrow
+             C,M,e \mid \mathit{Vptr} ~ I ~ (\langle \odot \rangle a)\)}
+           
+  \judgment[BinopPointerInteger]
+           {}
+           {\(C,M,e \mid (\mathit{Vptr} ~ I ~ a) \oplus
+             (\mathit{Vint} ~ i) \longrightarrow
+             C,M,e \mid \mathit{Vptr} ~ I ~ (a \langle \oplus \rangle i)\)}
 
-\caption{Compartment \(B\)}
-\label{fig:ex_traces}
+  \judgment[BinopIntegerPointer]
+           {}
+           {\(C,M,e \mid (\mathit{Vint} ~ i) \oplus
+             (\mathit{Vptr} ~ I ~ a) \longrightarrow
+             C,M,e \mid \mathit{Vptr} ~ I ~ (i \langle \oplus \rangle a)\)}
+
+  \judgment[BinopPointers]
+           {}
+           {\(C,M,e \mid (\mathit{Vptr} ~ I ~ a_1) \oplus
+             (\mathit{Vptr} ~ I ~ a_2) \longrightarrow
+             C,M,e \mid \mathit{Vint} ~ (a_1 \langle \oplus \rangle a_2)\)}
+
+  \caption{Arithmetic Operations Involving Pointers}
+  \label{fig:arith}
 \end{figure}
 
-The example \(B\) compartment in Figure \ref{fig:ex_traces} satisfies the property when linked with
-\(A\). But if we don't know much about the code that we link against, we want to know that {\em any}
-compartment \(B\) will satisfy the property. This is called {\em robust satisfaction}.
-A policy \(\pi\) is {\em robustly satisfied} by a compartment \(A\) if, for all \(B\),
-\(\llbracket A[B] \rrbracket \subseteq \pi\). Ideally, we would want to know that \(A\)
-robustly satisfies the property.
+\paragraph{Calls and Returns}
 
-Writing properties out in the ad-hoc format above is challenging. More user-friendly approaches include
-domain-specific languages like linear temporal logic. It's also easy to get them wrong!
-Proving or otherwise enforcing a weak property will be little comfort on seeing the missiles fly.
-But even without proving or even rigorously defining a specific property of interest,
-the abstract semantics matches the intuitive behavior of programs, so as long as the abstract
-semantics are reproduced in our concrete implementation, observers examining this
-code can reason about its behavior in different scenarios and convince themselves that it is secure.
-\end{comment}
+There are two interesting details of the call and return semantics:
+they allocate and deallocate memory, and they can cross compartment boundaries.
+In the first case, we need to pay attention to which stack-allocated
+objects are to be shared. This can again be done using escape analysis:
+objects whose references never escape, can be allocated locally. Objects whose
+references escape to another compartment must be allocated as shared.
+Those that escape to another function in the same compartment can be treated
+in either way; if they are allocated locally but are later passed outside the
+compartment, the system will failstop at that later point
+(see Section \ref{sec:interfaces}).
+
+We assume that each local variable comes pre-annotated with how it should
+be allocated, with a simple flag \(\mathbf{L}\) or \(\mathbf{S}\), so that
+a function signature is a list of tuples \((id,\mathbf{L} \mid \mathbf{S},sz)\).
+(Aside: there is a case to be made we should just allocate all stack objects locally
+barring some critical use case for share them. Doing so would simplify the model here.)
+
+The allocation and deallocation of stack memory is shown in the step rules in
+Section \ref{fig:callret}. In the full semantics, calls and returns step through
+intermediate states, written \(\mathit{CALL}\) and \(\mathit{RET}\). During the
+step from the intermediate callstate into the function code proper, the semantics
+looks up the function being called and allocates its local variables before beginning
+to execute its statement. And during the step from the {\tt return} statement into
+the intermediate returnstate, the semantics likewise deallocates every variable it had
+previously allocated.
+
+\begin{figure}
+
+  \[\begin{split}
+  \mathit{alloc\_locals} ~ & M ~ C ~ [~] = (M, \lambda \mathit{id} . \bot) \\[0.75em]
+  \mathit{alloc\_locals} ~ & M ~ C ~ (id,\mathbf{L},sz)::\mathit{ls} =
+  (M'', e[\mathit{id} \mapsto (\mathbf{L}(C),i)]) \\
+  \textnormal{where } & \mathit{stk\_alloc} ~ M ~ C ~ sz = (i, M')
+  \textnormal{ and } \mathit{alloc\_locals} ~ M' ~ C ~ \mathit{ls} = (M'', e) \\[0.75em]
+  \mathit{alloc\_locals} & ~ M ~ C ~ (id,\mathbf{S},sz)::\mathit{ls} =
+  (M'', e[\mathit{id} \mapsto (\mathbf{S}(id,i),i)]) \\
+  \textnormal{where } & \mathit{alloc\_locals} ~ M ~ C ~ \mathit{ls} = (M', e)
+  \textnormal{ and } \mathit{stk\_alloc} ~ M' ~ C ~ sz = (i, M'') \\[0.75em]
+  \end{split}\]
+      
+  \judgmenttwo[FromCallstate]
+              {\(f = (C,\mathit{locals},s)\)}
+              {\(\mathit{alloc\_locals} ~ M ~ C ~ \mathit{locals} = (M',e)\)}
+              {\(\mathit{CALL}(f,M) \longrightarrow
+                C,\mathit{perturb} ~ M',e \mid s\)}
+  \caption{Call Semantics and Local Variables}
+  \label{fig:callret}
+
+\end{figure}
+
+\section{Cross-compartment interfaces}
+\label{sec:interfaces}
+
+In this system, each function is assigned to a compartment. A compartment interface
+is a subset of the functions in the compartment that are publicly accessible.
+At any given time, the compartment that contains the currently active function is
+considered the active compartment. It is illegal to call a private function in an
+inactive compartment.
+
+Public functions may not receive \(L(\dots)\)-region pointer arguments.
+Private functions may take either kind of pointer as argument. \(L(\dots)\) pointers
+may also not be stored to shared memory regions. This guarantees that there can be no
+confusion between shared pointers and a compartment's own local pointer that
+escaped its control. Violations of a compartment interface exhibit failstop behavior.
+
+As a consequence of these rules, a compartment that recieves a pointer as an argument
+or loads it from shared memory may rely on it not aliasing with any local pointer.
+It could recieve such a pointer that has been cast to an integer type, but this is
+not a problem: if it casts it back to a pointer, the risks are the same as if it
+cast any other integer to a pointer.
 
 \section{Implementing Compartmentalization in Tagged C}
 
-[This is where I would put the description of the policy, but right now I'm not focused on that.]
+A Tagged C policy defines three distinct types of tags: value tags 
+drawn from set \(\tau_V\), control tags drawn from \(\tau_C\), and location tags
+from \(\tau_L\). It also requires a {\it policy state} type \(\sigma\).
+It instantiates a set of {\it tag rules}, each of which parameterizes the behavior
+of key {\it control points} in the semantics. Tag rules are written in a procedural style,
+assigning tags to their outputs by name. The state \(s : \sigma\) can always be accessed
+and assigned to.
+
+In this policy, control tags represent compartments, with the special {\it PC tag}
+tracking the active compartment. Value tags distinguish between pointers that are local
+to each compartment, pointers to each shared object, and all other values. Location
+tags mark addresses as being allocated to a particular compartment or shared object, or
+else unallocated. The policy state is a counter that tracks the next allocation color.
+
+\begin{figure}
+\[\begin{aligned}
+  & \tau_V ::= \mathtt{L}(C) | \mathtt{S}(a) | \emptyset &  \in \mathit{nat} \\
+  & \tau_C ::= C & C \in \mathcal{C} \\
+  & \tau_L ::= \mathtt{L}(C) | \mathtt{S}(a) | \emptyset \\
+  & \sigma := n & n \in \mathit{nat} \\
+  \end{aligned}\]
+\end{figure}
+
+\begin{minipage}{0.49\textwidth}
+  \calltruleblock{\(\PCT['] := pt\)}
+\end{minipage}
+\begin{minipage}{0.49\textwidth}
+  \rettruleblock{\(\PCT['] := \PCT[_{CLR}]\)}
+\end{minipage}
+
+For simplicity, global variables are always local to a compartment. (Modifying the policy
+to allow multiple compartments to share global variables would be straightforward.) Dynamic
+memory 
+
+
+If it is lax, the allocated memory is tagged with the compartment identity only. But if it is
+strict, both the pointer and the memory location are tagged with the owning compartment and
+a fresh allocation color. Once we have a color attached to a pointer, it is propagated along
+with the pointer, including through any arithmetic operations provided that the other operand
+is not tagged as a pointer.
+
+\hspace{-5em}
+\begin{minipage}{0.35\textwidth}
+  \localtruleblock{
+    let \(\mathbf{comp}(C)\) := \(\PCT\) in \\
+    \(\vt['] := \emptyset;\) \\
+    if \(\mathit{safe} ~ C\) \\
+    then \begin{tabular}[t]{l}
+      \(\pt['] := \mathbf{clr}(C,s);\) \\
+      \(\lt['] := \mathbf{clr}(C,s);\) \\
+      \(s := s+1\)
+    \end{tabular} \\
+    else \begin{tabular}[t]{l}
+      \(\pt['] := \mathbf{comp}(C);\) \\
+      \(\lt['] := \mathbf{comp}(C);\) \\
+    \end{tabular} \\
+  }
+\end{minipage}
+\begin{minipage}{0.35\textwidth}
+  \malloctruleblock{
+    let \(\mathbf{comp}(C)\) := \(\PCT\) in \\
+    \(\vt['] := \emptyset;\) \\
+    if \(\mathit{safe} ~ C\) \\
+    then \begin{tabular}[t]{l}
+      \(\pt['] := \mathbf{clr}(C,s);\) \\
+      \(\lt['] := \mathbf{clr}(C,s);\) \\
+      \(s := s+1\)
+    \end{tabular} \\
+    else \begin{tabular}[t]{l}
+      \(\pt['] := \mathbf{comp}(C);\) \\
+      \(\lt['] := \mathbf{comp}(C);\) \\
+    \end{tabular} \\
+  }
+\end{minipage}
+\begin{minipage}{0.29\textwidth}
+  \globaltruleblock{\(\vt['] := \emptyset;\) \\ \(\lt['] := owner(\mathtt{x})\)}
+
+  \binoptruleblock{
+    \caseofthree{\(\vt[_1], \vt[_2]\)}
+                {\(\mathbf{clr}(C,a),\emptyset\) \\ \(\emptyset, \mathbf{clr}(C,a)\)}{\(\mathbf{clr}(C,a)\)}
+                {\(\emptyset,\emptyset\)}{\(\emptyset\)}
+                {\(\underline{~~}, \underline{~~}\)}{\(\fail\)}
+  }
+\end{minipage}
+
+Like allocations, loads and stores have different behavior depending on whether or not the active
+compartment is strict or lax. In a lax compartment, it merely compares the PC tag to the location
+tag of the target address. In a strict compartment, it also checks that the pointer color matches
+that of the target address.
+
+\hspace{-5em}
+\begin{minipage}{0.55\textwidth}
+  \loadtruleblock{
+    let \(\mathbf{comp}(C)\) := \(\PCT\) in \\
+    if \(\mathit{strict} ~ C\) \\
+    then \(\mathbf{assert} ~ \lt = \mathbf{comp}(C)\) \\
+    \(\vt['] := \vt\) \\
+    else \(\mathbf{assert} ~ \exists a . \pt = \mathbf{clr}(C,a) \land \lt = \mathbf{clr}(C,a)\) \\
+    \(\vt['] := \vt\) \\
+  }
+\end{minipage}
+\begin{minipage}{0.44\textwidth}
+  \storetruleblock{
+    let \(\mathbf{comp}(C)\) := \(\PCT\) in \\
+    if \(\mathit{strict} ~ C\) \\
+    then \(\mathbf{assert} ~ \lt = \mathbf{comp}(C)\) \\
+    \(\PCT['] := \PCT; \vt['] := \vt; \lt['] := \lt\) \\
+    else \(\mathbf{assert} ~ \exists a . \pt = \mathbf{clr}(C,a) \land \lt = \mathbf{clr}(C,a)\) \\
+    \(\PCT['] := \PCT; \vt['] := \vt; \lt['] := \lt\) \\
+  }
+\end{minipage}
+
+
+
 
 \section{Proving Correctness}
 
 Our correctness proofs relate the abstract machine defined above to the Tagged C semantics,
-instantiated with the policy above. We give Tagged C a trace semantics
-as well, with a separate type of traces reflecting the more concrete setting. We will need to
-show that we can reproduce any property from the abstract traces semantics in the concrete one;
-the remainder of this writeup is dedicated to defining what it means to reproduce a property
-in this compartmentalized setting, and describing how we prove it.
+instantiated with the policy above.
 
-\paragraph{Tagged C Events and Traces}
-
-Tagged C does not distinguish between cross-compartment loads and stores and local ones.
-So, its trace model must be somewhat different. Specifically, loads and stores now access
-concrete addresses, and load and store events are generated on every load and store, not just the
-cross-compartment ones.
-
-We define the set of trace events as calls, returns, loads, stores, stuckness/UB, and now an
-explicit {\em fail} event representing failstop behavior.
-\[\begin{split}
-\hat{e} \in EvC ::= & \mathit{call} ~ f ~ \overline{v} \\
-& \mathit{return} ~ v \\
-& \mathit{store} ~ \mathit{addr} ~ v \\
-& \mathit{load} ~ \mathit{addr} ~ v \\
-& \mathit{stuck} \\
-& \mathit{fail} \\
-\end{split}\]
-
-When a Tagged C program under policy \(\rho\) produces a trace \(\hat{t}\), we write it
-\(\alpha \vdash A[B] \rightsquigarrow \hat{t}\), and we define \(\llbracket A[B] \rrbracket_\rho\)
-similarly to above.
-
-The intuition behind our notion of safe compartmentalization is that for any compartment
-\(A\) and any property that it robustly satisfies in the abstract machine, it should also
-robustly satisfy that property in Tagged C with our policy. Additionally, we should sanity-check
-our semantics by proving forward simulation. In fact, we will prove a bisimulation, from which
-both forward simulation and robust property preservation follow naturally. However, the differences
-in the events that comprise traces mean that they can't actually be the same traces; we instead
-need to describe the relationship between them that we consider to capture an important notion
-of sameness.
-
-\paragraph{Relating traces}
-
-The notion of sameness that we choose is: all loads and stores to shared blocks in the abstract
-trace have counterparts in the concrete trace, and none of them overlap with any additional
-loads or stores that appear in the concrete trace.
-
-We define a relation \(\sim\) indexed by an assignment of blocks to their base addresses and bounds
-(the address immediately following their last byte),
-\(\Gamma \in \mathit{block} \rightharpoonup (\mathit{int} \times \mathit{int})\), which we write
-\(\Gamma \vdash e \sim \hat{e}\). Defined inductively on values:
-
-\begin{minipage}{0.38\textwidth}
-  \judgment{\(\Gamma ~ b = (\mathit{base},\mathit{bound})\)}
-           {\(\Gamma \vdash \mathit{sptr} ~ b ~ \mathit{off} \sim
-             \mathit{long} ~ (\mathit{base}+\mathit{off})\)}
-\end{minipage}
-\begin{minipage}{0.38\textwidth}
-  \judgment{}{\(\Gamma \vdash \mathit{lptr} ~ C ~ \mathit{addr} \sim
-    \mathit{long} ~ \mathit{addr}\)}
-\end{minipage}
-\begin{minipage}{0.23\textwidth}
-  \judgment{}{\(\Gamma \vdash v \sim v\)}
-\end{minipage}
-
-Which extends naturally to events:
-
-\begin{minipage}{0.45\textwidth}
-  \judgmenttwo{\(\Gamma \vdash v_1 \sim \hat{v}_1\)}
-              {\(\Gamma \vdash v_2 \sim \hat{v}_2\)}
-              {\(\Gamma \vdash \mathit{load} ~ b ~ \mathit{off} ~ v_2 \sim
-                \mathit{load} ~ \mathit{addr} ~ \hat{v}_2\)}
-\end{minipage}
-\begin{minipage}{0.45\textwidth}
-  \judgmenttwo{\(\Gamma \vdash (\mathit{sptr} ~ b ~ \mathit{off}) \sim \hat{v}_1\)}
-              {\(\Gamma \vdash v_2 \sim \hat{v}_2\)}
-              {\(\Gamma \vdash \mathit{store} ~ b ~ \mathit{off} ~ v_2 \sim
-                \mathit{store} ~ \mathit{addr} ~ \hat{v}_2\)}
-\end{minipage}
-
-\begin{minipage}{0.45\textwidth}
-  \judgment{\(\Gamma \vdash \overline{v} \sim \hat{\overline{v}}\)}
-           {\(\Gamma \vdash \mathit{call} ~ f ~ \overline{v} \sim \mathit{call} ~ f ~ \hat{\overline{v}}\)}
-\end{minipage}
-\begin{minipage}{0.45\textwidth}
-  \judgment{\(\Gamma \vdash v \sim \hat{v}\)}
-           {\(\Gamma \vdash \mathit{return} ~ v \sim \mathit{return} ~ \hat{v}\)}
-\end{minipage}
-
-And finally, to traces, via the possible addition of (non-shared) loads and stores. These must
-not overlap with any blocks that are mapped in \(\Gamma\). Note that these are coinductive
-definitions. Also, the \(\mathit{fail}\) event in Tagged C relates to any abstract trace.
-
-\judgmenttwo{\(\forall ~ b . \Gamma ~ b = (base,bound) \rightarrow \neg (base \leq addr < bound)\)}
-            {\(\Gamma \vdash t \sim \hat{t}\)}
-            {\(\Gamma \vdash t \sim \mathit{load} ~ \mathit{addr} ~ \hat{v} \cdot \hat{t}\)}
-
-\judgmenttwo{\(\forall ~ b . \Gamma ~ b = (base,bound) \rightarrow \neg (base \leq addr < bound)\)}
-            {\(\Gamma \vdash t \sim \hat{t}\)}
-            {\(\Gamma \vdash t \sim \mathit{store} ~ \mathit{addr} ~ \hat{v} \cdot \hat{t}\)}
-
-\judgmenttwo{\(\Gamma \vdash v \sim \hat{v}\)}
-            {\(\Gamma \vdash t \sim \hat{t}\)}
-            {\(\Gamma \vdash v \cdot t \sim \hat{v} \cdot \hat{t}\)}
-
-\judgment{}
-         {\(\Gamma \vdash t \sim \mathit{fail}\)}
-            
-Which finally brings us to defining the overall trace relation \(\approx\)
-by quantifying over \(\Gamma\).
-
-\[t \approx \hat{t} \triangleq \exists \Gamma . \Gamma \vdash t \sim \hat{t}\]
-
-In short, \(\hat{t}\) is a plausible result of starting with \(t\), assigning concrete
-addresses to blocks, and recording additional internal memory accesses, possibly failing prematurely.
-Conversely, \(t\) is the result of stripping internal loads and stores out of \(\hat{t}\) and
-mapping shared ones to their block-offset addresses.
-
-\paragraph{Trace-relating Correctness}
-
-In order for the abstract machine to be at all useful in reasoning about the behavior of Tagged
-C, we need to show that Tagged C (with a compartmentalization policy) actually implements it!
-This is akin to {\em forward correctness}, albeit with an identity compiler and a target machine
-that might failstop. 
-Formally, Tagged C with policy \(\rho\) enjoys forward correctness if,
-for all programs \(P\) and realizable allocator \(\alpha\), if \(\alpha \vdash P \rightsquigarrow t\),
-then there exists some \(\hat{t}\) such that \(t \approx \hat{t}\) and
-\(\alpha \vdash P \rightsquigarrow_\rho \hat{t}\).
-
-The possibility of failstop makes this form of correctness quite weak. It might be desirable to
-prove that it only failstops under certain conditions, particularly that a fully memory-safe
-program never failstops. \sna{I'm considering whether I can just match stuck events in the
-  source with failstops in the target, so we only failstop on abstract UB.}
-
-\paragraph{Trace-relating Property Preservation}
-
-Abstract and concrete properties are related if, for every trace in one, the other produces a
-related trace.
-\[\begin{split}
-\pi \approx \hat{\pi} \triangleq
-& (\forall t . ~ t \in \pi \Rightarrow \exists \hat{t} . ~ \hat{t} \in \hat{\pi} \land t \approx \hat{t}) \land \\
-& (\forall \hat{t} . ~ \hat{t} \in \hat{\pi} \Rightarrow \exists t . ~ t \in \pi \land t \approx \hat{t)} \\
-\end{split}\]
-
-A policy \(\rho\) enjoys {\em trace-relating robust property preservation} with respect to the
-abstract machine if, for all \(A\) and all \(\pi\) robustly satisfied by \(A\), the concrete
-machine with policy \(\rho\) robustly satisfies any \(\hat{\pi}\) when \(\pi \approx \hat{\pi}\).
-
-\[\begin{split}
-\mathit{RPP} \triangleq & \forall A ~ \pi ~ \hat{\pi} . ~ \pi \approx \hat{\pi} \Rightarrow \\
-& (\forall ~ B . ~ \llbracket A[B] \rrbracket \subseteq \pi) \Rightarrow \\
-& (\forall ~ B . ~ \llbracket A[B] \rrbracket_\rho \subseteq \hat{\pi}) \\
-\end{split}\]
-
-\paragraph{Proving both Correctness and Property-Preservation Using Bisimulation}
+\paragraph{Bisimulation Proof}
 
 We define the bisimulation relation \(\mathfrak{R}\) between states of the abstract machine and
-states of Tagged C, indexed by an allocator \(\alpha\). We'll define the specific relation
+states of Tagged C. We'll define the specific relation
 below. We first prove that, for any machine states \(S\) and
 \(\hat{S}\), if \(S \mathfrak{R}_\alpha \hat{S}\), then one of three cases holds:
 \begin{itemize}
@@ -504,5 +658,83 @@ Then, by proving that for any program, its initial states in both machines are r
 by \(\mathfrak{R}\), we can show by coinduction that every trace produced by one machine
 has a related trace produced by the other.
 
+\paragraph{Consquences of Bisimulation}
+
+
+
+\section{Machine Constraints}
+
+Now we consider the constraints that this system places on potential implementations.
+In particular, in a tag-based enforcemen mechanism with a limited quantity of tags,
+is this system realistic? In general it requires a unique tag per compartment,
+as well as one for each shared allocation. In the extreme, consider a system along
+the lines of ARM's MTE, which has four-bit tags. That could only enforce this
+semantics for a very small program, or one with very little shared memory
+(fewer than sixteen tags, so perhaps two-four compartments and around a dozen shared objects.)
+
+On the other hand, this semantics is a reasonable goal under an enforcement mechanism
+with even eight-bit tags (512 compartments and shared objects.) If we go up to sixteen
+bits, we can support programs with thousands of shared objects.
+
+That said, it only takes a minor adjustment for this model to be enforceable in even
+the smallest of tag-spaces. Instead of separate dynamic blocks for each shared
+object, we let the set of memory regions consist of the powerset of compartments,
+each region corresponding to the set of compartments that have permission to access it.
+We parameterize each instance of {\tt malloc}
+with such a set, which will be the base of each pointer that it allocates. We write
+the identifiers for these {\tt malloc} invocations \(\mathtt{malloc}_r\).
+Then we replace the relevant definitions and step rules with those in
+Figure \ref{fig:powerset}, with call and return steps changed similarly.
+
+This version can be enforced with a number of tags equal to the number of different
+sharing combinations present in the system---in the worst case this would be
+exponential in the number of compartments, but in practice it can be tuned to be
+arbitrarily small. (In extremis, all shared objects can be grouped together to run
+on a machine with only two tags.) Sadly it strays from the C standard in its
+temporal memory safety: under some circumstances a shared object can be accessed
+by a compartment that it has not (yet) been shared with.
+
+\begin{figure}
+
+  \begin{minipage}{0.45\textwidth}
+    \[\begin{aligned}
+    \mathit{val} & ::= \ldots \mid \mathit{Vptr} ~ r ~ a \hspace{3em} r \in 2^{\mathcal{C}} \\
+    e & \in \mathit{ident} \rightharpoonup (2^{\mathcal{C}} \times \mathit{int}) \\
+    M & \in \mathcal{M} \subseteq 2^{\mathcal{C}} \rightarrow \mathit{mem} \\
+    \mathit{heap\_alloc} & \in \mathcal{M} \rightarrow 2^{\mathcal{C}} \rightarrow
+    \mathit{int} \rightharpoonup (\mathit{int} \times \mathcal{M}) \\
+    \mathit{heap\_free} & \in \mathcal{M} \rightarrow 2^{\mathcal{C}} \rightarrow
+    \mathit{int} \rightharpoonup \mathcal{M} \\
+    \mathit{stk\_alloc} & \in \mathcal{M} \rightarrow 2^{\mathcal{C}} \rightarrow
+    \mathit{int} \rightharpoonup (\mathit{int} \times \mathcal{M}) \\
+    \mathit{stk\_free} & \in \mathcal{M} \rightarrow 2^{\mathcal{C}}
+    \rightharpoonup \mathcal{M} \\
+    \end{aligned}\]
+  \end{minipage}
+  \begin{minipage}{0.55\textwidth}
+    \judgmenttwo{\(M ~ r = m\)}
+                {\(\mathit{read} ~ m ~ a = v\)}
+                {\(C,M,e \mid *(\mathit{Vptr} ~ r ~ a)
+                  \longrightarrow C,M,e \mid v\)}
+
+    \judgmentthree{\(M ~ r = m\)}
+                  {\(\mathit{write} ~ m ~ a ~ v = m'\)}
+                  {\(M' = M[r \mapsto m']\)}
+                  {\(C,M,e \mid *(\mathit{Vptr} ~ r ~ a) := v
+                    \longrightarrow C,M',e \mid v\)}
+
+    \judgment{\(\mathit{heap\_alloc} ~ M ~ r ~ sz = (p, M')\)}
+             {\(C,M,e \mid \mathtt{malloc}_r(\mathit{Vint} ~ sz)
+               \longrightarrow C,M',e \mid \mathit{Vptr} ~ r ~ p\)}
+
+  \end{minipage}
+
+  \caption{Selected Rules for Explicit Sharing}
+  \label{fig:powerset}
+\end{figure}
+
+  \bibliographystyle{acm}
+  \bibliography{taggedc}
+\
 
 \end{document}
