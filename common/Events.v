@@ -486,8 +486,7 @@ Definition alloc_size (v: val) (z:Z) : Prop :=
   Definition do_extcall_malloc (l:Cabs.loc) (pct: control_tag) (fpt st: val_tag) (m: mem) (sz: Z)
   : PolicyResult (atom * control_tag * mem) :=
   (*let sz_aligned := align sz 8 in*)
-  pct0 <- ExtCallT l "malloc" pct fpt [st];;
-  '(pct1, pt, vt_body, vt_head, lt) <- MallocT l pct0 fpt;;
+  '(pct1, pt, vt_body, vt_head, lt) <- MallocT l pct fpt;;
   '(m', base) <- heapalloc m sz vt_head;;
   mvs <- loadbytes m' base sz;;
   let mvs' := map (fun mv =>
@@ -512,8 +511,7 @@ Definition do_extcall_free (l:Cabs.loc) (pct: control_tag)  (fpt pt: val_tag) (p
   if Int64.eq (concretize p) Int64.zero
   then ret ((Vundef,InitT), pct, m)
   else
-    pct0 <- ExtCallT l "free" pct fpt [pt];;
-    '(sz,pct1,m') <- heapfree l pct0 m p pt;;
+    '(sz,pct1,m') <- heapfree l pct m p pt;;
     mvs <- loadbytes m' p sz;;
     '(pct2,lts') <- ClearT l pct1 (Z.to_nat sz);;
     m'' <- storebytes m' p mvs lts';;

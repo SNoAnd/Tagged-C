@@ -199,8 +199,8 @@ Module PolProduct (P1:Policy) (P2: Policy) <: Policy.
                 (fun '(pct1, lts1) '(pct2, lts2) => 
                    ((pct1, pct2), (combine lts1 lts2))).
   
-  Definition ExtCallT (l: loc) (fn: string) (pct: control_tag) (fpt: val_tag) (args : list val_tag) : 
-    PolicyResult control_tag:=
+  Definition ExtCallT (l: loc) (fn: external_function) (pct: control_tag)
+    (fpt: val_tag) (args : list val_tag) : PolicyResult control_tag:=
     double_bind (P1.ExtCallT l fn (fst pct) (fst fpt) (map fst args))
                 (P2.ExtCallT l fn (snd pct) (snd fpt) (map snd args))
                 (fun pct1 pct2 => (pct1, pct2)).

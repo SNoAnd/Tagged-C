@@ -1382,14 +1382,20 @@ Inductive sstep: state -> trace -> state -> Prop :=
     sstep (Callstate (Internal f) l ps pct vft vargs k m)
           E0 (Failstop failure lg)
           
-| step_external_function: forall l ef ps ps' pct vft pct' targs tres cc vargs k m vres t m',
-    external_call l ef ge vargs pct vft m t <<ps>> (Success (vres, pct', m')) <<ps'>> ->
+| step_external_function: forall l ef ps ps' ps'' pct vft pct' pct'' targs tres cc vargs k m vres t m',
+    ExtCallT l ef pct vft (map snd vargs) ps = (Success pct',ps') ->
+    external_call l ef ge vargs pct' vft m t <<ps'>> (Success (vres, pct'', m')) <<ps''>> ->
     sstep (Callstate (External ef targs tres cc) l ps pct vft vargs k m)
-          t (Returnstate (External ef targs tres cc) l ps' pct' vres k m')
+          t (Returnstate (External ef targs tres cc) l ps'' pct'' vres k m')
 | step_external_function_fail0: forall l ef ps pct vft targs tres cc vargs k m t failure ps',
-    external_call l ef ge vargs pct vft m t <<ps>> (Fail failure) <<ps'>> ->
+    ExtCallT l ef pct vft (map snd vargs) ps = (Fail failure,ps') ->
     sstep (Callstate (External ef targs tres cc) l ps pct vft vargs k m)
           t (Failstop failure (snd ps'))
+| step_external_function_fail1: forall l ef ps pct vft targs tres cc vargs k m t failure ps' ps'' pct',
+    ExtCallT l ef pct vft (map snd vargs) ps = (Success pct',ps') ->
+    external_call l ef ge vargs pct vft m t <<ps'>> (Fail failure) <<ps''>> ->
+    sstep (Callstate (External ef targs tres cc) l ps pct vft vargs k m)
+          t (Failstop failure (snd ps''))
 
 | step_returnstate: forall l v vt vt' f fd ps ps' pct oldloc oldpct pct' e C ty k te m,
     RetT l pct oldpct vt ps = (Success (pct', vt'), ps') ->

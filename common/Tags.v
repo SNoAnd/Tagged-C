@@ -244,7 +244,7 @@ Module Type Policy.
                              * loc_tag)     (* Tag to be copied over all memory locations *).
 
   Parameter ExtCallT : loc                  (* Inputs: *)
-                       -> string            (* External function name *)
+                       -> external_function (* External function data *)
                        -> control_tag       (* PC tag *)
                        -> val_tag           (* Function pointer tag *)
                        -> list val_tag      (* Tags on all arguments *)
@@ -432,8 +432,8 @@ Module Passthrough.
   Definition ExprJoinT (l:loc) (pct: control_tag) (vt: val_tag) :
     PolicyResult (control_tag * val_tag) := ret (pct,vt).
 
-  Definition ExtCallT (l:loc) (fn: string) (pct: control_tag) (fpt: val_tag) (args: list val_tag) :
-    PolicyResult control_tag := ret pct.
+  Definition ExtCallT (l:loc) (fn: external_function) (pct: control_tag)
+    (fpt: val_tag) (args: list val_tag) : PolicyResult control_tag := ret pct.
 
   Definition FreeT (l:loc) (pct: control_tag) (pt vht: val_tag) (lts: list loc_tag) :
     PolicyResult (control_tag * val_tag * list loc_tag) := ret (pct, vht, lts).
