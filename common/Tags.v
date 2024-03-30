@@ -83,10 +83,10 @@ Module Type Policy.
   Parameter init_state : policy_state.
   
   Parameter def_tag : val_tag.
-  Parameter InitPCT : control_tag.
-  Parameter DefLT   : loc_tag.
-  Parameter DefHT   : loc_tag.
-  Parameter InitT   : val_tag.
+  Parameter InitPCT : control_tag.          (* Initial Program Counter tag*)
+  Parameter DefLT   : loc_tag.              (* Default starting tag for nonheap memory locations *)
+  Parameter DefHT   : loc_tag.              (* Default starting tag for heap memory locations, possible consumed by allocator *)
+  Parameter InitT   : val_tag.              (* Inital value for things with val tags *)
   
   (* CallT executes at the transition from an expression state to a call state. *)
   Parameter CallT : loc                     (* Inputs: *)

@@ -1,23 +1,10 @@
-Require Import Coqlib.
-Require Import AST.
-Require Import Integers.
-Require Import Floats.
-Require Import Values.
-Require Import Ctypes.
-Require Import Cabs.
-Require Import String.
-Require Import Tags.
-Require Import ExtLib.Structures.Monads. Import MonadNotation.
-
-Require Import List. Import ListNotations. (* list notations is a module inside list *)
-
 (*
 Simple Double Free detection & diagnostic policy. Implements Policy Interface.
   - Policy can be fooled if aliasing is comingled with double free pathology.
   - Detects some classic double free runtime behavior + some nonsense frees.
   - The policy relevant functions are LabelT, MallocT, and FreeT.
   - Intended for use with a fuzzer or other tool that consumes the failstop diagnostic information.
-  - free(0) is legal, but it should never reach the tag rule, so the tag rule does not accoutn for it.
+  - free(0) is legal, but it should never reach the tag rule, so the tag rule does not account for it.
   - Since labels are now tied to location:linenumber:byte offset from the parser, they are assumed to 
       static across fuzzing runs.
 
@@ -39,6 +26,19 @@ Notes:
       4 location tags, one per byte.
       Can be used to catch misaligned loads and stores, in theory.
 *)
+Require Import Coqlib.
+Require Import AST.
+Require Import Integers.
+Require Import Floats.
+Require Import Values.
+Require Import Ctypes.
+Require Import Cabs.
+Require Import String.
+Require Import Tags.
+Require Import ExtLib.Structures.Monads. Import MonadNotation.
+
+Require Import List. Import ListNotations. (* list notations is a module inside list *)
+
 Module DoubleFree <: Policy.
  Import Passthrough.
   

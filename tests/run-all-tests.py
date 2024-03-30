@@ -72,12 +72,18 @@ if __name__ == '__main__':
                           b'PVI || StoreT')
 
     print("\n=======\nMultipolicy (Product.v) without input\n=======")
+    # fail  left
     runACFileWithoutInput("double_free_no_input.c", dfreeXpvi,
                           b'ProdLeft||DoubleFree||FreeT detects two frees|  location double_free_no_input.c:8, location double_free_no_input.c:9\n'
                           )
+    #fail right
     runACFileWithoutInput("stack_load_store_ob.c", dfreeXpvi,
                           b'ProdRight||PVI || StoreT tag_eq_dec Failure at stack_load_store_ob.c:8')
 
+    # pass both
+    runACFileWithoutInput("heap_load_store_ib.c", dfreeXpvi,
+                          nofault_cleanexit)
+    
     print("\n=======\ndfree tests without input\n=======")
     runACFileWithoutInput("double_free_no_input.c", doublefree,
                           b'DoubleFree||FreeT detects two frees|  location double_free_no_input.c:8, location double_free_no_input.c:9\n'
