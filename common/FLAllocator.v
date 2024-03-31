@@ -107,7 +107,7 @@ Module FLAllocator (Pol : Policy).
     let '(m, (sp,heap)) := m in
     match ZMap.get (Int64.unsigned base) heap.(regions) with
     | Some (sz,vt) =>
-        '(pct',vt',_) <- FreeT l pct pt vt [];;
+        '(pct',vt',_) <- FreeT O l pct pt vt (VectorDef.of_list []);;
         let heap' := (mkheap (ZMap.set (Int64.unsigned base) None heap.(regions))
                              ((base,sz,vt')::heap.(fl))) in
         ret (sz,pct',(m,(sp,heap')))
