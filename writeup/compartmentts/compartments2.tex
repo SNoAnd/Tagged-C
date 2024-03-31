@@ -357,27 +357,10 @@ memory, determines what happens in the event of an out-of-bounds read or write.
 \end{figure}
 
 
-Using a flat memory model inside of compartments gives two benefits. First, it is generally
+Using a flat memory model in each region gives two benefits. First, it is generally
 less expensive to enforce, and therefore can be implemented on tagged hardware that is more
 restrictive. Second, it allows the abstract machine to reason about how programs with some
 forms of memory UB will behave after compilation, given a particular compiler and allocator.
-
-On a call to {\tt malloc} in compartment \(C\), the allocation oracle \(\alpha\) provides a base
-address that doesn't overlap with an allocated object in that memory, and the appropriately-sized
-region starting at that base address is allocated in \(M[C]\).
-A call to {\tt malloc\_shared}, meanwhile, generates a fresh block identifier \(b\)
-and returns the pointer \((b,0)\); however, such a call may fail due to the system as a whole
-running out of memory.
-
-Values now include two kinds of pointer: block-offset pairs that access the shared memory,
-and pairs of compartment identifiers and integers that access that compartment's memory.
-
-\[v ::= \dots \mid \mathit{sptr} ~ b ~ \mathit{off} \mid \mathit{lptr} ~ \mathit{addr}\]
-
-The latter local pointers are subject to several restrictions, namely that they cannot be
-passed or returned across a compartment boundary, nor written to shared memory. Doing so
-is undefined behavior. This means that they will only ever be accessible to the compartment
-that owns them. \sna{Note: they could alternatively be forbidden from being recieved/read.}
 
 \paragraph{Allocation}
 
@@ -530,137 +513,133 @@ and assigned to.
 
 In this policy, control tags represent compartments, with the special {\it PC tag}
 tracking the active compartment. Value tags distinguish between pointers that are local
-to each compartment, pointers to each shared object, and all other values. Location
-tags mark addresses as being allocated to a particular compartment or shared object, or
+to each compartment, pointers to each shared object, function pointers
+(and which compartment their targets belong to), and all other values.
+Location tags mark addresses as being allocated to a particular compartment or shared object, or
 else unallocated. The policy state is a counter that tracks the next allocation color.
-
-\begin{figure}
-\[\begin{aligned}
-  & \tau_V ::= \mathtt{L}(C) | \mathtt{S}(a) | \emptyset &  \in \mathit{nat} \\
-  & \tau_C ::= C & C \in \mathcal{C} \\
-  & \tau_L ::= \mathtt{L}(C) | \mathtt{S}(a) | \emptyset \\
-  & \sigma := n & n \in \mathit{nat} \\
-  \end{aligned}\]
-\end{figure}
-
-\begin{minipage}{0.49\textwidth}
-  \calltruleblock{\(\PCT['] := pt\)}
-\end{minipage}
-\begin{minipage}{0.49\textwidth}
-  \rettruleblock{\(\PCT['] := \PCT[_{CLR}]\)}
-\end{minipage}
-
-For simplicity, global variables are always local to a compartment. (Modifying the policy
-to allow multiple compartments to share global variables would be straightforward.) Dynamic
-memory 
+These definitions are shown in Figure \ref{fig:policy}, with \(\mathit{comp}\) being a
+static mapping from function identifiers to compartment identifiers.
 
 
-If it is lax, the allocated memory is tagged with the compartment identity only. But if it is
-strict, both the pointer and the memory location are tagged with the owning compartment and
-a fresh allocation color. Once we have a color attached to a pointer, it is propagated along
+We implement the division between regions using the LocalT and MallocT tag rules
+(for stack and heap allocations, respectively). These rules tag the memory locations
+of freshly allocated objects with \(\mathtt{L}(C)\) or \(\mathtt{S}(a)\) depending
+on the sharing status of the variable being allocated or of the call to malloc.
+In the latter case, \(a\) is a fresh shared region identifier.
+They apply the same tag to the base pointer of the allocated object.
+Once we have a color attached to a pointer, it is propagated along
 with the pointer, including through any arithmetic operations provided that the other operand
 is not tagged as a pointer.
 
-\hspace{-5em}
-\begin{minipage}{0.35\textwidth}
-  \localtruleblock{
-    let \(\mathbf{comp}(C)\) := \(\PCT\) in \\
-    \(\vt['] := \emptyset;\) \\
-    if \(\mathit{safe} ~ C\) \\
-    then \begin{tabular}[t]{l}
-      \(\pt['] := \mathbf{clr}(C,s);\) \\
-      \(\lt['] := \mathbf{clr}(C,s);\) \\
-      \(s := s+1\)
-    \end{tabular} \\
-    else \begin{tabular}[t]{l}
-      \(\pt['] := \mathbf{comp}(C);\) \\
-      \(\lt['] := \mathbf{comp}(C);\) \\
-    \end{tabular} \\
-  }
-\end{minipage}
-\begin{minipage}{0.35\textwidth}
-  \malloctruleblock{
-    let \(\mathbf{comp}(C)\) := \(\PCT\) in \\
-    \(\vt['] := \emptyset;\) \\
-    if \(\mathit{safe} ~ C\) \\
-    then \begin{tabular}[t]{l}
-      \(\pt['] := \mathbf{clr}(C,s);\) \\
-      \(\lt['] := \mathbf{clr}(C,s);\) \\
-      \(s := s+1\)
-    \end{tabular} \\
-    else \begin{tabular}[t]{l}
-      \(\pt['] := \mathbf{comp}(C);\) \\
-      \(\lt['] := \mathbf{comp}(C);\) \\
-    \end{tabular} \\
-  }
-\end{minipage}
-\begin{minipage}{0.29\textwidth}
-  \globaltruleblock{\(\vt['] := \emptyset;\) \\ \(\lt['] := owner(\mathtt{x})\)}
+On loads and stores, we compare the tag on the pointer to that of the memory location
+being accessed. If they are local, we also compare them to the active compartment.
+If the tags match, the load or store may proceed, else it failstops.
 
+\begin{figure}
+    \begin{minipage}{0.55\textwidth}
+\[\begin{aligned}
+  & \tau_V ::= \mathtt{L}(C) \mid \mathtt{S}(a) \mid \mathbb{F}(\mathtt{f}_{fun}) \mid \emptyset & a \in \mathit{nat} \\
+  & \tau_C ::= C & C \in \mathcal{C} \\
+  & \tau_L ::= \mathtt{L}(C) \mid \mathtt{S}(a) \mid \emptyset \\
+  & \sigma := n & n \in \mathit{nat} \\
+  \end{aligned}\]
+  \end{minipage}
+  \begin{minipage}{0.4\textwidth}
+    \truleblock{\color{blue}{\bf FunT}(\(\mathtt{f}_{\mathit{fun}}\))}{\(\pt' := \mathbb{F}(\mathtt{f}_{fun})\)}
+    \calltruleblock{
+      \caseoftwo{\(\pt\)}
+                {\(\mathbb{F}(\mathtt{f}_{fun})\)}{\(\PCT['] := \mathit{comp}(\mathtt{f}_{fun})\)}
+                {\(\underline{~~}\)}{\(\fail\)}}
+  \end{minipage}
+\begin{minipage}{0.3\textwidth}
+  \truleblock{\color{blue} {\bf LocalT}(\(\mathcal{P}, \mathtt{x}_\mathit{loc}, \mathtt{ty}\))}
+             {\(\vt['] := \emptyset;\) \\
+               if \mathit{share}(\mathtt{x}) \\
+               then \begin{tabular}[t]{l}
+                 \(\pt['] := \mathtt{S}(s);\) \\
+                 \(\lt['] := \mathtt{S}(s);\) \\
+                 \(s := s+1\)
+               \end{tabular} \\ 
+               else \begin{tabular}[t]{l}
+                 \(\pt['] := \mathtt{L}(C);\) \\
+                 \(\lt['] := \mathtt{L}(C);\) \\
+               \end{tabular} \\
+  }
+\end{minipage}
+\begin{minipage}{0.3\textwidth}
+  \malloctruleblock{
+    \(\vt['] := \emptyset;\) \\
+    if \(\mathit{share} ~ C\) \\
+    then \begin{tabular}[t]{l}
+      \(\pt['] := \mathtt{S}(s);\) \\
+      \(\lt['] := \mathtt{S}(s);\) \\
+      \(s := s+1\)
+    \end{tabular} \\
+    else \begin{tabular}[t]{l}
+      \(\pt['] := \mathtt{L}(C);\) \\
+      \(\lt['] := \mathtt{L}(C);\) \\
+    \end{tabular} \\
+  }
+\end{minipage}
+\begin{minipage}{0.3\textwidth}
   \binoptruleblock{
     \caseofthree{\(\vt[_1], \vt[_2]\)}
-                {\(\mathbf{clr}(C,a),\emptyset\) \\ \(\emptyset, \mathbf{clr}(C,a)\)}{\(\mathbf{clr}(C,a)\)}
                 {\(\emptyset,\emptyset\)}{\(\emptyset\)}
+                {\(\vt,\emptyset\) \\ \(\emptyset, \vt\)}{\(\vt['] := \vt\)}
                 {\(\underline{~~}, \underline{~~}\)}{\(\fail\)}
   }
 \end{minipage}
-
-Like allocations, loads and stores have different behavior depending on whether or not the active
-compartment is strict or lax. In a lax compartment, it merely compares the PC tag to the location
-tag of the target address. In a strict compartment, it also checks that the pointer color matches
-that of the target address.
-
-\hspace{-5em}
-\begin{minipage}{0.55\textwidth}
+\begin{minipage}{0.5\textwidth}
   \loadtruleblock{
-    let \(\mathbf{comp}(C)\) := \(\PCT\) in \\
-    if \(\mathit{strict} ~ C\) \\
-    then \(\mathbf{assert} ~ \lt = \mathbf{comp}(C)\) \\
-    \(\vt['] := \vt\) \\
-    else \(\mathbf{assert} ~ \exists a . \pt = \mathbf{clr}(C,a) \land \lt = \mathbf{clr}(C,a)\) \\
-    \(\vt['] := \vt\) \\
+    \caseoftwo{\(\pt, \lt\)}
+              {\(\mathtt{S}(s),\mathtt{S}(s)\) \\
+                \(\mathtt{L}(\PCT),\mathtt{L}(\PCT)\)}{\(\vt['] := \vt\)}
+              {\(\underline{~~}, \underline{~~}\)}{\(\fail\)}
+  }
+
+  \argtruleblock{
+    \caseoftwo{\(\mathit{pub}(\mathtt{f}_{fun}), \vt\)}
+           {\(\mathbf{true},L(C)\)}{\(\fail\)}
+           {\(\underline{~~},\underline{~~}\)}{\begin{tabular}{l}
+               \(\vt['] := \vt;\) \\
+               \PCT['] := \PCT[_{CLR}]\) \\
+    \end{tabular}}}
   }
 \end{minipage}
-\begin{minipage}{0.44\textwidth}
+\begin{minipage}{0.5\textwidth}
   \storetruleblock{
-    let \(\mathbf{comp}(C)\) := \(\PCT\) in \\
-    if \(\mathit{strict} ~ C\) \\
-    then \(\mathbf{assert} ~ \lt = \mathbf{comp}(C)\) \\
-    \(\PCT['] := \PCT; \vt['] := \vt; \lt['] := \lt\) \\
-    else \(\mathbf{assert} ~ \exists a . \pt = \mathbf{clr}(C,a) \land \lt = \mathbf{clr}(C,a)\) \\
-    \(\PCT['] := \PCT; \vt['] := \vt; \lt['] := \lt\) \\
+    \caseofthree{\(\pt, \lt, \vt\)}
+                {\(\mathtt{S}(s),\mathtt{S}(s),\mathtt{L}(C)\)}{\(\fail\)}
+                {\(\mathtt{S}(s),\mathtt{S}(s),\underline{~~}\) \\
+                \(\mathtt{L}(\PCT),\mathtt{L}(\PCT),\underline{~~}\)}{\(\vt['] := \vt\)}
+                {\(\underline{~~}, \underline{~~}\)}{\(\fail\)}
   }
+
+  
+  \truleblock{\(\color{blue} \mathbf{RetT}(\PCT[_{CLE}], \PCT[_{CLR}], \vt, \mathtt{f}_{fun})\)}
+             {\caseoftwo{\(\mathit{pub}(\mathtt{f}_{fun}), \vt\)}
+               {\(\mathbf{true},L(C)\)}{\(\fail\)}
+               {\(\underline{~~},\underline{~~}\)}{\begin{tabular}{l}
+                   \(\vt['] := \vt;\) \\
+                   \PCT['] := \PCT[_{CLR}]\) \\
+             \end{tabular}}}
 \end{minipage}
 
+\caption{Policy Definition}
+\label{fig:policy}
 
+\end{figure}
 
-
+Finally, in the StoreT, ArgT, and RetT rules enforce the restriction on the escape of local pointers.
+  
 \section{Proving Correctness}
 
 Our correctness proofs relate the abstract machine defined above to the Tagged C semantics,
-instantiated with the policy above.
-
-\paragraph{Bisimulation Proof}
-
-We define the bisimulation relation \(\mathfrak{R}\) between states of the abstract machine and
-states of Tagged C. We'll define the specific relation
-below. We first prove that, for any machine states \(S\) and
-\(\hat{S}\), if \(S \mathfrak{R}_\alpha \hat{S}\), then one of three cases holds:
-\begin{itemize}
-\item \(S \longrightarrow S'\) and \(\hat{S} \longrightarrow \hat{S}'\), \(S'\) and \(\hat{S}'\)
-  both have the same allocator state \(\alpha'\), and \(S' ~ \mathfrak{R}_{\alpha'} ~ \hat{S}'\).
-  Memory trace events are either related, or internal.
-\item \(S\) and \(\hat{S}\) are both stuck.
-\item \(\hat{S}\) does not step due to failstop.
-\end{itemize}
-
-Then, by proving that for any program, its initial states in both machines are related
-by \(\mathfrak{R}\), we can show by coinduction that every trace produced by one machine
-has a related trace produced by the other.
-
-\paragraph{Consquences of Bisimulation}
-
-
+instantiated with the policy above. Specifically we prove a bi-directional simulation between
+them: for any step that the abstract machine might take in the execution of a program, there
+is an equivalent step in the Tagged C instantiation, and vice versa. The backwards direction
+is particularly important because it means that the Tagged C semantics do not permit any
+behaviors that the abstract semantics forbid.
 
 \section{Machine Constraints}
 
@@ -735,6 +714,5 @@ by a compartment that it has not (yet) been shared with.
 
   \bibliographystyle{acm}
   \bibliography{taggedc}
-\
 
 \end{document}
