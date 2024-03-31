@@ -66,6 +66,8 @@ Module DoubleFree <: Policy.
  Definition DefHT   : loc_tag := tt.
  Definition InitT   : val_tag := N.
 
+ Definition lt_vec (n:nat) := VectorDef.t loc_tag n.
+
 (* This is a helper to print locations for human & fuzzer ingestion *)
  Definition inj_loc (s:string) (l:loc) : string :=
   s ++ " " ++ (print_loc l).
@@ -85,6 +87,7 @@ Definition policy_state : Type := unit.
 Definition init_state : policy_state := tt.
 
 Definition PolicyResult := PolicyResult policy_state.
+Definition ltop := ltop lt_eq_dec policy_state.
 Definition log := log policy_state.
 
  (* 
@@ -138,8 +141,9 @@ Definition log := log policy_state.
     - tag on the pointer passed to free
     - tag on the "header" 
   *)
- Definition FreeT (l:loc) (pct: control_tag) (pt vht : val_tag) (lts : list loc_tag) :
-   PolicyResult (control_tag * val_tag * list loc_tag) :=
+ Definition FreeT (n:nat) (l:loc) (pct: control_tag) (pt vht : val_tag)
+ (lts : lt_vec n) :
+   PolicyResult (control_tag * val_tag * lt_vec n) :=
   match vht with 
     | Alloc => ret(pct, (FreeColor l), lts) (* was allocated then freed, assign free color from pct *)
     | N (* trying to free unallocated memory at this location *)
@@ -151,8 +155,8 @@ Definition log := log policy_state.
                                  ++ (print_loc c) ++ ", location " ++ (print_loc l)))
   end.
 
- Definition ClearT (l:loc) (pct: control_tag) (n: nat) : PolicyResult (control_tag * list loc_tag) :=
-   ret (pct, repeat tt n).
+ Definition ClearT (l:loc) (pct: control_tag) : PolicyResult (control_tag * loc_tag) :=
+   ret (pct, tt).
    
   (* These are required, but cannot pass through because they don't get tags to start with.
     In other words, they have to make tags out of thin air. *)
@@ -173,9 +177,9 @@ Definition log := log policy_state.
  Definition FunT (ce: composite_env) (id : ident) (ty : type) : val_tag := N.
 
  (* Required for policy interface. Not relevant to this particular policy, pass values through *)
- Definition LocalT (l:loc) (ce : composite_env) (pct : control_tag) (ty : type) :
-   PolicyResult (control_tag * val_tag * (list loc_tag))%type :=
-   ret (tt, N, repeat tt (Z.to_nat (sizeof ce ty))).
+ Definition LocalT (n:nat) (l:loc) (pct : control_tag) (ty : type) :
+   PolicyResult (control_tag * val_tag * lt_vec n)%type :=
+   ret (tt, N, ltop.(const) n tt).
  
    (* Passthrough rules *)
   Definition CallT      := Passthrough.CallT policy_state val_tag control_tag.  

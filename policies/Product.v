@@ -8,8 +8,6 @@ Require Import Cabs.
 Require Import String.
 Require Import Tags.
 
-Require Import List. Import ListNotations.
-
 Module PolProduct (P1:Policy) (P2: Policy) <: Policy.
   Import P1.
   Import P2.
@@ -36,6 +34,8 @@ Module PolProduct (P1:Policy) (P2: Policy) <: Policy.
   Definition DefLT : loc_tag := (P1.DefLT, P2.DefLT).
   Definition DefHT : loc_tag := (P1.DefHT, P2.DefHT).
 
+  Definition lt_vec (n:nat) := VectorDef.t loc_tag n.
+  
   (* one print() for each tag type *)
   Definition print_vt (t:val_tag) : string := "(" ++ (P1.print_vt (fst t)) ++ ", "
                                                ++ (P2.print_vt (snd t)) ++ ")".
@@ -45,13 +45,16 @@ Module PolProduct (P1:Policy) (P2: Policy) <: Policy.
                                                ++ (P2.print_ct (snd t)) ++ ")".
 
   Definition policy_state : Type := (P1.policy_state * P2.policy_state).
+  Definition ltop := Tags.ltop lt_eq_dec policy_state.
   Definition init_state : policy_state := (P1.init_state, P2.init_state).
   
+  Definition PolicyResult := Tags.PolicyResult policy_state.
+  
   Definition double_bind {A B C:Type}
-             (r1: PolicyResult P1.policy_state A)
-             (r2: PolicyResult P2.policy_state B)
+             (r1: P1.PolicyResult A)
+             (r2: P2.PolicyResult B)
              (f: A -> B -> C)
-    : PolicyResult policy_state C :=
+    : PolicyResult C :=
     fun '((ps1,ps2),lg) =>
       let '(res1, (ps1',lg')) := r1 (ps1,lg) in
       let '(res2, (ps2',lg'')) := r2 (ps2,lg) in
@@ -68,8 +71,6 @@ Module PolProduct (P1:Policy) (P2: Policy) <: Policy.
           (Fail (OtherFailure "Non-policy Failure in Policy"),((ps1',ps2'),lg''))
       end.
 
-  Definition PolicyResult := PolicyResult policy_state.
-  
   Definition CallT (l: loc) (pct: control_tag) (pt: val_tag) : 
     PolicyResult control_tag :=
     double_bind (P1.CallT l (fst pct)(fst pt)) 
@@ -88,18 +89,18 @@ Module PolProduct (P1:Policy) (P2: Policy) <: Policy.
                 (P2.RetT l (snd pct_clr) (snd pct_cle) (snd vt))
                 (fun '(pct1, vt1) '(pct2, vt2) => ((pct1, pct2), (vt1, vt2))).
 
-  Definition LoadT (l: loc) (pct: control_tag) (pt vt: val_tag) (lts: list loc_tag) :
+  Definition LoadT (n:nat) (l: loc) (pct: control_tag) (pt vt: val_tag) (lts: lt_vec n) :
     PolicyResult val_tag := 
-    double_bind (P1.LoadT l (fst pct)(fst pt)(fst vt)(map fst lts))
-                (P2.LoadT l (snd pct)(snd pt)(snd vt)(map snd lts))
+    double_bind (P1.LoadT n l (fst pct)(fst pt)(fst vt)(VectorDef.map fst lts))
+                (P2.LoadT n l (snd pct)(snd pt)(snd vt)(VectorDef.map snd lts))
                 (fun pct1 pct2 => (pct1, pct2)).
     
-  Definition StoreT (l: loc) (pct: control_tag) (pt vt: val_tag) (lts: list loc_tag) :
-    PolicyResult (control_tag * val_tag * list loc_tag) := 
-    double_bind (P1.StoreT l  (fst pct) (fst pt) (fst vt) (map fst lts))
-          (P2.StoreT l  (snd pct) (snd pt) (snd vt) (map snd lts))
-          (fun '(pct1, vt1, lts1) '(pct2, vt2, lts2) => 
-             ((pct1,pct2), (vt1,vt2), (combine lts1 lts2))).
+  Definition StoreT (n:nat) (l: loc) (pct: control_tag) (pt vt: val_tag) (lts: lt_vec n) :
+    PolicyResult (control_tag * val_tag * lt_vec n) := 
+    double_bind (P1.StoreT n l (fst pct) (fst pt) (fst vt) (VectorDef.map fst lts))
+                (P2.StoreT n l (snd pct) (snd pt) (snd vt) (VectorDef.map snd lts))
+                (fun '(pct1, vt1, lts1) '(pct2, vt2, lts2) => 
+                  ((pct1,pct2), (vt1,vt2), (VectorDef.map2 (fun a b => (a,b)) lts1 lts2))).
 
   Definition AccessT (l: loc) (pct: control_tag) (vt: val_tag) :
     PolicyResult val_tag := 
@@ -164,12 +165,12 @@ Module PolProduct (P1:Policy) (P2: Policy) <: Policy.
   Definition FunT (ce: composite_env) (id: ident) (ty: type) : val_tag :=
     ((P1.FunT ce id ty), (P2.FunT ce id ty)).
 
-  Definition LocalT (l: loc) (ce: composite_env) (pct: control_tag) (ty: type) :
-    PolicyResult (control_tag * val_tag * list loc_tag)%type :=
-    double_bind (P1.LocalT l ce  (fst pct) ty)
-                (P2.LocalT l ce  (snd pct) ty)
+  Definition LocalT (n:nat) (l: loc) (pct: control_tag) (ty: type) :
+    PolicyResult (control_tag * val_tag * lt_vec n)%type :=
+    double_bind (P1.LocalT n l (fst pct) ty)
+                (P2.LocalT n l (snd pct) ty)
                 (fun '(pct1, pt1, lts1) '(pct2, pt2, lts2) => 
-                   ((pct1, pct2), (pt1, pt2), (combine lts1 lts2))).
+                   ((pct1, pct2), (pt1, pt2), (VectorDef.map2 (fun a b => (a,b)) lts1 lts2))).
   
   Definition DeallocT (l: loc) (ce: composite_env) (pct: control_tag) (ty: type) :
     PolicyResult (control_tag * val_tag * loc_tag) :=
@@ -185,19 +186,19 @@ Module PolProduct (P1:Policy) (P2: Policy) <: Policy.
                 (fun '(pct1, pt1, iv1, vht1, lt1) '(pct2, pt2, iv2, vht2, lt2) =>
                    ((pct1, pct2), (pt1, pt2), (iv1, iv2), (vht1, vht2), (lt1, lt2))).
 
-  Definition FreeT (l: loc) (pct: control_tag) (pt vt: val_tag) (lts: list loc_tag) :
-    PolicyResult (control_tag * val_tag * list loc_tag) :=
-    double_bind (P1.FreeT l (fst pct) (fst pt) (fst vt) (map fst lts))
-                (P2.FreeT l (snd pct) (snd pt) (snd vt) (map snd lts))
+  Definition FreeT (n:nat) (l: loc) (pct: control_tag) (pt vt: val_tag) (lts: lt_vec n) :
+    PolicyResult (control_tag * val_tag * lt_vec n) :=
+    double_bind (P1.FreeT n l (fst pct) (fst pt) (fst vt) (VectorDef.map fst lts))
+                (P2.FreeT n l (snd pct) (snd pt) (snd vt) (VectorDef.map snd lts))
                 (fun '(pct1, vht1, lts1) '(pct2, vht2, lts2) => 
-                   ((pct1, pct2), (vht1, vht2), (combine lts1 lts2))).
+                   ((pct1, pct2), (vht1, vht2), (VectorDef.map2 (fun a b => (a,b)) lts1 lts2))).
 
-  Definition ClearT (l: loc) (pct: control_tag) (n: nat) :
-    PolicyResult (control_tag * list loc_tag) :=
-    double_bind (P1.ClearT l (fst pct) n)
-                (P2.ClearT l (snd pct) n)
+  Definition ClearT (l: loc) (pct: control_tag) :
+    PolicyResult (control_tag * loc_tag) :=
+    double_bind (P1.ClearT l (fst pct))
+                (P2.ClearT l (snd pct))
                 (fun '(pct1, lts1) '(pct2, lts2) => 
-                   ((pct1, pct2), (combine lts1 lts2))).
+                   ((pct1, pct2), (lts1, lts2))).
   
   Definition ExtCallT (l: loc) (fn: external_function) (pct: control_tag)
     (fpt: val_tag) (args : list val_tag) : PolicyResult control_tag:=
@@ -212,22 +213,22 @@ Module PolProduct (P1:Policy) (P2: Policy) <: Policy.
                 (P2.FieldT l ce  (snd pct) (snd vt) ty id)
                 (fun vt1 vt2 => (vt1, vt2)).
 
-  Definition PICastT (l: loc) (pct: control_tag) (pt: val_tag)  (lts: list loc_tag) (ty: type) :
+  Definition PICastT (n:nat) (l: loc) (pct: control_tag) (pt: val_tag) (lts: lt_vec n) (ty: type) :
     PolicyResult val_tag :=
-    double_bind (P1.PICastT l  (fst pct) (fst pt) (map fst lts) ty)
-                (P2.PICastT l  (snd pct) (snd pt) (map snd lts) ty)
+    double_bind (P1.PICastT n l (fst pct) (fst pt) (VectorDef.map fst lts) ty)
+                (P2.PICastT n l (snd pct) (snd pt) (VectorDef.map snd lts) ty)
                 (fun vt1 vt2 => (vt1, vt2)).
           
-  Definition IPCastT (l: loc) (pct: control_tag) (vt: val_tag)  (lts: list loc_tag) (ty: type) :
+  Definition IPCastT (n:nat) (l: loc) (pct: control_tag) (vt: val_tag)  (lts: lt_vec n) (ty: type) :
     PolicyResult val_tag :=
-    double_bind (P1.IPCastT l  (fst pct) (fst vt) (map fst lts) ty)
-                (P2.IPCastT l  (snd pct) (snd vt) (map snd lts) ty)
+    double_bind (P1.IPCastT n l (fst pct) (fst vt) (VectorDef.map fst lts) ty)
+                (P2.IPCastT n l (snd pct) (snd vt) (VectorDef.map snd lts) ty)
                 (fun vt1 vt2 => (vt1, vt2)).
 
-  Definition PPCastT (l: loc) (pct: control_tag) (vt: val_tag) (lts1 lts2: list loc_tag) (ty: type) :
-    PolicyResult val_tag :=
-    double_bind (P1.PPCastT l  (fst pct) (fst vt) (map fst lts1) (map fst lts2) ty)
-                (P2.PPCastT l  (snd pct) (snd vt) (map snd lts1) (map snd lts2) ty)
+  Definition PPCastT (n m:nat) (l: loc) (pct: control_tag) (vt: val_tag) (lts1: lt_vec n) (lts2: lt_vec m)
+    (ty: type) : PolicyResult val_tag :=
+    double_bind (P1.PPCastT n m l (fst pct) (fst vt) (VectorDef.map fst lts1) (VectorDef.map fst lts2) ty)
+                (P2.PPCastT n m l (snd pct) (snd vt) (VectorDef.map snd lts1) (VectorDef.map snd lts2) ty)
                 (fun vt1 vt2 => (vt1, vt2)).
 
   Definition IICastT (l: loc) (pct: control_tag) (vt: val_tag) (ty: type) :

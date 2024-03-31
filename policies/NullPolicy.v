@@ -28,6 +28,14 @@ Module NullPolicy <: Policy.
   Definition DefHT   : loc_tag := tt.
   Definition InitT   : val_tag := tt.
   
+  Definition lt_vec (n:nat) := VectorDef.t loc_tag n.
+
+  Fixpoint lts_constant (n:nat) (lt:loc_tag) : lt_vec n :=
+    match n with
+    | O => VectorDef.nil loc_tag
+    | S n' => VectorDef.cons loc_tag lt n' (lts_constant n' lt)
+    end.
+  
   Definition print_vt (t:val_tag) : string := "tt".
   Definition print_ct (t:control_tag) : string := "tt".
   Definition print_lt (t:loc_tag) : string := "tt".
@@ -36,6 +44,7 @@ Module NullPolicy <: Policy.
   Definition init_state : policy_state := tt.
   
   Definition PolicyResult := PolicyResult policy_state.
+  Definition ltop := ltop lt_eq_dec policy_state.
   
   Definition ConstT (l:loc) (pct: control_tag) : PolicyResult val_tag := ret tt.
   Definition GlobalT (ce : composite_env) (id : ident) (ty : type) : val_tag * val_tag * loc_tag :=
@@ -43,23 +52,25 @@ Module NullPolicy <: Policy.
   Definition FunT (ce : composite_env) (id : ident) (ty : type) : val_tag :=
     tt.
   
-  Definition LocalT (l:loc) (ce : composite_env) (pct: control_tag) (ty : type) :
-    PolicyResult (control_tag * val_tag * list loc_tag)%type :=
-    ret (tt, tt, repeat tt (Z.to_nat (sizeof ce ty))).
-   Definition DeallocT (l:loc) (ce : composite_env) (pct: control_tag) (ty : type) :
+  Definition LocalT (n:nat) (l:loc) (pct: control_tag) (ty : type) :
+    PolicyResult (control_tag * val_tag * lt_vec n) :=
+    ret (tt, tt, lts_constant n tt).
+
+  Definition DeallocT (l:loc) (ce : composite_env) (pct: control_tag) (ty : type) :
     PolicyResult (control_tag * val_tag * loc_tag) :=
     ret (tt, tt, tt).
- Definition MallocT (l:loc) (pct: control_tag) (fpt: val_tag) :
+  
+  Definition MallocT (l:loc) (pct: control_tag) (fpt: val_tag) :
     PolicyResult (control_tag * val_tag * val_tag * val_tag * loc_tag) :=
     ret (tt, tt, tt, tt, tt).
-
-  Definition FreeT (l:loc) (pct: control_tag) (pt vht: val_tag) (lts: list loc_tag) :
-    PolicyResult (control_tag * val_tag * list loc_tag) :=
+  
+  Definition FreeT (n:nat) (l:loc) (pct: control_tag) (pt vht: val_tag)
+    (lts: lt_vec n) : PolicyResult (control_tag * val_tag * lt_vec n) :=
     ret (tt, tt, lts).
 
-  Definition ClearT (l:loc) (pct:control_tag) (sz:nat) :
-    PolicyResult (control_tag * list loc_tag) :=
-    ret (tt, repeat tt sz).
+  Definition ClearT (l:loc) (pct:control_tag) :
+    PolicyResult (control_tag * loc_tag) :=
+    ret (tt, tt).
   
   Definition CallT      := Passthrough.CallT policy_state val_tag control_tag.  
   Definition ArgT       := Passthrough.ArgT policy_state val_tag control_tag.

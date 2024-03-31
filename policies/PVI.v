@@ -9,8 +9,6 @@ Require Import String.
 Require Import Tags.
 Require Import ExtLib.Structures.Monads. Import MonadNotation.
 
-Require Import List. Import ListNotations. (* list notations is a module inside list *)
-
 Module PVI <: Policy.
   Import Passthrough.
   
@@ -37,7 +35,15 @@ Module PVI <: Policy.
   Definition DefHT   : loc_tag := N.
   Definition InitT   : val_tag := N.
 
-  Definition print_vt (t : val_tag) : string :=
+  Definition lt_vec (n:nat) := VectorDef.t loc_tag n.
+
+  Fixpoint lts_constant (n:nat) (lt:loc_tag) : lt_vec n :=
+    match n with
+    | O => VectorDef.nil loc_tag
+    | S n' => VectorDef.cons loc_tag lt n' (lts_constant n' lt)
+    end.
+
+    Definition print_vt (t : val_tag) : string :=
     match t with
     | Glob id => "Global " ++ (extern_atom id)
     | Dyn c => "Dynamic"
@@ -55,6 +61,8 @@ Module PVI <: Policy.
   Definition init_state : policy_state := tt.
 
   Definition PolicyResult := PolicyResult policy_state.
+  Definition ltop := ltop lt_eq_dec policy_state.
+
   Definition log := log policy_state.
   
   Definition color_eq (pt: val_tag) (lt: loc_tag) : bool :=
@@ -69,19 +77,19 @@ Module PVI <: Policy.
 
   Local Open Scope monad_scope.
   
-  Definition LoadT (l:loc) (pct: control_tag) (pt vt: val_tag) (lts : list loc_tag) :
-    PolicyResult val_tag :=
+  Definition LoadT (n:nat) (l:loc) (pct: control_tag) (pt vt: val_tag)
+    (lts : lt_vec n) : PolicyResult val_tag :=
     match pt with
     | N => raise (PolicyFailure (inj_loc "PVI || LoadT X Failure" l))
-    | _ => if forallb (color_eq pt) lts then ret vt 
+    | _ => if ltop.(forallb) n (color_eq pt) lts then ret vt 
            else raise (PolicyFailure (inj_loc "PVI || LoadT tag_eq_dec Failure" l))
     end.
 
-  Definition StoreT (l:loc) (pct: control_tag) (pt vt: val_tag) (lts : list loc_tag) :
-    PolicyResult (control_tag * val_tag * list loc_tag) :=
+  Definition StoreT (n:nat) (l:loc) (pct: control_tag) (pt vt: val_tag)
+    (lts : lt_vec n) : PolicyResult (control_tag * val_tag * lt_vec n) :=
     match pt with
     | N => raise (PolicyFailure (inj_loc "PVI || StoreT X Failure" l))
-    | _ => if forallb (color_eq pt) lts then ret (pct,vt,lts) 
+    | _ => if ltop.(forallb) n (color_eq pt) lts then ret (pct,vt,lts) 
            else raise (PolicyFailure (inj_loc "PVI || StoreT tag_eq_dec Failure" l))
     end.
   
@@ -100,10 +108,10 @@ Module PVI <: Policy.
 
   Definition FunT (ce: composite_env) (id : ident) (ty : type) : val_tag := N.
   
-  Definition LocalT (l:loc) (ce : composite_env) (pct : control_tag) (ty : type) :
-    PolicyResult (control_tag * val_tag * (list loc_tag))%type :=
+  Definition LocalT (n:nat) (l:loc) (pct : control_tag) (ty : type) :
+    PolicyResult (control_tag * val_tag * lt_vec n)%type :=
     let c := pct in
-    ret (S c, Dyn c, repeat (Dyn c) (Z.to_nat (sizeof ce ty))).
+    ret (S c, Dyn c, lts_constant n (Dyn c)).
   
   Definition DeallocT (l:loc) (ce : composite_env) (pct : control_tag) (ty : type) :
     PolicyResult (control_tag * val_tag * loc_tag) :=
@@ -115,12 +123,13 @@ Module PVI <: Policy.
     let c := pct in
     ret (S c, Dyn c, N, Dyn c, Dyn c).
 
-  Definition FreeT (l:loc) (pct: control_tag) (pt vht: val_tag) (lts: list loc_tag) :
-    PolicyResult (control_tag * val_tag * list loc_tag) :=
+  Definition FreeT (n:nat) (l:loc) (pct: control_tag) (pt vht: val_tag)
+    (lts: lt_vec n) : PolicyResult (control_tag * val_tag * lt_vec n) :=
     ret (pct, N, lts).
 
-  Definition ClearT (l:loc) (pct: control_tag) (n: nat) : PolicyResult (control_tag * list loc_tag) :=
-    ret (pct, repeat N n).
+  Definition ClearT (l:loc) (pct: control_tag) :
+    PolicyResult (control_tag * loc_tag) :=
+    ret (pct, N).
   
   (* Passthrough rules *)  
   Definition CallT      := Passthrough.CallT policy_state val_tag control_tag.  

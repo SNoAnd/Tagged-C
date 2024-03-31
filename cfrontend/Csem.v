@@ -175,8 +175,9 @@ Module TaggedCsem (Pol: Policy)
   Definition do_alloc_variable (l: Cabs.loc) (pct: control_tag) (e: env) (m: mem) (id: ident) (ty:type) :
     PolicyResult (control_tag * env * mem) :=
     '(m',base) <- stkalloc m (alignof ce ty) (sizeof ce ty);;
-    '(pct', pt', lts') <- LocalT l ce pct ty;;
-    m'' <- storebytes m' base (repeat M.MD.Undef (Z.to_nat (sizeof ce ty))) lts';;
+    '(pct', pt', lts') <- LocalT (Z.to_nat (sizeof ce ty)) l pct ty;;
+    m'' <- storebytes m' base (repeat M.MD.Undef (Z.to_nat (sizeof ce ty)))
+    (VectorDef.to_list lts');;
     ret (pct', PTree.set id (PUB base pt' ty) e, m'').
 
   Definition do_alloc_variables (l: Cabs.loc) (pct: control_tag) (e: env) (m: mem) (vs: list (ident * type)) :
@@ -373,7 +374,7 @@ Module TaggedCsem (Pol: Policy)
         rred pct (Econst v ty) te m E0 pct (Eval (v,vt') ty) te m ps0 ps1
     | red_rvalof_mem: forall ofs pt lts bf ty te m tr v vt vt' vt'' ps0 ps1 ps2 ps3,
         deref_loc ty m ofs pt bf tr <<ps0>> (Success ((v,vt), lts)) <<ps1>> ->
-        LoadT l pct pt vt lts ps1 = (Success vt',ps2) ->
+        LoadT (List.length lts) l pct pt vt (VectorDef.of_list lts) ps1 = (Success vt',ps2) ->
         AccessT l pct vt' ps2 = (Success vt'',ps3) ->
         rred pct (Evalof (Eloc (Lmem ofs pt bf) ty) ty) te m tr
              pct (Eval (v,vt'') ty) te m ps0 ps3
@@ -420,7 +421,7 @@ Module TaggedCsem (Pol: Policy)
         sem_cast v1 ty1 ty m = Some v ->
         v = Vptr ofs ->
         deref_loc ty m ofs vt1 Full tr <<ps0>> (Success ((v2,vt2), lts)) <<ps1>> ->
-        IPCastT l pct vt1 lts ty ps1 = (Success pt', ps2) ->
+        IPCastT (List.length lts) l pct vt1 (VectorDef.of_list lts) ty ps1 = (Success pt', ps2) ->
         rred pct (Ecast (Eval (v1,vt1) ty1) ty) te m tr
              pct (Eval (v,pt') ty) te m ps0 ps2
     | red_cast_ptr_int: forall ty v1 vt1 ty1 te m v ofs tr v2 vt2 lts vt' ty' attr ps0 ps1 ps2,
@@ -429,7 +430,7 @@ Module TaggedCsem (Pol: Policy)
         sem_cast v1 ty1 ty m = Some v ->
         v1 = Vptr ofs ->
         deref_loc ty1 m ofs vt1 Full tr <<ps0>> (Success ((v2,vt2), lts)) <<ps1>> ->
-        PICastT l pct vt1 lts ty ps1 = (Success vt',ps2) ->
+        PICastT (List.length lts) l pct vt1 (VectorDef.of_list lts) ty ps1 = (Success vt',ps2) ->
         rred pct (Ecast (Eval (v1,vt1) ty1) ty) te m tr
              pct (Eval (v,vt') ty) te m ps0 ps2
     | red_cast_ptr_ptr: forall ty v1 vt1 ty1 te m v ofs ofs1 tr tr1
@@ -440,7 +441,8 @@ Module TaggedCsem (Pol: Policy)
         v1 = Vptr ofs1 -> v = Vptr ofs ->
         deref_loc ty1 m ofs1 vt1 Full tr1 <<ps0>> (Success ((v2,vt2),lts1)) <<ps1>> ->
         deref_loc ty m ofs vt1 Full tr <<ps1>> (Success ((v3,vt3),lts)) <<ps2>> ->
-        PPCastT l pct vt1 lts1 lts ty ps2 = (Success pt',ps3) ->
+        PPCastT (List.length lts1) (List.length lts) l pct vt1
+            (VectorDef.of_list lts1) (VectorDef.of_list lts) ty ps2 = (Success pt',ps3) ->
         rred pct (Ecast (Eval (v1,vt1) ty1) ty) te m (tr1 ++ tr)
              pct (Eval (v,pt') ty) te m ps0 ps3
     | red_seqand_true: forall v1 vt1 ty1 r2 ty te m pct' ps0 ps1,
@@ -481,8 +483,8 @@ Module TaggedCsem (Pol: Policy)
         sem_cast v2 ty2 ty1 m = Some v' ->
         deref_loc ty1 m ofs pt bf t1 <<ps0>> (Success ((v1,vt1), lts)) <<ps1>> ->
         AssignT l pct vt1 vt2 ps1 = (Success (pct',vt'),ps2) ->
-        StoreT l pct' pt vt' lts ps2 = (Success (pct'', vt'', lts'),ps3) ->
-        assign_loc ty1 m ofs pt lts' bf (v',vt'') t2 <<ps3>> (Success (m', (v'',vt'''))) <<ps4>> ->
+        StoreT (List.length lts) l pct' pt vt' (VectorDef.of_list lts) ps2 = (Success (pct'', vt'', lts'),ps3) ->
+        assign_loc ty1 m ofs pt (VectorDef.to_list lts') bf (v',vt'') t2 <<ps3>> (Success (m', (v'',vt'''))) <<ps4>> ->
         rred pct (Eassign (Eloc (Lmem ofs pt bf) ty1) (Eval (v2, vt2) ty2) ty1) te m (t1++t2)
              pct'' (Eval (v'',vt''') ty1) te m' ps0 ps4
     | red_assign_tmp: forall b ty1 v1 vt1 v2 vt2 ty2 te m te' v pct' vt' ps0 ps1,
@@ -495,7 +497,7 @@ Module TaggedCsem (Pol: Policy)
     | red_assignop_mem: forall op ofs pt ty1 bf v2 vt2 ty2 tyres te m t
                                v1 vt1 vt1' vt1'' lts ps0 ps1 ps2 ps3,
         deref_loc ty1 m ofs pt bf t <<ps0>> (Success ((v1,vt1), lts)) <<ps1>> ->
-        LoadT l pct pt vt1 lts ps1 = (Success vt1',ps2) ->
+        LoadT (List.length lts) l pct pt vt1 (VectorDef.of_list lts) ps1 = (Success vt1',ps2) ->
         AccessT l pct vt1' ps2 = (Success vt1'',ps3) ->
         rred pct (Eassignop op (Eloc (Lmem ofs pt bf) ty1) (Eval (v2,vt2) ty2) tyres ty1) te m t
              pct (Eassign (Eloc (Lmem ofs pt bf) ty1)
@@ -519,7 +521,7 @@ Module TaggedCsem (Pol: Policy)
     | red_postincr_mem: forall id ofs pt ty bf te m t v vt vt' vt'' lts op ps0 ps1 ps2 ps3,
         deref_loc ty m ofs pt bf t <<ps0>> (Success ((v,vt), lts)) <<ps1>> ->
         op = match id with Incr => Oadd | Decr => Osub end ->
-        LoadT l pct pt vt lts ps1 = (Success vt',ps2) ->
+        LoadT (List.length lts) l pct pt vt (VectorDef.of_list lts) ps1 = (Success vt',ps2) ->
         AccessT l pct vt' ps2 = (Success vt'',ps3) ->
         rred pct (Epostincr id (Eloc (Lmem ofs pt bf) ty) ty) te m t
              pct (Ecomma (Eassign (Eloc (Lmem ofs pt bf) ty)
@@ -581,12 +583,12 @@ Module TaggedCsem (Pol: Policy)
     | failred_rvalof_mem1:
       forall ofs pt lts bf ty te m tr v vt failure ps0 ps1 ps2,
         deref_loc ty m ofs pt bf tr <<ps0>> (Success ((v,vt), lts)) <<ps1>> ->
-        LoadT l pct pt vt lts ps1 = (Fail failure,ps2) ->
+        LoadT (List.length lts) l pct pt vt (VectorDef.of_list lts) ps1 = (Fail failure,ps2) ->
         rfailred pct (Evalof (Eloc (Lmem ofs pt bf) ty) ty) te m tr failure ps0 ps2
     | failred_rvalof_mem2:
       forall ofs pt lts bf ty te m tr v vt vt' failure ps0 ps1 ps2 ps3,
         deref_loc ty m ofs pt bf tr <<ps0>> (Success ((v,vt), lts)) <<ps1>> ->
-        LoadT l pct pt vt lts ps1 = (Success vt',ps2) ->
+        LoadT (List.length lts) l pct pt vt (VectorDef.of_list lts) ps1 = (Success vt',ps2) ->
         AccessT l pct vt' ps2 = (Fail failure, ps3) ->
         rfailred pct (Evalof (Eloc (Lmem ofs pt bf) ty) ty) te m tr failure ps0 ps3
     | failred_rvalof_tmp:
@@ -645,15 +647,15 @@ Module TaggedCsem (Pol: Policy)
         sem_cast v2 ty2 ty1 m = Some v' ->
         deref_loc ty1 m ofs pt bf t1 <<ps0>> (Success ((v1,vt1), lts)) <<ps1>> ->
         AssignT l pct vt1 vt2 ps1 = (Success (pct',vt'),ps2) ->
-        StoreT l pct' pt vt' lts ps2 = (Fail failure,ps3) ->
+        StoreT (List.length lts) l pct' pt vt' (VectorDef.of_list lts) ps2 = (Fail failure,ps3) ->
         rfailred pct (Eassign (Eloc (Lmem ofs pt bf) ty1) (Eval (v2, vt2) ty2) ty1) te m t1 failure ps0 ps1
     | failred_assign_mem3:
       forall ofs ty1 pt bf v1 vt1 v2 vt2 ty2 te m t1 v' pct' vt' lts pct'' vt'' lts' t2 failure ps0 ps1 ps2 ps3 ps4,
         sem_cast v2 ty2 ty1 m = Some v' ->
         deref_loc ty1 m ofs pt bf t1 <<ps0>> (Success ((v1,vt1), lts)) <<ps1>> ->
         AssignT l pct vt1 vt2 ps1 = (Success (pct',vt'),ps2) ->
-        StoreT l pct' pt vt' lts ps2 = (Success (pct'',vt'',lts'),ps3) ->
-        assign_loc ty1 m ofs pt lts' bf (v',vt'') t2 <<ps3>> (Fail failure) <<ps4>> ->
+        StoreT (List.length lts) l pct' pt vt' (VectorDef.of_list lts) ps2 = (Success (pct'',vt'',lts'),ps3) ->
+        assign_loc ty1 m ofs pt (VectorDef.to_list lts') bf (v',vt'') t2 <<ps3>> (Fail failure) <<ps4>> ->
         rfailred pct (Eassign (Eloc (Lmem ofs pt bf) ty1) (Eval (v2, vt2) ty2) ty1) te m (t1++t2) failure ps0 ps4
     | failred_assign_tmp:
       forall b ty1 v1 vt1 v2 vt2 ty2 te m v failure ps0 ps1,
@@ -669,13 +671,13 @@ Module TaggedCsem (Pol: Policy)
     | failred_assignop_mem1:
       forall op ofs pt ty1 bf v2 vt2 ty2 tyres te m t1 v1 vt1 lts failure ps0 ps1 ps2,
         deref_loc ty1 m ofs pt bf t1 <<ps0>> (Success ((v1,vt1), lts)) <<ps1>> ->
-        LoadT l pct pt vt1 lts ps1 = (Fail failure,ps2) ->
+        LoadT (List.length lts) l pct pt vt1 (VectorDef.of_list lts) ps1 = (Fail failure,ps2) ->
         rfailred pct (Eassignop op (Eloc (Lmem ofs pt bf) ty1)
                                 (Eval (v2,vt2) ty2) tyres ty1) te m t1 failure ps0 ps2
     | failred_assignop_mem2:
       forall op ofs pt ty1 bf v2 vt2 ty2 tyres te m t1 v1 vt1 vt1' lts failure ps0 ps1 ps2 ps3,
         deref_loc ty1 m ofs pt bf t1 <<ps0>> (Success ((v1,vt1), lts)) <<ps1>> ->
-        LoadT l pct pt vt1 lts ps1 = (Success vt1',ps2) ->
+        LoadT (List.length lts) l pct pt vt1 (VectorDef.of_list lts) ps1 = (Success vt1',ps2) ->
         AccessT l pct vt1' ps2 = (Fail failure,ps3) ->
         rfailred pct (Eassignop op (Eloc (Lmem ofs pt bf) ty1) (Eval (v2,vt2) ty2) tyres ty1) te m t1 failure ps0 ps3
     | failred_assignop_tmp:
@@ -690,12 +692,12 @@ Module TaggedCsem (Pol: Policy)
     | failred_postincr_mem1:
       forall id ofs pt ty bf te m tr v vt lts failure ps0 ps1 ps2,
         deref_loc ty m ofs pt bf tr <<ps0>> (Success ((v,vt), lts)) <<ps1>> ->
-        LoadT l pct pt vt lts ps1 = (Fail failure,ps2) ->
+        LoadT (List.length lts) l pct pt vt (VectorDef.of_list lts) ps1 = (Fail failure,ps2) ->
         rfailred pct (Epostincr id (Eloc (Lmem ofs pt bf) ty) ty) te m tr failure ps0 ps2
     | failred_postincr_mem2:
       forall id ofs pt ty bf te m tr v vt vt' lts failure ps0 ps1 ps2 ps3,
         deref_loc ty m ofs pt bf tr <<ps0>> (Success ((v,vt), lts)) <<ps1>> ->
-        LoadT l pct pt vt lts ps1 = (Success vt',ps2) ->
+        LoadT (List.length lts) l pct pt vt (VectorDef.of_list lts) ps1 = (Success vt',ps2) ->
         AccessT l pct vt' ps2 = (Fail failure,ps3) ->
         rfailred pct (Epostincr id (Eloc (Lmem ofs pt bf) ty) ty) te m tr failure ps0 ps3
     | failred_postincr_tmp:
@@ -722,7 +724,7 @@ Module TaggedCsem (Pol: Policy)
         sem_cast v1 ty1 ty m = Some v ->
         v = Vptr ofs ->
         deref_loc ty m ofs vt1 Full tr <<ps0>> (Success ((v2,vt2), lts)) <<ps1>> ->
-        IPCastT l pct vt1 lts ty ps0 = (Fail failure,ps2) ->
+        IPCastT (List.length lts) l pct vt1 (VectorDef.of_list lts) ty ps0 = (Fail failure,ps2) ->
         rfailred pct (Ecast (Eval (v1,vt1) ty1) ty) te m tr failure ps0 ps2
     | failred_cast_ptr_int:
       forall ty v1 vt1 ty1 te m v ofs tr v2 vt2 lts ty' attr failure ps0 ps1 ps2,
@@ -731,7 +733,7 @@ Module TaggedCsem (Pol: Policy)
         sem_cast v1 ty1 ty m = Some v ->
         v1 = Vptr ofs ->
         deref_loc ty1 m ofs vt1 Full tr <<ps0>> (Success ((v2,vt2), lts)) <<ps1>> ->
-        PICastT l pct vt1 lts ty ps1 = (Fail failure, ps2) ->
+        PICastT (List.length lts) l pct vt1 (VectorDef.of_list lts) ty ps1 = (Fail failure, ps2) ->
         rfailred pct (Ecast (Eval (v1,vt1) ty1) ty) te m tr failure ps0 ps2
     | failred_cast_ptr_ptr:
       forall ty v1 vt1 ty1 te m v ofs ofs1 tr tr1 v2 vt2 v3 vt3 lts lts1 ty1' attr1 ty' attr2 failure ps0 ps1 ps2 ps3,
@@ -742,7 +744,8 @@ Module TaggedCsem (Pol: Policy)
         v = Vptr ofs ->
         deref_loc ty1 m ofs1 vt1 Full tr1 <<ps0>> (Success ((v2,vt2), lts1)) <<ps1>> ->
         deref_loc ty m ofs vt1 Full tr <<ps1>> (Success ((v3,vt3), lts)) <<ps2>> ->
-        PPCastT l pct vt1 lts1 lts ty ps2 = (Fail failure,ps3) ->
+        PPCastT (List.length lts1) (List.length lts) l pct vt1
+            (VectorDef.of_list lts1) (VectorDef.of_list lts) ty ps2 = (Fail failure,ps3) ->
         rfailred pct (Ecast (Eval (v1,vt1) ty1) ty) te m (tr1 ++ tr) failure ps0 ps3
 
     | red_call_internal_fail: forall ty te m b fd vft tyf tyargs tyres cconv el failure ps0 ps1,

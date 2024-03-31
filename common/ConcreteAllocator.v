@@ -173,6 +173,7 @@ Module ConcreteAllocator (Pol : Policy).
     let '(m,sp) := m in
     '(m',base) <- find_free 100 m (Int64.repr 1000) size vt_head;;
     ret ((m',sp),base).
+
   Definition heapfree (l: Cabs.loc) (pct: control_tag) (m: mem) (p: ptr) (pt: val_tag) :
     PolicyResult (Z * control_tag * mem) :=
     let (m, sp) := m in
@@ -181,9 +182,9 @@ Module ConcreteAllocator (Pol : Policy).
        iterate through the heap to locate a block at this addr. *)
     let head := Int64.repr (Int64.unsigned p - header_size) in
     '((v,vt),lts) <- get_header m head;;
-    '(pct',vt',lts') <- FreeT l pct pt vt lts;;
+    '(pct',vt',lts') <- FreeT (List.length lts) l pct pt vt (VectorDef.of_list lts);;
     '(live,sz) <- parse_header v;;
-    m' <- update_header m head false sz vt' lts';;
+    m' <- update_header m head false sz vt' (VectorDef.to_list lts');;
     ret (sz,pct',(m',sp)).
 
   Fixpoint globals (m : CM.mem) (gs : list (ident*Z)) (next : addr) : (CM.mem * PTree.t ptr) :=
@@ -225,7 +226,7 @@ Module ConcreteAllocator (Pol : Policy).
     | Success bytes => ret bytes
     | Fail f => raise f
     end.
-  
+
   Definition store (chunk:memory_chunk) (m:mem) (p:ptr) (v:TLib.atom) (lts:list loc_tag) :
     PolicyResult mem :=
     let '(m,st) := m in
@@ -241,7 +242,7 @@ Module ConcreteAllocator (Pol : Policy).
     | Success m' => ret (m',st)
     | Fail f => raise f
     end.
-  
+
   Definition storebytes (m:mem) (p:ptr) (bytes:list memval) (lts:list loc_tag)
     : PolicyResult mem :=
     let '(m,st) := m in
@@ -249,7 +250,7 @@ Module ConcreteAllocator (Pol : Policy).
     | Success m' => ret (m',st)
     | Fail f => raise f
     end.
- 
+
    End A.
 End ConcreteAllocator.
 
