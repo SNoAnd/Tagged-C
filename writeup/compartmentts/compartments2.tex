@@ -6,7 +6,11 @@
 \usepackage{amsmath, amssymb, stmaryrd}
 \usepackage{subcaption}
 
+\title{Efficient Compartments with Sharing in Tagged C}
+\author{Sean Anderson}
+
 \begin{document}
+\maketitle
 
 \input{macros.tex}
 \input{tagrules.tex}
@@ -82,7 +86,6 @@ is gathered in one unit, which we will call \(A\), and kept separate from the lo
 which belongs to its own compartment, \(B\). We might further keep the standard library in yet
 another compartment, \(C\). The compartments' memories are kept disjoint, except that {\tt gets}
 must take a pointer to an array that will be accessible to both \(A\) and \(C\).
-(The string argument to {\tt log} will also be a shared global, but this is less interesting.)
 The special {\tt \_\_sys\_fire\_missiles} function is modeled as an external call,
 outside of both compartments.
 
@@ -108,19 +111,20 @@ Our contributions are as follows:
 There are many compartmentalization mechanisms in the literature, and several formal
 characterizations of compartmentalized systems.
 
-Abate et al. \cite{} characterize compartmentalization in the presence of undefined
-behavior, treating UB as equivalent to compromise by an adversary. Their model does
-not support shared memory, and their policy places strong constraints on potential
+Abate et al. \cite{Abate18:GoodComponentsBad} characterize compartmentalization in the
+presence of undefined behavior, treating UB as equivalent to compromise by an adversary.
+Their model does not support shared memory, and their policy places strong constraints on potential
 hardware implementations: they assume linear tags, which are unlikely to appear
 in realistic implementations.
 
-Building on their work, El-Korashy et al. \cite{} present a compartmentalization
+Building on their work, El-Korashy et al. \cite{ElKorashy22:SecurePtrs} present a compartmentalization
 scheme that does support shared memory. They use a much more restrictive specification
 than Abate et al.: their source language is fully memory-safe and has no UB. Their
 focus is on showing that they can enforce their compartmentalized calling convention
 in a memory safe setting. They are not focused on the underlying enforcement hardware,
 but we can assume that any hardware implementation would need to be of similar complexity
-to others capable of enforcing full memory-safety, e.g. Acevedo de Amorim et al. \cite{}. 
+to others capable of enforcing full memory-safety, e.g. Acevedo de Amorim et al.
+\cite{AdA18:MeaningMemorySafety}. 
 
 Thibault et al. \cite{} go deeper into their prove effort: they prove safe compilation of a
 compartmentalized version of CompCert C down to a compartmentalized assembly language.
@@ -251,7 +255,7 @@ each shared object is allocated in its own separate concrete memory.
                     \longrightarrow C,M',e \mid v\)}
   \end{minipage}
 
-  \caption{Reads and Writes}
+  \caption{Reads and Writes \sna{Is the \(ms ~ id \mapsto\) syntax acceptable?}}
   \label{subfig:rwstep}
 \end{figure}
 
@@ -267,7 +271,8 @@ its concrete position. A region is either \(\mathbf{L}(C)\), for local pointers 
 the compartment \(C\), or \(\mathbf{S}(id,\mathit{base})\), where \(id\) is an
 abstract identifier and \(\mathit{base}\) is a machine integer. Regions are identified
 in general by their compartment identifiers or abstract identifiers, collectively
-the set \(\mathcal{C} + \mathit{ident}\). A ``super-memory'' \(M\)
+the set \(\mathcal{C} + \mathit{ident}\). An environment \(e\) maps variable names to
+their regions and position. A ``super-memory'' \(M\)
 is a record containing a map from region identities to memories, \(ms\),
 and lists of allocated regions for both stack and heap, \(stk\) and \(heap\).
 
@@ -339,8 +344,8 @@ memory, determines what happens in the event of an out-of-bounds read or write.
 
   \[\begin{split}
     \mathbf{SA} : \mathit{stk\_alloc} ~ M ~ r ~ sz = (a, M') \rightarrow & \\
-    M'.stk = (r,a,a+sz)::M.stk & \\
-    \land M'.heap = M.heap & \\[0.75em]
+    M'.stk = (r,a,a+sz)::M.stk \land & \\
+    M'.heap = M.heap & \\[0.75em]
     \mathbf{SF} : M.stk = (r,a_1,a_2)::S' \rightarrow & \\
     \exists M' . \mathit{stk\_free} ~ M ~ r ~ a_1 = M' \land & \\
     M'.stk = S' \land M'.heap = M.heap & \\[0.75em]
@@ -480,16 +485,18 @@ previously allocated.
 
 \end{figure}
 
-\section{Cross-compartment interfaces}
+\paragraph{Cross-compartment interfaces}
 \label{sec:interfaces}
 
-In this system, each function is assigned to a compartment. A compartment interface
-is a subset of the functions in the compartment that are publicly accessible.
+In this system, each function is assigned to a compartment. We write the static mapping
+from function identifiers \(\mathtt{f}\) to compartments \(\mathit{comp}(\mathtt{f})\).
+Each compartment has an interface that is the subset of its functions that are publicly
+accessible. We write that a function \(\mathtt{f}\) is public in \(C\) as
+\(\mathit{pub}(\mathtt{f},C)\).
+
 At any given time, the compartment that contains the currently active function is
 considered the active compartment. It is illegal to call a private function in an
-inactive compartment.
-
-Public functions may not receive \(L(\dots)\)-region pointer arguments.
+inactive compartment. Public functions may not receive \(L(\dots)\)-region pointer arguments.
 Private functions may take either kind of pointer as argument. \(L(\dots)\) pointers
 may also not be stored to shared memory regions. This guarantees that there can be no
 confusion between shared pointers and a compartment's own local pointer that
@@ -500,6 +507,10 @@ or loads it from shared memory may rely on it not aliasing with any local pointe
 It could recieve such a pointer that has been cast to an integer type, but this is
 not a problem: if it casts it back to a pointer, the risks are the same as if it
 cast any other integer to a pointer.
+
+Local (stack allocated) variables are statically designated as shared or compartment-local.
+We write that \(\mathtt{x}\) is designated shared as \(\mathit{share}(\mathtt{x})\).
+For heap allocated objects, it is the call-sites to malloc that are statically designated.
 
 \section{Implementing Compartmentalization in Tagged C}
 
@@ -546,15 +557,16 @@ If the tags match, the load or store may proceed, else it failstops.
   \end{minipage}
   \begin{minipage}{0.4\textwidth}
     \truleblock{\color{blue}{\bf FunT}(\(\mathtt{f}_{\mathit{fun}}\))}{\(\pt' := \mathbb{F}(\mathtt{f}_{fun})\)}
+    
     \calltruleblock{
       \caseoftwo{\(\pt\)}
                 {\(\mathbb{F}(\mathtt{f}_{fun})\)}{\(\PCT['] := \mathit{comp}(\mathtt{f}_{fun})\)}
                 {\(\underline{~~}\)}{\(\fail\)}}
   \end{minipage}
 \begin{minipage}{0.3\textwidth}
-  \truleblock{\color{blue} {\bf LocalT}(\(\mathcal{P}, \mathtt{x}_\mathit{loc}, \mathtt{ty}\))}
+  \truleblock{\(\color{blue} \mathbf{LocalT}(\mathcal{P}, \mathtt{x}_{\mathit{loc}}, \mathtt{ty})\)}
              {\(\vt['] := \emptyset;\) \\
-               if \mathit{share}(\mathtt{x}) \\
+               if \(\mathit{share}(\mathtt{x})\) \\
                then \begin{tabular}[t]{l}
                  \(\pt['] := \mathtt{S}(s);\) \\
                  \(\lt['] := \mathtt{S}(s);\) \\
@@ -563,8 +575,7 @@ If the tags match, the load or store may proceed, else it failstops.
                else \begin{tabular}[t]{l}
                  \(\pt['] := \mathtt{L}(C);\) \\
                  \(\lt['] := \mathtt{L}(C);\) \\
-               \end{tabular} \\
-  }
+               \end{tabular}}
 \end{minipage}
 \begin{minipage}{0.3\textwidth}
   \malloctruleblock{
@@ -602,9 +613,8 @@ If the tags match, the load or store may proceed, else it failstops.
            {\(\mathbf{true},L(C)\)}{\(\fail\)}
            {\(\underline{~~},\underline{~~}\)}{\begin{tabular}{l}
                \(\vt['] := \vt;\) \\
-               \PCT['] := \PCT[_{CLR}]\) \\
+               \(\PCT['] := \PCT[_{CLR}]\) \\
     \end{tabular}}}
-  }
 \end{minipage}
 \begin{minipage}{0.5\textwidth}
   \storetruleblock{
@@ -621,16 +631,18 @@ If the tags match, the load or store may proceed, else it failstops.
                {\(\mathbf{true},L(C)\)}{\(\fail\)}
                {\(\underline{~~},\underline{~~}\)}{\begin{tabular}{l}
                    \(\vt['] := \vt;\) \\
-                   \PCT['] := \PCT[_{CLR}]\) \\
+                   \(\PCT['] := \PCT[_{CLR}]\) \\
              \end{tabular}}}
 \end{minipage}
 
-\caption{Policy Definition}
+\caption{Policy Definition \sna{Note that I added an ``f'' to the signature of RetT.
+    This is the currently active function. We could track it via the PCTT, but it's easier
+    if we just always have access to it.}
 \label{fig:policy}
 
 \end{figure}
 
-Finally, in the StoreT, ArgT, and RetT rules enforce the restriction on the escape of local pointers.
+Finally the StoreT, ArgT, and RetT rules enforce the restriction on the escape of local pointers.
   
 \section{Proving Correctness}
 
@@ -655,7 +667,7 @@ On the other hand, this semantics is a reasonable goal under an enforcement mech
 with even eight-bit tags (512 compartments and shared objects.) If we go up to sixteen
 bits, we can support programs with thousands of shared objects.
 
-That said, it only takes a minor adjustment for this model to be enforceable in even
+That said, it only takes a minor adjustment for our abstract machine to be enforceable in even
 the smallest of tag-spaces. Instead of separate dynamic blocks for each shared
 object, we let the set of memory regions consist of the powerset of compartments,
 each region corresponding to the set of compartments that have permission to access it.
@@ -672,6 +684,8 @@ arbitrarily small. (In extremis, all shared objects can be grouped together to r
 on a machine with only two tags.) Sadly it strays from the C standard in its
 temporal memory safety: under some circumstances a shared object can be accessed
 by a compartment that it has not (yet) been shared with.
+
+\sna{I could give a policy for this variant, too, but not sure it's important enough.}
 
 \begin{figure}
 

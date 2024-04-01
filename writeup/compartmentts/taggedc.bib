@@ -767,3 +767,54 @@ series = {POPL '12}
   pages={186-199},
 
   doi={10.1109/CSF.2010.20}}
+  
+  
+@inproceedings{Abate18:GoodComponentsBad,
+    title = {{When Good Components Go Bad: Formally Secure Compilation Despite Dynamic Compromise}},
+    year = {2018},
+    booktitle = {Proceedings of the 2018 ACM SIGSAC Conference on Computer and Communications Security},
+    author = {Abate, Carmine and {Azevedo de Amorim}, Arthur and Blanco, Roberto and Evans, Ana Nora and Fachini, Guglielmo and Hritcu, Catalin and Laurent, Théo and Pierce, Benjamin C and Stronati, Marco and Tolmach, Andrew},
+    pages = {1351--1368},
+    series = {CCS '18},
+    publisher = {ACM},
+    url = {http://doi.acm.org/10.1145/3243734.3243745},
+    address = {New York, NY, USA},
+    isbn = {978-1-4503-5693-0},
+    doi = {10.1145/3243734.3243745},
+    keywords = {compartmentalization, dynamic compromise, formal definition, foundations, low-level attacks, machine-checked proofs, mutually distrustful components, reference monitors, safety properties, secure compilation, software fault isolation, testing, undefined behavior}
+}
+
+@INPROCEEDINGS{ElKorashy22:SecurePtrs,
+author = {A. El-Korashy and R. Blanco and J. Thibault and A. Durier and D. Garg and C. Hritcu},
+booktitle = {2022 2022 IEEE 35th Computer Security Foundations Symposium (CSF) (CSF)},
+title = {SecurePtrs: Proving Secure Compilation with Data-Flow Back-Translation and Turn-Taking Simulation},
+year = {2022},
+volume = {},
+issn = {1940-1434},
+pages = {64-79},
+abstract = {Proving secure compilation of partial programs typically requires back-translating an attack against the compiled program to an attack against the source program. To prove back-translation, one can syntactically translate the target attacker to a source one-i.e., syntax-directed back-translation-or show that the interaction traces of the target attacker can also be emitted by source attackers—i.e., trace-directed back-translation. Syntax-directed back-translation is not suitable when the target attacker may use unstructured control flow that the source language cannot directly represent. Trace-directed back-translation works with such syntactic dissimilarity because only the external interactions of the target attacker have to be mimicked in the source, not its internal control flow. Revealing only external interactions is, however, inconvenient when sharing memory via unforgeable pointers, since information about shared pointers stashed in private memory is not present on the trace. This made prior proofs unnecessarily complex, since the generated attacker had to instead stash all reachable pointers. In this work, we introduce more informative data-flow traces, combining the best of syntax- and trace-directed back-translation in a simpler technique that handles both syntactic dissimilarity and memory sharing well, and that is proved correct in Coq. Additionally, we develop a novel turn-taking simulation relation and use it to prove a recomposition lemma, which is key to reusing compiler correctness in such secure compilation proofs. We are the first to mechanize such a recomposition lemma in the presence of memory sharing. We use these two innovations in a secure compilation proof for a code generation compiler pass between a source language with structured control flow and a target language with unstructured control flow, both with safe pointers and components.},
+keywords = {technological innovation;codes;computational modeling;syntactics;computer security},
+doi = {10.1109/CSF54842.2022.9919680},
+url = {https://doi.ieeecomputersociety.org/10.1109/CSF54842.2022.9919680},
+publisher = {IEEE Computer Society},
+address = {Los Alamitos, CA, USA},
+month = {aug}
+}
+
+@inproceedings{AdA18:MeaningMemorySafety,
+author="Azevedo de Amorim, Arthur
+and Hri{\c{t}}cu, C{\u{a}}t{\u{a}}lin
+and Pierce, Benjamin C.",
+editor="Bauer, Lujo
+and K{\"u}sters, Ralf",
+title={{The Meaning of Memory Safety}},
+booktitle="Principles of Security and Trust",
+year="2018",
+publisher="Springer International Publishing",
+address="Cham",
+pages="79--105",
+abstract="We give a rigorous characterization of what it means for a programming language to be memory safe, capturing the intuition that memory safety supports local reasoning about state. We formalize this principle in two ways. First, we show how a small memory-safe language validates a noninterference property: a program can neither affect nor be affected by unreachable parts of the state. Second, we extend separation logic, a proof system for heap-manipulating programs, with a ``memory-safe variant'' of its frame rule. The new rule is stronger because it applies even when parts of the program are buggy or malicious, but also weaker because it demands a stricter form of separation between parts of the program state. We also consider a number of pragmatically motivated variations on memory safety and the reasoning principles they support. As an application of our characterization, we evaluate the security of a previously proposed dynamic monitor for memory safety of heap-allocated data.",
+isbn="978-3-319-89722-6"
+}
+
+
