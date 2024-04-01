@@ -471,28 +471,28 @@ Module HeapProblem <: Policy.
            (* keep pointerness in case they do dumb things 
             with it.  TaggedC & ConcreteC would allow this.
             *)
-    | Oeq  (* comparison ([==]) *)
-    | One  (* comparison ([!=]) *)
+    | Oeq  (* comparison ([==]) ok for colors not to match *)
+    | One  (* comparison ([!=]) ok for colors not to match *)
+      => (* as long as both are pointers, set to N*)
+           (* these are ordered, and that's not ok 
+                ok to compare ptrs to zero (null) 
+                do we want to log a warning? if the number is 0, don't ? 
+                stronger case for logging, but its maybe not directly relevant  
+                *)
     | Olt  (* comparison ([<]) *)
     | Ogt  (* comparison ([>]) *)
     | Ole  (* comparison ([<=]) *)
     | Oge  (* comparison ([>=]) *)
-        (* ==, !=, comparison is UB unless in same color *)
       => (
           match vt1, vt2 with 
           | (PointerWithColor l1 c1), (PointerWithColor l2 c2) => (
               if (Z.eqb c1 c2) && (Cabs.loc_eqb l1 l2)
               then ret (pct, vt1)
               else (
-                (* @TODO this is very suss, UB, when there is a log, log it *)
-                  (* APT: not as suspect as all that. Not sure worth logging this case *)
-                (* choice of color to pass on is arbitrary APT: no: see above *)
                 ret (pct, vt2) 
               )
             )
-            (* @TODO this is very suss, UB, when there is a log, log it *)
           | (PointerWithColor l1 c1), N => ret (pct, vt1)
-            (* @TODO this is very suss, UB, when there is a log, log it *)
           |  N, (PointerWithColor l2 c2) => ret(pct, vt2)
           |  _ , _ => ret (pct, vt2) (*anything else, default behavior*)
           end
