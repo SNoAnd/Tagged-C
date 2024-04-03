@@ -170,28 +170,30 @@ in the standard, such as described in Memarian et al. \cite{Memarian19:Exploring
     \mathit{write} \in ~ & \mathit{mem} \rightarrow \mathit{int} \rightarrow \mathit{val}
     \rightharpoonup \mathit{mem} \\
     M ::= ~ & \{
-      ms \in \mathcal{C} + \mathit{ident} \rightharpoonup \mathit{mem}; \\
-     & ~ stk \in list (\mathcal{C} + \mathit{ident} \times \mathit{int} \times \mathit{int}); \\
-     & ~ heap \in list (\mathcal{C} + \mathit{ident} \times \mathit{int} \times \mathit{int})
+    ms \in R \rightharpoonup \mathit{mem}; \\
+    & ~ stk \in list (R \times \mathit{int} \times \mathit{int}); \\
+    & ~ heap \in list (R \times \mathit{int} \times \mathit{int})
     \} \\
-    \mathit{heap\_alloc} \in ~ & \mathcal{M} \rightarrow \mathcal{C} + \mathit{ident} \rightarrow
+    \mathit{heap\_alloc} \in ~ & \mathcal{M} \rightarrow R \rightarrow \mathit{int} \rightharpoonup
+    (\mathit{int} \times \mathcal{M}) \\
+    \mathit{heap\_free} \in ~ & \mathcal{M} \rightarrow R \rightarrow \mathit{int} \rightharpoonup
+    \mathcal{M} \\
+    \mathit{stk\_alloc} \in ~ & \mathcal{M} \rightarrow R \rightarrow
     \mathit{int} \rightharpoonup (\mathit{int} \times \mathcal{M}) \\
-    \mathit{heap\_free} \in ~ & \mathcal{M} \rightarrow \mathcal{C} + \mathit{ident} \rightarrow
-    \mathit{int} \rightharpoonup \mathcal{M} \\
-    \mathit{stk\_alloc} \in ~ & \mathcal{M} \rightarrow \mathcal{C} + \mathit{ident} \rightarrow
-    \mathit{int} \rightharpoonup (\mathit{int} \times \mathcal{M}) \\
-    \mathit{stk\_free} \in ~ & \mathcal{M} \rightarrow \mathcal{C} + \mathit{ident} \rightharpoonup
+    \mathit{stk\_free} \in ~ & \mathcal{M} \rightarrow R \rightharpoonup
     \mathcal{M} \\
     \mathit{perturb} \in ~ & \mathcal{M} \rightharpoonup \mathcal{M} \\
     \end{split}\]
   \end{minipage}
   \begin{minipage}[t]{0.49\textwidth}
     \vspace{0em}
-    \(C \in \mathcal{C}~~~ id \in \mathit{ident}~~~ \)
     \[\begin{aligned}
+    C & \in \mathcal{C} \\
+    id & \in \mathit{ident} \\
+    r & \in R \subseteq \mathcal{C} + \mathit{ident} \\
     \mathcal{R} & ::= \mathbf{L}(C) \mid \mathbf{S}(id, \mathit{base}) &
     \mathit{base} \in \mathit{int} \\
-    v \in \mathit{val} & ::= \ldots \mid \mathit{Vptr} ~ r ~ a &
+    v & \in \mathit{val} ::= \ldots \mid \mathit{Vptr} ~ r ~ a &
     r \in \mathcal{R}, a \in \mathit{int} \\
     e & \in \mathit{ident} \rightharpoonup (\mathcal{R} \times \mathit{int}) \\
     \end{aligned}\]
@@ -201,7 +203,8 @@ in the standard, such as described in Memarian et al. \cite{Memarian19:Exploring
       \hspace{4em} & \(\mathit{CALL}(f, M, \ldots)\)  \\
       \hspace{4em} & \(\mathit{RET}(M, v, \ldots)\) \\
       \multicolumn{2}{l}{} \\
-      \multicolumn{2}{l}{\hspace{1.5em}\((\longrightarrow) \in \mathit{state} \times \mathit{state}\)} \\
+      \multicolumn{2}{l}{\hspace{1.5em}\((\longrightarrow) \in
+        \mathit{state} \times \mathit{state}\)} \\
     \end{tabular}
   \end{minipage}
 
@@ -240,25 +243,26 @@ each shared object is allocated in its own separate concrete memory.
                 {\(C,M,e \mid *(\mathit{Vptr} ~ \mathbf{S}(id, \mathit{base}) ~ a)
                   \longrightarrow C,M,e \mid v\)}
 
-    \judgmentthree[AssignL]
+    \judgmenttwobr[AssignL]
                   {\(M.ms ~ C = m\)}
+                  {\(ms' = M.ms[C\mapsto m']\)}
                   {\(\mathit{write} ~ m ~ a ~ v = m'\)}
-                  {\(M' = M[ms ~ m \mapsto m']\)}
+                  {\(M' = M[ms \mapsto ms']\)}
                   {\(C,M,e \mid *(\mathit{Vptr} ~ \mathbf{L}(C) ~ a) := v
                     \longrightarrow C,M',e \mid v\)}
 
-    \judgmentthree[AssignS]
+    \judgmenttwobr[AssignS]
                   {\(M.ms ~ id = m\)}
+                  {\(ms' = M.ms[id \mapsto m']\)}
                   {\(\mathit{write} ~ m ~ a ~ v = m'\)}
-                  {\(M' = M[ms ~ id \mapsto m']\)}
+                  {\(M' = M[ms \mapsto ms']\)}
                   {\(C,M,e \mid *(\mathit{Vptr} ~ \mathbf{S}(id, \mathit{base}) ~ a) := v
                     \longrightarrow C,M',e \mid v\)}
   \end{minipage}
 
-  \caption{Reads and Writes \sna{Is the \(ms ~ id \mapsto\) syntax acceptable?}}
+  \caption{Reads and Writes}
   \label{subfig:rwstep}
 \end{figure}
-
 
 Memories are kept totally separate, fulfilling our first requirement:
 compartments' local memories are definitely never accessible to other compartments.
@@ -271,7 +275,7 @@ its concrete position. A region is either \(\mathbf{L}(C)\), for local pointers 
 the compartment \(C\), or \(\mathbf{S}(id,\mathit{base})\), where \(id\) is an
 abstract identifier and \(\mathit{base}\) is a machine integer. Regions are identified
 in general by their compartment identifiers or abstract identifiers, collectively
-the set \(\mathcal{C} + \mathit{ident}\). An environment \(e\) maps variable names to
+the set \(R \subseteq \mathcal{C} + \mathit{ident}\). An environment \(e\) maps variable names to
 their regions and position. A ``super-memory'' \(M\)
 is a record containing a map from region identities to memories, \(ms\),
 and lists of allocated regions for both stack and heap, \(stk\) and \(heap\).
@@ -508,8 +512,8 @@ It could recieve such a pointer that has been cast to an integer type, but this 
 not a problem: if it casts it back to a pointer, the risks are the same as if it
 cast any other integer to a pointer.
 
-Local (stack allocated) variables are statically designated as shared or compartment-local.
-We write that \(\mathtt{x}\) is designated shared as \(\mathit{share}(\mathtt{x})\).
+Local (stack allocated) variables and globals are statically designated as shared or
+compartment-local. We write that \(\mathtt{x}\) is designated shared as \(\mathit{share}(\mathtt{x})\).
 For heap allocated objects, it is the call-sites to malloc that are statically designated.
 
 \section{Implementing Compartmentalization in Tagged C}
@@ -531,10 +535,9 @@ else unallocated. The policy state is a counter that tracks the next allocation 
 These definitions are shown in Figure \ref{fig:policy}, with \(\mathit{comp}\) being a
 static mapping from function identifiers to compartment identifiers.
 
-
 We implement the division between regions using the LocalT and MallocT tag rules
 (for stack and heap allocations, respectively). These rules tag the memory locations
-of freshly allocated objects with \(\mathtt{L}(C)\) or \(\mathtt{S}(a)\) depending
+of freshly allocated objects with \(\mathtt{L}(C)\) or \(\mathtt{S}(id)\) depending
 on the sharing status of the variable being allocated or of the call to malloc.
 In the latter case, \(a\) is a fresh shared region identifier.
 They apply the same tag to the base pointer of the allocated object.
@@ -552,7 +555,7 @@ If the tags match, the load or store may proceed, else it failstops.
   & \tau_V ::= \mathtt{L}(C) \mid \mathtt{S}(a) \mid \mathbb{F}(\mathtt{f}_{fun}) \mid \emptyset & a \in \mathit{nat} \\
   & \tau_C ::= C & C \in \mathcal{C} \\
   & \tau_L ::= \mathtt{L}(C) \mid \mathtt{S}(a) \mid \emptyset \\
-  & \sigma := n & n \in \mathit{nat} \\
+  & \sigma := s & s \in \mathit{nat} \\
   \end{aligned}\]
   \end{minipage}
   \begin{minipage}{0.4\textwidth}
@@ -577,27 +580,20 @@ If the tags match, the load or store may proceed, else it failstops.
                  \(\lt['] := \mathtt{L}(C);\) \\
                \end{tabular}}
 \end{minipage}
-\begin{minipage}{0.3\textwidth}
+\begin{minipage}{0.6\textwidth}
   \malloctruleblock{
     \(\vt['] := \emptyset;\) \\
-    if \(\mathit{share} ~ C\) \\
-    then \begin{tabular}[t]{l}
-      \(\pt['] := \mathtt{S}(s);\) \\
-      \(\lt['] := \mathtt{S}(s);\) \\
-      \(s := s+1\)
-    \end{tabular} \\
-    else \begin{tabular}[t]{l}
-      \(\pt['] := \mathtt{L}(C);\) \\
-      \(\lt['] := \mathtt{L}(C);\) \\
-    \end{tabular} \\
-  }
-\end{minipage}
-\begin{minipage}{0.3\textwidth}
-  \binoptruleblock{
-    \caseofthree{\(\vt[_1], \vt[_2]\)}
-                {\(\emptyset,\emptyset\)}{\(\emptyset\)}
-                {\(\vt,\emptyset\) \\ \(\emptyset, \vt\)}{\(\vt['] := \vt\)}
-                {\(\underline{~~}, \underline{~~}\)}{\(\fail\)}
+    \caseofthree{\(\pt\)}
+                {\(\mathtt{malloc}\)}{\begin{tabular}[t]{l}
+                    \(\pt['] := \mathtt{L}(C);\) \\
+                    \(\lt['] := \mathtt{L}(C);\) \\
+                \end{tabular}}
+                {\(\mathtt{malloc\_share}\)}{\begin{tabular}[t]{l}
+                    \(\pt['] := \mathtt{S}(s);\) \\
+                    \(\lt['] := \mathtt{S}(s);\) \\
+                    \(s := s+1\)
+                \end{tabular}}
+                {\(\underline{~~}\)}{\(\fail\)}
   }
 \end{minipage}
 \begin{minipage}{0.5\textwidth}
@@ -632,6 +628,14 @@ If the tags match, the load or store may proceed, else it failstops.
                    \(\vt['] := \vt;\) \\
                    \(\PCT['] := \PCT[_{CLR}]\) \\
              \end{tabular}}}
+\end{minipage}
+\begin{minipage}{0.3\textwidth}
+  \binoptruleblock{
+    \caseofthree{\(\vt[_1], \vt[_2]\)}
+                {\(\emptyset,\emptyset\)}{\(\emptyset\)}
+                {\(\vt,\emptyset\) \\ \(\emptyset, \vt\)}{\(\vt['] := \vt\)}
+                {\(\underline{~~}, \underline{~~}\)}{\(\fail\)}
+  }
 \end{minipage}
 
 \caption{Policy Definition}
