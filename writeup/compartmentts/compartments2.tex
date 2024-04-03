@@ -624,7 +624,6 @@ If the tags match, the load or store may proceed, else it failstops.
                 \(\mathtt{L}(\PCT),\mathtt{L}(\PCT),\underline{~~}\)}{\(\vt['] := \vt\)}
                 {\(\underline{~~}, \underline{~~}\)}{\(\fail\)}
   }
-
   
   \truleblock{\(\color{blue} \mathbf{RetT}(\PCT[_{CLE}], \PCT[_{CLR}], \vt, \mathtt{f}_{fun})\)}
              {\caseoftwo{\(\mathit{pub}(\mathtt{f}_{fun}), \vt\)}
@@ -635,9 +634,7 @@ If the tags match, the load or store may proceed, else it failstops.
              \end{tabular}}}
 \end{minipage}
 
-\caption{Policy Definition \sna{Note that I added an ``f'' to the signature of RetT.
-    This is the currently active function. We could track it via the PCTT, but it's easier
-    if we just always have access to it.}
+\caption{Policy Definition}
 \label{fig:policy}
 
 \end{figure}
