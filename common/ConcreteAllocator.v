@@ -1,3 +1,14 @@
+(**
+ * Concrete Allocator, meant to be more realistic than FLAllocator.
+ *    Allocator headers live in memory, so must be checked before use. 
+ *    The header is an int(8 bytes) that stores the size of the allocated block,
+ *    excluding itself. 
+ * 
+ * @note free & malloc of 0/null are handled by InterpEvents. They do not reach
+ *    the allocator or the tag rules, so are ignored. 
+ *    Note that if that changes, the header size could become -1 and the allocator 
+ *    will need code changes.  
+ *)
 Require Import Zwf.
 Require Import Axioms.
 Require Import Coqlib.
@@ -80,7 +91,9 @@ Module ConcreteAllocator (Pol : Policy).
      Code seems somewhat inconsistent on this point.
      If the header space is not inclueded, it makes size 0 regions problematic, as you cannot
      distinguish "free" from "in use".
-     BTW, it would be legal to just return a null pointer for a 0-length malloc request. *)
+     BTW, it would be legal to just return a null pointer for a 0-length malloc request. 
+     lts is just the tags on the header
+     *)
   Definition get_header (m: CM.mem) (base: ptr) : PolicyResult (atom * list loc_tag) :=
     match load_all Mint64 m base with
     | Success res => ret res
@@ -97,20 +110,22 @@ Module ConcreteAllocator (Pol : Policy).
     | _ => raise (OtherFailure "Header is not a long")
     end.
 
+  (* @TODO the vt tag can drop *)
   Definition update_header (m: CM.mem) (base: ptr) (live: bool) (sz: Z)
-             (vt: val_tag) (lts: list loc_tag) : PolicyResult CM.mem :=
+             (vt: val_tag) (lts: lt_vec 8%nat) : PolicyResult CM.mem :=
     if sz <? 0 then raise (OtherFailure "Attempting to allocate negative size")
     else
       let rec :=
         if live
         then Vlong (Int64.repr sz)
         else Vlong (Int64.neg (Int64.repr sz)) in
-      ret (superstore Mint64 m (Int64.unsigned base) (rec, vt) lts).
+        (* AMN: this a temporary hack *)
+      ret (superstore Mint64 m (Int64.unsigned base) (rec, vt) (VectorDef.to_list lts)).
 
   Definition header_size := size_chunk Mint64.
   Definition block_align := align_chunk Mint64.
 
-  Fixpoint find_free (c : nat) (m : CM.mem) (header : ptr) (sz : Z) (vt : val_tag) :
+  Fixpoint find_free (c : nat) (m : CM.mem) (header : ptr) (sz : Z) (header_lts : lt_vec 8%nat) :
     PolicyResult (CM.mem*ptr) :=
     if sz =? 0 then ret (m,Int64.zero) else
     match c with
@@ -121,21 +136,21 @@ Module ConcreteAllocator (Pol : Policy).
            Sign indicates: is this a live block? (Negative no, positive/zero yes)
            (* APT: see note above *)
            Magnitude indicates size *)
-        '((v,vt'),lts) <- get_header m header;;
+        '((v,_),_) <- get_header m header;;
         '(live,bs) <- parse_header v;;
         if live
         then (* block is live *)
           (* [base ][=================][next] *)
           (* [hd_sz][        bs       ] *)
           let next := (Int64.unsigned base) + bs in
-          find_free c' m (Int64.repr next) sz vt
+          find_free c' m (Int64.repr next) sz header_lts
         else (* block is free*)
           (* [base ][=================][next] *)
           (* [hd_sz][        bs       ] *)
           let padded_sz := align sz block_align in
           if (bs <? padded_sz)%Z then
             (* there is no room *)
-            let next := off base (Int64.repr bs) in find_free c' m next sz vt
+            let next := off base (Int64.repr bs) in find_free c' m next sz header_lts
           else
             if (padded_sz + header_size <? bs)%Z then
               (* [base ][========|==][ new  ][=============][next] *)
@@ -145,8 +160,10 @@ Module ConcreteAllocator (Pol : Policy).
               let new := off base (Int64.repr padded_sz) in
               let new_sz := bs - (header_size + padded_sz) in
 
-              m' <- update_header m header true padded_sz vt lts;;
-              m'' <- update_header m' new false new_sz InitT lts;;
+              (* this is the one being allocated *)
+              m' <- update_header m header true padded_sz InitT header_lts;;
+              (* this is the new, free one remaining in free list *)
+              m'' <- update_header m' new false new_sz InitT (ltop.(const) 8 DefHT);;
               (* open question: how do we (re)tag new, free headers? *)
               (* APT: they will need to be protected. *)
               ret (m'',base)
@@ -155,7 +172,7 @@ Module ConcreteAllocator (Pol : Policy).
               (* [hd_sz][   sz   |/8][ ][next] *)
               (* There is exactly enough room (or not enough extra to split) *)
 
-              m' <- update_header m header true bs vt lts;;
+              m' <- update_header m header true bs InitT header_lts;;
               ret (m',base)
     end.
 
@@ -169,9 +186,9 @@ Module ConcreteAllocator (Pol : Policy).
           If not, then we have a problem.
           I can't tell if it is or not
       - relatedly, loadbytes doesn't give me a return type, which makes 227 more confusing: what do the  <-, ;; do?  *)
-  Definition heapalloc (m: mem) (size: Z) (vt_head : val_tag): PolicyResult (mem * ptr) :=
+  Definition heapalloc (m: mem) (size: Z) (header_lts : lt_vec 8%nat): PolicyResult (mem * ptr) :=
     let '(m,sp) := m in
-    '(m',base) <- find_free 100 m (Int64.repr 1000) size vt_head;;
+    '(m',base) <- find_free 100 m (Int64.repr 1000) size header_lts;;
     ret ((m',sp),base).
 
   Definition heapfree (l: Cabs.loc) (pct: control_tag) (m: mem) (p: ptr) (pt: val_tag) :
@@ -181,9 +198,11 @@ Module ConcreteAllocator (Pol : Policy).
        Need to do a tag check to make sure that it is, or else
        iterate through the heap to locate a block at this addr. *)
     let head := Int64.repr (Int64.unsigned p - header_size) in
-    '((v,vt),lts) <- get_header m head;;
-    '(pct',vt',lts') <- FreeT (List.length lts) l pct pt vt (VectorDef.of_list lts);;
+    '((v,_),header_lts) <- get_header m head;;
     '(live,sz) <- parse_header v;;
+    mvs <- loadbytes m p sz;;
+    let lts := map snd mvs in
+    '(pct',vt',lts') <- FreeT (length lts) l pct pt (VectorDef.of_list header_lts) (VectorDef.of_list lts)  ;;
     m' <- update_header m head false sz vt' (VectorDef.to_list lts');;
     ret (sz,pct',(m',sp)).
 
