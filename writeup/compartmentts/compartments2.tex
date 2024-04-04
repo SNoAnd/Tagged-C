@@ -169,7 +169,8 @@ in the standard, such as described in Memarian et al. \cite{Memarian19:Exploring
     \mathit{read} \in ~ & \mathit{mem} \rightarrow \mathit{int} \rightharpoonup \mathit{val} \\
     \mathit{write} \in ~ & \mathit{mem} \rightarrow \mathit{int} \rightarrow \mathit{val}
     \rightharpoonup \mathit{mem} \\
-    M ::= ~ & \{
+    \mathit{live} \subseteq ~ & \mathit{mem} \times \mathit{int} \times \mathit{int} \\
+    M \in \mathcal{M} ::= ~ & \{
     ms \in R \rightharpoonup \mathit{mem}; \\
     & ~ stk \in list (R \times \mathit{int} \times \mathit{int}); \\
     & ~ heap \in list (R \times \mathit{int} \times \mathit{int})
@@ -223,11 +224,17 @@ each shared object is allocated in its own separate concrete memory.
 
   \begin{minipage}[t]{0.3\textwidth}
     \[\begin{aligned}
-    \mathbf{WR1} : \mathit{write} ~ m ~ a ~ v = m' \rightarrow & \\
-    \mathit{read} ~ m ~ a = v & \\[0.75em]
-    \mathbf{WR2} : \mathit{read} ~ m ~ a = v \rightarrow & \\
-    \mathit{write} ~ m ~ a' ~ v' = m' \rightarrow & \\
-    a \not = a' \rightarrow \mathit{read} ~ m' ~ a = v & \\[0.75em]
+    \mathbf{WR1} : & \mathit{write} ~ m ~ a ~ v = m' \rightarrow & \\
+    & \mathit{read} ~ m ~ a = v & \\[0.75em]
+    \mathbf{WR2} : & \mathit{read} ~ m ~ a = v \rightarrow & \\
+    & \mathit{write} ~ m ~ a' ~ v' = m' \rightarrow & \\
+    & \mathit{live} ~ m ~ a_1 ~ a_2 \rightarrow & \\
+    & a_1 \leq a' < a_2 \rightarrow a \not = a' \rightarrow & \\
+    & \mathit{read} ~ m' ~ a = v & \\[0.75em]
+    \mathbf{LIVE} : & M.ms ~ r = m \rightarrow & \\
+    & \mathit{live} ~ m ~ (a_1,a_2) \leftrightarrow & \\
+    & ((r,a_1,a_2) \in M.stk \lor & \\
+    & (r,a_1,a_2) \in M.heap) & \\
     \end{aligned}\]
   \end{minipage}
   \begin{minipage}[t]{0.69\textwidth}
@@ -295,12 +302,12 @@ the target system will place each allocation and, with knowledge of the full lay
 memory, determines what happens in the event of an out-of-bounds read or write.
 
 \begin{figure}
-  \begin{minipage}[t]{0.4\textwidth}
+  \begin{minipage}[t]{0.45\textwidth}
     \[\begin{aligned}
     \mathbf{HA} :
     \mathit{heap\_alloc} ~ M ~ r ~ sz = (a, M') \rightarrow & \\
-    M'.heap = (r,a,a+sz)::M.heap & \\
-    \land M'.stk = M.stk & \\[0.75em]
+    M'.heap = (r,a,a+sz)::M.heap \land & \\
+    M'.stk = M.stk & \\[0.75em]
     \mathbf{HF} : (r,a_1,a_2) \in M.heap \rightarrow & \\
     \exists M' . \mathit{heap\_free} ~ M ~ B ~ a_1 = M' \land & \\
     M'.heap = M.heap-(r,a_1,a_2) \land & \\
@@ -313,9 +320,9 @@ memory, determines what happens in the event of an out-of-bounds read or write.
     \mathbf{AW} : (r,a_1,a_2) \in M.heap \cup M.stk \rightarrow & \\
     m = M.ms ~ r \rightarrow a_1 \leq a < a_2 \rightarrow & \\
     \exists m' . \mathit{write} ~ m ~ a ~ v = m' & \\[0.75em]
-     \mathbf{DISJ} : (r,a_1,a_2) \in M.heap \cup M.stk \rightarrow & \\
-    (r,a_1',a_2') \in M.heap \cup M.stk \rightarrow & \\
-    a'+sz < a_1 \lor a_2 \leq a' & \\[0.75em]
+    \mathbf{DISJ} : \mathit{live} ~ m ~ (a_1,a_2) \rightarrow
+    \mathit{live} ~ m ~ (a_1',a_2') \rightarrow & \\
+    a'_2 \leq a_1 \lor a_2 \leq a'_1 & \\[0.75em]
     \mathbf{PERT1} : \mathit{perturb} ~ M = M' \rightarrow & \\
     M'.heap = M.heap \land M'.stk = H.stk \\[0.75em]
  \end{aligned}\]
