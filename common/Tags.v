@@ -160,7 +160,11 @@ Module Type Policy.
   
   Definition lt_vec (n:nat) := VectorDef.t loc_tag n.
 
-  (* CallT executes at the transition from an expression state to a call state. *)
+  (* CallT executes at the transition from an expression state to a call state.
+     It takes the PC tag at the point of the call and the tag on the function pointer,
+     and returns the new PC tag.
+     The PC tag will also be saved to later be used in the RetT rule.
+  *)
   Parameter CallT : loc                     (* Inputs: *)
                     -> control_tag          (* PC tag *)
                     -> val_tag              (* Tag on function pointer being called *)
@@ -182,6 +186,14 @@ Module Type Policy.
                         (control_tag        (* New PC tag *)
                          * val_tag)         (* New tag on argument value *).
 
+  (* RetT executes at the transition from a return state into the caller's context.
+     It takes the PC tag at the point of the return and the one that was saved from the
+     call, as well as the tag on the value being returned.
+     
+     Proposal: it would be useful to have the identity of the function being returned from.
+     We could always accomplish the same thing by carrying that information on the PC tag,
+     but it might be more convenient to access it directly.
+    *)
   Parameter RetT : loc                      (* Inputs: *)
                    -> control_tag           (* PC tag at return time *)
                    -> control_tag           (* Prior PC tag from before call *)

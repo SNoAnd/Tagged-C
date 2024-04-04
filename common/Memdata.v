@@ -26,7 +26,6 @@ Require Import Floats.
 Require Import Values.
 Require Import Tags.
 Require Import Encoding.
-Require Import ExtLib.Structures.Monads. Import MonadNotation.
 
 Module Memdata (Ptr: Pointer) (Pol: Policy).
   Module TLib := TagLib Ptr Pol.
@@ -118,10 +117,10 @@ Definition encode_val (chunk: memory_chunk) (a:atom) : list memval :=
   | (_, t), _ => List.repeat Undef (size_chunk_nat chunk)
   end.
 
-Definition decode_val (chunk: memory_chunk) (vl: list memval) : PolicyResult atom :=
+Definition decode_val (chunk: memory_chunk) (vl: list memval) : Result atom :=
   match proj_bytes vl with
   | (Some bl,Some t) =>
-      ret
+      Success
       (match chunk with
       | Mint8signed => Vint(Int.sign_ext 8 (Int.repr (decode_int bl)))
       | Mint8unsigned => Vint(Int.zero_ext 8 (Int.repr (decode_int bl)))
@@ -138,20 +137,20 @@ Definition decode_val (chunk: memory_chunk) (vl: list memval) : PolicyResult ato
       match chunk with
       | Mint32 =>
           let (v,vt) := proj_value Q32 vl in
-          ret (Values.load_result chunk v, vt)
+          Success (Values.load_result chunk v, vt)
       | Many32 =>
           let (v,vt) := proj_value Q32 vl in
-          ret (Values.load_result chunk v, vt)
+          Success (Values.load_result chunk v, vt)
       | Mint64 =>
           let (v,vt) := proj_value Q64 vl in
-          ret (Values.load_result chunk v, vt)
+          Success (Values.load_result chunk v, vt)
       | Many64 =>
           let (v,vt) := proj_value Q64 vl in
-          ret (Values.load_result chunk v, vt)
-      | _ => raise (OtherFailure "Can't decode_val, invalid chunk")
+          Success (Values.load_result chunk v, vt)
+      | _ => Fail (OtherFailure "Can't decode_val, invalid chunk")
       end
-  | (None,Some t) => ret (Vundef, t)
-  | _ => raise (OtherFailure "Mismatched tags in decode_val")
+  | (None,Some t) => Success (Vundef, t)
+  | _ => Fail (OtherFailure "Mismatched tags in decode_val")
   end.
 
 Ltac solve_encode_val_length :=
@@ -234,11 +233,11 @@ Definition decode_encode_val (v1: val) (chunk1 chunk2: memory_chunk) (v2: val) :
   | Vsingle _, _, _ => True
   end.
 
-Remark decode_val_undef:
-  forall bl chunk, decode_val chunk (Undef :: bl) = (Vundef, def_tag).
+(*Remark decode_val_undef:
+  forall bl chunk, decode_val chunk (Undef :: bl) = ret (Vundef, def_tag).
 Proof.
   intros. unfold decode_val. simpl. destruct chunk, Archi.ptr64; auto.
-Qed.
+Qed.*)
 
 Remark proj_bytes_inj_value:
   forall q v, proj_bytes (inj_value q v) = (None, None).
