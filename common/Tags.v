@@ -8,6 +8,7 @@ Require Import Cabs.
 Require Import String.
 Require Import Builtins.
 Require Import Switch.
+Require Import Encoding.
 Require Import ExtLib.Structures.Monads. Import MonadNotation.
 Require Import VectorDef.
 
@@ -128,7 +129,7 @@ Section WITH_LT.
 
 End WITH_LT.
 
-Definition header_size_in_bytes := 8%nat. 
+Definition header_size_in_bytes := size_chunk_nat Mint64.
 
 
 Module Type Policy.
@@ -190,25 +191,29 @@ Module Type Policy.
                         (control_tag        (* New PC tag *)
                          * val_tag)         (* New tag on return value *).
   
-  Parameter LoadT : forall n:nat, loc       (* Inputs: *)
-                    -> control_tag          (* PC tag *)
+  Parameter LoadT :    loc                  (* Inputs: *)
+                    -> forall chunk:memory_chunk,
+                       control_tag          (* PC tag *)
                     -> val_tag              (* Pointer tag *)
+                    (* APT: this should take multiple val tags, one per byte
+                      and in Memdata should return this list rather than requiring the same *)
                     -> val_tag              (* Tag on value in memory *)
-                    -> lt_vec n             (* Location tags (one per byte) *)
+                    -> lt_vec (size_chunk_nat chunk)   (* Location tags (one per byte) *)
 
                     -> PolicyResult         (* Outputs: *)
                         val_tag             (* Tag on result value *).
 
-  Parameter StoreT : forall n:nat, loc      (* Inputs: *)
-                     -> control_tag         (* PC tag *)
+  Parameter StoreT :   loc                  (* Inputs: *)
+                     -> forall chunk:memory_chunk,
+                        control_tag         (* PC tag *)
                      -> val_tag             (* Pointer tag *)
                      -> val_tag             (* Tag on value to be stored *)
-                     -> lt_vec n            (* Location tags (one per byte) *)
+                     -> lt_vec (size_chunk_nat chunk)   (* Location tags (one per byte) *)
 
                      -> PolicyResult        (* Outputs: *)
                           (control_tag      (* New PC tag *)
                            * val_tag        (* Tag on new value in memory *)
-                           * lt_vec n)  (* New location tags *).
+                           * lt_vec (size_chunk_nat chunk))  (* New location tags *).
 
   Parameter AccessT : loc                   (* Inputs: *)
                       -> control_tag        (* PC tag *)
@@ -336,7 +341,7 @@ Module Type Policy.
   Parameter MallocT : 
                       loc                   (* Inputs: *)
                       -> control_tag        (* PC tag *)
-                      -> val_tag            (* Function pointer tag *)
+                      -> val_tag            (* APT: more documentation, please!  Function pointer tag *)
 
                       -> PolicyResult       (* Outputs: *)
                            (control_tag     (* New PC tag *)
@@ -358,16 +363,14 @@ Module Type Policy.
                                    v  v             v  v
                               [header'@vt1][...(v@vt2).......]
                               [    lts    ][lt.lt.lt.lt.lt...] *)
-  Parameter FreeT : forall (n:nat),
+  Parameter FreeT : 
                     loc                     (* Inputs: *)
                     -> control_tag          (* PC tag *)
                     -> val_tag              (* Pointer tag *)
                     -> lt_vec header_size_in_bytes (*Header location tags (vht is now a vec)*)
-                    -> lt_vec n             (* lts, tags on the locations of the block *)
-
                     -> PolicyResult         (* Outputs: *)
                          (control_tag       (* New PC tag *)
-                          * lt_vec header_size_in_bytes)       (* New location tags for header (should be all be the same) *).       
+                          * loc_tag)        (* New location tag for header (should be replicated to all header bytes) *).       
   
   (* The ClearT rule is invoked in the do_extcall_free function in Events.v.
      It gives a single tag that will be copied across the entire cleared regions. 
@@ -379,12 +382,14 @@ Module Type Policy.
     as it is, we do not expect any invariants to be maintained over it. That said,
     the values retain their original tags, so a SIF policy (for instance) could
     still track data provenance over the free. *)
+(* APT: Change so ClearT handles one byte at a time *)
   Parameter ClearT : loc                    (* Inputs: *)
                      -> control_tag         (* PC tag *)
+                     -> loc_tag             (* tag on byte within block *)
 
                      -> PolicyResult        (* Outputs: *)
                           (control_tag      (* New PC tag *)
-                           * loc_tag)       (* Tag to be copied over freed memory *).
+                           * loc_tag)       (* Tag to be copied to byte *).
   
   Parameter FieldT : loc
                      -> composite_env       (* Inputs: *)
