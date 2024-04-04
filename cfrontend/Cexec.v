@@ -70,7 +70,7 @@ Module Cexec (Pol: Policy)
                   | _ => _
                   end] ] =>
       destruct e eqn:?
-  | [ |- context [check ?e ; _] ] =>
+  | [ |- context [if ?e then _ else _] ] =>
       destruct e eqn:?
   | [ |- context [match ?e with
                   | Success _ => _

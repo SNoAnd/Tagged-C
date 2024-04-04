@@ -28,13 +28,14 @@ Notation "'check' A ; B" := (if A then B else None)
   (at level 200, A at level 100, B at level 200)
   : option_monad_scope.
 
-Open Scope option_monad_scope.
 
 Module Type Allocator (Ptr: Pointer) (Pol : Policy) (M : Memory Ptr Pol).
   Import M.
   Import MD.
   Import Pol.
   Export TLib.
+  
+  Local Open Scope option_monad_scope.
   
   Parameter t : Type.  
   Parameter init : t.

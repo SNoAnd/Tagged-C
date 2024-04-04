@@ -366,6 +366,16 @@ Module Type Policy.
                           * val_tag         (* New header tag *)
                           * lt_vec n)       (* New location tags for header *).       
   
+  (* The ClearT rule is invoked in the do_extcall_free function in Events.v.
+     It gives a single tag that will be copied across the entire cleared regions. 
+     ** DESIGN CHOICE: ** As with MallocT, we opt to return a single tag rather
+    than a list, because there is no information we have access to that would
+    give structure to the now-deallocated memory. Likewise, we do not examine
+    the tags that are already present: the allocator in conjunction with the
+    FreeT rule are responsible for making sure that the free is valid, and as long
+    as it is, we do not expect any invariants to be maintained over it. That said,
+    the values retain their original tags, so a SIF policy (for instance) could
+    still track data provenance over the free. *)
   Parameter ClearT : loc                    (* Inputs: *)
                      -> control_tag         (* PC tag *)
 
