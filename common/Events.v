@@ -487,6 +487,7 @@ Definition alloc_size (v: val) (z:Z) : Prop :=
   Definition do_extcall_malloc (l:Cabs.loc) (pct: control_tag) (fpt st: val_tag) (m: mem) (sz: Z)
   : PolicyResult (atom * control_tag * mem) :=
   (*let sz_aligned := align sz 8 in*)
+    (* AMN: this is the size of the header, harding coding to 8 for now *)
   '(pct1, pt, vt_body, vt_head, lt) <- MallocT l pct fpt;;
   '(m', base) <- heapalloc m sz vt_head;;
   mvs <- loadbytes m' base sz;;

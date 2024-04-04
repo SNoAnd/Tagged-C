@@ -128,6 +128,9 @@ Section WITH_LT.
 
 End WITH_LT.
 
+Definition header_size_in_bytes := 8%nat. 
+
+
 Module Type Policy.
   
   Parameter val_tag : Type.
@@ -330,7 +333,8 @@ Module Type Policy.
                                vt1|  |vt2 |lt
                          [header@vt1][vt2.vt2.vt2...]
                          [lt.lt.lt.lt.lt.lt.lt.lt...] *)
-  Parameter MallocT : loc                   (* Inputs: *)
+  Parameter MallocT : 
+                      loc                   (* Inputs: *)
                       -> control_tag        (* PC tag *)
                       -> val_tag            (* Function pointer tag *)
 
@@ -338,7 +342,7 @@ Module Type Policy.
                            (control_tag     (* New PC tag *)
                             * val_tag       (* Pointer tag *)
                             * val_tag       (* Initial tag on values in allocated block *)
-                            * val_tag       (* Tag on the value in the block's header *)
+                            * lt_vec header_size_in_bytes      (* Tag on the location bytes in the block's header (vht is now a vec) *)
                             * loc_tag)      (* Tag to be copied over all memory locations *).
 
   (* The follow tag rules process the body of free. So a call to free@fpt(p@pt) is structured:
@@ -358,13 +362,12 @@ Module Type Policy.
                     loc                     (* Inputs: *)
                     -> control_tag          (* PC tag *)
                     -> val_tag              (* Pointer tag *)
-                    -> val_tag              (* Header tag *)
-                    -> lt_vec n             (* Header location tags *)
+                    -> lt_vec header_size_in_bytes (*Header location tags (vht is now a vec)*)
+                    -> lt_vec n             (* lts, tags on the locations of the block *)
 
                     -> PolicyResult         (* Outputs: *)
                          (control_tag       (* New PC tag *)
-                          * val_tag         (* New header tag *)
-                          * lt_vec n)       (* New location tags for header *).       
+                          * lt_vec header_size_in_bytes)       (* New location tags for header (should be all be the same) *).       
   
   (* The ClearT rule is invoked in the do_extcall_free function in Events.v.
      It gives a single tag that will be copied across the entire cleared regions. 

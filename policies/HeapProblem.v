@@ -143,8 +143,9 @@ Module HeapProblem <: Policy.
       (* l and color should match the AllocatedHeader of the block
         l is tied to the malloc(), not pointer's declaration.
         It is legal to re-use malloc/free and then malloc again on a ptr *)
-  | AllocatedHeader (l:loc)(color: Z) 
-      (* for value headers (vht) Since the concrete allocator headers are in memory,
+  (*| AllocatedHeader (l:loc)(color: Z) *)
+      (* @TODO might need a val version as well as a loc version
+        for value headers (vht) Since the concrete allocator headers are in memory,
         they could get corrupted and must be checked. Needed for FreeT *)
   .                
 
@@ -174,6 +175,10 @@ Module HeapProblem <: Policy.
           a possible leaked secret.
           Carries the free site unique id (location + color) which should
           match the one in AllocatedHeader & PointerWithColor *)
+  | AllocatedHeader (l:loc)(color: Z)
+      (* for value headers (vht) Since the concrete allocator headers are in memory,
+        they could get corrupted and must be checked. 
+        Only the Allocator should touch these. They should be out of bounds for anyone else *)
   .
 
   Definition val_tag := myValTag.
@@ -204,6 +209,7 @@ Module HeapProblem <: Policy.
   Definition InitPCT : control_tag := PC_Extra 0. (* dynamic colors start at 0 *)
   Definition DefLT   : loc_tag := NotHeap. (* stack et al. is NotHeap at start and should remain that way*)
   Definition DefHT   : loc_tag := UnallocatedHeap. (* the whole heap is unallocated at start. *)
+  (*@TODO do we need a default for the header loc tag? as distinct from UnallocatedHeap *)
   Definition InitT   : val_tag := N. (* nothing is a malloc'ed pointer or AllocatedHeader until MallocT *)
 
   (* This is a helper to print locations for human & fuzzer ingestion *)
@@ -471,28 +477,34 @@ Module HeapProblem <: Policy.
            (* keep pointerness in case they do dumb things 
             with it.  TaggedC & ConcreteC would allow this.
             *)
-    | Oeq  (* comparison ([==]) *)
-    | One  (* comparison ([!=]) *)
+    | Oeq  (* comparison ([==]) ok for colors not to match *)
+    | One  (* comparison ([!=]) ok for colors not to match *)
+      => (* as long as both are pointers, set to N*)
+          (
+            match vt1, vt2 with
+            | (PointerWithColor _ _), (PointerWithColor _ _) => ret(pct, N) (* as long as both are pointers, thats ok, now a bool*)
+            | _, _ => ret (pct, vt2) (*anything else, default behavior*)
+            end
+          )
+     (* these are ordered, and that's not ok 
+                ok to compare ptrs to zero (null) 
+                do we want to log a warning? if the number is 0, don't ? 
+                stronger case for logging, but its maybe not directly relevant  
+                *)
     | Olt  (* comparison ([<]) *)
     | Ogt  (* comparison ([>]) *)
     | Ole  (* comparison ([<=]) *)
     | Oge  (* comparison ([>=]) *)
-        (* ==, !=, comparison is UB unless in same color *)
       => (
           match vt1, vt2 with 
           | (PointerWithColor l1 c1), (PointerWithColor l2 c2) => (
               if (Z.eqb c1 c2) && (Cabs.loc_eqb l1 l2)
               then ret (pct, vt1)
               else (
-                (* @TODO this is very suss, UB, when there is a log, log it *)
-                  (* APT: not as suspect as all that. Not sure worth logging this case *)
-                (* choice of color to pass on is arbitrary APT: no: see above *)
                 ret (pct, vt2) 
               )
             )
-            (* @TODO this is very suss, UB, when there is a log, log it *)
           | (PointerWithColor l1 c1), N => ret (pct, vt1)
-            (* @TODO this is very suss, UB, when there is a log, log it *)
           |  N, (PointerWithColor l2 c2) => ret(pct, vt2)
           |  _ , _ => ret (pct, vt2) (*anything else, default behavior*)
           end
@@ -521,20 +533,20 @@ Module HeapProblem <: Policy.
       - vtb - vt body - new val_tag on values written, 00s usually. These won't tell you if something is alloc
         (APT: this needs to synch with the concrete allocator code, which (I think) shouldn't be writing anything to the body)
         AMN: that's my understanding 
-      - vth - vt header - tag on "header" or index -1, above what pointer points to, allocator
-        @TODO AMN: should we still set this, or should the allocator? 
+      - vth - vt header - tag on "header" or index -1, above what pointer points to, allocator.
+        EDIT: this is now an array of loc tags 
       - lt new location (in memory) tag, this now painted as allocated memory across
            whole region. Even though it's 1 tag, it affects all tags in the buffer.
            Free in this policy does not look at these at all, so it does not really
            matter was value goes here. 
   *)
   Definition MallocT (l:loc) (pct: control_tag) (fptrt : val_tag) : 
-  PolicyResult (control_tag * val_tag * val_tag * val_tag * loc_tag) :=
+  PolicyResult (control_tag * val_tag * val_tag * lt_vec n * loc_tag) :=
     match pct with
     | PC_Extra currcolor => (
       (* ret (pct', pt, vtb, vht', lt) *)
       ret ((PC_Extra (currcolor +1 )), (PointerWithColor l currcolor), ( N), 
-          (AllocatedHeader l currcolor), (AllocatedDirty l currcolor))
+          (repeat (AllocatedHeader l currcolor)), (AllocatedDirty l currcolor))
     )
     end.
 
@@ -571,9 +583,10 @@ Module HeapProblem <: Policy.
     add header ctype to val tags
  *)
 
-  Definition FreeT (n:nat) (l:loc) (pct: control_tag) (pt vht : val_tag) (lts: lt_vec n) : 
+
+  Definition FreeT (n:nat) (l:loc) (pct: control_tag) (pt: val_tag) (vhts: lt_vec 8%nat) (lts: lt_vec n) : 
     PolicyResult (control_tag * val_tag * lt_vec n) :=
-      match pt, vht with 
+      match pt, vhts with 
       (* pointer points to an allocated header *)
       | PointerWithColor ptr_l ptr_c, AllocatedHeader hdr_l hdr_c => 
         (* header color/loc, pointer color/loc, and lts color/loc should match *)
@@ -586,13 +599,13 @@ Module HeapProblem <: Policy.
           if (ltop.(forallb) n (lt_eq_dec (Allocated ptr_l ptr_c)) lts) ||
              (ltop.(forallb) n (lt_eq_dec (AllocatedDirty ptr_l ptr_c)) lts)
              (* SNA: To let it pass on a mix, instead use: *)
-             (* forallb n (fun lt => (lt_eq_dec (Allocated ptr_l ptr_c) lt) ||
+             (* ltop.forallb n (fun lt => (lt_eq_dec (Allocated ptr_l ptr_c) lt) ||
                                       lt_eq_dec (AllocatedDirty ptr_l ptr_c) lt)) lts*)
           then ret (pct, N, ltop.(const) n UnallocatedHeap)
           else raise (PolicyFailure (inj_loc "HeapProblem|| Corrupted Heap |FreeT's block has unexpected tags at source location " l))
         else raise (PolicyFailure (inj_loc "HeapProblem| Corrupted Heap | FreeT tried to free someone else's allocated memory at source location " l))
-      (* Invalid header. Trying to free nonlegal block*)
-      | PointerWithColor _ _, N => raise (PolicyFailure (inj_loc "HeapProblem|| FreeT Misuse| Nonsense free() at source location " l))
+      (* Invalid header. Trying to free nonlegal block @TODO maybe break these out for what kind? *)
+      | PointerWithColor _ _, _ => raise (PolicyFailure (inj_loc "HeapProblem|| FreeT Misuse| Nonsense free() at source location " l))
       (* Tried to free something that is not a pointer (N, header) *)
       | _ , _ =>  raise (PolicyFailure (inj_loc "HeapProblem|| FreeT Misuse| FreeT tried to free through a nonpointer at source location " l))
       end.

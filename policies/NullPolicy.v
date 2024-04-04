@@ -61,10 +61,10 @@ Module NullPolicy <: Policy.
     ret (tt, tt, tt).
   
   Definition MallocT (l:loc) (pct: control_tag) (fpt: val_tag) :
-    PolicyResult (control_tag * val_tag * val_tag * val_tag * loc_tag) :=
+    PolicyResult (control_tag * val_tag * val_tag * lt_vec n  * loc_tag) :=
     ret (tt, tt, tt, tt, tt).
   
-  Definition FreeT (n:nat) (l:loc) (pct: control_tag) (pt vht: val_tag)
+  Definition FreeT (n:nat) (l:loc) (pct: control_tag)(pt: val_tag) (vht: lt_vec n )
     (lts: lt_vec n) : PolicyResult (control_tag * val_tag * lt_vec n) :=
     ret (tt, tt, lts).
 
