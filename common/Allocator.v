@@ -35,7 +35,6 @@ Notation "'check' A ; B" := (if A then B else None)
   : option_monad_scope.
 
 
-Print Pointer.
 Module Type Allocator (Ptr: Pointer) (Pol : Policy) (M : Memory Ptr Pol).
   Import M.
   Import MD.
