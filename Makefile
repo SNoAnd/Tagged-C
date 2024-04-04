@@ -107,7 +107,8 @@ COMMON=Errors.v AST.v Linking.v Encoding.v \
   Events.v Globalenvs.v Memdata.v Memory.v Allocator.v \
   ConcreteAllocator.v FLAllocator.v \
   Values.v Tags.v Smallstep.v Switch.v Unityping.v \
-  Builtins0.v Builtins1.v Builtins.v Determinism.v
+  Builtins0.v Builtins1.v Builtins.v Determinism.v \
+  Simulation.v
   # Behaviors.v
 
 # C front-end modules (in cfrontend/)
