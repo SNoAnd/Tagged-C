@@ -516,7 +516,7 @@ Definition do_extcall_free (l:Cabs.loc) (pct: control_tag)  (fpt pt: val_tag) (p
     '(sz,pct',m') <- heapfree l pct m p pt;;
     mvs <- loadbytes m' p sz;;
     lts <- loadtags m' p sz;;
-    lts' <- ltop.(mmap) (ClearT l pct') lts;;
+    lts' <- ltop.(mmap) (ClearT l pct' pt) lts;;
     m'' <- storebytes m' p mvs lts';;
     ret ((Vundef,InitT), pct', m'').
 

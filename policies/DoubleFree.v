@@ -43,44 +43,47 @@ Module DoubleFree <: Policy.
  Import Passthrough.
   
  Inductive myTag :=
- | N (* N means unallocated, is also the starting "uncolor" *)
- | FreeColor (l:loc) (* new tag carrying the free site unique color *)
- | Alloc (*(id:ident)*) (* this memory is allocated. NB in a future policy it too might have a dynamic color*)
+ (* tt, the unit functions as "we dont care" *)
+ | NotHeap (* stack, globals, etc. Not in heap and should not be touched*)
+ | Unallocated (* Unallocated heap *)
+ | FreedHeader(l:loc) (* new tag carrying the free site unique id *)
+ | AllocatedHeader
+ | AllocatedMem (*(id:ident)*) (* this memory is allocated. NB in a future policy it too might have a dynamic color*)
  .
 
- Definition val_tag := myTag.
+ Definition val_tag := unit.
  Definition control_tag := unit.
- Definition loc_tag := unit.
+ Definition loc_tag := myTag.
 
  Theorem vt_eq_dec : forall (t1 t2:val_tag), {t1 = t2} + {t1 <> t2}.
- Proof. repeat decide equality. apply eqdec_loc. Qed.
+ Proof. repeat decide equality. Qed.
  Theorem ct_eq_dec : forall (t1 t2:control_tag), {t1 = t2} + {t1 <> t2}.
  Proof. repeat decide equality. Qed.
  Theorem lt_eq_dec : forall (t1 t2:loc_tag), {t1 = t2} + {t1 <> t2}.
- Proof. repeat decide equality. Qed.
+ Proof. repeat decide equality. apply eqdec_loc. Qed.
 
- Definition def_tag : val_tag := N.
- (* nothing has a color to start *)
+ Definition def_tag : val_tag := tt.
+ (* nothing has a loc id *)
  Definition InitPCT : control_tag := tt.
- Definition DefLT   : loc_tag := tt.
- Definition DefHT   : loc_tag := tt.
- Definition InitT   : val_tag := N.
-
- Definition lt_vec (n:nat) := VectorDef.t loc_tag n.
+ Definition DefLT   : loc_tag := NotHeap.
+ Definition DefHT   : loc_tag := Unallocated.
+ Definition InitT   : val_tag := tt.
 
 (* This is a helper to print locations for human & fuzzer ingestion *)
  Definition inj_loc (s:string) (l:loc) : string :=
   s ++ " " ++ (print_loc l).
 
-Definition print_vt (t : val_tag) : string :=
+Definition print_lt (t : loc_tag) : string :=
     match t with
-    | FreeColor l => (inj_loc "F" l)
-    | N => "N" 
-    | Alloc => "A"
+    | FreedHeader l => (inj_loc "Freed Header malloced at src location " l)
+    | AllocatedHeader => "Allocator Header for a block in use" 
+    | AllocatedMem => "Heap Allocated memory"
+    | Unallocated => "Unallocated Heap"
+    | NotHeap => "Not Heap Memory"
     end.
 Definition print_ct (t : control_tag) : string :=
   "tt" (* for policy designer debugging only *).
-Definition print_lt (t : loc_tag) : string :=
+Definition print_vt (t : val_tag) : string :=
   "tt" (* for policy designer debugging only *).
 
 Definition policy_state : Type := unit.
@@ -106,10 +109,18 @@ Definition log := log policy_state.
            whole region. Even though it's 1 tag, it affects all tags in the buffer.
            Free in this policy does not look at these at all, so it does not really
            matter was value goes here. 
+
+    New world order
+    - pct is unchanged
+    - pt is val tag on the new ptr, not used in this policy
+    - vt initial tag on values in new allocated block, not used in this policy
+    - header - loc tag on the allocated header. no one but allocator should use it 
+    - new loc tags on block - loc tag on bytes in new block
+
   *)
- Definition MallocT (l:loc) (pct: control_tag) (fptrt : val_tag) :
-   PolicyResult (control_tag * val_tag * val_tag * lt_vec n  * loc_tag) :=
-   ret (pct, Alloc, N, Alloc, tt).
+  Definition MallocT (l:loc) (pct: control_tag) (fpt: val_tag) :
+    PolicyResult (control_tag * val_tag * val_tag * loc_tag  * loc_tag) :=
+    ret (pct, tt, tt, AllocatedHeader, AllocatedMem).
 
  (* 
   FreeT colors the header tag with the current Freecolor from the pct. If there is already 
@@ -140,23 +151,43 @@ Definition log := log policy_state.
     - tag on free's function pointer
     - tag on the pointer passed to free
     - tag on the "header" 
-  *)
- Definition FreeT (n:nat) (l:loc) (pct: control_tag) (pt : val_tag)
- (vht: lt_vec n ) (lts : lt_vec n) :
-   PolicyResult (control_tag * val_tag * lt_vec n) :=
-  match vht with 
-    | Alloc => ret(pct, (FreeColor l), lts) (* was allocated then freed, assign free color from pct *)
-    | N (* trying to free unallocated memory at this location *)
-      => raise (PolicyFailure ("DoubleFree||FreeT detects free of unallocated memory|  location "
-                                 ++ (print_loc l)))
-                    
-    | FreeColor c (* Freecolor means this was already freed and never reallocated *)
-      => raise (PolicyFailure ("DoubleFree||FreeT detects two frees|  location "
-                                 ++ (print_loc c) ++ ", location " ++ (print_loc l)))
-  end.
 
- Definition ClearT (l:loc) (pct: control_tag) : PolicyResult (control_tag * loc_tag) :=
-   ret (pct, tt).
+    new 
+    ht is the former vht, its really 8 copies of the same tag 
+    output's 2nd tag is for the new ht tags 
+
+  *)
+ Definition FreeT (l:loc) (pct: control_tag) (pt : val_tag) (ht: list loc_tag ) :
+   PolicyResult (control_tag * loc_tag ) :=
+  if (ltop.(alleq) ht)
+  then 
+    (
+    match (List.hd_error ht) with 
+      | Some (AllocatedHeader) => ret(pct, (FreedHeader l)) (* was allocated then freed, assign free color from pct *)
+      | Some (Unallocated) (* trying to free unallocated memory at this location *)
+        => raise (PolicyFailure ("DoubleFree||FreeT detects free of unallocated memory|  location "
+                                  ++ (print_loc l)))
+                      
+      | Some( FreedHeader c) (* Freecolor means this was already freed and never reallocated *)
+        => raise (PolicyFailure ("DoubleFree||FreeT detects two frees| source location "
+                                  ++ (print_loc c) ++ ", location " ++ (print_loc l)))
+      | Some (AllocatedMem)
+        => raise (PolicyFailure ("DoubleFree||FreeT detects nonsense free in middle of block| sourcelocation "
+                                  ++ (print_loc l)))
+      | Some (NotHeap)
+        => raise (PolicyFailure ("DoubleFree||FreeT detects nonsense free of stack. Corrupted pointer?| source location "
+                                                            ++ (print_loc l)))
+      | None => raise (PolicyFailure ("DoubleFree|| Empty header! Should never happen! Designer error? | source location "
+      ++ (print_loc l)))
+      end
+    )
+  else raise (PolicyFailure ("DoubleFree||FreeT detects corrupted alloc header| source location "
+        ++ (print_loc l)))
+  .
+
+  (***)
+ Definition ClearT (l:loc) (pct: control_tag) (pt: val_tag) (currlt: loc_tag) : PolicyResult (loc_tag) :=
+   ret (Unallocated).
    
   (* These are required, but cannot pass through because they don't get tags to start with.
     In other words, they have to make tags out of thin air. *)
@@ -164,22 +195,22 @@ Definition log := log policy_state.
  
  (* Constants are never pointers to malloced memory. *)
  Definition ConstT (l:loc) (pct : control_tag) :
-   PolicyResult val_tag := ret N.
+   PolicyResult val_tag := ret tt.
 
  (* NB this is for stack allocated variables. Not relevant to dynamic memory *)
  Definition DeallocT (l:loc) (ce : composite_env) (pct : control_tag) (ty : type) :
-    PolicyResult (control_tag * val_tag * loc_tag) := ret (pct, N, tt).
+    PolicyResult (control_tag * val_tag * loc_tag) := ret (pct, tt, NotHeap).
 
  Definition GlobalT (ce : composite_env) (id : ident) (ty : type) :
-   val_tag * val_tag * loc_tag := (N, N, tt).
+   val_tag * val_tag * loc_tag := (tt, tt, NotHeap).
  
  (* Required for policy interface. Not relevant to this particular policy, pass values through *)
- Definition FunT (ce: composite_env) (id : ident) (ty : type) : val_tag := N.
+ Definition FunT (ce: composite_env) (id : ident) (ty : type) : val_tag := tt.
 
  (* Required for policy interface. Not relevant to this particular policy, pass values through *)
- Definition LocalT (n:nat) (l:loc) (pct : control_tag) (ty : type) :
-   PolicyResult (control_tag * val_tag * lt_vec n)%type :=
-   ret (tt, N, ltop.(const) n tt).
+ Definition LocalT (ce: composite_env) (l:loc) (pct : control_tag) (ty : type) :
+   PolicyResult (control_tag * val_tag * list loc_tag)%type :=
+   ret (tt, tt, ltop.(const) (Z.to_nat (sizeof ce ty)) NotHeap).
  
    (* Passthrough rules *)
   Definition CallT      := Passthrough.CallT policy_state val_tag control_tag.  

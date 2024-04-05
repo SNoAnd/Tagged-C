@@ -228,7 +228,6 @@ Module HeapProblem <: Policy.
     match t with
     | N => "Not heap related (N)"
     | PointerWithColor l color => (inj_loc "pointer to heap, malloc'ed at source location" l)    
-    | AllocatedHeader l color => (inj_loc "header of heap allocated block, malloc'ed at source location" l)
     end.
     
   Definition print_ct (t : control_tag) : string := 
@@ -244,6 +243,7 @@ Module HeapProblem <: Policy.
     (* I don't think the fuzzer should know the color. They can change between runs *)
     | AllocatedDirty l color => (inj_loc "allocated dirty memory at source location " l)
     | Allocated l color => (inj_loc "allocated memory at source location " l)    
+    | AllocatedHeader l color => (inj_loc "header of heap allocated block, malloc'ed at source location" l)
     end.
 
 (* Beginning of Policy Rules *)
@@ -282,7 +282,8 @@ Module HeapProblem <: Policy.
     (* @TODO when we have "log with success" it will go here. 
         We also need to be able to write out the contents of memory to that log
         For now, we fail *)
-    | AllocatedDirty l2 c2 => raise (PolicyFailure (inj_loc "HeapProblem|| potential secret disclosure| Allocated memory not yet written to is read at source location " load_l))
+        | AllocatedHeader _ _ => raise (PolicyFailure (inj_loc "HeapProblem|| Pointer corruption| LoadT found block header in middle " load_l))
+        | AllocatedDirty l2 c2 => raise (PolicyFailure (inj_loc "HeapProblem|| potential secret disclosure| Allocated memory not yet written to is read at source location " load_l))
     | Allocated l2 c2  =>
         (* if the color & the locations match, recurse on tail (called t)*)
         if (Z.eqb c2 ptr_color) && (Cabs.loc_eqb l2 ptr_l)
@@ -291,12 +292,12 @@ Module HeapProblem <: Policy.
         else raise (PolicyFailure (inj_loc "HeapProblem|| Pointer corruption|LoadT tried to read memory allocated to someone else (l,color mistmatch) at source location " load_l))
     end.
   
-  Definition LoadT (n:nat) (l:loc) (pct : control_tag) (pt vt: val_tag) (lts : lt_vec n) 
+  Definition LoadT (l:loc) (pct : control_tag) (pt vt: val_tag) (lts : list loc_tag) 
   : PolicyResult val_tag := 
     match pt with 
     (* location the ptr was assigned memory (l) != location of this load (ptr_l) *)
     | PointerWithColor ptr_l ptr_color =>
-      ltop.(mmap) n (CheckforColorMatchOnLoad ptr_color ptr_l l) lts;; ret vt
+      ltop.(mmap) (CheckforColorMatchOnLoad ptr_color ptr_l l) lts;; ret vt
     | _ => raise (PolicyFailure (inj_loc "HeapProblem|| LoadT tried to load an invalid pointer tag at source location " l)) 
     end.
   
@@ -339,18 +340,17 @@ Module HeapProblem <: Policy.
         then ret lt
         (* right kind of tag, but this memory belongs to someone else *)
         else raise (PolicyFailure (inj_loc "HeapProblem|| Pointer corruption |StoreT tried to write memory with a different color at source location " store_l))
+    | (AllocatedHeader _ _) =>  raise (PolicyFailure (inj_loc "HeapProblem|| Pointer corruption| StoreT tried to write over a header " store_l))
     end. 
 
-  Definition StoreT (n:nat) (l:loc) (pct : control_tag) (pt vt : val_tag) (lts : lt_vec n)
-  : PolicyResult (control_tag * val_tag * lt_vec n) := 
+  Definition StoreT (l:loc) (pct : control_tag) (pt vt : val_tag) (lts : list loc_tag)
+  : PolicyResult (control_tag * val_tag * list loc_tag) := 
     match pt with 
     (* we need to know the pointer's location and the store operations location if something goes wrong *)
     | PointerWithColor ptr_l ptr_color =>
-      lts' <- ltop.(mmap) n (CheckforColorMatchOnStore ptr_color ptr_l l) lts;;
-      lts'' <- ltop.(mmap) n (ConvertDirtyAllocOnStore) lts';;
+      lts' <- ltop.(mmap) (CheckforColorMatchOnStore ptr_color ptr_l l) lts;;
+      lts'' <- ltop.(mmap) (ConvertDirtyAllocOnStore) lts';;
       ret (pct, vt, lts'')
-    (* @TODO AMN- Is this neccsary? Shouldn't LoadT fail because the header is out of bounds? *)
-    | AllocatedHeader _ _ => raise (PolicyFailure (inj_loc "HeapProblem|| Invalid write| StoreT tried to write through a header tag at source location" l))
     (* Can't write through an N *)
     | N => raise (PolicyFailure (inj_loc "HeapProblem|| Invalid write| StoreT tried to write through a nonpointer at source location at source location" l))
     end.
@@ -540,14 +540,13 @@ Module HeapProblem <: Policy.
            Free in this policy does not look at these at all, so it does not really
            matter was value goes here. 
   *)
-  Definition MallocT (l:loc) (pct: control_tag) (fptrt : val_tag) : 
-  PolicyResult (control_tag * val_tag * val_tag * lt_vec n * loc_tag) :=
+  Definition MallocT (l:loc) (pct: control_tag) (fpt: val_tag) :
+    PolicyResult (control_tag * val_tag * val_tag * loc_tag  * loc_tag) :=
     match pct with
-    | PC_Extra currcolor => (
+    | PC_Extra currcolor =>
       (* ret (pct', pt, vtb, vht', lt) *)
       ret ((PC_Extra (currcolor +1 )), (PointerWithColor l currcolor), ( N), 
-          (repeat (AllocatedHeader l currcolor)), (AllocatedDirty l currcolor))
-    )
+          (AllocatedHeader l currcolor), (AllocatedDirty l currcolor))
     end.
 
   (* FreeT , ClearT, & helper function
@@ -583,36 +582,53 @@ Module HeapProblem <: Policy.
     add header ctype to val tags
  *)
 
+ Definition FreeT (l:loc) (pct: control_tag) (pt : val_tag) (ht: list loc_tag ) :
+ PolicyResult (control_tag * loc_tag ) :=
+  if (ltop.(alleq) ht)
+  then (
+    match pt, (List.hd_error ht) with 
+    (* pointer points to the right allocated header *)
+    | PointerWithColor ptr_l ptr_c, Some(AllocatedHeader hdr_l hdr_c) => 
+      if ((Z.eqb ptr_c hdr_c) && (Cabs.loc_eqb ptr_l hdr_l)) 
+      then
+        (* header loc tags are set to unallocated. the block will be handled by clearT*)
+        ret (pct, UnallocatedHeap)
+      else
+        (* this was a valid header, but its not right one*)
+        raise (PolicyFailure (inj_loc "HeapProblem| Corrupted Heap | FreeT tried to free someone else's allocated memory at source location " l))
 
-  Definition FreeT (n:nat) (l:loc) (pct: control_tag) (pt: val_tag) (vhts: lt_vec 8%nat) (lts: lt_vec n) : 
-    PolicyResult (control_tag * val_tag * lt_vec n) :=
-      match pt, vhts with 
-      (* pointer points to an allocated header *)
-      | PointerWithColor ptr_l ptr_c, AllocatedHeader hdr_l hdr_c => 
-        (* header color/loc, pointer color/loc, and lts color/loc should match *)
-        if ((Z.eqb ptr_c hdr_c) && (Cabs.loc_eqb ptr_l hdr_l)) 
-        then
-            (* lts tags should all be AllocatedDirty or Allocated. If any tag is anything else,
-               there's been heap corruption *)
-            (* SNA: Should this pass if there is a mix of Allocated and AllocatedDirty?
-                    I suspect so, but the following will not. *)
-          if (ltop.(forallb) n (lt_eq_dec (Allocated ptr_l ptr_c)) lts) ||
-             (ltop.(forallb) n (lt_eq_dec (AllocatedDirty ptr_l ptr_c)) lts)
-             (* SNA: To let it pass on a mix, instead use: *)
-             (* ltop.forallb n (fun lt => (lt_eq_dec (Allocated ptr_l ptr_c) lt) ||
-                                      lt_eq_dec (AllocatedDirty ptr_l ptr_c) lt)) lts*)
-          then ret (pct, N, ltop.(const) n UnallocatedHeap)
-          else raise (PolicyFailure (inj_loc "HeapProblem|| Corrupted Heap |FreeT's block has unexpected tags at source location " l))
-        else raise (PolicyFailure (inj_loc "HeapProblem| Corrupted Heap | FreeT tried to free someone else's allocated memory at source location " l))
-      (* Invalid header. Trying to free nonlegal block @TODO maybe break these out for what kind? *)
-      | PointerWithColor _ _, _ => raise (PolicyFailure (inj_loc "HeapProblem|| FreeT Misuse| Nonsense free() at source location " l))
-      (* Tried to free something that is not a pointer (N, header) *)
-      | _ , _ =>  raise (PolicyFailure (inj_loc "HeapProblem|| FreeT Misuse| FreeT tried to free through a nonpointer at source location " l))
-      end.
+    (* Invalid header. Trying to free nonlegal block @TODO maybe break these out for what kind? *)
+    | PointerWithColor _ _, _ => raise (PolicyFailure (inj_loc "HeapProblem|| FreeT Misuse| Nonsense free() at source location " l))
+    
+    (* Tried to free something that is not a pointer (N, header) *)
+    | _ , _ =>  raise (PolicyFailure (inj_loc "HeapProblem|| FreeT Misuse| FreeT tried to free through a nonpointer at source location " l))
+    end
+  )
+  else raise (PolicyFailure ("HeapProblem||FreeT detects corrupted alloc header| source location "
+        ++ (print_loc l)))
+  .
 
-  (* ClearT is for the tags on lts, the location tags *)
-  Definition ClearT (l:loc) (pct: control_tag) : PolicyResult (control_tag * loc_tag) :=
-   ret (pct, UnallocatedHeap).
+  (* ClearT is for the tags on lts, the location tags. Works tag by tag *)
+  Definition ClearT (l:loc) (pct: control_tag) (pt: val_tag) (currlt: loc_tag) : PolicyResult (loc_tag) :=
+    match pt, currlt with 
+    | PointerWithColor ptr_l ptr_c, Allocated m_l m_c => 
+      (* header color/loc, pointer color/loc, and lts color/loc should match *)
+      (* lts tags should be a mix of AllocatedDirty or Allocated. If any tag is anything else,
+        there's been heap corruption *)
+      if ((Z.eqb ptr_c m_c) && (Cabs.loc_eqb ptr_l m_l)) 
+      then ret ( UnallocatedHeap)
+      else raise (PolicyFailure (inj_loc "HeapProblem|| Corrupted Heap |Clear's block has unexpected tags at source location " l))
+    
+    | PointerWithColor ptr_l ptr_c, AllocatedDirty m_l m_c => 
+      (* header color/loc, pointer color/loc, and lts color/loc should match *)
+      (* lts tags should be a mix of AllocatedDirty or Allocated. If any tag is anything else,
+        there's been heap corruption *)
+      if ((Z.eqb ptr_c m_c) && (Cabs.loc_eqb ptr_l m_l)) 
+      then ret ( UnallocatedHeap)
+      else raise (PolicyFailure (inj_loc "HeapProblem|| Corrupted Heap |ClearT's block has unexpected tags at source location " l))
+    | _, _ => raise (PolicyFailure ("HeapProblem||ClearT detects corrupted data| source location "
+        ++ (print_loc l)))
+    end.
   
 
   (* Things this policy does not use: Unit Rules & passthrough rules *)
@@ -634,9 +650,10 @@ Module HeapProblem <: Policy.
  
   Definition FunT (ce: composite_env) (id : ident) (ty : type) : val_tag := N.
 
-  Definition LocalT (n:nat) (l:loc) (pct : control_tag) (ty : type) :
-    PolicyResult (control_tag * val_tag * lt_vec n)%type :=
-    ret (pct, N, ltop.(const) n NotHeap).  
+ (* Required for policy interface. Not relevant to this particular policy, pass values through *)
+ Definition LocalT (ce: composite_env) (l:loc) (pct : control_tag) (ty : type) :
+   PolicyResult (control_tag * val_tag * list loc_tag)%type :=
+   ret (pct, N, ltop.(const) (Z.to_nat (sizeof ce ty)) NotHeap).
 
   (* Passthrough unused rules *)
   Definition CallT := Passthrough.CallT policy_state val_tag control_tag.  

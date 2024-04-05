@@ -118,7 +118,7 @@ Module PVI <: Policy.
     PolicyResult (control_tag * loc_tag) :=
     ret (pct, N).
 
-  Definition ClearT (l:loc) (pct: control_tag) (lt: loc_tag) :
+  Definition ClearT (l:loc) (pct: control_tag) (pt: val_tag) (lt: loc_tag) :
     PolicyResult loc_tag :=
     ret N.
   

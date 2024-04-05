@@ -106,14 +106,14 @@ Module ConcreteAllocator (Pol : Policy).
         let live := (0 <? (Int64.signed i))%Z in (* -: free, +: live, 0: free, but no room! *)
         let sz := (Z.abs (Int64.signed i)) in
         ret (live, sz)
-    | Vundef => raise (OtherFailure "Header is undefined")
-    | _ => raise (OtherFailure "Header is not a long")
+    | Vundef => raise (OtherFailure "ConcreteAllocator| parse_header | Header is undefined")
+    | _ => raise (OtherFailure "ConcreteAllocator | parse_header | Header is not a long")
     end.
 
   (* @TODO the vt tag can drop *)
   Definition update_header (m: CM.mem) (base: ptr) (live: bool) (sz: Z)
              (vt: val_tag) (lts: list loc_tag) : PolicyResult CM.mem :=
-    if sz <? 0 then raise (OtherFailure "Attempting to allocate negative size")
+    if sz <? 0 then raise (OtherFailure "ConcreteAllocator| update_header | Attempting to allocate negative size")
     else
       let rec :=
         if live
@@ -129,7 +129,7 @@ Module ConcreteAllocator (Pol : Policy).
     PolicyResult (CM.mem*ptr) :=
     if sz =? 0 then ret (m,Int64.zero) else
     match c with
-    | O => raise (OtherFailure "Too many steps looking for free block")
+    | O => raise (OtherFailure "ConcreteAllocator| find_free| Too many steps looking for free block")
     | S c' =>
         let base := off header (Int64.repr header_size) in
         (* Load a long from base.

@@ -380,6 +380,8 @@ Module Type Policy.
 (* APT: Change so ClearT handles one byte at a time *)
   Parameter ClearT : loc                    (* Inputs: *)
                      -> control_tag         (* PC tag *)
+                     -> val_tag             (* @TODO AMN: discuss next meeting. 
+                                                pointer's val tag *)
                      -> loc_tag             (* tag on byte within block *)
 
                      -> PolicyResult        (* Outputs: *)

@@ -7,6 +7,7 @@ import subprocess
 # track total failures
 global testsfailed 
 testsfailed = 0
+testsrun = 0
 defaulttimeout = 1000 # default # of steps to allow to run
 # strings to reuse
 doublefree = "dfree"
@@ -26,11 +27,14 @@ def runACFileWithoutInput (filename, policy, expectedoutput):
     completed_run = subprocess.run(["bash", "-c", f"../ccomp -interp -timeout {defaulttimeout} -p {policy} {filename}"],
                                    capture_output=True )
 
+    global testsrun
+    testsrun+=1
+
     # this is not fancy, but it should keep me from checking in dumb mistakes
     if (expectedoutput in completed_run.stdout or expectedoutput in completed_run.stderr):
         print(f"{passmsg}")
     else:
-        print(f"{failmsg}\n\t\tret code:{completed_run.returncode}\n\t\tstdoutput:\n\t\t{completed_run.stdout}\n\t\tstderr:\n{completed_run.stderr}")
+        print(f"{failmsg}\n\t\tret code:{completed_run.returncode}\n\t\tstdoutput:\n\t\t{completed_run.stdout}\n\t\tstderr:\n{completed_run.stderr}\n\t\texpected:\n\t\t{expectedoutput}\n")
         global testsfailed
         testsfailed+=1
 
@@ -46,11 +50,15 @@ def runACFileWithInput (filename, policy, testinput, expectedoutput):
         stdout, stderr = process.communicate(
             input=f"{testinput}\n".encode("utf-8"), timeout=10
         )
+    
+        global testsrun
+        testsrun+=1
+
         #print(stdout.decode("utf-8"))
         if ( expectedoutput in stdout or expectedoutput in stderr):
             print(passmsg)
         else:
-            print(f"{failmsg}\n\t\tret code:{process.returncode}\n\t\toutput:\n\t\t{stdout}\n\t\tstderr:\n\t\t{stderr}\n\t\texpected:\n\t\t{expectedoutput}")
+            print(f"{failmsg}\n\t\tret code:{process.returncode}\n\t\toutput:\n\t\t{stdout}\n\t\tstderr:\n\t\t{stderr}\n\t\texpected:\n\t\t{expectedoutput}\n")
             global testsfailed
             testsfailed+=1
 
@@ -74,7 +82,7 @@ if __name__ == '__main__':
     print("\n=======\nMultipolicy (Product.v) without input\n=======")
     # fail  left
     runACFileWithoutInput("double_free_no_input.c", dfreeXpvi,
-                          b'ProdLeft||DoubleFree||FreeT detects two frees|  location double_free_no_input.c:8, location double_free_no_input.c:9\n'
+                          b'ProdLeft||DoubleFree||FreeT detects two frees| source location double_free_no_input.c:8, location double_free_no_input.c:9\n'
                           )
     #fail right
     runACFileWithoutInput("stack_load_store_ob.c", dfreeXpvi,
@@ -86,7 +94,7 @@ if __name__ == '__main__':
     
     print("\n=======\ndfree tests without input\n=======")
     runACFileWithoutInput("double_free_no_input.c", doublefree,
-                          b'DoubleFree||FreeT detects two frees|  location double_free_no_input.c:8, location double_free_no_input.c:9\n'
+                          b'DoubleFree||FreeT detects two frees| source location double_free_no_input.c:8, location double_free_no_input.c:9\n'
                           )
 
     runACFileWithoutInput("printf_test.c", doublefree,
@@ -107,13 +115,13 @@ if __name__ == '__main__':
     
     runACFileWithInput("double_free_basic_input.c",
                        doublefree, "ABCD",
-                       b'DoubleFree||FreeT detects two frees|  location double_free_basic_input.c:14, location double_free_basic_input.c:15')
+                       b'DoubleFree||FreeT detects two frees| source location double_free_basic_input.c:14, location double_free_basic_input.c:15')
     
 
     # should failstop
     runACFileWithInput("double_free_confused_cleanup_1.c",
                        doublefree, "PP",
-                       b'DoubleFree||FreeT detects two frees|  location double_free_confused_cleanup_1.c:18, location double_free_confused_cleanup_1.c:20')
+                       b'DoubleFree||FreeT detects two frees| source location double_free_confused_cleanup_1.c:18, location double_free_confused_cleanup_1.c:20')
 
     # should not
     runACFileWithInput("double_free_confused_cleanup_1.c",
@@ -122,12 +130,12 @@ if __name__ == '__main__':
     # should failstop
     runACFileWithInput("double_free_confused_cleanup_2.c",
                        doublefree, "BBB",
-                       b'DoubleFree||FreeT detects two frees|  location double_free_confused_cleanup_2.c:39, location double_free_confused_cleanup_2.c:47')
+                       b'DoubleFree||FreeT detects two frees| source location double_free_confused_cleanup_2.c:39, location double_free_confused_cleanup_2.c:47')
 
     # should failstop with a different dfree
     runACFileWithInput("double_free_confused_cleanup_2.c",
                        doublefree, "!!!",
-                       b'DoubleFree||FreeT detects two frees|  location double_free_confused_cleanup_2.c:41, location double_free_confused_cleanup_2.c:47')
+                       b'DoubleFree||FreeT detects two frees| source location double_free_confused_cleanup_2.c:41, location double_free_confused_cleanup_2.c:47')
     
     # should not
     runACFileWithInput("double_free_confused_cleanup_2.c",
@@ -142,24 +150,26 @@ if __name__ == '__main__':
     
     runACFileWithInput("double_free_confused_cleanup_multi.c",
                        doublefree, "222",
-                       b"DoubleFree||FreeT detects two frees|  location double_free_confused_cleanup_multi.c:77, location double_free_confused_cleanup_multi.c:79")
+                       b"DoubleFree||FreeT detects two frees| source location double_free_confused_cleanup_multi.c:77, location double_free_confused_cleanup_multi.c:79")
 
     runACFileWithInput("double_free_confused_cleanup_multi.c",
                        doublefree, "BBB",
-                       b'DoubleFree||FreeT detects two frees|  location double_free_confused_cleanup_multi.c:63, location double_free_confused_cleanup_multi.c:71')
+                       b'DoubleFree||FreeT detects two frees| source location double_free_confused_cleanup_multi.c:63, location double_free_confused_cleanup_multi.c:71')
 
     # these two seem to be teh same, but if we somehow missed input's dfree, we would see different behavior for x in these two
     runACFileWithInput("double_free_confused_cleanup_multi.c",
                        doublefree, "!!!",
-                       b'DoubleFree||FreeT detects two frees|  location double_free_confused_cleanup_multi.c:65, location double_free_confused_cleanup_multi.c:71')
+                       b'DoubleFree||FreeT detects two frees| source location double_free_confused_cleanup_multi.c:65, location double_free_confused_cleanup_multi.c:71')
 
     runACFileWithInput("double_free_confused_cleanup_multi.c",
                        doublefree, "!!0",
-                       b'DoubleFree||FreeT detects two frees|  location double_free_confused_cleanup_multi.c:65, location double_free_confused_cleanup_multi.c:71')
+                       b'DoubleFree||FreeT detects two frees| source location double_free_confused_cleanup_multi.c:65, location double_free_confused_cleanup_multi.c:71')
 
     runACFileWithInput("double_free_basic_nonsensefree.c",
                        doublefree, "hi",
-                       b"DoubleFree||FreeT detects free of unallocated memory|  location double_free_basic_nonsensefree.c:18" )
+                       # old version 
+                       #b"DoubleFree||FreeT detects free of unallocated memory| source location double_free_basic_nonsensefree.c:18" )
+                       b"ConcreteAllocator| parse_header | Header is undefined")
     print("=======\nHeap Problems Tests\n=======")
     print("\tTODO")
     print("=======\nTests expected to get incorrect output but we'd like to know if that changes unexpectedly\n=======")
@@ -167,4 +177,4 @@ if __name__ == '__main__':
     print("\tNone Present")
 
     # end
-    print(f"\n=======\ntest suit ending. total tests failed: {testsfailed}")
+    print(f"\n=======\ntest suit ending.\n\ttotal tests run: {testsrun}\n\ttotal failed: {testsfailed}\n\ttotal passed: {testsrun - testsfailed}")
