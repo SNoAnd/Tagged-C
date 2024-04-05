@@ -26,15 +26,7 @@ Module NullPolicy <: Policy.
   Definition InitPCT : control_tag := tt.
   Definition DefLT   : loc_tag := tt.
   Definition DefHT   : loc_tag := tt.
-  Definition InitT   : val_tag := tt.
-  
-  Definition lt_vec (n:nat) := VectorDef.t loc_tag n.
-
-  Fixpoint lts_constant (n:nat) (lt:loc_tag) : lt_vec n :=
-    match n with
-    | O => VectorDef.nil loc_tag
-    | S n' => VectorDef.cons loc_tag lt n' (lts_constant n' lt)
-    end.
+  Definition InitT   : val_tag := tt. 
   
   Definition print_vt (t:val_tag) : string := "tt".
   Definition print_ct (t:control_tag) : string := "tt".
@@ -52,25 +44,25 @@ Module NullPolicy <: Policy.
   Definition FunT (ce : composite_env) (id : ident) (ty : type) : val_tag :=
     tt.
   
-  Definition LocalT (n:nat) (l:loc) (pct: control_tag) (ty : type) :
-    PolicyResult (control_tag * val_tag * lt_vec n) :=
-    ret (tt, tt, lts_constant n tt).
+  Definition LocalT (ce: composite_env) (l:loc) (pct: control_tag) (ty : type) :
+    PolicyResult (control_tag * val_tag * list loc_tag) :=
+    ret (tt, tt,  ltop.(const) (Z.to_nat (sizeof ce ty)) tt).
 
   Definition DeallocT (l:loc) (ce : composite_env) (pct: control_tag) (ty : type) :
     PolicyResult (control_tag * val_tag * loc_tag) :=
     ret (tt, tt, tt).
   
   Definition MallocT (l:loc) (pct: control_tag) (fpt: val_tag) :
-    PolicyResult (control_tag * val_tag * val_tag * lt_vec n  * loc_tag) :=
+    PolicyResult (control_tag * val_tag * val_tag * loc_tag  * loc_tag) :=
     ret (tt, tt, tt, tt, tt).
   
-  Definition FreeT (n:nat) (l:loc) (pct: control_tag)(pt: val_tag) (vht: lt_vec n )
-    (lts: lt_vec n) : PolicyResult (control_tag * val_tag * lt_vec n) :=
-    ret (tt, tt, lts).
-
-  Definition ClearT (l:loc) (pct:control_tag) :
+  Definition FreeT (l:loc) (pct: control_tag) (pt: val_tag) (lts: list loc_tag) :
     PolicyResult (control_tag * loc_tag) :=
     ret (tt, tt).
+
+  Definition ClearT (l:loc) (pct:control_tag) (lt: loc_tag) :
+    PolicyResult loc_tag :=
+    ret tt.
   
   Definition CallT      := Passthrough.CallT policy_state val_tag control_tag.  
   Definition ArgT       := Passthrough.ArgT policy_state val_tag control_tag.

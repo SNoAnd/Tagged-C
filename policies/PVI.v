@@ -35,15 +35,7 @@ Module PVI <: Policy.
   Definition DefHT   : loc_tag := N.
   Definition InitT   : val_tag := N.
 
-  Definition lt_vec (n:nat) := VectorDef.t loc_tag n.
-
-  Fixpoint lts_constant (n:nat) (lt:loc_tag) : lt_vec n :=
-    match n with
-    | O => VectorDef.nil loc_tag
-    | S n' => VectorDef.cons loc_tag lt n' (lts_constant n' lt)
-    end.
-
-    Definition print_vt (t : val_tag) : string :=
+  Definition print_vt (t : val_tag) : string :=
     match t with
     | Glob id => "Global " ++ (extern_atom id)
     | Dyn c => "Dynamic"
@@ -77,19 +69,18 @@ Module PVI <: Policy.
 
   Local Open Scope monad_scope.
   
-  Definition LoadT (n:nat) (l:loc) (pct: control_tag) (pt vt: val_tag)
-    (lts : lt_vec n) : PolicyResult val_tag :=
+  Definition LoadT (l:loc) (pct: control_tag) (pt vt: val_tag) (lts : list loc_tag) : PolicyResult val_tag :=
     match pt with
     | N => raise (PolicyFailure (inj_loc "PVI || LoadT X Failure" l))
-    | _ => if ltop.(forallb) n (color_eq pt) lts then ret vt 
+    | _ => if ltop.(forallb) (color_eq pt) lts then ret vt 
            else raise (PolicyFailure (inj_loc "PVI || LoadT tag_eq_dec Failure" l))
     end.
 
-  Definition StoreT (n:nat) (l:loc) (pct: control_tag) (pt vt: val_tag)
-    (lts : lt_vec n) : PolicyResult (control_tag * val_tag * lt_vec n) :=
+  Definition StoreT (l:loc) (pct: control_tag) (pt vt: val_tag)
+    (lts : list loc_tag) : PolicyResult (control_tag * val_tag * list loc_tag) :=
     match pt with
     | N => raise (PolicyFailure (inj_loc "PVI || StoreT X Failure" l))
-    | _ => if ltop.(forallb) n (color_eq pt) lts then ret (pct,vt,lts) 
+    | _ => if ltop.(forallb) (color_eq pt) lts then ret (pct,vt,lts) 
            else raise (PolicyFailure (inj_loc "PVI || StoreT tag_eq_dec Failure" l))
     end.
   
@@ -108,28 +99,28 @@ Module PVI <: Policy.
 
   Definition FunT (ce: composite_env) (id : ident) (ty : type) : val_tag := N.
   
-  Definition LocalT (n:nat) (l:loc) (pct : control_tag) (ty : type) :
-    PolicyResult (control_tag * val_tag * lt_vec n)%type :=
+  Definition LocalT (ce: composite_env) (l:loc) (pct : control_tag) (ty : type) :
+    PolicyResult (control_tag * val_tag * list loc_tag)%type :=
     let c := pct in
-    ret (S c, Dyn c, lts_constant n (Dyn c)).
+    ret (S c, Dyn c, ltop.(const) (Z.to_nat (sizeof ce ty)) (Dyn c)).
   
   Definition DeallocT (l:loc) (ce : composite_env) (pct : control_tag) (ty : type) :
     PolicyResult (control_tag * val_tag * loc_tag) :=
     ret (pct, N, N).
 
   Definition MallocT (l:loc) (pct: control_tag) (fpt: val_tag) :
-    PolicyResult (control_tag * val_tag * val_tag * lt_vec n  * loc_tag) :=
+    PolicyResult (control_tag * val_tag * val_tag * loc_tag * loc_tag) :=
     log ("Malloc call at " ++ print_loc l ++ " associated with color " ++ print_ct pct);;
     let c := pct in
     ret (S c, Dyn c, N, Dyn c, Dyn c).
 
-  Definition FreeT (n:nat) (l:loc) (pct: control_tag) (pt: val_tag) (vht: loc_tag)
-    (lts: lt_vec n) : PolicyResult (control_tag * val_tag * lt_vec n) :=
-    ret (pct, N, lts).
-
-  Definition ClearT (l:loc) (pct: control_tag) :
+  Definition FreeT (l:loc) (pct: control_tag) (pt: val_tag) (lts: list loc_tag) :
     PolicyResult (control_tag * loc_tag) :=
     ret (pct, N).
+
+  Definition ClearT (l:loc) (pct: control_tag) (lt: loc_tag) :
+    PolicyResult loc_tag :=
+    ret N.
   
   (* Passthrough rules *)  
   Definition CallT      := Passthrough.CallT policy_state val_tag control_tag.  

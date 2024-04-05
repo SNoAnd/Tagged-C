@@ -446,7 +446,7 @@ Definition extcall_sem : Type :=
 Definition volatile_load_tags (l:Cabs.loc) (chunk: memory_chunk) (m:mem) (p:ptr)
            (pt:val_tag) (vt:val_tag) (pct:control_tag) : PolicyResult val_tag :=
   lts <- load_ltags chunk m p;;
-  vt' <- LoadT (length lts) l pct pt vt (VectorDef.of_list lts);;
+  vt' <- LoadT l pct pt vt lts;;
   AccessT l pct vt'.  
 
 Inductive volatile_load_sem (l:Cabs.loc) (chunk: memory_chunk) (ge: Genv.t F V):
@@ -465,8 +465,8 @@ Definition volatile_store_tags (l:Cabs.loc) (chunk: memory_chunk) (m:mem) (p: pt
   PolicyResult (control_tag*val_tag*list loc_tag) :=
   '((_,vt0),lts) <- load_all chunk m p;;
   '(pct',vt') <-  AssignT l pct vt0 vt;;
-  '(pct'',vt'',lts') <- StoreT (length lts) l pct' pt vt' (VectorDef.of_list lts);;
-  ret (pct'',vt'', VectorDef.to_list lts').
+  '(pct'',vt'',lts') <- StoreT l pct' pt vt' lts;;
+  ret (pct'',vt'', lts').
 
 Inductive volatile_store_sem (l:Cabs.loc) (chunk: memory_chunk) (ge: Genv.t F V):
   list atom -> control_tag -> val_tag -> mem -> trace ->
@@ -513,11 +513,12 @@ Definition do_extcall_free (l:Cabs.loc) (pct: control_tag)  (fpt pt: val_tag) (p
   if Int64.eq (concretize p) Int64.zero
   then ret ((Vundef,InitT), pct, m)
   else
-    '(sz,pct1,m') <- heapfree l pct m p pt;;
+    '(sz,pct',m') <- heapfree l pct m p pt;;
     mvs <- loadbytes m' p sz;;
-    '(pct2,lt) <- ClearT l pct1;;
-    m'' <- storebytes m' p mvs (repeat lt (Z.to_nat sz));;
-    ret ((Vundef,InitT), pct2, m'').
+    lts <- loadtags m' p sz;;
+    lts' <- ltop.(mmap) (ClearT l pct') lts;;
+    m'' <- storebytes m' p mvs lts';;
+    ret ((Vundef,InitT), pct', m'').
 
 Inductive extcall_free_sem (l:Cabs.loc) (ge: Genv.t F V):
   list atom -> control_tag -> val_tag -> mem -> trace ->

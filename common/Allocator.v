@@ -62,7 +62,7 @@ Module Type Allocator (Ptr: Pointer) (Pol : Policy) (M : Memory Ptr Pol).
 
   Parameter heapalloc : mem
                         -> Z (* size *)
-                        -> lt_vec 8%nat (* (header, vht) now made of loc tags, hardcoded for now *)
+                        -> loc_tag
                         -> PolicyResult
                              (mem
                               * ptr (* base *)).
@@ -103,6 +103,12 @@ Module Type Allocator (Ptr: Pointer) (Pol : Policy) (M : Memory Ptr Pol).
   Definition loadbytes (m:mem) (p:ptr) (n:Z) : PolicyResult (list memval) :=
     match M.loadbytes (fst m) (of_ptr p) n with
     | Success bytes => ret bytes
+    | Fail f => raise f
+    end.
+  
+  Definition loadtags (m:mem) (p:ptr) (n:Z) : PolicyResult (list loc_tag) :=
+    match M.loadtags (fst m) (of_ptr p) n with
+    | Success tags => ret tags
     | Fail f => raise f
     end.
   

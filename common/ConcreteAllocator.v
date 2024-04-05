@@ -112,7 +112,7 @@ Module ConcreteAllocator (Pol : Policy).
 
   (* @TODO the vt tag can drop *)
   Definition update_header (m: CM.mem) (base: ptr) (live: bool) (sz: Z)
-             (vt: val_tag) (lts: lt_vec 8%nat) : PolicyResult CM.mem :=
+             (vt: val_tag) (lts: list loc_tag) : PolicyResult CM.mem :=
     if sz <? 0 then raise (OtherFailure "Attempting to allocate negative size")
     else
       let rec :=
@@ -120,12 +120,12 @@ Module ConcreteAllocator (Pol : Policy).
         then Vlong (Int64.repr sz)
         else Vlong (Int64.neg (Int64.repr sz)) in
         (* AMN: this a temporary hack *)
-      ret (superstore Mint64 m (Int64.unsigned base) (rec, vt) (VectorDef.to_list lts)).
+      ret (superstore Mint64 m (Int64.unsigned base) (rec, vt) lts).
 
   Definition header_size := size_chunk Mint64.
   Definition block_align := align_chunk Mint64.
 
-  Fixpoint find_free (c : nat) (m : CM.mem) (header : ptr) (sz : Z) (header_lts : lt_vec 8%nat) :
+  Fixpoint find_free (c : nat) (m : CM.mem) (header : ptr) (sz : Z) (header_lts : list loc_tag) :
     PolicyResult (CM.mem*ptr) :=
     if sz =? 0 then ret (m,Int64.zero) else
     match c with
@@ -186,9 +186,9 @@ Module ConcreteAllocator (Pol : Policy).
           If not, then we have a problem.
           I can't tell if it is or not
       - relatedly, loadbytes doesn't give me a return type, which makes 227 more confusing: what do the  <-, ;; do?  *)
-  Definition heapalloc (m: mem) (size: Z) (header_lts : lt_vec 8%nat): PolicyResult (mem * ptr) :=
+  Definition heapalloc (m: mem) (size: Z) (header_lts : loc_tag): PolicyResult (mem * ptr) :=
     let '(m,sp) := m in
-    '(m',base) <- find_free 100 m (Int64.repr 1000) size header_lts;;
+    '(m',base) <- find_free 100 m (Int64.repr 1000) size (repeat header_lts 8);;
     ret ((m',sp),base).
 
   Definition heapfree (l: Cabs.loc) (pct: control_tag) (m: mem) (p: ptr) (pt: val_tag) :
@@ -200,10 +200,8 @@ Module ConcreteAllocator (Pol : Policy).
     let head := Int64.repr (Int64.unsigned p - header_size) in
     '((v,_),header_lts) <- get_header m head;;
     '(live,sz) <- parse_header v;;
-    mvs <- loadbytes m p sz;;
-    let lts := map snd mvs in
-    '(pct',vt',lts') <- FreeT (length lts) l pct pt (VectorDef.of_list header_lts) (VectorDef.of_list lts)  ;;
-    m' <- update_header m head false sz vt' (VectorDef.to_list lts');;
+    '(pct',lt') <- FreeT l pct pt header_lts;;
+    m' <- update_header m head false sz InitT (repeat lt' 8);;
     ret (sz,pct',(m',sp)).
 
   Fixpoint globals (m : CM.mem) (gs : list (ident*Z)) (next : addr) : (CM.mem * PTree.t ptr) :=
@@ -246,6 +244,12 @@ Module ConcreteAllocator (Pol : Policy).
     | Fail f => raise f
     end.
 
+  Definition loadtags (m:mem) (p:ptr) (n:Z) : PolicyResult (list loc_tag) :=
+    match CM.loadtags (fst m) (of_ptr p) n with
+    | Success tags => ret tags
+    | Fail f => raise f
+    end.
+  
   Definition store (chunk:memory_chunk) (m:mem) (p:ptr) (v:TLib.atom) (lts:list loc_tag) :
     PolicyResult mem :=
     let '(m,st) := m in

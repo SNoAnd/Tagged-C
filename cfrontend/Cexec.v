@@ -698,7 +698,7 @@ Section EXPRS.
                 let! (w', tr, res) <- do_deref_loc w ty m ofs pt bf;
                 try ((v,vt),lts), ps' <- res ps;
                 catch "failred_rvalof_mem0", tr;
-                try vt', ps'' <- LoadT (length lts) lc pct pt vt (VectorDef.of_list lts) ps';
+                try vt', ps'' <- LoadT lc pct pt vt lts ps';
                 catch "failred_rvalof_mem1", tr;
                 try vt'', ps''' <- AccessT lc pct vt' ps'';
                 catch "failred_rvalof_mem2", tr;
@@ -777,8 +777,7 @@ Section EXPRS.
                     let! (w'', tr, res') <- do_deref_loc w' ty m ofs vt1 Full;
                     match res' ps' with
                     | (Success (_,lts), ps'') =>
-                        try pt',ps''' <- PPCastT (List.length lts1) (List.length lts) lc pct vt1 
-                                         (VectorDef.of_list lts1) (VectorDef.of_list lts) ty ps'';
+                        try pt',ps''' <- PPCastT lc pct vt1 lts1 lts ty ps'';
                         catch "failred_cast_ptr_ptr", (tr1++tr);
                         Rred "red_cast_ptr_ptr" pct (Eval (v,pt') ty) te m (tr1++tr) ps'''
                     | _ => Stuckred
@@ -793,7 +792,7 @@ Section EXPRS.
                 let! (w',tr,res) <- do_deref_loc w ty1 m ofs vt1 Full;
                 match res ps with
                 | (Success (_, lts), ps') =>
-                    try pt', ps'' <- PICastT (List.length lts) lc pct vt1 (VectorDef.of_list lts) ty ps';
+                    try pt', ps'' <- PICastT lc pct vt1 lts ty ps';
                     catch "failred_cast_ptr_int", tr;
                     Rred "red_cast_ptr_int" pct (Eval (v,pt') ty) te m tr ps''
                 | _ => Stuckred
@@ -805,7 +804,7 @@ Section EXPRS.
                 let! (w', tr, res) <- do_deref_loc w ty m ofs vt1 Full;
                 match res ps with
                 | (Success (_, lts), ps') =>
-                    try pt', ps'' <- IPCastT (List.length lts) lc pct vt1 (VectorDef.of_list lts) ty ps';
+                    try pt', ps'' <- IPCastT lc pct vt1 lts ty ps';
                     catch "failred_cast_int_ptr", tr;
                     Rred "red_cast_int_ptr" pct (Eval (v,pt') ty) te m tr ps''
                 | _ => Stuckred
@@ -876,11 +875,9 @@ Section EXPRS.
                 catch "failred_assign_mem0", tr;
                 try (pct',vt'), ps'' <- AssignT lc pct vt1 vt2 ps';
                 catch "failred_assign_mem1", tr;
-                try (pct'',vt'',lts'), ps''' <- StoreT (List.length lts) lc pct' pt1 vt'
-                                                (VectorDef.of_list lts) ps'';
+                try (pct'',vt'',lts'), ps''' <- StoreT lc pct' pt1 vt' lts ps'';
                 catch "failred_assign_mem2", tr;
-                let! (w'', tr', res') <- do_assign_loc w' ty1 m ofs pt1 bf (v,vt'')
-                                         (VectorDef.to_list lts');
+                let! (w'', tr', res') <- do_assign_loc w' ty1 m ofs pt1 bf (v,vt'') lts';
                 try (m', (v,vt''')), ps'''' <- res' ps''';
                 catch "failred_assign_mem3", (tr ++ tr');
                 Rred "red_assign_mem" pct'' (Eval (v,vt''') ty) te m' (tr ++ tr') ps'''
@@ -907,7 +904,7 @@ Section EXPRS.
                 let! (w', tr, res) <- do_deref_loc w ty m ofs pt1 bf;
                 try ((v1,vt1),lts), ps' <- res ps;
                 catch "failred_assignop_mem0", tr;
-                try vt', ps' <- LoadT (List.length lts) lc pct pt1 vt1 (VectorDef.of_list lts) ps;
+                try vt', ps' <- LoadT lc pct pt1 vt1 lts ps;
                 catch "failred_assignop_mem1", tr;
                 try vt'', ps'' <- AccessT lc pct vt' ps';
                 catch "failred_assignop_mem2", tr;
@@ -949,7 +946,7 @@ Section EXPRS.
                 let! (w', tr, res) <- do_deref_loc w ty m ofs pt bf;
                 try ((v,vt), lts), ps' <- res ps;
                 catch "failred_postincr_mem0", tr;
-                try vt', ps'' <- LoadT (List.length lts) lc pct pt vt (VectorDef.of_list lts) ps';
+                try vt', ps'' <- LoadT lc pct pt vt lts ps';
                 catch "failred_postincr_mem1", tr;
                 try vt'', ps''' <- AccessT lc pct vt' ps'';
                 catch "failred_postincr_mem2", tr;
@@ -1194,9 +1191,9 @@ Definition invert_expr_prop (lc:Cabs.loc) (a: expr) (ps: pstate) (pct: control_t
             res ps = (Success ((v1,vt1), lts), ps1) ->
             (forall pct' vt2' ps2 pct'' vt' lts' ps3,
                 AssignT lc pct vt1 vt2 ps1 = (Success (pct', vt2'), ps2) ->
-                StoreT (List.length lts) lc pct' pt vt2' (VectorDef.of_list lts) ps2 = (Success (pct'', vt', lts'), ps3) ->
+                StoreT lc pct' pt vt2' lts ps2 = (Success (pct'', vt', lts'), ps3) ->
                   exists t' w'' res',
-                    assign_loc ge ce ty1 m ofs pt (VectorDef.to_list lts') bf (v2',vt') t' res' /\
+                    assign_loc ge ce ty1 m ofs pt lts' bf (v2',vt') t' res' /\
                       possible_trace w' t' w''))
   | Eassign (Eloc (Ltmp b) ty1) (Eval (v2,vt2) ty2) ty =>
       exists v1 v2' vt1,
@@ -1287,7 +1284,7 @@ Proof.
     eapply possible_trace_app_inv in H7 as [w0 [P Q]]. subst.
     repeat (eexists; eauto).
 Qed.
-
+    
 Lemma rfailred_invert:
   forall lc w' ps pct r te m tr failure ps',
     rfailred ge ce lc pct r te m tr failure ps ps' ->
@@ -1300,7 +1297,7 @@ Proof.
   - destruct ty1; destruct ty; try congruence.
     apply possible_trace_app_inv in H7 as [w0 [P Q]].    
     repeat (eexists; eauto).
-Admitted.
+Qed.
 
 Lemma callred_invert:
   forall lc ps pct pct' fpt r fd args ty te m ps',

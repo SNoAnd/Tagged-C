@@ -44,15 +44,15 @@ Module FLAllocator (Pol : Policy).
 
   Definition freelist : Type := list (addr (* base *)
                                     * Z (* size *)
-                                    * val_tag (* "header" val tag *)).
+                                    * loc_tag (* "header" loc tag *)).
 
   Record heap_state : Type := mkheap {
-    regions : ZMap.t (option (Z*val_tag));
+    regions : ZMap.t (option (Z*loc_tag));
     fl : freelist;
   }.
 
   Definition empty_heap : heap_state :=
-    mkheap (ZMap.init None) [(Int64.repr 1000,2000,InitT)].
+    mkheap (ZMap.init None) [(Int64.repr 1000,2000,DefHT)].
   
   Definition t : Type := (addr*heap_state).   
   Definition init : t := (Int64.repr 3000,empty_heap).  
@@ -77,27 +77,27 @@ Module FLAllocator (Pol : Policy).
 
 
   (* This assumes that size is already 8-byte aligned *)
-  Fixpoint fl_alloc (fl : freelist) (size : Z) (vt : val_tag) : option (addr*freelist) :=
+  Fixpoint fl_alloc (fl : freelist) (size : Z) (lt : loc_tag) : option (addr*freelist) :=
     match fl with
     | [] => None
-    | (base, sz, vt') :: fl' =>
+    | (base, sz, lt') :: fl' =>
         if sz =? size
         then Some (base,fl')
         else if size <? sz
-             then Some (base,(off base (Int64.repr size),sz - size,vt)::fl')
-             else match fl_alloc fl' size vt with
-                  | Some (base',fl'') => Some (base', (base, sz, vt') :: fl'')
+             then Some (base,(off base (Int64.repr size),sz - size,lt)::fl')
+             else match fl_alloc fl' size lt with
+                  | Some (base',fl'') => Some (base', (base, sz, lt') :: fl'')
                   | None => None
                   end
     end.
 
-  Definition heapalloc (m : mem) (size : Z) (vt_head: val_tag) : PolicyResult (mem*ptr) :=
+  Definition heapalloc (m : mem) (size : Z) (lt_head: loc_tag) : PolicyResult (mem*ptr) :=
     let '(m, (sp,heap)) := m in
     (* Make sure we're 8-byte aligned *)
     let size := align size 8 in
-    match fl_alloc heap.(fl) size vt_head with
+    match fl_alloc heap.(fl) size lt_head with
     | Some (base, fl') =>
-      let regions' := ZMap.set (Int64.unsigned base) (Some (size,vt_head)) heap.(regions) in
+      let regions' := ZMap.set (Int64.unsigned base) (Some (size,lt_head)) heap.(regions) in
       ret ((m, (sp, mkheap regions' fl')), base)
     | None => raise (OtherFailure "Out of memory")
     end.
@@ -106,10 +106,10 @@ Module FLAllocator (Pol : Policy).
     : PolicyResult (Z*control_tag*mem) :=
     let '(m, (sp,heap)) := m in
     match ZMap.get (Int64.unsigned base) heap.(regions) with
-    | Some (sz,vt) =>
-        '(pct',vt',_) <- FreeT O l pct pt vt (VectorDef.of_list []);;
+    | Some (sz,lt) =>
+        '(pct',lt') <- FreeT l pct pt [lt];;
         let heap' := (mkheap (ZMap.set (Int64.unsigned base) None heap.(regions))
-                             ((base,sz,vt')::heap.(fl))) in
+                             ((base,sz,lt')::heap.(fl))) in
         ret (sz,pct',(m,(sp,heap')))
     | None => raise (OtherFailure "Bad free")
    end.
@@ -151,6 +151,12 @@ Module FLAllocator (Pol : Policy).
   Definition loadbytes (m:mem) (p:ptr) (n:Z) : PolicyResult (list memval) :=
     match CM.loadbytes (fst m) (of_ptr p) n with
     | Success bytes => ret bytes
+    | Fail f => raise f
+    end.
+  
+  Definition loadtags (m:mem) (p:ptr) (n:Z) : PolicyResult (list loc_tag) :=
+    match CM.loadtags (fst m) (of_ptr p) n with
+    | Success tags => ret tags
     | Fail f => raise f
     end.
   
