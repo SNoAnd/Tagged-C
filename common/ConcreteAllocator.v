@@ -194,13 +194,10 @@ Module ConcreteAllocator (Pol : Policy).
   Definition heapfree (l: Cabs.loc) (pct: control_tag) (m: mem) (p: ptr) (pt: val_tag) :
     PolicyResult (Z * control_tag * mem) :=
     let (m, sp) := m in
-    (* APT: This is not safe: addr might not be a heap header at all!
-       Need to do a tag check to make sure that it is, or else
-       iterate through the heap to locate a block at this addr. *)
     let head := Int64.repr (Int64.unsigned p - header_size) in
     '((v,_),header_lts) <- get_header m head;;
-    '(live,sz) <- parse_header v;;
     '(pct',lt') <- FreeT l pct pt header_lts;;
+    '(live,sz) <- parse_header v;;
     m' <- update_header m head false sz InitT (repeat lt' 8);;
     ret (sz,pct',(m',sp)).
 

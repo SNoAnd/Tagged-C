@@ -169,7 +169,9 @@ if __name__ == '__main__':
                        doublefree, "hi",
                        # old version 
                        #b"DoubleFree||FreeT detects free of unallocated memory| source location double_free_basic_nonsensefree.c:18" )
-                       b"ConcreteAllocator| parse_header | Header is undefined")
+                       # version where the parseheader happens before freeT does 
+                       #b"ConcreteAllocator| parse_header | Header is undefined")
+                       b"DoubleFree||FreeT detects corrupted alloc header| source location double_free_basic_nonsensefree.c:18")
     print("=======\nHeap Problems Tests\n=======")
     print("\tTODO")
     print("=======\nTests expected to get incorrect output but we'd like to know if that changes unexpectedly\n=======")
