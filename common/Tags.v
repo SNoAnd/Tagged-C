@@ -188,18 +188,59 @@ Module Type Policy.
                         (control_tag        (* New PC tag *)
                          * val_tag)         (* New tag on return value *).
   
+  (* The AccessT rule is invoked anytime a variable or object is accessed. If the variable
+     is private (not in memory), it will be the only rule that is invoked. *)
+  Parameter AccessT : loc                   (* Inputs: *)
+                      -> control_tag        (* PC tag *)
+                      -> val_tag            (* Tag on read value *)
+
+                      -> PolicyResult       (* Outputs: *)
+                           val_tag          (* Tag on result value *).
+ 
+  (* Loads from memory follow three steps:
+      1. Since the value being loaded may take up multiple bytes in memory, each with its
+         own value tag, the CoalesceT rule combines these into one tag.
+      2. The LoadT rule checks the relationship between the tag on the pointer being accessed,
+         the tag on the value being loaded, and the tags on the memory locations being accessed.
+      3. AccessT is invoked to determine the tag on the result value, just as in any other
+         variable access.
+  *)
+  Parameter CoalesceT : loc -> list val_tag -> PolicyResult val_tag.
+
   Parameter LoadT :    loc                  (* Inputs: *)
                     -> control_tag          (* PC tag *)
                     -> val_tag              (* Pointer tag *)
-                    (* APT: this should take multiple val tags, one per byte
-                      and in Memdata should return this list rather than requiring the same *)
-                    -> val_tag              (* Tag on value in memory *)
-                    -> list loc_tag   (* Location tags (one per byte) *)
+                    -> val_tag              (* Tag on value in memory (coalesced) *)
+                    -> list loc_tag         (* Location tags (one per byte) *)
 
                     -> PolicyResult         (* Outputs: *)
                         val_tag             (* Tag on result value *).
 
-  Parameter StoreT :   loc                  (* Inputs: *)
+  (* AssignT is invoked when a value is written to a variable, whether private or in memory. *)
+  Parameter AssignT : loc                   (* Inputs: *)
+                      -> control_tag        (* PC tag *)
+                      -> val_tag            (* Tag on value to be overwritten *)
+                      -> val_tag            (* Tag on value to be written *)
+
+                      -> PolicyResult       (* Outputs: *)
+                           (control_tag     (* New PC tag *)
+                            * val_tag)      (* Tag on written value *).
+
+  (* Just like loads, stores to memory have three steps.
+      1. The EffectiveT rule interprets multiple value tags in memory into
+         a single effective tag which will then be fed to the AssignT rule.
+         Unlike CoalesceT, EffectiveT cannot fail, because the value associated
+         with these tags is not being read or written at this time. Rather, the tags
+         are being reinterpreted.
+      2. AssignT governs the relationship between the incoming value tag and the
+         effective tag on the data being overwritten.
+      3. StoreT is invoked to determine the new tags on the memory locations being
+          written to, based on the pointer tag, current location tags, and value being
+          written.
+  *)
+  Parameter EffectiveT : loc -> list val_tag -> val_tag.
+
+  Parameter StoreT : loc                    (* Inputs: *)
                      -> control_tag         (* PC tag *)
                      -> val_tag             (* Pointer tag *)
                      -> val_tag             (* Tag on value to be stored *)
@@ -209,22 +250,6 @@ Module Type Policy.
                           (control_tag      (* New PC tag *)
                            * val_tag        (* Tag on new value in memory *)
                            * list loc_tag)  (* New location tags *).
-
-  Parameter AccessT : loc                   (* Inputs: *)
-                      -> control_tag        (* PC tag *)
-                      -> val_tag            (* Tag on read value *)
-
-                      -> PolicyResult       (* Outputs: *)
-                           val_tag          (* Tag on result value *).
-
-  Parameter AssignT : loc                   (* Inputs: *)
-                      -> control_tag        (* PC tag *)
-                      -> val_tag            (* Tag on value to be overwritten *)
-                      -> val_tag            (* Tag on value to be written *)
-
-                      -> PolicyResult       (* Outputs: *)
-                           (control_tag     (* New PC tag *)
-                            * val_tag)      (* Tag on written value *).
 
   Parameter UnopT : loc                     (* Inputs: *)
                     -> unary_operation      (* Operator *)
@@ -472,70 +497,82 @@ End TagLib.
 Module Passthrough.
   Section WITH_TAGS.
     Variable policy_state val_tag control_tag loc_tag : Type.
+    Variable vt_eq_dec : forall (vt1 vt2:val_tag), {vt1 = vt2} + {vt1 <> vt2}.
+    Variable def_tag : val_tag.
 
     Definition PolicyResult := PolicyResult policy_state.
     
-  Definition CallT (l:loc) (pct:control_tag) (pt: val_tag) :
-    PolicyResult control_tag := ret pct.
+    Definition CallT (l:loc) (pct:control_tag) (pt: val_tag) :
+      PolicyResult control_tag := ret pct.
 
-  Definition ArgT (l:loc) (pct:control_tag) (fpt vt: val_tag) (idx:nat) (ty: type) :
-    PolicyResult (control_tag * val_tag) := ret (pct,vt).
+    Definition ArgT (l:loc) (pct:control_tag) (fpt vt: val_tag) (idx:nat) (ty: type) :
+      PolicyResult (control_tag * val_tag) := ret (pct,vt).
 
-  Definition RetT (l:loc) (pct_clr pct_cle: control_tag) (vt: val_tag) :
-    PolicyResult (control_tag * val_tag) := ret (pct_cle,vt).
+    Definition RetT (l:loc) (pct_clr pct_cle: control_tag) (vt: val_tag) :
+      PolicyResult (control_tag * val_tag) := ret (pct_cle,vt).
 
-  Definition AccessT (l:loc) (pct: control_tag) (vt: val_tag) :
-    PolicyResult val_tag := ret vt.
+    Definition AccessT (l:loc) (pct: control_tag) (vt: val_tag) :
+      PolicyResult val_tag := ret vt.
 
-  Definition AssignT (l:loc) (pct: control_tag) (vt1 vt2: val_tag) :
-    PolicyResult (control_tag * val_tag) := ret (pct,vt2).
+    Definition AssignT (l:loc) (pct: control_tag) (vt1 vt2: val_tag) :
+      PolicyResult (control_tag * val_tag) := ret (pct,vt2).
 
-  Definition LoadT (l:loc) (pct: control_tag) (pt vt: val_tag) (lts: list loc_tag):
-    PolicyResult val_tag := ret vt.
+    Definition CoalesceT (l:loc) (vts: list val_tag) :
+      PolicyResult val_tag :=
+      match hd_error vts with
+      | Some vt => if List.forallb (fun vt' => vt_eq_dec vt vt') vts
+                   then ret vt
+                   else raise (PolicyFailure "CoalesceT: not all tags are equal")
+      | None => raise (PolicyFailure "CoalesceT: empty list")
+      end.
 
-  Definition StoreT (l:loc) (pct: control_tag) (pt vt: val_tag) (lts: list loc_tag) :
-    PolicyResult (control_tag * val_tag * list loc_tag) :=
-    ret (pct, vt, lts).
+    Definition EffectiveT (l:loc) (vts: list val_tag) : val_tag := hd def_tag vts.
+      
+    Definition LoadT (l:loc) (pct: control_tag) (pt vt: val_tag) (lts: list loc_tag):
+      PolicyResult val_tag := ret vt.
+
+    Definition StoreT (l:loc) (pct: control_tag) (pt vt: val_tag) (lts: list loc_tag) :
+      PolicyResult (control_tag * val_tag * list loc_tag) :=
+      ret (pct, vt, lts).
     
-  Definition UnopT (l:loc) (op : unary_operation) (pct: control_tag) (vt: val_tag) :
-    PolicyResult (control_tag * val_tag) := ret (pct, vt).
+    Definition UnopT (l:loc) (op : unary_operation) (pct: control_tag) (vt: val_tag) :
+      PolicyResult (control_tag * val_tag) := ret (pct, vt).
 
-  Definition BinopT (l:loc) (op : binary_operation) (pct: control_tag) (vt1 vt2: val_tag) :
-    PolicyResult (control_tag * val_tag) := ret (pct, vt1).
+    Definition BinopT (l:loc) (op : binary_operation) (pct: control_tag) (vt1 vt2: val_tag) :
+      PolicyResult (control_tag * val_tag) := ret (pct, vt1).
 
-  Definition SplitT (l:loc) (pct: control_tag) (vt: val_tag) (id : option ident) :
-    PolicyResult control_tag := ret pct.
+    Definition SplitT (l:loc) (pct: control_tag) (vt: val_tag) (id : option ident) :
+      PolicyResult control_tag := ret pct.
 
-  Definition LabelT (l:loc) (pct : control_tag) (id : ident) :
-    PolicyResult control_tag := ret pct.
+    Definition LabelT (l:loc) (pct : control_tag) (id : ident) :
+      PolicyResult control_tag := ret pct.
 
-  Definition ExprSplitT (l:loc) (pct: control_tag) (vt: val_tag) :
-    PolicyResult control_tag := ret pct.
+    Definition ExprSplitT (l:loc) (pct: control_tag) (vt: val_tag) :
+      PolicyResult control_tag := ret pct.
 
-  Definition ExprJoinT (l:loc) (pct: control_tag) (vt: val_tag) :
-    PolicyResult (control_tag * val_tag) := ret (pct,vt).
+    Definition ExprJoinT (l:loc) (pct: control_tag) (vt: val_tag) :
+      PolicyResult (control_tag * val_tag) := ret (pct,vt).
 
-  Definition ExtCallT (l:loc) (fn: external_function) (pct: control_tag)
-    (fpt: val_tag) (args: list val_tag) : PolicyResult control_tag := ret pct.
+    Definition ExtCallT (l:loc) (fn: external_function) (pct: control_tag)
+      (fpt: val_tag) (args: list val_tag) : PolicyResult control_tag := ret pct.
 
-  Definition FreeT (n:nat) (l:loc) (pct: control_tag) (pt vht: val_tag)
-    (lts: list loc_tag) : PolicyResult (control_tag * val_tag * list loc_tag) :=
-    ret (pct, vht, lts).
+    Definition FreeT (n:nat) (l:loc) (pct: control_tag) (pt vht: val_tag) (lts: list loc_tag) :
+      PolicyResult (control_tag * val_tag * list loc_tag) := ret (pct, vht, lts).
   
-  Definition FieldT (l:loc) (ce : composite_env) (pct: control_tag) (vt: val_tag)
-             (ty : type) (id : ident) : PolicyResult val_tag := ret vt.
+    Definition FieldT (l:loc) (ce : composite_env) (pct: control_tag) (vt: val_tag)
+               (ty : type) (id : ident) : PolicyResult val_tag := ret vt.
 
-  Definition PICastT (l:loc) (pct: control_tag) (pt: val_tag)
-    (lts : list loc_tag) (ty : type) : PolicyResult val_tag := ret pt.
+    Definition PICastT (l:loc) (pct: control_tag) (pt: val_tag)
+      (lts : list loc_tag) (ty : type) : PolicyResult val_tag := ret pt.
     
-  Definition IPCastT (l:loc) (pct: control_tag) (vt: val_tag)
-    (lts : list loc_tag) (ty : type) : PolicyResult val_tag := ret vt.
+    Definition IPCastT (l:loc) (pct: control_tag) (vt: val_tag)
+      (lts : list loc_tag) (ty : type) : PolicyResult val_tag := ret vt.
 
-  Definition PPCastT (l:loc) (pct: control_tag) (vt: val_tag)
-    (lts1: list loc_tag) (lts2: list loc_tag) (ty : type) : PolicyResult val_tag := ret vt.
+    Definition PPCastT (l:loc) (pct: control_tag) (vt: val_tag)
+      (lts1: list loc_tag) (lts2: list loc_tag) (ty : type) : PolicyResult val_tag := ret vt.
 
-  Definition IICastT (l:loc) (pct: control_tag) (vt: val_tag) (ty : type) :
-    PolicyResult val_tag := ret vt.
+    Definition IICastT (l:loc) (pct: control_tag) (vt: val_tag) (ty : type) :
+      PolicyResult val_tag := ret vt.
 
   End WITH_TAGS.
 End Passthrough.

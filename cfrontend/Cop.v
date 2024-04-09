@@ -1047,15 +1047,15 @@ Definition bitfield_normalize (sz: intsize) (sg: signedness) (width: Z) (n: int)
   else Int.sign_ext width n.
 
 Definition do_load_bitfield (sz: intsize) (sg: signedness) (pos width: Z)
-  (p:ptr) (m:mem) : PolicyResult (atom * list loc_tag) :=
-  '((v, vt), lts) <- load_all (chunk_for_carrier sz) m p;;
+  (p:ptr) (m:mem) : PolicyResult (val * list val_tag * list loc_tag) :=
+  '(v, vts, lts) <- load_all (chunk_for_carrier sz) m p;;
   match v with
-  | Vint c => ret ((Vint (bitfield_extract sz sg pos width c), vt), lts)
-  | _ => ret ((Vundef, vt), lts)
+  | Vint c => ret (Vint (bitfield_extract sz sg pos width c), vts, lts)
+  | _ => ret (Vundef, vts, lts)
   end.
 
 Inductive load_bitfield: type -> intsize -> signedness -> Z -> Z -> mem -> ptr ->
-                         PolicyResult (atom * list loc_tag) -> Prop :=
+                         PolicyResult (val * list val_tag * list loc_tag) -> Prop :=
 | load_bitfield_intro: forall sz sg1 attr sg pos width m p,
     0 <= pos -> 0 < width <= bitsize_intsize sz -> pos + width <= bitsize_carrier sz ->
     sg1 = (if zlt width (bitsize_intsize sz) then Signed else sg) ->
@@ -1063,8 +1063,8 @@ Inductive load_bitfield: type -> intsize -> signedness -> Z -> Z -> mem -> ptr -
                   (do_load_bitfield sz sg pos width p m).
 
 Definition do_store_bitfield (sz: intsize) (sg: signedness)
-           (pos width: Z) (p: ptr) (m:mem) (n: int) (lts: list loc_tag) :=
-  '(v, vt) <- load (chunk_for_carrier sz) m p;;
+           (pos width: Z) (p: ptr) (m:mem) (n: int) (vt: val_tag) (lts: list loc_tag) :=
+  '(v, _) <- load (chunk_for_carrier sz) m p;;
   let v' := match v with
             | Vint c =>
                 Vint (Int.bitfield_insert (first_bit sz pos width) width c n)
@@ -1080,7 +1080,7 @@ Inductive store_bitfield: type -> intsize -> signedness -> Z -> Z -> mem ->
       0 <= pos -> 0 < width <= bitsize_intsize sz -> pos + width <= bitsize_carrier sz ->
       sg1 = (if zlt width (bitsize_intsize sz) then Signed else sg) ->
       store_bitfield (Tint sz sg1 attr) sz sg pos width m p pt (Vint n,vt) lts
-                     (do_store_bitfield sz sg pos width p m n lts).
+                     (do_store_bitfield sz sg pos width p m n vt lts).
 
 (** * Some properties of operator semantics *)
 

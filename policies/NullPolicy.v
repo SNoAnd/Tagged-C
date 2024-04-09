@@ -67,6 +67,8 @@ Module NullPolicy <: Policy.
   Definition CallT      := Passthrough.CallT policy_state val_tag control_tag.  
   Definition ArgT       := Passthrough.ArgT policy_state val_tag control_tag.
   Definition RetT       := Passthrough.RetT policy_state val_tag control_tag.
+  Definition CoalesceT  := Passthrough.CoalesceT policy_state val_tag vt_eq_dec.
+  Definition EffectiveT := Passthrough.EffectiveT val_tag def_tag.
   Definition LoadT      := Passthrough.LoadT policy_state val_tag control_tag loc_tag.
   Definition StoreT     := Passthrough.StoreT policy_state val_tag control_tag loc_tag.
   Definition AccessT    := Passthrough.AccessT policy_state val_tag control_tag.

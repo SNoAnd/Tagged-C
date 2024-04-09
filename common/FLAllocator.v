@@ -128,7 +128,7 @@ Module FLAllocator (Pol : Policy).
     let (m', tree) := globals m gs (Int64.repr 8) in
     ((m',sp), tree).
 
-  Definition load (chunk:memory_chunk) (m:mem) (p:ptr) : PolicyResult atom :=
+  Definition load (chunk:memory_chunk) (m:mem) (p:ptr) : PolicyResult (val * list val_tag) :=
     match CM.load chunk (fst m) (of_ptr p) with
     | Success v => ret v
     | Fail f => raise f
@@ -142,7 +142,7 @@ Module FLAllocator (Pol : Policy).
     end.
 
   Definition load_all (chunk:memory_chunk) (m:mem) (p:ptr) :
-  PolicyResult (atom * list loc_tag):=
+  PolicyResult (val * list val_tag * list loc_tag):=
     match CM.load_all chunk (fst m) (of_ptr p) with
     | Success (v,lts) => ret (v,lts)
     | Fail f => raise f
@@ -183,7 +183,9 @@ Module FLAllocator (Pol : Policy).
     | Success m' => ret (m',st)
     | Fail f => raise f
     end.
-  
+
+
+ 
   End A.
   
 End FLAllocator.

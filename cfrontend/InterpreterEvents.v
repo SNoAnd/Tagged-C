@@ -2,21 +2,32 @@ Require Import FunInd.
 Require Import Axioms Classical.
 Require Import String Coqlib Decidableplus.
 Require Import Errors Maps Integers Floats.
-Require Import AST Values Memory Allocator Events Globalenvs Builtins.
+Require Import AST Values Encoding Memory Allocator Events Globalenvs Builtins.
 Require Import Csem.
 Require Import Tags.
 Require Import List. Import ListNotations.
 Require Import Determinism Ctypes Ctyping.
 Require Import ExtLib.Structures.Monads. Import MonadNotation.
-Require Import ExtLib.Data.Monads.OptionMonad.
+Require ExtLib.Data.Monads.OptionMonad.
 
 Local Open Scope string_scope.
 Local Open Scope list_scope.
 Local Open Scope Z_scope.
 
-Notation " 'check' A ; B" := (if A then B else None)
-  (at level 200, A at level 100, B at level 200)
-  : option_monad_scope.
+Ltac mydestr :=
+  match goal with
+  | [ |- None = Some _ -> _ ] => let X := fresh "X" in intro X; discriminate
+  | [ |- Some _ = None -> _ ] => let X := fresh "X" in intro X; discriminate
+  | [ |- Some _ = Some _ -> _ ] => let X := fresh "X" in intro X; inv X
+  | [ |- _ <- ?x ;; _ = _ -> _ ] => destruct x eqn:?; simpl; mydestr
+  | [ |- match ?x with Some _ => _ | None => _ end = _ -> _ ] => destruct x eqn:?; mydestr
+  | [ |- match ?x with true => _ | false => _ end = _ -> _ ] => destruct x eqn:?; mydestr
+  | [ |- match ?x with inl _ => _ | inr _ => _ end = _ -> _ ] => destruct x; mydestr
+  | [ |- match ?x with left _ => _ | right _ => _ end = _ -> _ ] => destruct x; mydestr
+  | [ |- match ?x with Success _ => _ | Fail _ => _ end = _ -> _ ] => destruct x eqn:?; mydestr
+  | [ |- (let (_, _) := ?x in _) = _ -> _ ] => destruct x; mydestr
+  | _ => idtac
+  end.
 
 
 Module InterpreterEvents (Pol: Policy)
@@ -30,11 +41,17 @@ Module InterpreterEvents (Pol: Policy)
   Import TLib.
   Import A.
   
-  Local Open Scope option_monad_scope.
-
   Section EXEC.
     Variable ge: genv.
     Variable ce: composite_env.
+    
+    Section Option_Monad.
+    Import OptionMonad.
+    Notation " 'check' A ; B" := (if A then B else None)
+    (at level 200, A at level 100, B at level 200)
+    : option_monad_scope.
+
+   Local Open Scope option_monad_scope.
     
     (* Events are externally visible calls, loads, and stores. Tags should not
        appear in event values, so when an atom would be passed or stored visibly,
@@ -147,22 +164,7 @@ Module InterpreterEvents (Pol: Policy)
          find_symbol ge id = Some (inl (b, pt)) ->
          eventval_match ge (EVptr_fun id) Tptr (Vfptr b, pt). *)
       end.
-
-    Ltac mydestr :=
-      match goal with
-      | [ |- None = Some _ -> _ ] => let X := fresh "X" in intro X; discriminate
-      | [ |- Some _ = None -> _ ] => let X := fresh "X" in intro X; discriminate
-      | [ |- Some _ = Some _ -> _ ] => let X := fresh "X" in intro X; inv X
-      | [ |- _ <- ?x ;; _ = _ -> _ ] => destruct x eqn:?; simpl; mydestr
-      | [ |- match ?x with Some _ => _ | None => _ end = _ -> _ ] => destruct x eqn:?; mydestr
-      | [ |- match ?x with true => _ | false => _ end = _ -> _ ] => destruct x eqn:?; mydestr
-      | [ |- match ?x with inl _ => _ | inr _ => _ end = _ -> _ ] => destruct x; mydestr
-      | [ |- match ?x with left _ => _ | right _ => _ end = _ -> _ ] => destruct x; mydestr
-      | [ |- match ?x with Success _ => _ | Fail _ => _ end = _ -> _ ] => destruct x eqn:?; mydestr
-      | [ |- (let (_, _) := ?x in _) = _ -> _ ] => destruct x; mydestr
-      | _ => idtac
-      end.
-
+      
     Lemma eventval_of_atom_sound:
       forall v vt ev, eventval_of_atom v vt = Some ev -> eventval_match ge ev vt v.
     Proof.
@@ -222,9 +224,12 @@ Module InterpreterEvents (Pol: Policy)
       simpl in *. rewrite H, H0. rewrite dec_eq_true. auto.  
     Qed.
 
+    Local Close Scope option_monad_scope.
+    End Option_Monad.
+
     (** Volatile memory accesses. *)
     Definition do_volatile_load (w: world) (chunk: memory_chunk) (m: mem)
-               (p: ptr) : option (world * trace * PolicyResult atom) :=
+               (p: ptr) : option (world * trace * PolicyResult (val * list val_tag)) :=
       let id_if_vol := match invert_symbol_ptr ge p with
                        | Some (id, gv) =>
                            if gv.(gvar_volatile)
@@ -236,8 +241,9 @@ Module InterpreterEvents (Pol: Policy)
       | Some id =>
           '(res,w') <- nextworld_vload w chunk id p;;
           '(vres,vt) <- atom_of_eventval res (type_of_chunk chunk);;
+          let vts := repeat vt (size_chunk_nat chunk) in
           Some (w', Event_vload chunk id p res :: nil,
-                 (fun s => (Success (Values.load_result chunk vres, vt), s)))
+                 (fun s => (Success (Values.load_result chunk vres, vts), s)))
       | None =>
           let res := load chunk m p in
           Some (w, E0, res)

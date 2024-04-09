@@ -23,6 +23,7 @@ Require Import AST.
 Require Import Integers.
 Require Import Floats.
 Require Import Values.
+Require Import Encoding.
 Require Import Memory.
 Require Import Allocator.
 Require Import Globalenvs.
@@ -398,14 +399,14 @@ Fixpoint output_trace (t: trace) : Prop :=
 
 (** * Semantics of volatile memory accesses *)
 Inductive volatile_load (ge: Genv.t F V):
-  memory_chunk -> mem -> ptr -> trace -> PolicyResult atom -> Prop :=
+  memory_chunk -> mem -> ptr -> trace -> PolicyResult (val * list val_tag) -> Prop :=
   | volatile_load_vol: forall chunk m p id gv ev v vt,
       invert_symbol_ptr ge p = Some (id, gv) ->
       gv.(gvar_volatile) = true ->
       eventval_match ge ev (type_of_chunk chunk) (v,vt) ->
       volatile_load ge chunk m p
                     (Event_vload chunk id p ev :: nil)
-                    (ret (Values.load_result chunk v,vt))
+                    (ret (Values.load_result chunk v,repeat vt (size_chunk_nat chunk)))
   | volatile_load_nonvol: forall chunk m p res,
       (forall id gv, invert_symbol_ptr ge p = Some (id, gv) ->
                      gv.(gvar_volatile) = false) ->
@@ -444,17 +445,18 @@ Definition extcall_sem : Type :=
 
 (** ** Semantics of volatile loads *)
 Definition volatile_load_tags (l:Cabs.loc) (chunk: memory_chunk) (m:mem) (p:ptr)
-           (pt:val_tag) (vt:val_tag) (pct:control_tag) : PolicyResult val_tag :=
+           (pt:val_tag) (vts: list val_tag) (pct:control_tag) : PolicyResult val_tag :=
   lts <- load_ltags chunk m p;;
+  vt <- CoalesceT l vts;;
   vt' <- LoadT l pct pt vt lts;;
   AccessT l pct vt'.  
 
 Inductive volatile_load_sem (l:Cabs.loc) (chunk: memory_chunk) (ge: Genv.t F V):
   list atom -> control_tag -> val_tag -> mem -> trace ->
   PolicyResult (atom * control_tag * mem) -> Prop :=
-| volatile_load_sem_intro: forall p pt m pct fpt t v vt vt',
-    volatile_load ge chunk m p t (ret (v,vt)) ->
-    volatile_load_tags l chunk m p pt vt pct = ret vt'->
+| volatile_load_sem_intro: forall p pt m pct fpt t v vts vt',
+    volatile_load ge chunk m p t (ret (v,vts)) ->
+    volatile_load_tags l chunk m p pt vts pct = ret vt'->
     volatile_load_sem l chunk ge ((Vptr p, pt) :: nil) pct fpt m t
                       (ret ((v,vt'), pct, m)).
 
@@ -463,8 +465,8 @@ Inductive volatile_load_sem (l:Cabs.loc) (chunk: memory_chunk) (ge: Genv.t F V):
 Definition volatile_store_tags (l:Cabs.loc) (chunk: memory_chunk) (m:mem) (p: ptr)
            (pt:val_tag) (vt:val_tag) (pct:control_tag) :
   PolicyResult (control_tag*val_tag*list loc_tag) :=
-  '((_,vt0),lts) <- load_all chunk m p;;
-  '(pct',vt') <-  AssignT l pct vt0 vt;;
+  '((_,vts),lts) <- load_all chunk m p;;
+  '(pct',vt') <-  AssignT l pct (EffectiveT l vts) vt;;
   '(pct'',vt'',lts') <- StoreT l pct' pt vt' lts;;
   ret (pct'',vt'', lts').
 

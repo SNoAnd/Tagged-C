@@ -113,6 +113,14 @@ Module PolProduct (P1:Policy) (P2: Policy) <: Policy.
                 (P2.AssignT l (snd pct)(snd vt1)(snd vt2)) 
                 (fun '(pct1, vt1) '(pct2, vt2) => ((pct1, pct2), (vt1, vt2))).
 
+  Definition EffectiveT (l: loc) (vts: list val_tag) : val_tag := 
+    (P1.EffectiveT l (map fst vts), P2.EffectiveT l (map snd vts)).
+
+  Definition CoalesceT (l: loc) (vts: list val_tag) : PolicyResult val_tag := 
+    double_bind (P1.CoalesceT l (map fst vts))
+                (P2.CoalesceT l (map snd vts))
+                (fun vt1 vt2 => (vt1, vt2)).
+
   Definition UnopT (l: loc) (op: unary_operation) (pct: control_tag) (vt: val_tag) :
     PolicyResult (control_tag * val_tag) := 
     double_bind (P1.UnopT l  op (fst pct) (fst vt))

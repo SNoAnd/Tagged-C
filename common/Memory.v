@@ -95,16 +95,16 @@ Module Type Memory (Ptr: Pointer) (Pol:Policy).
       [a].  It returns the value of the memory chunk
       at that address.  [None] is returned if the accessed bytes
       are not readable. *)
-  Parameter load : memory_chunk -> mem -> addr -> Result atom.
+  Parameter load : memory_chunk -> mem -> addr -> Result (val * list val_tag).
 
   Parameter load_ltags : memory_chunk -> mem -> addr -> Result (list loc_tag).
 
-  Parameter load_all : memory_chunk -> mem -> addr -> Result (atom * list loc_tag).
+  Parameter load_all : memory_chunk -> mem -> addr -> Result (val * list val_tag * list loc_tag).
   
   Parameter load_all_compose :
-    forall chunk m a v lts,
-      load_all chunk m a = Success (v,lts) <->
-        load chunk m a = Success v /\ load_ltags chunk m a = Success lts.
+    forall chunk m a v vts lts,
+      load_all chunk m a = Success (v,vts,lts) <->
+        load chunk m a = Success (v,vts) /\ load_ltags chunk m a = Success lts.
 
   Parameter load_all_fail :
     forall chunk m a failure,
@@ -272,10 +272,10 @@ Module ConcMem (Ptr: Pointer) (Pol:Policy) <: Memory Ptr Pol.
     | S n' => ZMap.get p c :: getN n' (p + 1) c
     end.
  
-  Definition load (chunk: memory_chunk) (m: mem) (a: addr): Result atom :=
+  Definition load (chunk: memory_chunk) (m: mem) (a: addr): Result (val*list val_tag) :=
     if aligned_access_dec chunk a then
       if allowed_access_dec m chunk a
-      then (decode_val chunk (map (fun x => fst x)
+      then Success (decode_val chunk (map (fun x => fst x)
         (getN (size_chunk_nat chunk) (Int64.unsigned a)
         (m.(mem_contents)))))
       else Fail (PrivateLoad (Int64.unsigned a))
@@ -288,44 +288,55 @@ Module ConcMem (Ptr: Pointer) (Pol:Policy) <: Memory Ptr Pol.
       else Fail (PrivateLoad (Int64.unsigned a))
     else Fail (MisalignedLoad (align_chunk chunk) (Int64.unsigned a)).
 
-Definition load_all (chunk: memory_chunk) (m: mem) (a: addr): Result (atom * list loc_tag) :=
+Definition load_all (chunk: memory_chunk) (m: mem) (a: addr): Result (val * list val_tag * list loc_tag) :=
     if aligned_access_dec chunk a then
       if allowed_access_dec m chunk a
       then
-        match decode_val chunk (map (fun x => fst x)
-              (getN (size_chunk_nat chunk) (Int64.unsigned a) (m.(mem_contents))) ),
-              map (fun x => snd x) (getN (size_chunk_nat chunk) (Int64.unsigned a) (m.(mem_contents))) with
-              | Success v, lts => Success (v,lts)
-              | Fail f, _ => Fail f
-              end
+        let '(v,vts) := decode_val chunk (map (fun x => fst x)
+        (getN (size_chunk_nat chunk) (Int64.unsigned a) (m.(mem_contents))) ) in
+        let lts := map (fun x => snd x)
+        (getN (size_chunk_nat chunk) (Int64.unsigned a) (m.(mem_contents))) in
+        Success (v, vts, lts)
       else Fail (PrivateLoad (Int64.unsigned a))
     else Fail (MisalignedLoad (align_chunk chunk) (Int64.unsigned a)).
   
   Lemma load_all_compose :
-    forall chunk m a v lts,
-      load_all chunk m a = Success (v,lts) <->
-        load chunk m a = Success v /\ load_ltags chunk m a = Success lts.
-  Admitted.
-  (*
+    forall chunk m a v vts lts,
+      load_all chunk m a = Success (v,vts,lts) <->
+        load chunk m a = Success (v,vts) /\ load_ltags chunk m a = Success lts.
+  Proof.
     intros until lts.
     unfold load_all; unfold load; unfold load_ltags.
     split.
-    - destruct (aligned_access_dec chunk a); destruct (allowed_access_dec m chunk a); intro H; inv H; auto.
-    - destruct (aligned_access_dec chunk a); destruct (allowed_access_dec m chunk a); intro H; destruct H as [H1 H2]; inv H1; inv H2; auto.
-  Qed.*)
+    - destruct (aligned_access_dec chunk a);
+      destruct (allowed_access_dec m chunk a);
+      intro H; inv H; auto. 
+      match goal with
+      | [ H: (let '(_,_) := ?e in _) = _ |- _ ] => destruct e; inv H
+      end. auto.  
+    - destruct (aligned_access_dec chunk a); destruct (allowed_access_dec m chunk a);
+      intro H; destruct H as [H1 H2]; inv H1; inv H2; auto.
+      match goal with
+      | [ |- (let '(_,_) := ?e in _) = _ ] => destruct e
+      end. auto. 
+  Qed.
 
   Lemma load_all_fail :
     forall chunk m a failure,
       load_all chunk m a = Fail failure <->
         load chunk m a = Fail failure /\ load_ltags chunk m a = Fail failure.
-  Admitted.
-(*  Proof.
+  Proof.
     intros until failure.
     unfold load_all; unfold load; unfold load_ltags.
     split.
-    - destruct (aligned_access_dec chunk a); destruct (allowed_access_dec m chunk a); intro H; inv H; auto.
-    - destruct (aligned_access_dec chunk a); destruct (allowed_access_dec m chunk a); intro H; destruct H as [H1 H2]; inv H1; inv H2; auto.
-  Qed. *)
+    - destruct (aligned_access_dec chunk a); destruct (allowed_access_dec m chunk a);
+      intro H; inv H; auto.
+      match goal with
+      | [ H: (let '(_,_) := ?e in _) = _ |- _ ] => destruct e; inv H
+      end.
+    - destruct (aligned_access_dec chunk a); destruct (allowed_access_dec m chunk a);
+      intro H; destruct H as [H1 H2]; inv H1; inv H2; auto.
+  Qed.
 
   Definition loadbytes (m: mem) (a: addr) (n: Z): Result (list memval) :=
     if range_perm_neg_dec m (Int64.unsigned a) ((Int64.unsigned a) + n) Dead
@@ -433,7 +444,7 @@ Module MultiMem (Pol: Policy) <: Memory SemiconcretePointer Pol.
   Definition empty : mem :=
     mkMem (PMap.init CM.empty) (PMap.init CM.empty).
   
-  Definition load (chunk: memory_chunk) (m: mem) (a: addr) : Result atom :=
+  Definition load (chunk: memory_chunk) (m: mem) (a: addr) : Result (val*list val_tag) :=
     match a with
     | (LocInd C, i) => CM.load chunk (m.(comp_locals)#C) i
     | (ShareInd b _, i) => CM.load chunk (m.(comp_locals)#b) i
@@ -445,16 +456,16 @@ Module MultiMem (Pol: Policy) <: Memory SemiconcretePointer Pol.
     | (ShareInd b _, i) => CM.load_ltags chunk (m.(comp_locals)#b) i
     end.
   
-  Definition load_all (chunk: memory_chunk) (m: mem) (a: addr) : Result (atom * list loc_tag) :=
+  Definition load_all (chunk: memory_chunk) (m: mem) (a: addr) : Result (val * list val_tag * list loc_tag) :=
     match a with
     | (LocInd C, i) => CM.load_all chunk (m.(comp_locals)#C) i
     | (ShareInd b _, i) => CM.load_all chunk (m.(comp_locals)#b) i
     end.
   
   Lemma load_all_compose :
-    forall chunk m a v lts,
-      load_all chunk m a = Success (v,lts) <->
-        load chunk m a = Success v /\ load_ltags chunk m a = Success lts.
+    forall chunk m a v vts lts,
+      load_all chunk m a = Success (v, vts, lts) <->
+        load chunk m a = Success (v, vts) /\ load_ltags chunk m a = Success lts.
   Proof.
     unfold load, load_ltags, load_all. intros until a.
     destruct a; destruct i; apply CM.load_all_compose.

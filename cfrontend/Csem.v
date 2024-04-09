@@ -98,7 +98,7 @@ Module TaggedCsem (Pol: Policy)
     Variable ce: composite_env.
     
   Inductive deref_loc (ty: type) (m: mem) (p: ptr) (pt: val_tag) :
-    bitfield -> trace -> PolicyResult (atom * list loc_tag) -> Prop :=
+    bitfield -> trace -> PolicyResult (val * list val_tag * list loc_tag) -> Prop :=
   | deref_loc_value: forall chunk,
       access_mode ty = By_value chunk ->
       type_is_volatile ty = false ->
@@ -113,10 +113,10 @@ Module TaggedCsem (Pol: Policy)
       deref_loc ty m p pt Full t res'
   | deref_loc_reference:
       access_mode ty = By_reference ->
-      deref_loc ty m p pt Full E0 (ret ((Vptr p, pt),[]))
+      deref_loc ty m p pt Full E0 (ret (Vptr p, [pt],[]))
   | deref_loc_copy:
       access_mode ty = By_copy ->
-      deref_loc ty m p pt Full E0 (ret ((Vptr p, pt),[]))
+      deref_loc ty m p pt Full E0 (ret (Vptr p, [pt],[]))
   | deref_loc_bitfield: forall sz sg pos width res,
       load_bitfield ty sz sg pos width m p res ->
       deref_loc ty m p pt (Bits sz sg pos width) E0 res.
@@ -372,12 +372,13 @@ Module TaggedCsem (Pol: Policy)
     | red_const: forall v ty te m vt' ps0 ps1,
         ConstT l pct ps0 = (Success vt',ps1) ->
         rred pct (Econst v ty) te m E0 pct (Eval (v,vt') ty) te m ps0 ps1
-    | red_rvalof_mem: forall ofs pt lts bf ty te m tr v vt vt' vt'' ps0 ps1 ps2 ps3,
-        deref_loc ty m ofs pt bf tr <<ps0>> (Success ((v,vt), lts)) <<ps1>> ->
-        LoadT l pct pt vt lts ps1 = (Success vt',ps2) ->
-        AccessT l pct vt' ps2 = (Success vt'',ps3) ->
+    | red_rvalof_mem: forall ofs pt lts bf ty te m tr v vts vt'' ps0 ps1 ps2,
+        deref_loc ty m ofs pt bf tr <<ps0>> (Success (v, vts, lts)) <<ps1>> ->
+        (vt <- CoalesceT l vts;;
+         vt' <- LoadT l pct pt vt lts;;
+         AccessT l pct vt') ps1 = (Success vt'',ps2) ->
         rred pct (Evalof (Eloc (Lmem ofs pt bf) ty) ty) te m tr
-             pct (Eval (v,vt'') ty) te m ps0 ps3
+             pct (Eval (v,vt'') ty) te m ps0 ps2
     | red_rvalof_ifun: forall b pt ty te m ps,
         rred pct (Evalof (Eloc (Lifun b pt) ty) ty) te m E0
              pct (Eval (Vfptr b, pt) ty) te m ps ps
@@ -477,15 +478,15 @@ Module TaggedCsem (Pol: Policy)
         ConstT l pct ps0 = (Success vt',ps1) ->
         rred pct (Ealignof ty1 ty) te m E0
         pct (Eval (Vlong (Int64.repr (alignof ce ty1)), vt') ty) te m ps0 ps1
-    | red_assign_mem: forall ofs ty1 pt bf v1 vt1 v2 vt2 ty2 te m t1 t2 m' v'
-                             pct' vt' pct'' vt'' v'' vt''' lts lts' ps0 ps1 ps2 ps3 ps4,
+    | red_assign_mem: forall ofs ty1 pt bf v1 vts v2 vt2 ty2 te m t1 t2 m' v'
+                             pct'' vt'' v'' vt''' lts lts' ps0 ps1 ps2 ps3,
         sem_cast v2 ty2 ty1 m = Some v' ->
-        deref_loc ty1 m ofs pt bf t1 <<ps0>> (Success ((v1,vt1), lts)) <<ps1>> ->
-        AssignT l pct vt1 vt2 ps1 = (Success (pct',vt'),ps2) ->
-        StoreT l pct' pt vt' lts ps2 = (Success (pct'', vt'', lts'),ps3) ->
-        assign_loc ty1 m ofs pt lts' bf (v',vt'') t2 <<ps3>> (Success (m', (v'',vt'''))) <<ps4>> ->
+        deref_loc ty1 m ofs pt bf t1 <<ps0>> (Success (v1, vts, lts)) <<ps1>> ->
+        ('(pct',vt') <- AssignT l pct (EffectiveT l vts) vt2;;
+        StoreT l pct' pt vt' lts) ps1 = (Success (pct'', vt'', lts'),ps2) ->
+        assign_loc ty1 m ofs pt lts' bf (v',vt'') t2 <<ps2>> (Success (m', (v'',vt'''))) <<ps3>> ->
         rred pct (Eassign (Eloc (Lmem ofs pt bf) ty1) (Eval (v2, vt2) ty2) ty1) te m (t1++t2)
-             pct'' (Eval (v'',vt''') ty1) te m' ps0 ps4
+             pct'' (Eval (v'',vt''') ty1) te m' ps0 ps3
     | red_assign_tmp: forall b ty1 v1 vt1 v2 vt2 ty2 te m te' v pct' vt' ps0 ps1,
         te!b = Some (v1,vt1) ->
         sem_cast v2 ty2 ty1 m = Some v ->
@@ -494,13 +495,14 @@ Module TaggedCsem (Pol: Policy)
         rred pct (Eassign (Eloc (Ltmp b) ty1) (Eval (v2, vt2) ty2) ty1) te m E0
              pct' (Eval (v,vt') ty1) te' m ps0 ps1
     | red_assignop_mem: forall op ofs pt ty1 bf v2 vt2 ty2 tyres te m t
-                               v1 vt1 vt1' vt1'' lts ps0 ps1 ps2 ps3,
-        deref_loc ty1 m ofs pt bf t <<ps0>> (Success ((v1,vt1), lts)) <<ps1>> ->
-        LoadT l pct pt vt1 lts ps1 = (Success vt1',ps2) ->
-        AccessT l pct vt1' ps2 = (Success vt1'',ps3) ->
+                               v1 vts vt1'' lts ps0 ps1 ps2,
+        deref_loc ty1 m ofs pt bf t <<ps0>> (Success (v1, vts, lts)) <<ps1>> ->
+        (vt1 <- CoalesceT l vts;;
+         vt1' <- LoadT l pct pt vt1 lts;;
+         AccessT l pct vt1') ps1 = (Success vt1'',ps2) ->
         rred pct (Eassignop op (Eloc (Lmem ofs pt bf) ty1) (Eval (v2,vt2) ty2) tyres ty1) te m t
              pct (Eassign (Eloc (Lmem ofs pt bf) ty1)
-                          (Ebinop op (Eval (v1,vt1'') ty1) (Eval (v2,vt2) ty2) tyres) ty1) te m ps0 ps3
+                          (Ebinop op (Eval (v1,vt1'') ty1) (Eval (v2,vt2) ty2) tyres) ty1) te m ps0 ps2
     | red_assignop_tmp: forall op b ty1 v2 vt2 ty2 tyres te m v1 vt1 vt1' ps0 ps1,
         te!b = Some (v1,vt1) ->
         AccessT l pct vt1 ps0 = (Success vt1',ps1) ->
@@ -517,18 +519,19 @@ Module TaggedCsem (Pol: Policy)
              pct (Eassign (Eloc (Lefun ef tyargs tyres cc pt) ty1)
                           (Ebinop op (Eval (Vefptr ef tyargs tyres cc,pt) ty1)
                                   (Eval (v2,vt2) ty2) ty) ty1) te m ps ps
-    | red_postincr_mem: forall id ofs pt ty bf te m t v vt vt' vt'' lts op ps0 ps1 ps2 ps3,
-        deref_loc ty m ofs pt bf t <<ps0>> (Success ((v,vt), lts)) <<ps1>> ->
+    | red_postincr_mem: forall id ofs pt ty bf te m t v vts vt'' lts op ps0 ps1 ps2,
+        deref_loc ty m ofs pt bf t <<ps0>> (Success (v, vts, lts)) <<ps1>> ->
         op = match id with Incr => Oadd | Decr => Osub end ->
-        LoadT l pct pt vt lts ps1 = (Success vt',ps2) ->
-        AccessT l pct vt' ps2 = (Success vt'',ps3) ->
+        (vt <- CoalesceT l vts;;
+         vt' <- LoadT l pct pt vt lts;;
+         AccessT l pct vt') ps1 = (Success vt'',ps2) ->
         rred pct (Epostincr id (Eloc (Lmem ofs pt bf) ty) ty) te m t
              pct (Ecomma (Eassign (Eloc (Lmem ofs pt bf) ty)
                                   (Ebinop op (Eval (v,vt'') ty)
                                           (Econst (Vint Int.one) type_int32s)
                                           (incrdecr_type ty))
                                   ty)
-                         (Eval (v,vt'') ty) ty) te m ps0 ps3
+                         (Eval (v,vt'') ty) ty) te m ps0 ps2
     | red_postincr_tmp: forall id b ty te m v vt vt' op ps0 ps1,
         te!b = Some (v,vt) ->
         op = match id with Incr => Oadd | Decr => Osub end ->
@@ -580,16 +583,12 @@ Module TaggedCsem (Pol: Policy)
         deref_loc ty m ofs pt bf tr <<ps0>> (Fail failure) <<ps1>> ->
         rfailred pct (Evalof (Eloc (Lmem ofs pt bf) ty) ty) te m tr failure ps0 ps1
     | failred_rvalof_mem1:
-      forall ofs pt lts bf ty te m tr v vt failure ps0 ps1 ps2,
-        deref_loc ty m ofs pt bf tr <<ps0>> (Success ((v,vt), lts)) <<ps1>> ->
-        LoadT l pct pt vt lts ps1 = (Fail failure,ps2) ->
+      forall ofs pt lts bf ty te m tr v vts failure ps0 ps1 ps2,
+        deref_loc ty m ofs pt bf tr <<ps0>> (Success (v, vts, lts)) <<ps1>> ->
+        (vt <- CoalesceT l vts;;
+        vt' <- LoadT l pct pt vt lts;;
+        AccessT l pct vt') ps1 = (Fail failure, ps2) ->
         rfailred pct (Evalof (Eloc (Lmem ofs pt bf) ty) ty) te m tr failure ps0 ps2
-    | failred_rvalof_mem2:
-      forall ofs pt lts bf ty te m tr v vt vt' failure ps0 ps1 ps2 ps3,
-        deref_loc ty m ofs pt bf tr <<ps0>> (Success ((v,vt), lts)) <<ps1>> ->
-        LoadT l pct pt vt lts ps1 = (Success vt',ps2) ->
-        AccessT l pct vt' ps2 = (Fail failure, ps3) ->
-        rfailred pct (Evalof (Eloc (Lmem ofs pt bf) ty) ty) te m tr failure ps0 ps3
     | failred_rvalof_tmp:
       forall b ty te m v vt failure ps0 ps1,
         te!b = Some (v,vt) ->
@@ -635,27 +634,20 @@ Module TaggedCsem (Pol: Policy)
         rfailred pct (Eassign (Eloc (Lmem ofs pt bf) ty1)
                               (Eval (v2, vt2) ty2) ty1) te m t1 failure ps0 ps1
     | failred_assign_mem1:
-      forall ofs ty1 pt bf v1 vt1 v2 vt2 ty2 te m t1 v' lts failure ps0 ps1 ps2,
+      forall ofs ty1 pt bf v1 vts v2 vt2 ty2 te m t1 v' lts failure ps0 ps1 ps2,
         sem_cast v2 ty2 ty1 m = Some v' ->
-        deref_loc ty1 m ofs pt bf t1 <<ps0>> (Success ((v1,vt1), lts)) <<ps1>> ->
-        AssignT l pct vt1 vt2 ps1 = (Fail failure,ps2) ->
-        rfailred pct (Eassign (Eloc (Lmem ofs pt bf) ty1)
-                              (Eval (v2, vt2) ty2) ty1) te m t1 failure ps0 ps2
-    | failred_assign_mem2:
-      forall ofs ty1 pt bf v1 vt1 v2 vt2 ty2 te m t1 v' pct' vt' lts failure ps0 ps1 ps2 ps3,
-        sem_cast v2 ty2 ty1 m = Some v' ->
-        deref_loc ty1 m ofs pt bf t1 <<ps0>> (Success ((v1,vt1), lts)) <<ps1>> ->
-        AssignT l pct vt1 vt2 ps1 = (Success (pct',vt'),ps2) ->
-        StoreT l pct' pt vt' lts ps2 = (Fail failure,ps3) ->
+        deref_loc ty1 m ofs pt bf t1 <<ps0>> (Success (v1, vts, lts)) <<ps1>> ->
+        ('(pct',vt') <- AssignT l pct (EffectiveT l vts) vt2;;
+         StoreT l pct' pt vt' lts) ps1 = (Fail failure,ps2) ->
         rfailred pct (Eassign (Eloc (Lmem ofs pt bf) ty1) (Eval (v2, vt2) ty2) ty1) te m t1 failure ps0 ps1
-    | failred_assign_mem3:
-      forall ofs ty1 pt bf v1 vt1 v2 vt2 ty2 te m t1 v' pct' vt' lts pct'' vt'' lts' t2 failure ps0 ps1 ps2 ps3 ps4,
+    | failred_assign_mem2:
+      forall ofs ty1 pt bf v1 vts v2 vt2 ty2 te m t1 v' lts pct'' vt'' lts' t2 failure ps0 ps1 ps2 ps3,
         sem_cast v2 ty2 ty1 m = Some v' ->
-        deref_loc ty1 m ofs pt bf t1 <<ps0>> (Success ((v1,vt1), lts)) <<ps1>> ->
-        AssignT l pct vt1 vt2 ps1 = (Success (pct',vt'),ps2) ->
-        StoreT l pct' pt vt' lts ps2 = (Success (pct'',vt'',lts'),ps3) ->
-        assign_loc ty1 m ofs pt lts' bf (v',vt'') t2 <<ps3>> (Fail failure) <<ps4>> ->
-        rfailred pct (Eassign (Eloc (Lmem ofs pt bf) ty1) (Eval (v2, vt2) ty2) ty1) te m (t1++t2) failure ps0 ps4
+        deref_loc ty1 m ofs pt bf t1 <<ps0>> (Success (v1, vts, lts)) <<ps1>> ->
+        ('(pct',vt') <- AssignT l pct (EffectiveT l vts) vt2;;
+         StoreT l pct' pt vt' lts) ps1 = (Success (pct'',vt'',lts'),ps2) ->
+        assign_loc ty1 m ofs pt lts' bf (v',vt'') t2 <<ps2>> (Fail failure) <<ps3>> ->
+        rfailred pct (Eassign (Eloc (Lmem ofs pt bf) ty1) (Eval (v2, vt2) ty2) ty1) te m (t1++t2) failure ps0 ps3
     | failred_assign_tmp:
       forall b ty1 v1 vt1 v2 vt2 ty2 te m v failure ps0 ps1,
         te!b = Some (v1,vt1) ->
@@ -668,17 +660,13 @@ Module TaggedCsem (Pol: Policy)
         rfailred pct (Eassignop op (Eloc (Lmem ofs pt bf) ty1)
                                 (Eval (v2,vt2) ty2) tyres ty1) te m t1 failure ps0 ps1
     | failred_assignop_mem1:
-      forall op ofs pt ty1 bf v2 vt2 ty2 tyres te m t1 v1 vt1 lts failure ps0 ps1 ps2,
-        deref_loc ty1 m ofs pt bf t1 <<ps0>> (Success ((v1,vt1), lts)) <<ps1>> ->
-        LoadT l pct pt vt1 lts ps1 = (Fail failure,ps2) ->
+      forall op ofs pt ty1 bf v2 vt2 ty2 tyres te m t1 v1 vts lts failure ps0 ps1 ps2,
+        deref_loc ty1 m ofs pt bf t1 <<ps0>> (Success (v1,vts, lts)) <<ps1>> ->
+        (vt1 <- CoalesceT l vts;;
+         vt1' <- LoadT l pct pt vt1 lts;;
+         AccessT l pct vt1') ps1 = (Fail failure,ps2) ->
         rfailred pct (Eassignop op (Eloc (Lmem ofs pt bf) ty1)
                                 (Eval (v2,vt2) ty2) tyres ty1) te m t1 failure ps0 ps2
-    | failred_assignop_mem2:
-      forall op ofs pt ty1 bf v2 vt2 ty2 tyres te m t1 v1 vt1 vt1' lts failure ps0 ps1 ps2 ps3,
-        deref_loc ty1 m ofs pt bf t1 <<ps0>> (Success ((v1,vt1), lts)) <<ps1>> ->
-        LoadT l pct pt vt1 lts ps1 = (Success vt1',ps2) ->
-        AccessT l pct vt1' ps2 = (Fail failure,ps3) ->
-        rfailred pct (Eassignop op (Eloc (Lmem ofs pt bf) ty1) (Eval (v2,vt2) ty2) tyres ty1) te m t1 failure ps0 ps3
     | failred_assignop_tmp:
       forall op b ty1 v2 vt2 ty2 tyres te m v1 vt1 failure ps0 ps1,
         te!b = Some (v1,vt1) ->
@@ -689,16 +677,12 @@ Module TaggedCsem (Pol: Policy)
         deref_loc ty m ofs pt bf tr <<ps0>> (Fail failure) <<ps1>> ->
         rfailred pct (Epostincr id (Eloc (Lmem ofs pt bf) ty) ty) te m tr failure ps0 ps1
     | failred_postincr_mem1:
-      forall id ofs pt ty bf te m tr v vt lts failure ps0 ps1 ps2,
-        deref_loc ty m ofs pt bf tr <<ps0>> (Success ((v,vt), lts)) <<ps1>> ->
-        LoadT l pct pt vt lts ps1 = (Fail failure,ps2) ->
+      forall id ofs pt ty bf te m tr v vts lts failure ps0 ps1 ps2,
+        deref_loc ty m ofs pt bf tr <<ps0>> (Success (v,vts, lts)) <<ps1>> ->
+        (vt <- CoalesceT l vts;;
+         vt' <- LoadT l pct pt vt lts;;
+         AccessT l pct vt') ps1 = (Fail failure,ps2) ->
         rfailred pct (Epostincr id (Eloc (Lmem ofs pt bf) ty) ty) te m tr failure ps0 ps2
-    | failred_postincr_mem2:
-      forall id ofs pt ty bf te m tr v vt vt' lts failure ps0 ps1 ps2 ps3,
-        deref_loc ty m ofs pt bf tr <<ps0>> (Success ((v,vt), lts)) <<ps1>> ->
-        LoadT l pct pt vt lts ps1 = (Success vt',ps2) ->
-        AccessT l pct vt' ps2 = (Fail failure,ps3) ->
-        rfailred pct (Epostincr id (Eloc (Lmem ofs pt bf) ty) ty) te m tr failure ps0 ps3
     | failred_postincr_tmp:
       forall id b ty te m v vt failure ps0 ps1,
         te!b = Some (v,vt) ->

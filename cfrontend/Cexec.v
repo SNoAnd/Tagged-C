@@ -246,7 +246,7 @@ Module Cexec (Pol: Policy)
     (** Accessing locations *)
 
     Definition do_deref_loc (w: world) (ty: type) (m: mem) (p:ptr) (pt:val_tag) (bf: bitfield)
-      : option (world * trace * PolicyResult (atom * list loc_tag)) :=
+      : option (world * trace * PolicyResult (val * list val_tag * list loc_tag)) :=
       match bf with
       | Full =>
           match access_mode ty with
@@ -258,15 +258,15 @@ Module Cexec (Pol: Policy)
                   match do_volatile_load ge w chunk m p with
                   | Some (w', tr, res) =>
                       let res' :=
-                        '(v,vt) <- res;;
+                        '(v,vts) <- res;;
                         lts <- load_ltags chunk m p;;
-                        ret ((v,vt), lts) in
+                        ret (v, vts, lts) in
                         Some (w', tr, res')
                   | None => None
-                  end                      
+                  end
               end
-          | By_reference => Some (w, E0, ret ((Vptr p,pt), []))
-          | By_copy => Some (w, E0, ret ((Vptr p,pt),[]))
+          | By_reference => Some (w, E0, ret ((Vptr p, [pt]), []))
+          | By_copy => Some (w, E0, ret ((Vptr p, [pt]),[]))
           | _ => None
           end
       | Bits sz sg pos width =>
@@ -278,13 +278,13 @@ Module Cexec (Pol: Policy)
               zle 0 pos && zlt 0 width && zle width (bitsize_intsize sz) &&
                        zle (pos + width) (bitsize_carrier sz));
               let res :=
-                '((v,vt),lts) <- load_all (chunk_for_carrier sz) m p;;
+                '(v,vts,lts) <- load_all (chunk_for_carrier sz) m p;;
                 let v' :=
                   match v with
                   | Vint c => Vint (bitfield_extract sz sg pos width c)
                   | _ => Vundef
                   end in
-                ret ((v',vt), lts) in
+                ret (v',vts, lts) in
               Some (w, E0, res)
           | _ => None
           end
@@ -696,13 +696,15 @@ Section EXPRS.
             top <<=
                 check type_eq ty ty';
                 let! (w', tr, res) <- do_deref_loc w ty m ofs pt bf;
-                try ((v,vt),lts), ps' <- res ps;
+                try (v, vts, lts), ps' <- res ps;
                 catch "failred_rvalof_mem0", tr;
-                try vt', ps'' <- LoadT lc pct pt vt lts ps';
+                let res' :=
+                  vt <- CoalesceT lc vts;;
+                  vt' <- LoadT lc pct pt vt lts;;
+                  AccessT lc pct vt' in
+                try vt'',ps'' <- res' ps';
                 catch "failred_rvalof_mem1", tr;
-                try vt'', ps''' <- AccessT lc pct vt' ps'';
-                catch "failred_rvalof_mem2", tr;
-                Rred "red_rvalof_mem" pct (Eval (v,vt'') ty) te m tr ps'''
+                Rred "red_rvalof_mem" pct (Eval (v,vt'') ty) te m tr ps''
         | Some (Ltmp b, ty') =>
             top <<=
                 check type_eq ty ty';
@@ -871,12 +873,13 @@ Section EXPRS.
                 check type_eq ty1 ty;
                 let! v <- sem_cast v2 ty2 ty1 m;
                 let! (w', tr, res) <- do_deref_loc w ty1 m ofs pt1 bf;
-                try ((_,vt1),lts), ps' <- res ps;
+                try (_,vts,lts), ps' <- res ps;
                 catch "failred_assign_mem0", tr;
-                try (pct',vt'), ps'' <- AssignT lc pct vt1 vt2 ps';
+                let res' :=
+                  '(pct',vt') <- AssignT lc pct (EffectiveT lc vts) vt2;;
+                  StoreT lc pct' pt1 vt' lts in
+                try (pct'',vt'',lts'), ps''' <- res' ps';
                 catch "failred_assign_mem1", tr;
-                try (pct'',vt'',lts'), ps''' <- StoreT lc pct' pt1 vt' lts ps'';
-                catch "failred_assign_mem2", tr;
                 let! (w'', tr', res') <- do_assign_loc w' ty1 m ofs pt1 bf (v,vt'') lts';
                 try (m', (v,vt''')), ps'''' <- res' ps''';
                 catch "failred_assign_mem3", (tr ++ tr');
@@ -902,12 +905,14 @@ Section EXPRS.
             top <<=
                 check type_eq ty1 ty;
                 let! (w', tr, res) <- do_deref_loc w ty m ofs pt1 bf;
-                try ((v1,vt1),lts), ps' <- res ps;
+                try (v1,vts,lts), ps' <- res ps;
                 catch "failred_assignop_mem0", tr;
-                try vt', ps' <- LoadT lc pct pt1 vt1 lts ps;
+                let res' :=
+                  vt <- CoalesceT lc vts;;
+                  vt' <- LoadT lc pct pt1 vt lts;;
+                  AccessT lc pct vt' in
+                try vt'', ps'' <- res' ps';
                 catch "failred_assignop_mem1", tr;
-                try vt'', ps'' <- AccessT lc pct vt' ps';
-                catch "failred_assignop_mem2", tr;
                 let r' := Eassign (Eloc (Lmem ofs pt1 bf) ty1)
                                   (Ebinop op (Eval (v1,vt'') ty1) (Eval (v2,vt2) ty2) tyopres) ty1 in
                 Rred "red_assignop_mem" pct r' te m tr ps''
@@ -944,19 +949,21 @@ Section EXPRS.
             top <<=
                 check type_eq ty1 ty;
                 let! (w', tr, res) <- do_deref_loc w ty m ofs pt bf;
-                try ((v,vt), lts), ps' <- res ps;
+                try (v, vts, lts), ps' <- res ps;
                 catch "failred_postincr_mem0", tr;
-                try vt', ps'' <- LoadT lc pct pt vt lts ps';
+                let res' :=
+                  vt <- CoalesceT lc vts;;
+                  vt' <- LoadT lc pct pt vt lts;;
+                  AccessT lc pct vt' in
+                try vt'', ps'' <- res' ps';
                 catch "failred_postincr_mem1", tr;
-                try vt'', ps''' <- AccessT lc pct vt' ps'';
-                catch "failred_postincr_mem2", tr;
                 let op := match id with Incr => Oadd | Decr => Osub end in
                 let r' :=
                   Ecomma (Eassign (Eloc (Lmem ofs pt bf) ty)
                                   (Ebinop op (Eval (v,vt'') ty) (Econst (Vint Int.one) type_int32s)
                                           (incrdecr_type ty)) ty)
                          (Eval (v,vt'') ty) ty in
-                Rred "red_postincr_mem" pct r' te m tr ps'''
+                Rred "red_postincr_mem" pct r' te m tr ps''
         | Some (Ltmp b, ty1) =>
             top <<=
                 check type_eq ty1 ty;
@@ -1187,14 +1194,13 @@ Definition invert_expr_prop (lc:Cabs.loc) (a: expr) (ps: pstate) (pct: control_t
       exists v2' t w' res,
       ty = ty1 /\ sem_cast v2 ty2 ty1 m = Some v2' /\
         deref_loc ge ty1 m ofs pt bf t res /\ possible_trace w t w' /\
-        (forall v1 vt1 lts ps1,
-            res ps = (Success ((v1,vt1), lts), ps1) ->
-            (forall pct' vt2' ps2 pct'' vt' lts' ps3,
-                AssignT lc pct vt1 vt2 ps1 = (Success (pct', vt2'), ps2) ->
-                StoreT lc pct' pt vt2' lts ps2 = (Success (pct'', vt', lts'), ps3) ->
-                  exists t' w'' res',
-                    assign_loc ge ce ty1 m ofs pt lts' bf (v2',vt') t' res' /\
-                      possible_trace w' t' w''))
+        forall v1 vts lts ps1,
+          res ps = (Success (v1, vts, lts), ps1) ->
+          forall pct'' vt' lts' ps2,
+            ('(pct',vt2') <- AssignT lc pct (EffectiveT lc vts) vt2;;
+            StoreT lc pct' pt vt2' lts) ps1 = (Success (pct'', vt', lts'), ps2) ->
+            exists t' w'' res',
+              assign_loc ge ce ty1 m ofs pt lts' bf (v2',vt') t' res' /\ possible_trace w' t' w''
   | Eassign (Eloc (Ltmp b) ty1) (Eval (v2,vt2) ty2) ty =>
       exists v1 v2' vt1,
       ty = ty1 /\ te!b = Some (v1,vt1) /\ sem_cast v2 ty2 ty1 m = Some v2'
@@ -1282,7 +1288,7 @@ Proof.
   - destruct ty1; destruct ty; try congruence; repeat (eexists; eauto). 
   - destruct ty1; destruct ty; try congruence.
     eapply possible_trace_app_inv in H7 as [w0 [P Q]]. subst.
-    repeat (eexists; eauto).
+    repeat (eexists; eauto). 
 Qed.
     
 Lemma rfailred_invert:
@@ -1290,7 +1296,9 @@ Lemma rfailred_invert:
     rfailred ge ce lc pct r te m tr failure ps ps' ->
     possible_trace w tr w' -> invert_expr_prop lc r ps pct te m.
 Proof.
-  induction 1; intros; red; repeat doinv; auto; repeat (chomp; eexists; try congruence; eauto).
+  induction 1; intros; red; repeat doinv; auto; repeat (repeat chomp; eexists; intuition eauto).
+
+  repeat (chomp; eexists; try congruence; eauto).
   - destruct ty1; destruct ty; try congruence; repeat (eexists; eauto).
   - destruct ty1; destruct ty; try congruence; repeat (eexists; eauto).
   - destruct ty1; destruct ty; try congruence; repeat (eexists; eauto).
@@ -1857,8 +1865,6 @@ Ltac solve_red :=
       repeat inv_deref_assign; solve_rred failred_rvalof_mem0
   | [ |- reducts_ok _ _ _ _ _ _ _ (failred "failred_rvalof_mem1" _ _ _) ] =>
       repeat inv_deref_assign; solve_rred failred_rvalof_mem1
-  | [ |- reducts_ok _ _ _ _ _ _ _ (failred "failred_rvalof_mem2" _ _ _) ] =>
-      repeat inv_deref_assign; solve_rred failred_rvalof_mem2
   | [ |- reducts_ok _ _ _ _ _ _ _ (failred "failred_rvalof_tmp" _ _ _) ] =>
       solve_rred failred_rvalof_tmp
   | [ |- reducts_ok _ _ _ _ _ _ _ (failred "failred_unop" _ _ _) ] =>
@@ -1881,24 +1887,18 @@ Ltac solve_red :=
       repeat inv_deref_assign; solve_rred failred_assign_mem1
   | [ |- reducts_ok _ _ _ _ _ _ _ (failred "failred_assign_mem2" _ _ _) ] =>
       repeat inv_deref_assign; solve_rred failred_assign_mem2
-  | [ |- reducts_ok _ _ _ _ _ _ _ (failred "failred_assign_mem3" _ _ _) ] =>
-      repeat inv_deref_assign; solve_rred failred_assign_mem3
   | [ |- reducts_ok _ _ _ _ _ _ _ (failred "failred_assign_tmp" _ _ _) ] =>
       solve_rred failred_assign_tmp
   | [ |- reducts_ok _ _ _ _ _ _ _ (failred "failred_assignop_mem0" _ _ _) ] =>
       repeat inv_deref_assign; solve_rred failred_assignop_mem0
   | [ |- reducts_ok _ _ _ _ _ _ _ (failred "failred_assignop_mem1" _ _ _) ] =>
       repeat inv_deref_assign; solve_rred failred_assignop_mem1
-  | [ |- reducts_ok _ _ _ _ _ _ _ (failred "failred_assignop_mem2" _ _ _) ] =>
-      repeat inv_deref_assign; solve_rred failred_assignop_mem2
   | [ |- reducts_ok _ _ _ _ _ _ _ (failred "failred_assignop_tmp" _ _ _) ] =>
       solve_rred failred_assignop_tmp
   | [ |- reducts_ok _ _ _ _ _ _ _ (failred "failred_postincr_mem0" _ _ _) ] =>
       repeat inv_deref_assign; solve_rred failred_postincr_mem0
   | [ |- reducts_ok _ _ _ _ _ _ _ (failred "failred_postincr_mem1" _ _ _) ] =>
       repeat inv_deref_assign; solve_rred failred_postincr_mem1
-  | [ |- reducts_ok _ _ _ _ _ _ _ (failred "failred_postincr_mem2" _ _ _) ] =>
-      repeat inv_deref_assign; solve_rred failred_postincr_mem2
   | [ |- reducts_ok _ _ _ _ _ _ _ (failred "failred_postincr_tmp" _ _ _) ] =>
       solve_rred failred_postincr_tmp
   | [ |- reducts_ok _ _ _ _ _ _ _ (failred "failred_paren" _ _ _) ] =>

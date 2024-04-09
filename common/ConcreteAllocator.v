@@ -87,7 +87,7 @@ Module ConcreteAllocator (Pol : Policy).
     let aligned_sp := align sp' al in
     ret (m,aligned_sp).
 
-  Definition get_header (m: CM.mem) (base: ptr) : PolicyResult (atom * list loc_tag) :=
+  Definition get_header (m: CM.mem) (base: ptr) : PolicyResult (val * list val_tag * list loc_tag) :=
     match load_all Mint64 m base with
     | Success res => ret res
     | Fail failure => raise failure
@@ -199,7 +199,7 @@ Module ConcreteAllocator (Pol : Policy).
     let (m', tree) := globals m gs (Int64.repr 8) in
     ((m',sp), tree).
 
-  Definition load (chunk:memory_chunk) (m:mem) (p:ptr) : PolicyResult atom :=
+  Definition load (chunk:memory_chunk) (m:mem) (p:ptr) : PolicyResult (val * list val_tag) :=
     match CM.load chunk (fst m) (of_ptr p) with
     | Success v => ret v
     | Fail f => raise f
@@ -213,7 +213,7 @@ Module ConcreteAllocator (Pol : Policy).
     end.
 
   Definition load_all (chunk:memory_chunk) (m:mem) (p:ptr) :
-  PolicyResult (atom * list loc_tag):=
+  PolicyResult (val * list val_tag * list loc_tag):=
     match CM.load_all chunk (fst m) (of_ptr p) with
     | Success (v,lts) => ret (v,lts)
     | Fail f => raise f
@@ -224,7 +224,7 @@ Module ConcreteAllocator (Pol : Policy).
     | Success bytes => ret bytes
     | Fail f => raise f
     end.
-
+  
   Definition loadtags (m:mem) (p:ptr) (n:Z) : PolicyResult (list loc_tag) :=
     match CM.loadtags (fst m) (of_ptr p) n with
     | Success tags => ret tags
@@ -246,7 +246,7 @@ Module ConcreteAllocator (Pol : Policy).
     | Success m' => ret (m',st)
     | Fail f => raise f
     end.
-
+  
   Definition storebytes (m:mem) (p:ptr) (bytes:list memval) (lts:list loc_tag)
     : PolicyResult mem :=
     let '(m,st) := m in

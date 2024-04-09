@@ -661,6 +661,8 @@ Module HeapProblem <: Policy.
   Definition RetT := Passthrough.RetT policy_state val_tag control_tag.
   Definition AccessT := Passthrough.AccessT policy_state val_tag control_tag.
   Definition AssignT := Passthrough.AssignT policy_state val_tag control_tag.
+  Definition EffectiveT := Passthrough.EffectiveT val_tag def_tag.
+  Definition CoalesceT := Passthrough.CoalesceT policy_state val_tag vt_eq_dec.
   Definition SplitT := Passthrough.SplitT policy_state val_tag control_tag.
   Definition LabelT := Passthrough.LabelT policy_state control_tag.
   Definition ExprSplitT := Passthrough.ExprSplitT policy_state val_tag control_tag.

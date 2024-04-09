@@ -26,6 +26,7 @@ Require Import Floats.
 Require Import Values.
 Require Import Tags.
 Require Import Encoding.
+Require Import List. Import ListNotations.
 
 Module Memdata (Ptr: Pointer) (Pol: Policy).
   Module TLib := TagLib Ptr Pol.
@@ -51,19 +52,15 @@ Inductive memval: Type :=
 Definition inj_bytes (bl: list byte) (t : val_tag) : list memval :=
   List.map (fun v => (Byte v t)) bl.
 
-Fixpoint proj_bytes (vl: list memval) : option (list byte) * option val_tag :=
+Fixpoint proj_bytes (vl: list memval) : option (list (byte * val_tag)) :=
   match vl with
-  | nil => (Some nil, None)
+  | [] => Some []
   | Byte b t :: vl' =>
       match proj_bytes vl' with
-      | (Some bl, None) => (Some (b :: bl), Some t)
-      | (Some bl, Some t') =>
-          if vt_eq_dec t t'
-          then (Some (b :: bl), Some t)
-          else (None, None)
-      | _ => (None, None)
+      | Some bl => Some ((b,t) :: bl)
+      | _ => None
       end
-  | _ => (None, None)
+  | _ => None
   end.
 
 Remark length_inj_bytes:
@@ -81,21 +78,22 @@ Fixpoint inj_value_rec (n: nat) (a:atom) (q: quantity) {struct n}: list memval :
 Definition inj_value (q: quantity) (a:atom): list memval :=
   inj_value_rec (size_quantity_nat q) a q.
 
-Fixpoint check_value (n: nat) (a:atom) (q: quantity) (vl: list memval)
-                       {struct n} : bool :=
-  let '(v,t) := a in
-  match n, vl with
-  | O, nil => true
-  | S m, Fragment (v',t') q' m' :: vl' =>
-      Values.eq v v' && quantity_eq q q' && Nat.eqb m m' && check_value m (v,t) q vl'
-  | _, _ => false
-  end.
-
-Definition proj_value (q: quantity) (vl: list memval) : atom :=
+Fixpoint proj_value (vl: list memval) : val * list val_tag :=
   match vl with
-  | Fragment (v,t) q' n :: vl' =>
-      if check_value (size_quantity_nat q) (v,t) q vl then (v,t) else (Vundef, def_tag)
-  | _ => (Vundef, def_tag)
+  | [] => (Vundef, []) 
+  | [Fragment (v,vt) q n] =>
+      if Nat.eqb n O
+      then (v, [vt])
+      else (Vundef, [vt])
+  | Fragment (v,vt) q n :: vl' =>
+      let '(v',vts) := proj_value vl' in
+      if Values.eq v v' && Nat.eqb n (length vts)
+      then (v, vt :: vts)
+      else (Vundef, vt :: vts)
+  | (Byte _ vt)::vl' =>
+      let '(_,vts) := proj_value vl' in (Vundef, vt::vts)
+  | Undef::vl' =>
+      let '(_,vts) := proj_value vl' in (Vundef, def_tag::vts)
   end.
 
 Definition encode_val (chunk: memory_chunk) (a:atom) : list memval :=
@@ -117,40 +115,28 @@ Definition encode_val (chunk: memory_chunk) (a:atom) : list memval :=
   | (_, t), _ => List.repeat Undef (size_chunk_nat chunk)
   end.
 
-Definition decode_val (chunk: memory_chunk) (vl: list memval) : Result atom :=
+Definition decode_val (chunk: memory_chunk) (vl: list memval) : (val * list val_tag) :=
   match proj_bytes vl with
-  | (Some bl,Some t) =>
-      Success
-      (match chunk with
-      | Mint8signed => Vint(Int.sign_ext 8 (Int.repr (decode_int bl)))
-      | Mint8unsigned => Vint(Int.zero_ext 8 (Int.repr (decode_int bl)))
-      | Mint16signed => Vint(Int.sign_ext 16 (Int.repr (decode_int bl)))
-      | Mint16unsigned => Vint(Int.zero_ext 16 (Int.repr (decode_int bl)))
-      | Mint32 => Vint(Int.repr(decode_int bl))
-      | Mint64 => Vlong(Int64.repr(decode_int bl))
-      | Mfloat32 => Vsingle(Float32.of_bits (Int.repr (decode_int bl)))
-      | Mfloat64 => Vfloat(Float.of_bits (Int64.repr (decode_int bl)))
-      | Many32 => Vundef
-      | Many64 => Vundef
-      end, t)
-  | (None,None) =>
-      match chunk with
-      | Mint32 =>
-          let (v,vt) := proj_value Q32 vl in
-          Success (Values.load_result chunk v, vt)
-      | Many32 =>
-          let (v,vt) := proj_value Q32 vl in
-          Success (Values.load_result chunk v, vt)
-      | Mint64 =>
-          let (v,vt) := proj_value Q64 vl in
-          Success (Values.load_result chunk v, vt)
-      | Many64 =>
-          let (v,vt) := proj_value Q64 vl in
-          Success (Values.load_result chunk v, vt)
-      | _ => Fail (OtherFailure "Can't decode_val, invalid chunk")
-      end
-  | (None,Some t) => Success (Vundef, t)
-  | _ => Fail (OtherFailure "Mismatched tags in decode_val")
+  | Some bl =>
+      let bytes := map fst bl in
+      let tags := map snd bl in
+      let v := 
+        match chunk with
+        | Mint8signed => Vint(Int.sign_ext 8 (Int.repr (decode_int bytes)))
+        | Mint8unsigned => Vint(Int.zero_ext 8 (Int.repr (decode_int bytes)))
+        | Mint16signed => Vint(Int.sign_ext 16 (Int.repr (decode_int bytes)))
+        | Mint16unsigned => Vint(Int.zero_ext 16 (Int.repr (decode_int bytes)))
+        | Mint32 => Vint(Int.repr(decode_int bytes))
+        | Mint64 => Vlong(Int64.repr(decode_int bytes))
+        | Mfloat32 => Vsingle(Float32.of_bits (Int.repr (decode_int bytes)))
+        | Mfloat64 => Vfloat(Float.of_bits (Int64.repr (decode_int bytes)))
+        | Many32 => Vundef
+        | Many64 => Vundef
+        end in
+      (v, tags)
+  | None =>
+      let '(v, vt) := proj_value vl in
+      (Values.load_result chunk v, vt)
   end.
 
 Ltac solve_encode_val_length :=
@@ -161,20 +147,12 @@ Ltac solve_encode_val_length :=
   | _ => reflexivity
   end.
 
-Lemma check_inj_value:
-  forall v q n, check_value n v q (inj_value_rec n v q) = true.
-Proof.
-  induction n; simpl. destruct v; auto.
-  unfold proj_sumbool. rewrite dec_eq_true. destruct v. rewrite dec_eq_true.
-  rewrite <- beq_nat_refl. simpl; auto.
-Qed.
-
-Lemma proj_inj_value:
+(*Lemma proj_inj_value:
   forall q v, proj_value q (inj_value q v) = v.
 Proof.
   intros. unfold proj_value, inj_value. destruct (size_quantity_nat_pos q) as [n EQ].
   rewrite EQ at 1. simpl. destruct v. rewrite check_inj_value. auto.
-Qed.
+Qed.*)
 
 Remark in_inj_value:
   forall mv v q, In mv (inj_value q v) -> exists n, mv = Fragment v q n.
@@ -239,11 +217,11 @@ Proof.
   intros. unfold decode_val. simpl. destruct chunk, Archi.ptr64; auto.
 Qed.*)
 
-Remark proj_bytes_inj_value:
+(*Remark proj_bytes_inj_value:
   forall q v, proj_bytes (inj_value q v) = (None, None).
 Proof.
   intros. destruct q; reflexivity.
-Qed.
+Qed.*)
 
 End Memdata.
 

@@ -571,8 +571,9 @@ and world_vload ge m chunk id ofs =
                 match res with
                 | Genv.SymGlob(base,bound,t,gv) ->
                          (match A.load chunk m ofs (Pol.init_state,[]) with
-                         | (Success v,_) ->
-                           Cexec.InterpreterEvents.eventval_of_atom ge v (type_of_chunk chunk) >>= fun ev ->
+                         | (Success (v,_),_) ->
+                           let vt = Pol.def_tag in
+                           Cexec.InterpreterEvents.eventval_of_atom ge (v,vt) (type_of_chunk chunk) >>= fun ev ->
                            Some(ev, world ge m)
                          | _ -> None)
                 | _ -> None

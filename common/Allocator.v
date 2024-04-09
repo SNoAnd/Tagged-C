@@ -80,7 +80,7 @@ Module Type Allocator (Ptr: Pointer) (Pol : Policy) (M : Memory Ptr Pol).
   Parameter globalalloc : mem -> list (ident*Z) ->
                           (mem * PTree.t ptr).
   
-  Definition load (chunk:memory_chunk) (m:mem) (p:ptr) : PolicyResult atom :=
+  Definition load (chunk:memory_chunk) (m:mem) (p:ptr) : PolicyResult (val * list val_tag) :=
     match M.load chunk (fst m) (of_ptr p) with
     | Success v => ret v
     | Fail f => raise f
@@ -94,7 +94,7 @@ Module Type Allocator (Ptr: Pointer) (Pol : Policy) (M : Memory Ptr Pol).
     end.
 
   Definition load_all (chunk:memory_chunk) (m:mem) (p:ptr) :
-  PolicyResult (atom * list loc_tag):=
+  PolicyResult (val * list val_tag * list loc_tag):=
     match M.load_all chunk (fst m) (of_ptr p) with
     | Success (v,lts) => ret (v,lts)
     | Fail f => raise f
