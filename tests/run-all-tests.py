@@ -65,6 +65,32 @@ def runACFileWithInput (filename, policy, testinput, expectedoutput):
 if __name__ == '__main__':
 
     print("beginning /tests/\n=======")
+    print("\n=======\nSanity Tests, Infrastructure Tests (without input)\n=======")
+
+    runACFileWithoutInput("printf_test.c", doublefree,
+                          b'Hello World!\n'
+                          )
+    runACFileWithoutInput("printf_test.c", doublefree,
+                          b'Hello World!\n'
+                          )
+    # test the concrete allocator
+    # dfree is the least complicated policy using the concrete allocator
+    print("\n\t=======\nTesting Concrete Allocator\n\t=======")
+    runACFileWithoutInput("allocator_smallestpossible.c", doublefree,
+                          nofault_cleanexit)
+    runACFileWithoutInput("allocator_single.c", doublefree,
+                          nofault_cleanexit)
+    runACFileWithoutInput("allocator_basic.c", doublefree,
+                          nofault_cleanexit)
+
+    print("\n\t=======\nTesting FLAllocator\n\t=======\n")
+    runACFileWithoutInput("allocator_smallestpossible.c", PVI,
+                          nofault_cleanexit)
+    runACFileWithoutInput("allocator_single.c", PVI,
+                          nofault_cleanexit)
+    runACFileWithoutInput("allocator_basic.c", PVI,
+                          nofault_cleanexit)
+    
     print("\n=======\npvi tests (without input)\n=======")
 
     runACFileWithoutInput("printf_test.c", PVI,
@@ -91,17 +117,13 @@ if __name__ == '__main__':
     # pass both
     runACFileWithoutInput("heap_load_store_ib.c", dfreeXpvi,
                           nofault_cleanexit)
+
     
-    print("\n=======\ndfree tests without input\n=======")
+    print("=======\ndfree tests \n=======")
+    
     runACFileWithoutInput("double_free_no_input.c", doublefree,
                           b'DoubleFree||FreeT detects two frees| source location double_free_no_input.c:8, location double_free_no_input.c:9\n'
                           )
-
-    runACFileWithoutInput("printf_test.c", doublefree,
-                          b'Hello World!\n'
-                          )
-    
-    print("=======\ndfree tests with input\n=======")
     # these have much messier outputs from extern calls
     #   don't use an exact output match
     #   If there is a violation, in the array

@@ -48,10 +48,8 @@
  *
  *  - When memory is allocated via MallocT
  *      - the value tag on the pointer is colored with the location of the malloc and the current color from the pc tag
- *      - the location tags on the block are marked with the same location + color, marked AllocatedDirty (to detect Heap Problem #4)
- *     APT: Including the header location tag??
-       AMN: well, its equivalent val_tag, vht is not a loc_tag
- *      - the val_tag on the header, vht, is set to AllocatedHeader (location, color)
+ *      - the location tags on the block are marked with the same location + color,  AllocatedDirty (to detect Heap Problem #4)
+ *      - the val_tag on the header, (originally known as vht), is set to AllocatedHeader (location, color) for use by the Allocator
  *      - color counter is increased
  *  - When memory is written via StoreT
  *      - If pt is not a pointer tag, error
@@ -78,10 +76,11 @@
  *  - When memory is freed via FreeT
  *      - If the pt is not a pointer tag, auto fail. 
  *      - If the header tag is N, L_NotHeap, or L_UnallocatedHeap, fail
- *      - If the header tag is AllocatedDirty, or AllocatedwithColor and the location+color are the same, success
+ *      - If the header tag is corrupted, fail
+ *      - If the header tag is AllocatedHeader and the location+color are the same,
+ *        - set header tag to UnallocatedHeap
  *      - If the header tag is Allocated, but the location+color do not match, that is heap corruption.
- *      APT: What happens to the location tags on the header and data?
-        AMN:  
+ *       
  *  - Binary Operations & Unary Operations
  *      - most of the unary ones don't make a lot of sense with pointers 
  *      - classic arthimetic ops that make sense with ptrs preserve pointerness
@@ -246,7 +245,7 @@ Module HeapProblem <: Policy.
     | AllocatedHeader l color => (inj_loc "header of heap allocated block, malloc'ed at source location" l)
     end.
 
-(* Beginning of Policy Rules *)
+(* Beginning of Policy Rules, see Tags.v for definitions of rules *)
 
   (* LoadT & helper functions
   Notes:
@@ -270,7 +269,7 @@ Module HeapProblem <: Policy.
     - lts - tags on bytes in memory
 
   Upon success, returns 
-  - vt', new value tag on the memory (APT: no, value)  being loaded 
+  - vt', new value tag on result value (see Tags.v)
 *)
   
   (* Helper function for LoadT. To be applied to each lt *)
@@ -461,36 +460,43 @@ Module HeapProblem <: Policy.
     | Oand (* bitwise and ([&]) *)
     | Oor  (* bitwise or ([|]) *)
     | Oxor (* bitwise xor ([^]) *)
-    | Oshl (* left shift ([<<]) *)  (* APT: For shifts, if second arg is pointer, this is nonsense and should become N *)
+      =>  (
+        match vt1, vt2 with 
+        | (PointerWithColor _ _), (PointerWithColor _ _) => ret (pct, N) 
+        | (PointerWithColor _ _), N => ret (pct, vt1)
+        |  N, (PointerWithColor _ _) => ret(pct, vt2)
+        |  _ , _ => ret (pct, vt2) (*anything else, default behavior*)
+        end
+      )
+    (* For shifts, if second arg is pointer, this is nonsense, N *)
+    | Oshl (* left shift ([<<]) *) 
     | Oshr (* right shift ([>>]) *)
-        =>  (
-          match vt1, vt2 with 
-          | (PointerWithColor _ _), (PointerWithColor _ _) => ret (pct, N) 
-          | (PointerWithColor _ _), N => ret (pct, vt1)
-          |  N, (PointerWithColor _ _) => ret(pct, vt2)
-          |  _ , _ => ret (pct, vt2) (*anything else, default behavior*)
-          end
-        )
+      => (
+        match vt1, vt2 with 
+        | (PointerWithColor _ _), (PointerWithColor _ _) => ret (pct, N) 
+        |  N, (PointerWithColor _ _) => ret(pct, N)
+        | (PointerWithColor _ _), N => ret (pct, vt1)
+        |  _ , _ => ret (pct, vt2) (*anything else, default behavior*)
+        end
+    )
     
-  (* Comparisons bin ops: ptr comparison is UB unless two pointers in same color/loc *) 
-              (* APT: no: eq and ne are never UB *)
-           (* keep pointerness in case they do dumb things 
-            with it.  TaggedC & ConcreteC would allow this.
-            *)
+  (* Comparisons bin ops: ptr comparison can be UB. Keep pointerness in case they do dumb things 
+        with it.  TaggedC & ConcreteC would allow this. *)
     | Oeq  (* comparison ([==]) ok for colors not to match *)
     | One  (* comparison ([!=]) ok for colors not to match *)
-      => (* as long as both are pointers, set to N*)
+      => 
           (
             match vt1, vt2 with
-            | (PointerWithColor _ _), (PointerWithColor _ _) => ret(pct, N) (* as long as both are pointers, thats ok, now a bool*)
+            (* as long as both are pointers, thats ok, now a bool*)
+            | (PointerWithColor _ _), (PointerWithColor _ _) => ret(pct, N) 
             | _, _ => ret (pct, vt2) (*anything else, default behavior*)
             end
           )
      (* these are ordered, and that's not ok 
-                ok to compare ptrs to zero (null) 
-                do we want to log a warning? if the number is 0, don't ? 
-                stronger case for logging, but its maybe not directly relevant  
-                *)
+          ok to compare ptrs to zero (null) 
+          @TODO Do we want to log a warning if num is nonzero?
+          stronger case for logging, but its maybe not directly relevant  
+          *)
     | Olt  (* comparison ([<]) *)
     | Ogt  (* comparison ([>]) *)
     | Ole  (* comparison ([<=]) *)
@@ -531,8 +537,6 @@ Module HeapProblem <: Policy.
       - pct' new program counter_tag, counter increased
       - pt new val_tag on the pointer returned from malloc, colored.
       - vtb - vt body - new val_tag on values written, 00s usually. These won't tell you if something is alloc
-        (APT: this needs to synch with the concrete allocator code, which (I think) shouldn't be writing anything to the body)
-        AMN: that's my understanding 
       - vth - vt header - tag on "header" or index -1, above what pointer points to, allocator.
         EDIT: this is now an array of loc tags 
       - lt new location (in memory) tag, this now painted as allocated memory across
@@ -587,14 +591,14 @@ Module HeapProblem <: Policy.
   if (ltop.(alleq) ht)
   then (
     match pt, (List.hd_error ht) with 
-    (* pointer points to the right allocated header *)
+    (* pointer points to a allocated header, make sure its the right one *)
     | PointerWithColor ptr_l ptr_c, Some(AllocatedHeader hdr_l hdr_c) => 
       if ((Z.eqb ptr_c hdr_c) && (Cabs.loc_eqb ptr_l hdr_l)) 
       then
         (* header loc tags are set to unallocated. the block will be handled by clearT*)
         ret (pct, UnallocatedHeap)
       else
-        (* this was a valid header, but its not right one*)
+        (* this was a valid header, but its not right one. Heap grooming is corruption from our POV *)
         raise (PolicyFailure (inj_loc "HeapProblem| Corrupted Heap | FreeT tried to free someone else's allocated memory at source location " l))
 
     (* Invalid header. Trying to free nonlegal block @TODO maybe break these out for what kind? *)
