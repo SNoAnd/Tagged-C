@@ -6,7 +6,7 @@
  * 
  * @note free & malloc of 0/null are handled by InterpEvents. They do not reach
  *    the allocator or the tag rules, so are ignored. 
- *    Note that if that changes, the header size could become -1 and the allocator 
+ *    Note that if that assumption changes, the header size could become -1 and the allocator 
  *    will need code changes.  
  *)
 Require Import Zwf.
@@ -53,7 +53,7 @@ Module ConcreteAllocator (Pol : Policy).
   Import Pol.
 
   Definition t : Type := (* stack pointer *) Z.
-  Definition init : t := 3000.
+  Definition init : t := 3000. (* heap starts here *)
   Definition mem : Type := (CM.mem * t).
 
   Definition superstore (chunk: memory_chunk) (m: CM.mem) (ofs: Z)
@@ -87,13 +87,6 @@ Module ConcreteAllocator (Pol : Policy).
     let aligned_sp := align sp' al in
     ret (m,aligned_sp).
 
-  (* APT: Does size in header include space for header itself?
-     Code seems somewhat inconsistent on this point.
-     If the header space is not inclueded, it makes size 0 regions problematic, as you cannot
-     distinguish "free" from "in use".
-     BTW, it would be legal to just return a null pointer for a 0-length malloc request. 
-     lts is just the tags on the header
-     *)
   Definition get_header (m: CM.mem) (base: ptr) : PolicyResult (atom * list loc_tag) :=
     match load_all Mint64 m base with
     | Success res => ret res
@@ -110,17 +103,15 @@ Module ConcreteAllocator (Pol : Policy).
     | _ => raise (OtherFailure "ConcreteAllocator | parse_header | Header is not a long")
     end.
 
-  (* @TODO the vt tag can drop *)
   Definition update_header (m: CM.mem) (base: ptr) (live: bool) (sz: Z)
-             (vt: val_tag) (lts: list loc_tag) : PolicyResult CM.mem :=
+             (lts: list loc_tag) : PolicyResult CM.mem :=
     if sz <? 0 then raise (OtherFailure "ConcreteAllocator| update_header | Attempting to allocate negative size")
     else
       let rec :=
         if live
         then Vlong (Int64.repr sz)
         else Vlong (Int64.neg (Int64.repr sz)) in
-        (* AMN: this a temporary hack *)
-      ret (superstore Mint64 m (Int64.unsigned base) (rec, vt) lts).
+        ret (superstore Mint64 m (Int64.unsigned base) (rec, InitT) lts).
 
   Definition header_size := size_chunk Mint64.
   Definition block_align := align_chunk Mint64.
@@ -161,9 +152,9 @@ Module ConcreteAllocator (Pol : Policy).
               let new_sz := bs - (header_size + padded_sz) in
 
               (* this is the one being allocated *)
-              m' <- update_header m header true padded_sz InitT header_lts;;
+              m' <- update_header m header true padded_sz header_lts;;
               (* this is the new, free one remaining in free list *)
-              m'' <- update_header m' new false new_sz InitT (ltop.(const) 8 DefHT);;
+              m'' <- update_header m' new false new_sz (ltop.(const) 8 DefHT);;
               (* open question: how do we (re)tag new, free headers? *)
               (* APT: they will need to be protected. *)
               ret (m'',base)
@@ -171,26 +162,19 @@ Module ConcreteAllocator (Pol : Policy).
               (* [base ][========|==][=][next] *)
               (* [hd_sz][   sz   |/8][ ][next] *)
               (* There is exactly enough room (or not enough extra to split) *)
-
-              m' <- update_header m header true bs InitT header_lts;;
+              m' <- update_header m header true bs header_lts;;
               ret (m',base)
     end.
 
-  (* NB bytes should not be cleared. lts can change *)
-  (* UNTESTED - AMN Questions:
-     - how are we supposed to figure out what the return type of load/store bytes is?
-          I did it by looking at the type of where it was passed in other fns, but how would I do that if I couldn't cargocult?
-          APT: Do "About loadbytes." or "Check loadbytes."
-      - Should it be m, or m'? does m' preserve the memval?  APT: ???
-          If the memvals are preserved when m turns into m', this is ok
-          If not, then we have a problem.
-          I can't tell if it is or not
-      - relatedly, loadbytes doesn't give me a return type, which makes 227 more confusing: what do the  <-, ;; do?  *)
+  (* NB: Bytes themselves should not be cleared, similiar to the way real malloc
+      doesn't.*)
   Definition heapalloc (m: mem) (size: Z) (header_lts : loc_tag): PolicyResult (mem * ptr) :=
     let '(m,sp) := m in
     '(m',base) <- find_free 100 m (Int64.repr 1000) size (repeat header_lts 8);;
     ret ((m',sp),base).
 
+  (* NB: Bytes themselves should not be cleared, similiar to the way real malloc
+      doesn't.*)    
   Definition heapfree (l: Cabs.loc) (pct: control_tag) (m: mem) (p: ptr) (pt: val_tag) :
     PolicyResult (Z * control_tag * mem) :=
     let (m, sp) := m in
@@ -198,7 +182,7 @@ Module ConcreteAllocator (Pol : Policy).
     '((v,_),header_lts) <- get_header m head;;
     '(pct',lt') <- FreeT l pct pt header_lts;;
     '(live,sz) <- parse_header v;;
-    m' <- update_header m head false sz InitT (repeat lt' 8);;
+    m' <- update_header m head false sz (repeat lt' 8);;
     ret (sz,pct',(m',sp)).
 
   Fixpoint globals (m : CM.mem) (gs : list (ident*Z)) (next : addr) : (CM.mem * PTree.t ptr) :=
