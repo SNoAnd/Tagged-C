@@ -2,7 +2,8 @@
  * Allocator foundation 
  *
  * @note free & malloc of 0/null are handled by InterpEvents. They do not reach
- *    the allocator or the tag rules, so are ignored.  
+ *    the allocator or the tag rules, so are ignored. If that behavior changes,
+ *    code changes may be needed to maintain correctness in ConcreteAllocator.v
  *)
 Require Import Zwf.
 Require Import Axioms.
@@ -68,10 +69,10 @@ Module Type Allocator (Ptr: Pointer) (Pol : Policy) (M : Memory Ptr Pol).
                               * ptr (* base *)).
   
   Parameter heapfree : Cabs.loc
-                        -> control_tag      (* pct *)
+                        -> control_tag     (* pct *)
                         -> mem
                         -> ptr
-                        -> val_tag          (* pointer tag *)
+                        -> val_tag         (* pointer tag *)
                         -> PolicyResult
                             (Z             (* size of block *)
                              * control_tag

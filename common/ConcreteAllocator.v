@@ -125,7 +125,6 @@ Module ConcreteAllocator (Pol : Policy).
         let base := off header (Int64.repr header_size) in
         (* Load a long from base.
            Sign indicates: is this a live block? (Negative no, positive/zero yes)
-           (* APT: see note above *)
            Magnitude indicates size *)
         '((v,_),_) <- get_header m header;;
         '(live,bs) <- parse_header v;;
