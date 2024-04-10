@@ -100,10 +100,12 @@
  *  - in this version of PIPE there is a tag on the value and one on byte memory. 
  *  - This is an abstraction of spliting them up to make reasoning easier. 
  *       In hardware it is all together.
- *  - For example on an int: 
- *    - 1 tag on int value
- *    - 4 location tags, one per byte.
- *  - Can be used to catch misaligned loads and stores, in theory.
+ *        For example on an int: 
+ *        - 1 tag on int value
+ *        - 4 location tags, one per byte.
+ *        Can be used to catch misaligned loads and stores, in theory.
+ *  - Uses the ConcreteAllocator, where protecting the headers is the policy's job
+ *    if it cares. We care. 
  * 
  * Future Work (?):
  *  - HeapAddressSIF.v 

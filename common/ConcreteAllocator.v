@@ -1,8 +1,11 @@
 (**
- * Concrete Allocator, meant to be more realistic than FLAllocator.
+ * ConcreteAllocator, meant to be more realistic than FLAllocator.
  *    Allocator headers live in memory, so must be checked before use. 
  *    The header is an int(8 bytes) that stores the size of the allocated block,
  *    excluding itself. 
+ *
+ *  Policies that use the ConcreteAllocator are expected to protect the headers
+ *    if that invariant is important to them. 
  * 
  * @note free & malloc of 0/null are handled by InterpEvents. They do not reach
  *    the allocator or the tag rules, so are ignored. 
@@ -155,7 +158,6 @@ Module ConcreteAllocator (Pol : Policy).
               (* this is the new, free one remaining in free list *)
               m'' <- update_header m' new false new_sz (ltop.(const) 8 DefHT);;
               (* open question: how do we (re)tag new, free headers? *)
-              (* APT: they will need to be protected. *)
               ret (m'',base)
             else
               (* [base ][========|==][=][next] *)
