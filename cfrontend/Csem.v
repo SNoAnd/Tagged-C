@@ -123,33 +123,28 @@ Module TaggedCsem (Pol: Policy)
 
   Inductive assign_loc (ty: type) (m: mem) (p: ptr) (pt: val_tag) (lts: list loc_tag):
     bitfield -> atom -> trace -> PolicyResult (mem * atom) -> Prop :=
-  | assign_loc_value: forall v vt chunk,
+  | assign_loc_value: forall v vt chunk res,
       access_mode ty = By_value chunk ->
       type_is_volatile ty = false ->
-      let res :=
-        m' <- store chunk m p (v,vt) lts;;
-        ret (m',(v,vt)) in
+      res = m' <- store chunk m p (v,vt) lts;;
+            ret (m',(v,vt)) ->
       assign_loc ty m p pt lts Full (v,vt) E0 res
-  | assign_loc_volatile: forall v chunk t res,
+  | assign_loc_volatile: forall v chunk t res res',
       access_mode ty = By_value chunk -> type_is_volatile ty = true ->
       volatile_store ge chunk m p v lts t res ->
-      let res' :=
-        m' <- res;;
-        ret (m',v) in
+      res' = m' <- res;; ret (m',v) ->
       assign_loc ty m p pt lts Full v t res'
-  | assign_loc_copy: forall p' bytes pt',
+  | assign_loc_copy: forall p_src pt' res,
       access_mode ty = By_copy ->
-      (alignof_blockcopy ce ty = alignp p') ->
-      (alignof_blockcopy ce ty = alignp p) ->
-      p' = p
-      \/ le (off p' (Int64.repr (sizeof ce ty))) p
-      \/ le (off p (Int64.repr (sizeof ce ty))) p' ->
-      loadbytes m p' (sizeof ce ty) = ret bytes ->
-      let res :=
-        bytes' <- loadbytes m p' (sizeof ce ty);;
-        m' <- storebytes m p bytes lts;;
-        ret (m', (Vptr p', pt')) in
-      assign_loc ty m p pt lts Full (Vptr p', pt') E0 res
+      (alignof_blockcopy ce ty = alignp p_src) ->
+      (alignof_blockcopy ce ty = alignp p (*dst*)) ->
+      p_src = p (*dst*)
+      \/ le (off p_src (Int64.repr (sizeof ce ty))) p (*dst*)
+      \/ le (off p (*dst*) (Int64.repr (sizeof ce ty))) p_src ->
+      res = bytes <- loadbytes m p_src (sizeof ce ty);;
+            m' <- storebytes m p (*dst*) bytes lts;;
+            ret (m', (Vptr p (*dst*), pt')) ->
+      assign_loc ty m p (*dst*) pt lts Full (Vptr p_src, pt') E0 res
   | assign_loc_bitfield: forall sz sg pos width v res,
       store_bitfield ty sz sg pos width m p pt v lts res ->
       assign_loc ty m p pt lts (Bits sz sg pos width) v E0 res.

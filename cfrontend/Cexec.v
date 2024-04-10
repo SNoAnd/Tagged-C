@@ -13,6 +13,7 @@
 (** Animating the CompCert C semantics *)
 
 Require Import FunInd.
+Require Import FunctionalExtensionality.
 Require Import Axioms Classical.
 Require Import String Coqlib Decidableplus.
 Require Import Errors Maps Integers Floats.
@@ -277,42 +278,38 @@ Module Cexec (Pol: Policy)
               (if zlt width (bitsize_intsize sz) then Signed else sg) &&
               zle 0 pos && zlt 0 width && zle width (bitsize_intsize sz) &&
                        zle (pos + width) (bitsize_carrier sz));
-              let res :=
-                '(v,vts,lts) <- load_all (chunk_for_carrier sz) m p;;
-                let v' :=
-                  match v with
-                  | Vint c => Vint (bitfield_extract sz sg pos width c)
-                  | _ => Vundef
-                  end in
-                ret (v',vts, lts) in
-              Some (w, E0, res)
+              Some (w, E0, do_load_bitfield sz sg pos width p m)
           | _ => None
           end
     end.
 
     Definition assign_copy_ok (ty: type) (ofs: int64) (ofs': int64) : Prop :=
-      (alignof_blockcopy ce ty | Int64.unsigned ofs') /\ (alignof_blockcopy ce ty | Int64.unsigned ofs) /\
-        (Int64.unsigned ofs' = Int64.unsigned ofs
-         \/ Int64.unsigned ofs' + sizeof ce ty <= Int64.unsigned ofs
-         \/ Int64.unsigned ofs + sizeof ce ty <= Int64.unsigned ofs').
+      (alignof_blockcopy ce ty = alignp ofs') /\
+      (alignof_blockcopy ce ty = alignp ofs) /\
+        (ofs' = ofs
+         \/ le (off ofs' (Int64.repr (sizeof ce ty))) ofs
+         \/ le (off ofs (Int64.repr (sizeof ce ty))) ofs').
 
     Remark check_assign_copy:
       forall (ty: type) (ofs ofs': int64),
         { assign_copy_ok ty ofs ofs' } + {~ assign_copy_ok ty ofs ofs' }.
     Proof with try (right; intuition lia).
       intros. unfold assign_copy_ok.
-      destruct (Zdivide_dec (alignof_blockcopy ce ty) (Int64.unsigned ofs')); auto...
-      destruct (Zdivide_dec (alignof_blockcopy ce ty) (Int64.unsigned ofs)); auto...
-      assert (Y:{ Int64.unsigned ofs' = Int64.unsigned ofs \/
-                    Int64.unsigned ofs' + sizeof ce ty <= Int64.unsigned ofs \/
-                    Int64.unsigned ofs + sizeof ce ty <= Int64.unsigned ofs'} +
-                  {~ (Int64.unsigned ofs' = Int64.unsigned ofs \/
-                        Int64.unsigned ofs' + sizeof ce ty <= Int64.unsigned ofs \/
-                        Int64.unsigned ofs + sizeof ce ty <= Int64.unsigned ofs')}).
-      { destruct (zeq (Int64.unsigned ofs') (Int64.unsigned ofs)); auto.
-        destruct (zle (Int64.unsigned ofs' + sizeof ce ty) (Int64.unsigned ofs)); auto.
-        destruct (zle (Int64.unsigned ofs + sizeof ce ty) (Int64.unsigned ofs')); auto.
-        right. intro. destruct H. contradiction. destruct H. contradiction. contradiction. }
+      destruct (zeq (alignof_blockcopy ce ty) (alignp ofs')); auto...
+      destruct (zeq (alignof_blockcopy ce ty) (alignp ofs)); auto...
+      assert (Y:{ ofs' = ofs
+                  \/ le (off ofs' (Int64.repr (sizeof ce ty))) ofs
+                  \/ le (off ofs (Int64.repr (sizeof ce ty))) ofs'} +
+                {~ (ofs' = ofs
+                  \/ le (off ofs' (Int64.repr (sizeof ce ty))) ofs
+                  \/ le (off ofs (Int64.repr (sizeof ce ty))) ofs')}).
+      { destruct (Int64.eq_dec ofs' ofs); auto.
+        unfold le. unfold off. 
+        destruct (Int64.lt (Int64.add ofs' (Int64.repr (sizeof ce ty))) ofs) eqn:?;
+        destruct (Int64.eq (Int64.add ofs' (Int64.repr (sizeof ce ty))) ofs) eqn:?;
+        destruct (Int64.lt (Int64.add ofs (Int64.repr (sizeof ce ty))) ofs') eqn:?;
+        destruct (Int64.eq (Int64.add ofs (Int64.repr (sizeof ce ty))) ofs') eqn:?;
+        simpl; try (left; intuition lia)... }
       destruct Y... left; intuition lia.
     Defined.
 
@@ -339,12 +336,11 @@ Module Cexec (Pol: Policy)
           | By_copy =>
               match v with
               | (Vptr p',vt) =>
-                  let p'' := p' in
-                  check (check_assign_copy ty p p'');
+                  check (check_assign_copy ty p p');
                   let res :=
-                    bytes <- loadbytes m p'' (sizeof ce ty);;
+                    bytes <- loadbytes m p' (sizeof ce ty);;
                     m' <- storebytes m p bytes lts;;
-                    ret (m',v) in
+                    ret (m',(Vptr p,vt)) in
                   Some (w, E0, res)
               | _ => None
               end
@@ -360,17 +356,7 @@ Module Cexec (Pol: Policy)
               check (intsize_eq sz1 sz &&
                        signedness_eq sg1 (if zlt width (bitsize_intsize sz)
                                           then Signed else sg));
-              let res :=
-                '(v,ovt) <- load (chunk_for_carrier sz) m p;;
-                let v' :=
-                  match v with
-                  | Vint c => Vint ((Int.bitfield_insert
-                                       (first_bit sz pos width)
-                                       width c n))
-                  | _ => Vundef
-                  end in
-                m' <- store (chunk_for_carrier sz) m p (v',vt) lts;;
-                ret (m', (Vint (bitfield_normalize sz sg width n),vt)) in
+              let res := do_store_bitfield sz sg pos width p m n vt lts in
               Some (w, E0, res)
           | _, _ => None
           end
@@ -380,135 +366,99 @@ Module Cexec (Pol: Policy)
       forall w ty m ofs pt bf w' t res,
         do_deref_loc w ty m ofs pt bf = Some (w', t, res) ->
         deref_loc ge ty m ofs pt bf t res /\ possible_trace w t w'.
-    Admitted.
-(*    Proof.
+    Proof.
       unfold do_deref_loc; intros until res.
       destruct bf.
       - destruct (access_mode ty) eqn:?; mydestr; try congruence.
         + intros. inv Heqo. exploit do_volatile_load_sound; eauto.
           intuition. eapply deref_loc_volatile; eauto.
-        + intros. inv Heqo. exploit do_volatile_load_sound; eauto.
-          intuition. eapply deref_loc_volatile_fail1; eauto.
-        + intros. inv Heqo. exploit do_volatile_load_sound; eauto.
-          intuition. eapply deref_loc_volatile_fail0; eauto.
-        + intros. inv Heqb. split.
+        + intros. split.
           * eapply deref_loc_value; eauto.
           * constructor.
         + split. inv Heqm0.
           eapply deref_loc_reference; eauto. inv Heqm0. constructor.
         + split. inv Heqm0. eapply deref_loc_copy; eauto. inv Heqm0. constructor.
-      - destruct ty; mydestr; try congruence.
-        + intros. inv H. generalize H1; mydestr. 
-          InvBooleans. subst i. destruct v; mydestr; try congruence.
-          split; constructor. econstructor; eauto.            
-        + split; constructor. InvBooleans. rewrite H. econstructor; auto.
+      - destruct ty; try congruence.
+        dodestr; try congruence.
+        intros. InvBooleans. subst i.
+        inv H.
+        split; constructor.
+        econstructor; eauto.
     Qed.
-*)
+    
     Lemma do_deref_loc_complete:
       forall w ty m ofs pt bf w' t res,
         deref_loc ge ty m ofs pt bf t res -> possible_trace w t w' ->
         do_deref_loc w ty m ofs pt bf = Some (w', t, res).
-    Admitted.
-(*    Proof.
+    Proof.
       unfold do_deref_loc; intros. inv H.
       - rewrite H1.
         inv H0. rewrite H2. auto.
-      - rewrite H1; rewrite H2. apply (do_volatile_load_complete ge w _ _ _ w') in H3.
-        rewrite H4. rewrite H3; auto. apply H0.
-      - rewrite H1; rewrite H2. apply (do_volatile_load_complete ge w _ _ _ w') in H3.
-        rewrite H3. auto. apply H0.
-      - rewrite H1; rewrite H2. apply (do_volatile_load_complete ge w _ _ _ w') in H3.
-        rewrite H4. rewrite H3; auto. apply H0.        
+      - repeat cronch. apply (do_volatile_load_complete ge w _ _ _ w') in H3; cronch; auto.
       - inv H0. rewrite H1. auto.
       - inv H0. rewrite H1. auto.
       - inv H0. inv H1.
-        + unfold proj_sumbool; rewrite ! dec_eq_true, ! zle_true, ! zlt_true by lia. cbn.
-          rewrite H4. auto.
-        + unfold proj_sumbool; rewrite ! dec_eq_true, ! zle_true, ! zlt_true by lia. cbn.
-          rewrite H4. auto.
+        unfold proj_sumbool; rewrite ! dec_eq_true, ! zle_true, ! zlt_true by lia. cbn. auto.
     Qed.
-*)    
+ 
+    Ltac doinv :=
+      match goal with
+      | [ H: _ <- ?e ;; _ = Some _ |- _ ] => destruct e eqn:?; [simpl in H| inv H]
+      | [ H: let _ := ?e in _ |- _ ] => destruct e eqn:?
+      | [ H: bind_prop_success_rel _ _ _ _ |- _ ] => destruct H
+      | [ H: is_val ?e = _ |- context[?e] ] => rewrite (is_val_inv _ _ _ H)
+      | [ H1: is_val ?e = _, H2: context[?e] |- _ ] => rewrite (is_val_inv _ _ _ H1) in H2
+      | [ H: is_loc ?e = _ |- context[?e] ] => rewrite (is_loc_inv _ _ _ H)
+      | [ H1: is_loc ?e = _, H2: context[?e] |- _ ] => rewrite (is_loc_inv _ _ _ H1) in H2
+      | [ p : _ * _ |- _ ] => destruct p
+      | [ a: atom |- _ ] => destruct a eqn:?; subst a
+      | [ H: False |- _ ] => destruct H
+      | [ H: _ /\ _ |- _ ] => destruct H
+      | [ H: _ \/ _ |- _ ] => destruct H
+      | [ H: exists _, _ |- _ ] => destruct H
+      | _ => idtac
+      end.
+
     Lemma do_assign_loc_sound:
       forall w ty m ofs pt bf v vt w' t lts res,
         do_assign_loc w ty m ofs pt bf (v,vt) lts = Some (w', t, res) ->
         assign_loc ge ce ty m ofs pt lts bf (v,vt) t res /\ possible_trace w t w'.
-    Admitted.
-(*    Proof.
+    Proof.
+      Opaque ret.
       unfold do_assign_loc; intros until res.
       destruct bf.
       - destruct (access_mode ty) eqn:?; mydestr; try congruence.
-        + exploit do_volatile_store_sound; eauto.
+        + intros. repeat doinv. inv H.
+          exploit do_volatile_store_sound; eauto.
           intros (P & Q). intuition. eapply assign_loc_volatile; eauto.
-        + exploit do_volatile_store_sound; eauto. 
-          inv Heqo. intros. intuition. eapply assign_loc_volatile_fail; eauto.
-        + exploit assign_loc_value; eauto.
-          split.
-          * eauto.
-          * constructor.
-        + exploit assign_loc_value_fail; eauto.
-          split.
-          * eauto.
-          * constructor.
+        + split; econstructor; eauto.
         + destruct v; mydestr; try congruence.
-          * destruct a as [P [Q R]].
-            split.
-            eapply assign_loc_copy; eauto.
-            constructor.
-          * destruct a as [P [Q R]].
-            split.
-            eapply assign_loc_copy_fail1; eauto.
-            constructor.
-          * destruct a as [P [Q R]].
-            split.
-            eapply assign_loc_copy_fail0; eauto.
-            constructor.
-      - mydestr. intros. InvBooleans.
-        destruct ty; destruct v; try congruence.
-        generalize H; mydestr.
-        destruct v; mydestr; try congruence.
-        + InvBooleans. subst s i.
-          split. eapply assign_loc_bitfield; eauto. econstructor; eauto. constructor.
-        + InvBooleans. subst s i.
-          split; constructor. eapply store_bitfield_fail_1; eauto.
-        + InvBooleans. subst s i.
-          split; constructor. eapply store_bitfield_fail_0; eauto.
-    Qed. *)
+          destruct a as [P [Q R]].
+          split.
+          apply assign_loc_copy; auto.
+          constructor.
+      - repeat dodestr; intros; InvBooleans; destruct ty; try congruence; subst.
+        + inv H. split. eapply assign_loc_bitfield; eauto.
+          econstructor; eauto. rewrite Heqs. auto. constructor.
+        + inv H. split. eapply assign_loc_bitfield; eauto.
+          econstructor; eauto. rewrite Heqs. auto. constructor.
+    Qed.
     
 Lemma do_assign_loc_complete:
   forall w ty m ofs pt bf v vt w' t res lts,
     assign_loc ge ce ty m ofs pt lts bf (v,vt) t res -> possible_trace w t w' ->
     do_assign_loc w ty m ofs pt bf (v,vt) lts = Some (w', t, res).
-Admitted.
-(*Proof.
+Proof.
   unfold do_assign_loc; intros. inv H; repeat cronch; auto.
   - eapply do_volatile_store_complete in H3; eauto.
     rewrite H3. auto.
-  - eapply do_volatile_store_complete in H3; eauto.
-    rewrite H3. auto.
-  - repeat dodestr.
-    + inv H8. rewrite H12 in Heqp0. inv Heqp0. auto.
-    + inv H8. congruence.
-    + congruence.
-    + elim n. red; tauto.
-  - repeat dodestr.
-    + congruence.
-    + congruence.
-    + inv H11. auto.
-    + elim n. red; tauto.
-  - repeat dodestr.
-    + inv H8. congruence.
-    + inv H8. rewrite Heqp0 in H12. inv H12. auto.  
-    + congruence.
-    + elim n. red; tauto.
+  - repeat dodestr; auto.
+    elim n. red; tauto.
   - inv H1.
     + unfold proj_sumbool; rewrite ! zle_true, ! zlt_true by lia.
       rewrite ! dec_eq_true. cbn. repeat cronch. auto.
-    + unfold proj_sumbool; rewrite ! zle_true, ! zlt_true by lia.
-      rewrite ! dec_eq_true. cbn. repeat cronch. auto.
-    + unfold proj_sumbool; rewrite ! zle_true, ! zlt_true by lia.
-      rewrite ! dec_eq_true. cbn. repeat cronch. auto.
 Qed.
-*)
+
 (** * Reduction of expressions *)
 
 Inductive reduction: Type :=
@@ -520,22 +470,6 @@ Inductive reduction: Type :=
 | Failstopred (rule: string) (failure: FailureClass) (tr: trace) (ps': pstate)
            (* anaaktge - for tag fail stops add things here. dont add it to stuck *)
 .
-
-Ltac doinv :=
-  match goal with
-  | [ H: bind_prop_success_rel _ _ _ _ |- _ ] => destruct H
-  | [ H: is_val ?e = _ |- context[?e] ] => rewrite (is_val_inv _ _ _ H)
-  | [ H1: is_val ?e = _, H2: context[?e] |- _ ] => rewrite (is_val_inv _ _ _ H1) in H2
-  | [ H: is_loc ?e = _ |- context[?e] ] => rewrite (is_loc_inv _ _ _ H)
-  | [ H1: is_loc ?e = _, H2: context[?e] |- _ ] => rewrite (is_loc_inv _ _ _ H1) in H2
-  | [ p : _ * _ |- _ ] => destruct p
-  | [ a: atom |- _ ] => destruct a eqn:?; subst a
-  | [ H: False |- _ ] => destruct H
-  | [ H: _ /\ _ |- _ ] => destruct H
-  | [ H: _ \/ _ |- _ ] => destruct H
-  | [ H: exists _, _ |- _ ] => destruct H
-  | _ => idtac
-  end.
 
 Section EXPRS.
 
