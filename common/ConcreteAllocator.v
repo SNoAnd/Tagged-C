@@ -56,8 +56,11 @@ Module ConcreteAllocator (Pol : Policy).
   Import Pol.
 
   Definition t : Type := (* stack pointer *) Z.
-  Definition init : t := 3000. (* heap starts here *)
-  Definition heap_size : Z := 2000. (* heap size? *)
+  Definition init : t := 6000. (* stack starts here, t is base of stack, stack goes down, 
+                                  globals go below the base of the start *)
+  Definition stack_size := 4096. (* 4k*)
+  Definition heap_starting_addr : Z := init . (* grows up*)
+  Definition heap_size : Z := 4096. (* heap size? *)
   Definition mem : Type := (CM.mem * t).
 
   Definition superstore (chunk: memory_chunk) (m: CM.mem) (ofs: Z)
@@ -81,7 +84,7 @@ Module ConcreteAllocator (Pol : Policy).
   (* OG
   Definition empty := (init_heap CM.empty 1000 1000, init).
   *)
-  Definition empty := (init_heap CM.empty 1000 heap_size, init).
+  Definition empty := (init_heap CM.empty heap_starting_addr heap_size, init).
 
   Definition stkalloc (m: mem) (al sz: Z) : PolicyResult (mem*ptr) :=
     let '(m,sp) := m in
@@ -124,9 +127,11 @@ Module ConcreteAllocator (Pol : Policy).
   Definition header_size := size_chunk Mint64.
   Definition block_align := align_chunk Mint64.
 
+  (* *)
   Fixpoint find_free (c : nat) (m : CM.mem) (header : ptr) (sz : Z) (header_lts : list loc_tag) :
     PolicyResult (CM.mem*ptr) :=
-    if sz =? 0 then ret (m,Int64.zero) else
+    (* if its size 0, or we're beyond the edge of the heap (OOM), return 0 *)
+    if ((sz =? 0) && (Int64.unsigned(concretize header) >? heap_starting_addr + heap_size)) then ret (m,Int64.zero) else
     match c with
     | O => raise (OtherFailure "ConcreteAllocator| find_free| Too many steps looking for free block")
     | S c' =>
@@ -176,7 +181,7 @@ Module ConcreteAllocator (Pol : Policy).
       doesn't.*)
   Definition heapalloc (m: mem) (size: Z) (header_lts : loc_tag): PolicyResult (mem * ptr) :=
     let '(m,sp) := m in
-    '(m',base) <- find_free 100 m (Int64.repr 1000) size (repeat header_lts 8);;
+    '(m',base) <- find_free 100 m (Int64.repr heap_starting_addr) size (repeat header_lts (Z.to_nat header_size));;
     ret ((m',sp),base).
 
   (* NB: Bytes themselves should not be cleared on deallocation, similiar to the way real malloc

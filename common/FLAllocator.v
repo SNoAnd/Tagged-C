@@ -45,18 +45,21 @@ Module FLAllocator (Pol : Policy).
   Definition freelist : Type := list (addr (* base *)
                                     * Z (* size *)
                                     * loc_tag (* "header" loc tag *)).
-
   Record heap_state : Type := mkheap {
     regions : ZMap.t (option (Z*loc_tag));
     fl : freelist;
   }.
-
-  Definition empty_heap : heap_state :=
-    mkheap (ZMap.init None) [(Int64.repr 1000,1000,DefHT)].
   
   Definition t : Type := (addr*heap_state).   
-  Definition init : t := (Int64.repr 3000,empty_heap).  
   Definition mem : Type := (CM.mem * t).
+  Definition stack_size := 4096. (* 4k*)
+  Definition heap_size : Z := 4096. (* heap size? *)
+  Definition heap_starting_addr : Z := 6000 . (* matches init, grows up*)
+
+  Definition empty_heap : heap_state :=
+    mkheap (ZMap.init None) [(Int64.repr heap_starting_addr, heap_size, DefHT)].
+  Definition init : t := (Int64.repr 6000,empty_heap). (* stack starts here, t is base of stack, stack goes down, 
+  globals go below the base of the start *)
   Definition empty := (CM.empty, init).
   
   (** Allocation of a fresh block with the given bounds.  Return an updated

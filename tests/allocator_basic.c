@@ -1,6 +1,8 @@
 #include <stdlib.h> 
 #include <stdio.h>
-#define  BIG_SIZE 1000
+// heap size is currently 4096, but has no merge
+// change big size to 1000 to OOM heap
+#define  BIG_SIZE 500
 #define  MED_SIZE 100
 #define   SM_SIZE 16
 #define BABY_SIZE 1
