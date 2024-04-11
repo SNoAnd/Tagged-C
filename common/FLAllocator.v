@@ -52,7 +52,7 @@ Module FLAllocator (Pol : Policy).
   }.
 
   Definition empty_heap : heap_state :=
-    mkheap (ZMap.init None) [(Int64.repr 1000,2000,DefHT)].
+    mkheap (ZMap.init None) [(Int64.repr 1000,1000,DefHT)].
   
   Definition t : Type := (addr*heap_state).   
   Definition init : t := (Int64.repr 3000,empty_heap).  
@@ -74,7 +74,6 @@ Module FLAllocator (Pol : Policy).
     let sp' := (Int64.unsigned sp) - sz in
     let aligned_sp := (Int64.repr (align sp' al)) in
     ret (m,(aligned_sp,heap)).
-
 
   (* This assumes that size is already 8-byte aligned *)
   Fixpoint fl_alloc (fl : freelist) (size : Z) (lt : loc_tag) : option (addr*freelist) :=
