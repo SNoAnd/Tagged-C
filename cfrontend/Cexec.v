@@ -2873,9 +2873,9 @@ Definition do_initial_state (p: program) :
   | (Fail failure,_) => None
   end.
 
-Definition at_final_state (S: Csem.state): option int :=
+Definition at_final_state (S: Csem.state): option (int * logs) :=
   match S with
-  | Returnstate _ _ _ _ (Vint r,_) Kstop m => Some r
+  | Returnstate _ _ (_,lg) _ (Vint r,_) Kstop m => Some (r,lg)
   | _ => None
   end.
 

@@ -662,7 +662,8 @@ let diagnose_stuck_state p ge ce w = function
 
 let do_step p prog ge ce time s w =
   match Cexec.at_final_state s with
-  | Some r ->
+  | Some (r,lg) ->
+      let _ = List.map (fun s -> Printf.eprintf "%s\n" (Camlcoq.camlstring_of_coqstring s)) lg in
       if !trace >= 1 then
         fprintf p "Time %d: program terminated (exit code = %ld)@."
                   time (camlint_of_coqint r);
@@ -681,6 +682,7 @@ let do_step p prog ge ce time s w =
           exit 126
         end
       | Csem.Failstop(failure,lg) ->
+        let _ = List.map (fun s -> Printf.eprintf "%s\n" (Camlcoq.camlstring_of_coqstring s)) lg in
         if !trace >= 1 then
         (* AMN This is the version without -trace, easier to consume (by fuzzer)
             goes to stderr, which also goes to stdout? *)
