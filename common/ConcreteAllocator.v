@@ -57,6 +57,7 @@ Module ConcreteAllocator (Pol : Policy).
 
   Definition t : Type := (* stack pointer *) Z.
   Definition init : t := 3000. (* heap starts here *)
+  Definition heap_size : Z := 2000. (* heap size? *)
   Definition mem : Type := (CM.mem * t).
 
   Definition superstore (chunk: memory_chunk) (m: CM.mem) (ofs: Z)
@@ -76,7 +77,11 @@ Module ConcreteAllocator (Pol : Policy).
     let szv := Vlong (Int64.neg (Int64.repr sz)) in
     superstore Mint64 m' base (szv, InitT) (repeat DefHT 8).
 
+  (* AMN: is this where heap size is set?*)
+  (* OG
   Definition empty := (init_heap CM.empty 1000 1000, init).
+  *)
+  Definition empty := (init_heap CM.empty 1000 heap_size, init).
 
   Definition stkalloc (m: mem) (al sz: Z) : PolicyResult (mem*ptr) :=
     let '(m,sp) := m in
@@ -156,7 +161,7 @@ Module ConcreteAllocator (Pol : Policy).
               (* this is the one being allocated *)
               m' <- update_header m header true padded_sz header_lts;;
               (* this is the new, free one remaining in free list *)
-              m'' <- update_header m' new false new_sz (ltop.(const) 8 DefHT);;
+              m'' <- update_header m' new false new_sz (ltop.(const) (Z.to_nat header_size) DefHT);;
               (* open question: how do we (re)tag new, free headers? *)
               ret (m'',base)
             else
@@ -167,14 +172,14 @@ Module ConcreteAllocator (Pol : Policy).
               ret (m',base)
     end.
 
-  (* NB: Bytes themselves should not be cleared, similiar to the way real malloc
+  (* NB: Bytes themselves should not be cleared on allocation, similiar to the way real malloc
       doesn't.*)
   Definition heapalloc (m: mem) (size: Z) (header_lts : loc_tag): PolicyResult (mem * ptr) :=
     let '(m,sp) := m in
     '(m',base) <- find_free 100 m (Int64.repr 1000) size (repeat header_lts 8);;
     ret ((m',sp),base).
 
-  (* NB: Bytes themselves should not be cleared, similiar to the way real malloc
+  (* NB: Bytes themselves should not be cleared on deallocation, similiar to the way real malloc
       doesn't.*)    
   Definition heapfree (l: Cabs.loc) (pct: control_tag) (m: mem) (p: ptr) (pt: val_tag) :
     PolicyResult (Z * control_tag * mem) :=
