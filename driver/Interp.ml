@@ -165,9 +165,9 @@ let print_mem p m =
       match mv with
       | M.MD.Undef -> fprintf p " U '@' %s|" (print_lt t); print_at (i+1) max
       | M.MD.Byte (b,vt) ->
-                      fprintf p " %lu '@' %s|" (camlint_of_coqint b) (print_vt vt);
+                      fprintf p " %lu '@' %s '@' %s|" (camlint_of_coqint b) (print_vt vt) (print_lt t);
                       print_at (i+1) max
-      | M.MD.Fragment ((v,vt), q, n) -> fprintf p "| %a '@' %s |" print_val v (print_vt vt);
+      | M.MD.Fragment ((v,vt), q, n) -> fprintf p "| %a '@' %s '@' %s |" print_val v (print_vt vt) (print_lt t);
          print_at (i+(camlint_of_coqnat (Encoding.size_quantity_nat q))) max)
     else () in
   print_at 1000 1015;
