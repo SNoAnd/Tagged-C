@@ -1,6 +1,8 @@
 (**
  * Allocator foundation 
  *
+ * @note Specific allocators may impose additional requirements on Policy behavior.
+ *
  * @note free & malloc of 0/null are handled by InterpEvents. They do not reach
  *    the allocator or the tag rules, so are ignored. If that behavior changes,
  *    code changes may be needed to maintain correctness in ConcreteAllocator.v

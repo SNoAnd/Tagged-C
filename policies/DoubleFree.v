@@ -8,15 +8,13 @@ Simple Double Free detection & diagnostic policy. Implements Policy Interface.
   - Since labels are now tied to location:linenumber:byte offset from the parser, they are assumed to 
       static across fuzzing runs.
 
-Future:
-  - handlabeling has been replaced by automatic src location info. 
-  - In the future the hand label will be unneeded entirely.
 
 Assumes:
   - The base/fallback TaggedC heap policy is off or unavailable.
-  - All frees are staticly labeled.
-    - free sites must be labelled to start. In the current version it does not matter what the label is
-
+  - Uses the ConcreteAllocator, where protecting the headers is the policy's job
+      if it cares. 
+  - All frees are staticly labeled from the parser.
+ 
 Notes:
   - in this version of PIPE there is a tag on the value and one on byte memory. 
     This is an abstraction of spliting them up to make reasoning easier. 
