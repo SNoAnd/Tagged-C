@@ -118,7 +118,7 @@ CFRONTEND=Ctypes.v Cop.v Csyntax.v Csem.v Ctyping.v Cexec.v \
 
 # Policy definitions (in policies/) Add new policy files here
 # NB Product.v is the (Cartisian) product of multiple policies
-POLICIES=NullPolicy.v PVI.v DoubleFree.v HeapProblem.v Product.v
+POLICIES=NullPolicy.v PVI.v DoubleFree.v HeapProblem.v Product.v Omnilog.v
 
 PARSER=Cabs.v Parser.v
 

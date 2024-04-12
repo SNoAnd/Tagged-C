@@ -9,6 +9,7 @@ Require Import String.
 Require Import Tags.
 Require Import ExtLib.Structures.Monads. Import MonadNotation.
 Require Import String.
+Require Import Show.
 
 Open Scope monad_scope.
 Open Scope string_scope.
@@ -59,7 +60,7 @@ Module Log (P:Policy) <: Policy.
     PolicyResult (control_tag * val_tag) :=
     '(pct', vt') <- P.ArgT l pct fpt vt idx ty;;
     log _ ("ArgT(" ++ print_ct pct ++ "," ++ print_vt fpt ++ "," ++ print_vt vt ++
-    ", ?, ? ) = (" ++ print_ct pct' ++ "," ++ print_vt vt' ++ ")");;
+    ", " ++ show idx ++ " ) = (" ++ print_ct pct' ++ "," ++ print_vt vt' ++ ")");;
     ret (pct', vt').
 
   Definition RetT (l: loc) (pct_clr pct_cle: control_tag) (vt: val_tag) :
@@ -73,14 +74,14 @@ Module Log (P:Policy) <: Policy.
     PolicyResult val_tag := 
     vt' <- P.LoadT l pct pt vt lts;;
     log _ ("LoadT(" ++ print_ct pct ++ "," ++ print_vt pt ++ "," ++ print_vt vt ++
-    ", ?) = " ++ print_vt vt');;
+    ") = " ++ print_vt vt');;
     ret vt'.
     
   Definition StoreT (l: loc) (pct: control_tag) (pt vt: val_tag) (lts: list loc_tag) :
     PolicyResult (control_tag * val_tag * list loc_tag) := 
     '(pct', vt', lts') <- P.StoreT l pct pt vt lts;;
     log _ ("StoreT(" ++ print_ct pct ++ "," ++ print_vt pt ++ "," ++ print_vt vt ++
-    ", ?) = (" ++ print_ct pct' ++ "," ++ print_vt vt' ++ ", ?)");;
+    ") = (" ++ print_ct pct' ++ "," ++ print_vt vt' ++ ")");;
     ret (pct', vt', lts').
 
   Definition AccessT (l: loc) (pct: control_tag) (vt: val_tag) :
@@ -133,7 +134,7 @@ Module Log (P:Policy) <: Policy.
   Definition LabelT (l:loc) (pct : control_tag) (id : ident) :
     PolicyResult control_tag := 
     pct' <- P.LabelT l pct id;;
-    log _ ("LabelT(" ++ print_ct pct ++ ", ? ) = " ++ print_ct pct');;
+    log _ ("LabelT(" ++ print_ct pct ++ ", " ++ show (Zpos id) ++ " ) = " ++ print_ct pct');;
     ret pct'.
 
   Definition ExprSplitT (l: loc) (pct: control_tag) (vt: val_tag) :
@@ -159,14 +160,14 @@ Module Log (P:Policy) <: Policy.
   Definition LocalT (ce: composite_env) (l: loc) (pct: control_tag) (ty: type) :
     PolicyResult (control_tag * val_tag * list loc_tag)%type :=
     '(pct', vt, lts) <- P.LocalT ce l pct ty;;
-    log _ ("LocalT(" ++ print_ct pct ++ ", ? ) = (" ++ print_ct pct' ++ "," ++
-    print_vt vt ++ ", ?)");;
+    log _ ("LocalT(" ++ print_ct pct ++ ") = (" ++ print_ct pct' ++ "," ++
+    print_vt vt ++ ")");;
     ret (pct', vt, lts).
     
   Definition DeallocT (l: loc) (ce: composite_env) (pct: control_tag) (ty: type) :
     PolicyResult (control_tag * val_tag * loc_tag) :=
     '(pct', vt, lt) <- P.DeallocT l ce pct ty;;
-    log _ ("DeallocT(" ++ print_ct pct ++ ", ? ) = (" ++ print_ct pct' ++ "," ++
+    log _ ("DeallocT(" ++ print_ct pct ++ ") = (" ++ print_ct pct' ++ "," ++
     print_vt vt ++ "," ++ print_lt lt ++ ")");;
     ret (pct', vt, lt).
 
@@ -182,7 +183,7 @@ Module Log (P:Policy) <: Policy.
   Definition FreeT (l:loc) (pct: control_tag) (pt : val_tag) (lts: list loc_tag ) :
     PolicyResult (control_tag * loc_tag ) :=
     '(pct', lt) <- P.FreeT l pct pt lts;;
-    log _ ("FreeT(" ++ print_ct pct ++ "," ++ print_vt pt ++ ", ?) = (" ++
+    log _ ("FreeT(" ++ print_ct pct ++ "," ++ print_vt pt ++ ") = (" ++
     print_ct pct' ++ "," ++ print_lt lt ++ ")");;
     ret (pct', lt).
 
@@ -202,25 +203,25 @@ Module Log (P:Policy) <: Policy.
   Definition FieldT (l: loc) (ce: composite_env) (pct: control_tag)
     (vt: val_tag) (ty : type) (id : ident) : PolicyResult val_tag :=
     vt' <- P.FieldT l ce pct vt ty id;;
-    log _ ("FieldT(" ++ print_ct pct ++ "," ++ print_vt vt ++ ", ? ) = " ++ print_vt vt');;
+    log _ ("FieldT(" ++ print_ct pct ++ "," ++ print_vt vt ++ ") = " ++ print_vt vt');;
     ret vt'.
 
   Definition PICastT (l: loc) (pct: control_tag) (pt: val_tag) (lts: list loc_tag) (ty: type) :
     PolicyResult val_tag :=
     vt' <- P.PICastT l pct pt lts ty;;
-    log _ ("PICastT(" ++ print_ct pct ++ "," ++ print_vt pt ++ ", ? ) = " ++ print_vt vt');;
+    log _ ("PICastT(" ++ print_ct pct ++ "," ++ print_vt pt ++ ") = " ++ print_vt vt');;
     ret vt'.
           
   Definition IPCastT (l: loc) (pct: control_tag) (vt: val_tag)  (lts: list loc_tag) (ty: type) :
     PolicyResult val_tag :=
     vt' <- P.IPCastT l pct vt lts ty;;
-    log _ ("IPCastT(" ++ print_ct pct ++ "," ++ print_vt vt ++ ", ? ) = " ++ print_vt vt');;
+    log _ ("IPCastT(" ++ print_ct pct ++ "," ++ print_vt vt ++ ") = " ++ print_vt vt');;
     ret vt'.
 
   Definition PPCastT (l: loc) (pct: control_tag) (vt: val_tag) (lts1: list loc_tag) (lts2: list loc_tag)
     (ty: type) : PolicyResult val_tag :=
     vt' <- P.PPCastT l pct vt lts1 lts2 ty;;
-    log _ ("PPCastT(" ++ print_ct pct ++ "," ++ print_vt vt ++ ", ? ) = " ++ print_vt vt');;
+    log _ ("PPCastT(" ++ print_ct pct ++ "," ++ print_vt vt ++ ") = " ++ print_vt vt');;
     ret vt'.
 
   Definition IICastT (l: loc) (pct: control_tag) (vt: val_tag) (ty: type) : PolicyResult val_tag :=
