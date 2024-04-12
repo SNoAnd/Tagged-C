@@ -76,30 +76,26 @@ Module FLAllocator (Pol : Policy).
     ret (m,(aligned_sp,heap)).
 
   (* This assumes that size is already 8-byte aligned *)
-  Fixpoint fl_alloc (fl : freelist) (size : Z) (lt : loc_tag) : option (addr*freelist) :=
+  Fixpoint fl_alloc (fl : freelist) (size : Z) (lt : loc_tag) : (addr*freelist) :=
     match fl with
-    | [] => None
+    | [] => (null, fl)
     | (base, sz, lt') :: fl' =>
         if sz =? size
-        then Some (base,fl')
+        then (base,fl')
         else if size <? sz
-             then Some (base,(off base (Int64.repr size),sz - size,lt)::fl')
-             else match fl_alloc fl' size lt with
-                  | Some (base',fl'') => Some (base', (base, sz, lt') :: fl'')
-                  | None => None
-                  end
+             then (base,(off base (Int64.repr size),sz - size,lt)::fl')
+             else 
+               let '(base',fl'') := fl_alloc fl' size lt in
+               (base', (base, sz, lt') :: fl'')
     end.
 
   Definition heapalloc (m : mem) (size : Z) (lt_head: loc_tag) : PolicyResult (mem*ptr) :=
     let '(m, (sp,heap)) := m in
     (* Make sure we're 8-byte aligned *)
     let size := align size 8 in
-    match fl_alloc heap.(fl) size lt_head with
-    | Some (base, fl') =>
-      let regions' := ZMap.set (Int64.unsigned base) (Some (size,lt_head)) heap.(regions) in
-      ret ((m, (sp, mkheap regions' fl')), base)
-    | None => raise (OtherFailure "Out of memory")
-    end.
+    let '(base,fl') := fl_alloc heap.(fl) size lt_head in
+    let regions' := ZMap.set (Int64.unsigned base) (Some (size,lt_head)) heap.(regions) in
+    ret ((m, (sp, mkheap regions' fl')), base).
 
   Definition heapfree (l: Cabs.loc) (pct: control_tag) (m: mem) (base: addr) (pt:val_tag)
     : PolicyResult (Z*control_tag*mem) :=
@@ -181,10 +177,8 @@ Module FLAllocator (Pol : Policy).
     match CM.storebytes m (of_ptr p) bytes lts with
     | Success m' => ret (m',st)
     | Fail f => raise f
-    end.
+    end.  
 
-
- 
   End A.
   
 End FLAllocator.

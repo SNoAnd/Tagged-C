@@ -65,6 +65,10 @@ Module Type Memory (Ptr: Pointer) (Pol:Policy).
   Parameter addr_off : addr -> int64 -> addr.
   Parameter addr_eq : addr -> addr -> bool.
 
+  Parameter null : addr.
+
+  Parameter null_zero : forall p, of_ptr p = null -> concretize p = Int64.zero.
+
   (*Parameter addr_off_distributes :
     forall p ofs,
       of_ptr (off p ofs) = addr_off (of_ptr p) ofs.*)
@@ -162,6 +166,11 @@ Module ConcMem (Ptr: Pointer) (Pol:Policy) <: Memory Ptr Pol.
   
   Definition addr_eq (a1 a2: addr) : bool :=
     Int64.eq a1 a2.
+
+  Definition null : addr := Int64.zero.
+
+  Lemma null_zero : forall p, of_ptr p = null -> concretize p = Int64.zero.
+  Proof. auto. Qed.
 
   Record mem' : Type := mkmem {
     mem_contents: ZMap.t (memval*loc_tag);  (**r [offset -> memval] *)
@@ -416,6 +425,11 @@ Module MultiMem (Pol: Policy) <: Memory SemiconcretePointer Pol.
     | (ShareInd b _, i), (ShareInd b' _, i') => andb (peq b b') (Int64.eq i i')
     | _, _ => false
     end.
+
+  Definition null : addr := (LocInd 1%positive, Int64.zero).
+
+  Lemma null_zero : forall p, of_ptr p = null -> concretize p = Int64.zero.
+  Proof. unfold null. unfold of_ptr. intros. subst. auto. Qed.
   
   Record myMem := mkMem
     {
