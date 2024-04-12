@@ -1,6 +1,8 @@
 #include <stdlib.h> 
 #include <stdio.h>
-#define  BIG_SIZE 1000
+// heap size is currently 4096, but has no merge
+// change big size to 1000 to OOM heap
+#define  BIG_SIZE 500
 #define  MED_SIZE 100
 #define   SM_SIZE 16
 #define BABY_SIZE 1
@@ -13,11 +15,11 @@ int main() {
     char* bigchar3 = (char*) malloc(BIG_SIZE * sizeof(char));
 
     // try a bunch of small ones
-    char* babychar0 = malloc(BABY_SIZE * sizeof(char));
-    char* babychar1 = malloc(BABY_SIZE * sizeof(char));
-    char* babychar2 = malloc(BABY_SIZE * sizeof(char));
-    char* babychar3 = malloc(BABY_SIZE * sizeof(char));
-    char* babychar4 = malloc(BABY_SIZE * sizeof(char));
+    char* babychar0 = (char*) malloc(BABY_SIZE * sizeof(char));
+    char* babychar1 = (char*) malloc(BABY_SIZE * sizeof(char));
+    char* babychar2 = (char*) malloc(BABY_SIZE * sizeof(char));
+    char* babychar3 = (char*) malloc(BABY_SIZE * sizeof(char));
+    char* babychar4 = (char*) malloc(BABY_SIZE * sizeof(char));
 
     // free the small ones 
     free(babychar0);
@@ -44,8 +46,8 @@ int main() {
     free(bigchar3);
 
     // should force a split?  maybe?
-    char* smchar0 = malloc(SM_SIZE * sizeof(char));
-    char* babychar5 = malloc(BABY_SIZE * sizeof(char));
+    char* smchar0 = (char*) malloc(SM_SIZE * sizeof(char));
+    char* babychar5 =(char*) malloc(BABY_SIZE * sizeof(char));
     free(smchar0);
     free(babychar5);
 	return (EXIT_SUCCESS);
