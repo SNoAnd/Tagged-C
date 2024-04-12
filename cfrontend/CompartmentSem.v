@@ -65,7 +65,7 @@ Module CompartmentCsem (A: Allocator SemiconcretePointer NullPolicy M)
     Variable ce: composite_env.
 
   Inductive deref_loc (ty: type) (m: mem) (p: ptr) (pt: val_tag) :
-    bitfield -> trace -> PolicyResult (atom * list loc_tag) -> Prop :=
+    bitfield -> trace -> PolicyResult (val * list val_tag * list loc_tag) -> Prop :=
   | deref_loc_value: forall chunk,
       access_mode ty = By_value chunk ->
       type_is_volatile ty = false ->
@@ -80,48 +80,43 @@ Module CompartmentCsem (A: Allocator SemiconcretePointer NullPolicy M)
       deref_loc ty m p pt Full t res'
   | deref_loc_reference:
       access_mode ty = By_reference ->
-      deref_loc ty m p pt Full E0 (ret ((Vptr p, pt),[]))
+      deref_loc ty m p pt Full E0 (ret (Vptr p, [pt],[]))
   | deref_loc_copy:
       access_mode ty = By_copy ->
-      deref_loc ty m p pt Full E0 (ret ((Vptr p, pt),[]))
+      deref_loc ty m p pt Full E0 (ret (Vptr p, [pt],[]))
   | deref_loc_bitfield: forall sz sg pos width res,
       load_bitfield ty sz sg pos width m p res ->
       deref_loc ty m p pt (Bits sz sg pos width) E0 res.
 
-
   Inductive assign_loc (ty: type) (m: mem) (p: ptr) (pt: val_tag) (lts: list loc_tag):
     bitfield -> atom -> trace -> PolicyResult (mem * atom) -> Prop :=
-  | assign_loc_value: forall v vt chunk,
+  | assign_loc_value: forall v vt chunk res,
       access_mode ty = By_value chunk ->
       type_is_volatile ty = false ->
-      let res :=
-        m' <- store chunk m p (v,vt) lts;;
-        ret (m',(v,vt)) in
+      res = m' <- store chunk m p (v,vt) lts;;
+            ret (m',(v,vt)) ->
       assign_loc ty m p pt lts Full (v,vt) E0 res
-  | assign_loc_volatile: forall v chunk t res,
+  | assign_loc_volatile: forall v chunk t res res',
       access_mode ty = By_value chunk -> type_is_volatile ty = true ->
       volatile_store ge chunk m p v lts t res ->
-      let res' :=
-        m' <- res;;
-        ret (m',v) in
+      res' = m' <- res;; ret (m',v) ->
       assign_loc ty m p pt lts Full v t res'
-  | assign_loc_copy: forall p' bytes pt',
+  | assign_loc_copy: forall p_src pt' res,
       access_mode ty = By_copy ->
-      (alignof_blockcopy ce ty = alignp p') ->
-      (alignof_blockcopy ce ty = alignp p) ->
-      p' = p
-      \/ le (off p' (Int64.repr (sizeof ce ty))) p
-      \/ le (off p (Int64.repr (sizeof ce ty))) p' ->
-      loadbytes m p' (sizeof ce ty) = ret bytes ->
-      let res :=
-        bytes' <- loadbytes m p' (sizeof ce ty);;
-        m' <- storebytes m p bytes lts;;
-        ret (m', (Vptr p', pt')) in
-      assign_loc ty m p pt lts Full (Vptr p', pt') E0 res
+      (alignof_blockcopy ce ty = alignp p_src) ->
+      (alignof_blockcopy ce ty = alignp p (*dst*)) ->
+      p_src = p (*dst*)
+      \/ le (off p_src (Int64.repr (sizeof ce ty))) p (*dst*)
+      \/ le (off p (*dst*) (Int64.repr (sizeof ce ty))) p_src ->
+      res = bytes <- loadbytes m p_src (sizeof ce ty);;
+            m' <- storebytes m p (*dst*) bytes lts;;
+            ret (m', (Vptr p (*dst*), pt')) ->
+      assign_loc ty m p (*dst*) pt lts Full (Vptr p_src, pt') E0 res
   | assign_loc_bitfield: forall sz sg pos width v res,
       store_bitfield ty sz sg pos width m p pt v lts res ->
       assign_loc ty m p pt lts (Bits sz sg pos width) v E0 res.
  
+    
   Fixpoint chunk_of_type (ty:type) :=
     match ty with
     | Tint sz sgn _ =>
@@ -141,36 +136,36 @@ Module CompartmentCsem (A: Allocator SemiconcretePointer NullPolicy M)
 
   (* Allocates local (public) variables *)
 
-  Definition do_alloc_variable (l: Cabs.loc) (CMP: Comp) (e: env) (m: mem) (id: ident) (ty:type) (shared: bool):
-    PolicyResult (env * mem) :=
+  Definition do_alloc_variable (l: Cabs.loc) (CMP: Comp) (bg: block_generator) (e: env) (m: mem) (id: ident) (ty:type) (shared: bool):
+    PolicyResult (block_generator * env * mem) :=
     '(m',base) <- stkalloc m (alignof ce ty) (sizeof ce ty);;
-    ret ( PTree.set id (PUB base tt ty) e, m').
+    ret (bg, PTree.set id (PUB base tt ty) e, m').
 
-  Definition do_alloc_variables (l: Cabs.loc) (CMP: Comp) (e: env) (m: mem) (vs: list (ident * type)) (shared: bool) :
-    PolicyResult (env * mem) :=
+  Definition do_alloc_variables (l: Cabs.loc) (CMP: Comp) (bg: block_generator) (e: env) (m: mem) (vs: list (ident * type)) (shared: bool) :
+    PolicyResult (block_generator * env * mem) :=
     fold_left (fun res '(id,ty) =>
-                 '(e',m') <- res;;
-                 do_alloc_variable l CMP e' m' id ty shared)
-              vs (ret (e, m)).
+                 '(bg', e',m') <- res;;
+                 do_alloc_variable l CMP bg e' m' id ty shared)
+              vs (ret (bg, e, m)).
 
   (* Allocates local (public) arguments and initializes them with their corresponding values *)
-  Definition do_init_param (l: Cabs.loc) (CMP: Comp) (e: env) (m: mem) (id: ident) (ty: type) (init: option atom) :
-    PolicyResult (env * mem) :=
-    '(e', m') <- do_alloc_variable l CMP e m id ty false;;
+  Definition do_init_param (l: Cabs.loc) (CMP: Comp) (bg: block_generator) (e: env) (m: mem) (id: ident) (ty: type) (init: option atom) :
+    PolicyResult (block_generator * env * mem) :=
+    '(bg', e', m') <- do_alloc_variable l CMP bg e m id ty false;;
     match e'!id, init with
     | Some (PUB base _ _), Some init =>
         m'' <- store_atom (chunk_of_type ty) m' base init;;
-        ret (e',m'')
-    | _, _ => ret (e', m')
+        ret (bg', e',m'')
+    | _, _ => ret (bg', e', m')
     end.
 
-  Definition do_init_params (l: Cabs.loc) (CMP: Comp) (e: env) (m: mem)
+  Definition do_init_params (l: Cabs.loc) (CMP: Comp) (bg: block_generator) (e: env) (m: mem)
              (ps: list (ident * type * option atom))
-    : PolicyResult (env * mem) :=
+    : PolicyResult (block_generator * env * mem) :=
     fold_left (fun res '(id,ty,init) =>
-                 '(e',m') <- res;;
-                 do_init_param l CMP e' m' id ty init)
-              ps (ret (e, m)).    
+                 '(bg', e',m') <- res;;
+                 do_init_param l CMP bg e' m' id ty init)
+              ps (ret (bg, e, m)).    
     
   Fixpoint do_free_variables (l: Cabs.loc) (pct: control_tag) (m: mem) (vs: list (ptr*type))
     : PolicyResult (control_tag * mem) :=
@@ -323,12 +318,13 @@ Module CompartmentCsem (A: Allocator SemiconcretePointer NullPolicy M)
     | red_const: forall v ty te m vt' ps0 ps1,
         ConstT l pct ps0 = (Success vt',ps1) ->
         rred pct (Econst v ty) te m E0 pct (Eval (v,vt') ty) te m ps0 ps1
-    | red_rvalof_mem: forall ofs pt lts bf ty te m tr v vt vt' vt'' ps0 ps1 ps2 ps3,
-        deref_loc ty m ofs pt bf tr <<ps0>> (Success ((v,vt), lts)) <<ps1>> ->
-        LoadT (List.length lts) l pct pt vt (VectorDef.of_list lts) ps1 = (Success vt',ps2) ->
-        AccessT l pct vt' ps2 = (Success vt'',ps3) ->
+    | red_rvalof_mem: forall ofs pt lts bf ty te m tr v vts vt'' ps0 ps1 ps2,
+        deref_loc ty m ofs pt bf tr <<ps0>> (Success (v, vts, lts)) <<ps1>> ->
+        (vt <- CoalesceT l vts;;
+         vt' <- LoadT l pct pt vt lts;;
+         AccessT l pct vt') ps1 = (Success vt'',ps2) ->
         rred pct (Evalof (Eloc (Lmem ofs pt bf) ty) ty) te m tr
-             pct (Eval (v,vt'') ty) te m ps0 ps3
+             pct (Eval (v,vt'') ty) te m ps0 ps2
     | red_rvalof_ifun: forall b pt ty te m ps,
         rred pct (Evalof (Eloc (Lifun b pt) ty) ty) te m E0
              pct (Eval (Vfptr b, pt) ty) te m ps ps
@@ -372,7 +368,7 @@ Module CompartmentCsem (A: Allocator SemiconcretePointer NullPolicy M)
         sem_cast v1 ty1 ty m = Some v ->
         v = Vptr ofs ->
         deref_loc ty m ofs vt1 Full tr <<ps0>> (Success ((v2,vt2), lts)) <<ps1>> ->
-        IPCastT (List.length lts) l pct vt1 (VectorDef.of_list lts) ty ps1 = (Success pt', ps2) ->
+        IPCastT l pct vt1 lts ty ps1 = (Success pt', ps2) ->
         rred pct (Ecast (Eval (v1,vt1) ty1) ty) te m tr
              pct (Eval (v,pt') ty) te m ps0 ps2
     | red_cast_ptr_int: forall ty v1 vt1 ty1 te m v ofs tr v2 vt2 lts vt' ty' attr ps0 ps1 ps2,
@@ -381,7 +377,7 @@ Module CompartmentCsem (A: Allocator SemiconcretePointer NullPolicy M)
         sem_cast v1 ty1 ty m = Some v ->
         v1 = Vptr ofs ->
         deref_loc ty1 m ofs vt1 Full tr <<ps0>> (Success ((v2,vt2), lts)) <<ps1>> ->
-        PICastT (List.length lts) l pct vt1 (VectorDef.of_list lts) ty ps1 = (Success vt',ps2) ->
+        PICastT l pct vt1 lts ty ps1 = (Success vt',ps2) ->
         rred pct (Ecast (Eval (v1,vt1) ty1) ty) te m tr
              pct (Eval (v,vt') ty) te m ps0 ps2
     | red_cast_ptr_ptr: forall ty v1 vt1 ty1 te m v ofs ofs1 tr tr1
@@ -392,8 +388,7 @@ Module CompartmentCsem (A: Allocator SemiconcretePointer NullPolicy M)
         v1 = Vptr ofs1 -> v = Vptr ofs ->
         deref_loc ty1 m ofs1 vt1 Full tr1 <<ps0>> (Success ((v2,vt2),lts1)) <<ps1>> ->
         deref_loc ty m ofs vt1 Full tr <<ps1>> (Success ((v3,vt3),lts)) <<ps2>> ->
-        PPCastT (List.length lts1) (List.length lts) l pct vt1
-            (VectorDef.of_list lts1) (VectorDef.of_list lts) ty ps2 = (Success pt',ps3) ->
+        PPCastT l pct vt1 lts1 lts ty ps2 = (Success pt',ps3) ->
         rred pct (Ecast (Eval (v1,vt1) ty1) ty) te m (tr1 ++ tr)
              pct (Eval (v,pt') ty) te m ps0 ps3
     | red_seqand_true: forall v1 vt1 ty1 r2 ty te m pct' ps0 ps1,
@@ -429,15 +424,15 @@ Module CompartmentCsem (A: Allocator SemiconcretePointer NullPolicy M)
         ConstT l pct ps0 = (Success vt',ps1) ->
         rred pct (Ealignof ty1 ty) te m E0
         pct (Eval (Vlong (Int64.repr (alignof ce ty1)), vt') ty) te m ps0 ps1
-    | red_assign_mem: forall ofs ty1 pt bf v1 vt1 v2 vt2 ty2 te m t1 t2 m' v'
-                             pct' vt' pct'' vt'' v'' vt''' lts lts' ps0 ps1 ps2 ps3 ps4,
+    | red_assign_mem: forall ofs ty1 pt bf v1 vts v2 vt2 ty2 te m t1 t2 m' v'
+                             pct'' vt'' v'' vt''' lts lts' ps0 ps1 ps2 ps3,
         sem_cast v2 ty2 ty1 m = Some v' ->
-        deref_loc ty1 m ofs pt bf t1 <<ps0>> (Success ((v1,vt1), lts)) <<ps1>> ->
-        AssignT l pct vt1 vt2 ps1 = (Success (pct',vt'),ps2) ->
-        StoreT (List.length lts) l pct' pt vt' (VectorDef.of_list lts) ps2 = (Success (pct'', vt'', lts'),ps3) ->
-        assign_loc ty1 m ofs pt (VectorDef.to_list lts') bf (v',vt'') t2 <<ps3>> (Success (m', (v'',vt'''))) <<ps4>> ->
+        deref_loc ty1 m ofs pt bf t1 <<ps0>> (Success (v1, vts, lts)) <<ps1>> ->
+        ('(pct',vt') <- AssignT l pct (EffectiveT l vts) vt2;;
+        StoreT l pct' pt vt' lts) ps1 = (Success (pct'', vt'', lts'),ps2) ->
+        assign_loc ty1 m ofs pt lts' bf (v',vt'') t2 <<ps2>> (Success (m', (v'',vt'''))) <<ps3>> ->
         rred pct (Eassign (Eloc (Lmem ofs pt bf) ty1) (Eval (v2, vt2) ty2) ty1) te m (t1++t2)
-             pct'' (Eval (v'',vt''') ty1) te m' ps0 ps4
+             pct'' (Eval (v'',vt''') ty1) te m' ps0 ps3
     | red_assign_tmp: forall b ty1 v1 vt1 v2 vt2 ty2 te m te' v pct' vt' ps0 ps1,
         te!b = Some (v1,vt1) ->
         sem_cast v2 ty2 ty1 m = Some v ->
@@ -446,13 +441,14 @@ Module CompartmentCsem (A: Allocator SemiconcretePointer NullPolicy M)
         rred pct (Eassign (Eloc (Ltmp b) ty1) (Eval (v2, vt2) ty2) ty1) te m E0
              pct' (Eval (v,vt') ty1) te' m ps0 ps1
     | red_assignop_mem: forall op ofs pt ty1 bf v2 vt2 ty2 tyres te m t
-                               v1 vt1 vt1' vt1'' lts ps0 ps1 ps2 ps3,
-        deref_loc ty1 m ofs pt bf t <<ps0>> (Success ((v1,vt1), lts)) <<ps1>> ->
-        LoadT (List.length lts) l pct pt vt1 (VectorDef.of_list lts) ps1 = (Success vt1',ps2) ->
-        AccessT l pct vt1' ps2 = (Success vt1'',ps3) ->
+                               v1 vts vt1'' lts ps0 ps1 ps2,
+        deref_loc ty1 m ofs pt bf t <<ps0>> (Success (v1, vts, lts)) <<ps1>> ->
+        (vt1 <- CoalesceT l vts;;
+         vt1' <- LoadT l pct pt vt1 lts;;
+         AccessT l pct vt1') ps1 = (Success vt1'',ps2) ->
         rred pct (Eassignop op (Eloc (Lmem ofs pt bf) ty1) (Eval (v2,vt2) ty2) tyres ty1) te m t
              pct (Eassign (Eloc (Lmem ofs pt bf) ty1)
-                          (Ebinop op (Eval (v1,vt1'') ty1) (Eval (v2,vt2) ty2) tyres) ty1) te m ps0 ps3
+                          (Ebinop op (Eval (v1,vt1'') ty1) (Eval (v2,vt2) ty2) tyres) ty1) te m ps0 ps2
     | red_assignop_tmp: forall op b ty1 v2 vt2 ty2 tyres te m v1 vt1 vt1' ps0 ps1,
         te!b = Some (v1,vt1) ->
         AccessT l pct vt1 ps0 = (Success vt1',ps1) ->
@@ -469,18 +465,19 @@ Module CompartmentCsem (A: Allocator SemiconcretePointer NullPolicy M)
              pct (Eassign (Eloc (Lefun ef tyargs tyres cc pt) ty1)
                           (Ebinop op (Eval (Vefptr ef tyargs tyres cc,pt) ty1)
                                   (Eval (v2,vt2) ty2) ty) ty1) te m ps ps
-    | red_postincr_mem: forall id ofs pt ty bf te m t v vt vt' vt'' lts op ps0 ps1 ps2 ps3,
-        deref_loc ty m ofs pt bf t <<ps0>> (Success ((v,vt), lts)) <<ps1>> ->
+    | red_postincr_mem: forall id ofs pt ty bf te m t v vts vt'' lts op ps0 ps1 ps2,
+        deref_loc ty m ofs pt bf t <<ps0>> (Success (v, vts, lts)) <<ps1>> ->
         op = match id with Incr => Oadd | Decr => Osub end ->
-        LoadT (List.length lts) l pct pt vt (VectorDef.of_list lts) ps1 = (Success vt',ps2) ->
-        AccessT l pct vt' ps2 = (Success vt'',ps3) ->
+        (vt <- CoalesceT l vts;;
+         vt' <- LoadT l pct pt vt lts;;
+         AccessT l pct vt') ps1 = (Success vt'',ps2) ->
         rred pct (Epostincr id (Eloc (Lmem ofs pt bf) ty) ty) te m t
              pct (Ecomma (Eassign (Eloc (Lmem ofs pt bf) ty)
                                   (Ebinop op (Eval (v,vt'') ty)
                                           (Econst (Vint Int.one) type_int32s)
                                           (incrdecr_type ty))
                                   ty)
-                         (Eval (v,vt'') ty) ty) te m ps0 ps3
+                         (Eval (v,vt'') ty) ty) te m ps0 ps2
     | red_postincr_tmp: forall id b ty te m v vt vt' op ps0 ps1,
         te!b = Some (v,vt) ->
         op = match id with Incr => Oadd | Decr => Osub end ->
@@ -523,29 +520,162 @@ Module CompartmentCsem (A: Allocator SemiconcretePointer NullPolicy M)
     (** Failstops for r-values *)
     Inductive rfailred (pct:control_tag) :
       expr -> tenv -> mem -> trace -> FailureClass -> pstate -> pstate -> Prop :=
-     failred_rvalof_mem0:
+    | failred_const:
+      forall v ty te m failure ps ps',
+        ConstT l pct ps = (Fail failure, ps') ->
+        rfailred pct (Econst v ty) te m E0 failure ps ps'
+    | failred_rvalof_mem0:
       forall ofs pt bf ty te m tr failure ps0 ps1,
         deref_loc ty m ofs pt bf tr <<ps0>> (Fail failure) <<ps1>> ->
         rfailred pct (Evalof (Eloc (Lmem ofs pt bf) ty) ty) te m tr failure ps0 ps1
-    | failred_assign_mem3:
-      forall ofs ty1 pt bf v1 vt1 v2 vt2 ty2 te m t1 v' pct' vt' lts pct'' vt'' lts' t2 failure ps0 ps1 ps2 ps3 ps4,
+    | failred_rvalof_mem1:
+      forall ofs pt lts bf ty te m tr v vts failure ps0 ps1 ps2,
+        deref_loc ty m ofs pt bf tr <<ps0>> (Success (v, vts, lts)) <<ps1>> ->
+        (vt <- CoalesceT l vts;;
+        vt' <- LoadT l pct pt vt lts;;
+        AccessT l pct vt') ps1 = (Fail failure, ps2) ->
+        rfailred pct (Evalof (Eloc (Lmem ofs pt bf) ty) ty) te m tr failure ps0 ps2
+    | failred_rvalof_tmp:
+      forall b ty te m v vt failure ps0 ps1,
+        te!b = Some (v,vt) ->
+        AccessT l pct vt ps0 = (Fail failure,ps1) ->
+        rfailred pct (Evalof (Eloc (Ltmp b) ty) ty) te m E0 failure ps0 ps1
+    | failred_unop:
+      forall op v1 vt1 ty1 ty te m v failure ps0 ps1,
+        sem_unary_operation op v1 ty1 m = Some v ->
+        UnopT l op pct vt1 ps0 = (Fail failure,ps1) ->
+        rfailred pct (Eunop op (Eval (v1,vt1) ty1) ty) te m E0 failure ps0 ps1
+    | failred_binop:
+      forall op v1 vt1 ty1 v2 vt2 ty2 ty te m v failure ps0 ps1,
+        sem_binary_operation ce op v1 ty1 v2 ty2 m = Some v ->
+        BinopT l op pct vt1 vt2 ps0 = (Fail failure,ps1) ->
+        rfailred pct (Ebinop op (Eval (v1,vt1) ty1) (Eval (v2,vt2) ty2) ty) te m E0 failure ps0 ps1
+    | failred_seqand:
+      forall v1 vt1 ty1 r2 ty b te m failure ps0 ps1,
+        bool_val v1 ty1 m = Some b ->
+        ExprSplitT l pct vt1 ps0 = (Fail failure,ps1) ->
+        rfailred pct (Eseqand (Eval (v1,vt1) ty1) r2 ty) te m E0 failure ps0 ps1
+    | failred_seqor:
+      forall v1 vt1 ty1 r2 ty b te m failure ps0 ps1,
+        bool_val v1 ty1 m = Some b ->
+        ExprSplitT l pct vt1 ps0 = (Fail failure,ps1) ->
+        rfailred pct (Eseqor (Eval (v1,vt1) ty1) r2 ty) te m E0 failure ps0 ps1
+    | failred_condition:
+      forall v1 vt1 ty1 r1 r2 ty b te m failure ps0 ps1,
+        bool_val v1 ty1 m = Some b ->
+        ExprSplitT l pct vt1 ps0 = (Fail failure,ps1) ->
+        rfailred pct (Econdition (Eval (v1,vt1) ty1) r1 r2 ty) te m E0 failure ps0 ps1
+    | failred_sizeof:
+      forall ty1 ty te m failure ps0 ps1,
+        ConstT l pct ps0 = (Fail failure,ps1) ->
+        rfailred pct (Esizeof ty1 ty) te m E0 failure ps0 ps1
+    | failred_alignof:
+      forall ty1 ty te m failure ps0 ps1,
+        ConstT l pct ps0 = (Fail failure,ps1) ->
+        rfailred pct (Ealignof ty1 ty) te m E0 failure ps0 ps1
+    | failred_assign_mem0:
+      forall ofs ty1 pt bf v2 vt2 ty2 te m t1 v' failure ps0 ps1,
         sem_cast v2 ty2 ty1 m = Some v' ->
-        deref_loc ty1 m ofs pt bf t1 <<ps0>> (Success ((v1,vt1), lts)) <<ps1>> ->
-        AssignT l pct vt1 vt2 ps1 = (Success (pct',vt'),ps2) ->
-        StoreT (List.length lts) l pct' pt vt' (VectorDef.of_list lts) ps2 = (Success (pct'',vt'',lts'),ps3) ->
-        assign_loc ty1 m ofs pt (VectorDef.to_list lts') bf (v',vt'') t2 <<ps3>> (Fail failure) <<ps4>> ->
-        rfailred pct (Eassign (Eloc (Lmem ofs pt bf) ty1) (Eval (v2, vt2) ty2) ty1) te m (t1++t2) failure ps0 ps4
+        deref_loc ty1 m ofs pt bf t1 <<ps0>> (Fail failure) <<ps1>> ->
+        rfailred pct (Eassign (Eloc (Lmem ofs pt bf) ty1)
+                              (Eval (v2, vt2) ty2) ty1) te m t1 failure ps0 ps1
+    | failred_assign_mem1:
+      forall ofs ty1 pt bf v1 vts v2 vt2 ty2 te m t1 v' lts failure ps0 ps1 ps2,
+        sem_cast v2 ty2 ty1 m = Some v' ->
+        deref_loc ty1 m ofs pt bf t1 <<ps0>> (Success (v1, vts, lts)) <<ps1>> ->
+        ('(pct',vt') <- AssignT l pct (EffectiveT l vts) vt2;;
+         StoreT l pct' pt vt' lts) ps1 = (Fail failure,ps2) ->
+        rfailred pct (Eassign (Eloc (Lmem ofs pt bf) ty1) (Eval (v2, vt2) ty2) ty1) te m t1 failure ps0 ps1
+    | failred_assign_mem2:
+      forall ofs ty1 pt bf v1 vts v2 vt2 ty2 te m t1 v' lts pct'' vt'' lts' t2 failure ps0 ps1 ps2 ps3,
+        sem_cast v2 ty2 ty1 m = Some v' ->
+        deref_loc ty1 m ofs pt bf t1 <<ps0>> (Success (v1, vts, lts)) <<ps1>> ->
+        ('(pct',vt') <- AssignT l pct (EffectiveT l vts) vt2;;
+         StoreT l pct' pt vt' lts) ps1 = (Success (pct'',vt'',lts'),ps2) ->
+        assign_loc ty1 m ofs pt lts' bf (v',vt'') t2 <<ps2>> (Fail failure) <<ps3>> ->
+        rfailred pct (Eassign (Eloc (Lmem ofs pt bf) ty1) (Eval (v2, vt2) ty2) ty1) te m (t1++t2) failure ps0 ps3
+    | failred_assign_tmp:
+      forall b ty1 v1 vt1 v2 vt2 ty2 te m v failure ps0 ps1,
+        te!b = Some (v1,vt1) ->
+        sem_cast v2 ty2 ty1 m = Some v ->
+        AssignT l pct vt1 vt2 ps0 = (Fail failure,ps1) ->
+        rfailred pct (Eassign (Eloc (Ltmp b) ty1) (Eval (v2, vt2) ty2) ty1) te m E0 failure ps0 ps1
     | failred_assignop_mem0:
       forall op ofs pt ty1 bf v2 vt2 ty2 tyres te m t1 failure ps0 ps1,
         deref_loc ty1 m ofs pt bf t1 <<ps0>> (Fail failure) <<ps1>> ->
         rfailred pct (Eassignop op (Eloc (Lmem ofs pt bf) ty1)
                                 (Eval (v2,vt2) ty2) tyres ty1) te m t1 failure ps0 ps1
+    | failred_assignop_mem1:
+      forall op ofs pt ty1 bf v2 vt2 ty2 tyres te m t1 v1 vts lts failure ps0 ps1 ps2,
+        deref_loc ty1 m ofs pt bf t1 <<ps0>> (Success (v1,vts, lts)) <<ps1>> ->
+        (vt1 <- CoalesceT l vts;;
+         vt1' <- LoadT l pct pt vt1 lts;;
+         AccessT l pct vt1') ps1 = (Fail failure,ps2) ->
+        rfailred pct (Eassignop op (Eloc (Lmem ofs pt bf) ty1)
+                                (Eval (v2,vt2) ty2) tyres ty1) te m t1 failure ps0 ps2
+    | failred_assignop_tmp:
+      forall op b ty1 v2 vt2 ty2 tyres te m v1 vt1 failure ps0 ps1,
+        te!b = Some (v1,vt1) ->
+        AccessT l pct vt1 ps0 = (Fail failure,ps1) ->
+        rfailred pct (Eassignop op (Eloc (Ltmp b) ty1) (Eval (v2,vt2) ty2) tyres ty1) te m E0 failure ps0 ps1
     | failred_postincr_mem0:
       forall id ofs pt ty bf te m tr failure ps0 ps1,
         deref_loc ty m ofs pt bf tr <<ps0>> (Fail failure) <<ps1>> ->
         rfailred pct (Epostincr id (Eloc (Lmem ofs pt bf) ty) ty) te m tr failure ps0 ps1
+    | failred_postincr_mem1:
+      forall id ofs pt ty bf te m tr v vts lts failure ps0 ps1 ps2,
+        deref_loc ty m ofs pt bf tr <<ps0>> (Success (v,vts, lts)) <<ps1>> ->
+        (vt <- CoalesceT l vts;;
+         vt' <- LoadT l pct pt vt lts;;
+         AccessT l pct vt') ps1 = (Fail failure,ps2) ->
+        rfailred pct (Epostincr id (Eloc (Lmem ofs pt bf) ty) ty) te m tr failure ps0 ps2
+    | failred_postincr_tmp:
+      forall id b ty te m v vt failure ps0 ps1,
+        te!b = Some (v,vt) ->
+        AccessT l pct vt ps0 = (Fail failure, ps1) ->
+        rfailred pct (Epostincr id (Eloc (Ltmp b) ty) ty) te m E0 failure ps0 ps1
+    | failred_paren:
+      forall v1 vt1 ty1 ty2 ty te m v failure ps0 ps1,
+        sem_cast v1 ty1 ty2 m = Some v ->
+        ExprJoinT l pct vt1 ps0 = (Fail failure,ps1) ->
+        rfailred pct (Eparen (Eval (v1,vt1) ty1) ty2 ty) te m E0 failure ps0 ps1
+    | failred_cast_int_int:
+      forall ty v1 vt1 ty1 te m v failure ps0 ps1,
+        (forall ty' attr, ty1 <> Tpointer ty' attr) ->
+        (forall ty' attr, ty <> Tpointer ty' attr) ->
+        sem_cast v1 ty1 ty m = Some v ->
+        IICastT l pct vt1 ty ps0 = (Fail failure,ps1) -> 
+        rfailred pct (Ecast (Eval (v1,vt1) ty1) ty) te m E0 failure ps0 ps1
+    | failred_cast_int_ptr:
+      forall ty v1 vt1 ty1 te m v ofs tr v2 vt2 lts ty' attr failure ps0 ps1 ps2,
+        (forall ty' attr, ty1 <> Tpointer ty' attr) ->
+        ty = Tpointer ty' attr ->
+        sem_cast v1 ty1 ty m = Some v ->
+        v = Vptr ofs ->
+        deref_loc ty m ofs vt1 Full tr <<ps0>> (Success ((v2,vt2), lts)) <<ps1>> ->
+        IPCastT l pct vt1 lts ty ps0 = (Fail failure,ps2) ->
+        rfailred pct (Ecast (Eval (v1,vt1) ty1) ty) te m tr failure ps0 ps2
+    | failred_cast_ptr_int:
+      forall ty v1 vt1 ty1 te m v ofs tr v2 vt2 lts ty' attr failure ps0 ps1 ps2,
+        ty1 = Tpointer ty' attr ->
+        (forall ty' attr, ty <> Tpointer ty' attr) ->
+        sem_cast v1 ty1 ty m = Some v ->
+        v1 = Vptr ofs ->
+        deref_loc ty1 m ofs vt1 Full tr <<ps0>> (Success ((v2,vt2), lts)) <<ps1>> ->
+        PICastT l pct vt1 lts ty ps1 = (Fail failure, ps2) ->
+        rfailred pct (Ecast (Eval (v1,vt1) ty1) ty) te m tr failure ps0 ps2
+    | failred_cast_ptr_ptr:
+      forall ty v1 vt1 ty1 te m v ofs ofs1 tr tr1 v2 vt2 v3 vt3 lts lts1 ty1' attr1 ty' attr2 failure ps0 ps1 ps2 ps3,
+        ty1 = Tpointer ty1' attr1 ->
+        ty = Tpointer ty' attr2 ->
+        sem_cast v1 ty1 ty m = Some v ->
+        v1 = Vptr ofs1 ->
+        v = Vptr ofs ->
+        deref_loc ty1 m ofs1 vt1 Full tr1 <<ps0>> (Success ((v2,vt2), lts1)) <<ps1>> ->
+        deref_loc ty m ofs vt1 Full tr <<ps1>> (Success ((v3,vt3), lts)) <<ps2>> ->
+        PPCastT l pct vt1 lts1 lts ty ps2 = (Fail failure,ps3) ->
+        rfailred pct (Ecast (Eval (v1,vt1) ty1) ty) te m (tr1 ++ tr) failure ps0 ps3
 
-    (* TODO: encode rules for local pointers here *)
     | red_call_internal_fail: forall ty te m b fd vft tyf tyargs tyres cconv el failure ps0 ps1,
         Genv.find_funct ge (Vfptr b) = Some fd ->
         type_of_fundef fd = Tfunction tyargs tyres cconv ->
@@ -557,6 +687,7 @@ Module CompartmentCsem (A: Allocator SemiconcretePointer NullPolicy M)
         rfailred pct (Ecall (Eval (Vefptr ef tyargs tyres cconv,vft) tyf) el ty) te m E0
                  failure ps0 ps1
     .
+
     Inductive callred: control_tag -> expr -> mem -> fundef ->
                        val_tag -> list atom -> type -> control_tag ->
                        pstate -> pstate -> Prop :=
@@ -726,7 +857,6 @@ Inductive state': Type :=
     (ps: pstate)
     (C: Comp)
     (bg: block_generator)
-    (pct: control_tag)
     (s: statement)
     (k: cont)
     (e: env)
@@ -738,7 +868,6 @@ Inductive state': Type :=
     (ps: pstate)
     (C: Comp)
     (bg: block_generator)
-    (pct: control_tag)
     (r: expr)
     (k: cont)
     (e: env)
@@ -750,8 +879,6 @@ Inductive state': Type :=
     (ps: pstate)
     (C: Comp)
     (bg: block_generator)
-    (pct: control_tag)
-    (fpt: val_tag)
     (args: list atom)
     (k: cont)
     (m: mem) : state'
@@ -761,7 +888,6 @@ Inductive state': Type :=
     (C: Comp)
     (bg: block_generator)
     (l: Cabs.loc)
-    (pct: control_tag)
     (res: atom)
     (k: cont)
     (m: mem) : state'
@@ -818,29 +944,29 @@ with find_label_ls (lbl: label) (sl: labeled_statements) (k: cont)
   end.
 
 Inductive estep: state -> trace -> state -> Prop :=
-| step_lred: forall C f l CMP bg pct a k e te a' m te' m' ps ps',
-    lred e l a pct te m a' te' m' ps ps' ->
+| step_lred: forall C f l CMP bg a k e te a' m te' m' ps ps',
+    lred e l a tt te m a' te' m' ps ps' ->
     context LV RV C ->
-    estep (ExprState f l ps CMP bg pct (C a) k e te m)
-          E0 (ExprState f l ps' CMP bg pct (C a') k e te' m')
-| step_rred: forall C f l CMP bg pct pct' a k e te m tr a' te' m' ps ps',
-    rred l pct a te m tr pct' a' te' m' ps ps'->
+    estep (ExprState f l ps CMP bg (C a) k e te m)
+          E0 (ExprState f l ps' CMP bg (C a') k e te' m')
+| step_rred: forall C f l CMP bg a k e te m tr a' te' m' ps ps',
+    rred l tt a te m tr tt a' te' m' ps ps'->
     context RV RV C ->
-    estep (ExprState f l ps CMP bg pct (C a) k e te m)
-          tr (ExprState f l ps' CMP bg pct' (C a') k e te' m')
+    estep (ExprState f l ps CMP bg (C a) k e te m)
+          tr (ExprState f l ps' CMP bg (C a') k e te' m')
 | step_call: forall C f l CMP bg pct pct' fpt a k e te m fd vargs ty ps ps',
     callred l pct a m fd fpt vargs ty pct' ps ps' ->
     context RV RV C ->
-    estep (ExprState f l ps CMP bg pct (C a) k e te m)
-          E0 (Callstate fd l ps' CMP bg pct' fpt vargs (Kcall f e te l pct C ty k) m)
+    estep (ExprState f l ps CMP bg (C a) k e te m)
+          E0 (Callstate fd l ps' CMP bg vargs (Kcall f e te l pct C ty k) m)
 | step_stuck: forall C f l CMP bg pct a k e te m K ps,
     context K RV C -> ~(imm_safe e l K a pct te m) ->
-    estep (ExprState f l ps bg CMP pct (C a) k e te m)
+    estep (ExprState f l ps bg CMP (C a) k e te m)
           E0 Stuckstate
 | step_rfail: forall C f l CMP bg pct a k e te m tr failure ps ps',
     rfailred l pct a te m tr failure ps ps' ->
     context RV RV C ->
-    estep (ExprState f l ps CMP bg pct (C a) k e te m)
+    estep (ExprState f l ps CMP bg (C a) k e te m)
           tr (Failstop failure (snd ps')).
 
 Fixpoint option_zip {A:Type} {B:Type} (l1 : list A) (l2 : list B) : list (A*option B) :=
@@ -851,198 +977,190 @@ Fixpoint option_zip {A:Type} {B:Type} (l1 : list A) (l2 : list B) : list (A*opti
   end.
 
 Inductive sstep: state -> trace -> state -> Prop :=
-| step_do_1: forall f ps CMP bg pct x l k e te m,
-    sstep (State f ps CMP bg pct (Sdo x l) k e te m)
-          E0 (ExprState f l ps CMP bg pct x (Kdo k) e te m)
-| step_do_2: forall f l ps CMP bg pct v ty k e te m,
-    sstep (ExprState f l ps CMP bg pct (Eval v ty) (Kdo k) e te m)
-          E0 (State f ps CMP bg pct Sskip k e te m)
+| step_do_1: forall f ps CMP bg x l k e te m,
+    sstep (State f ps CMP bg (Sdo x l) k e te m)
+          E0 (ExprState f l ps CMP bg x (Kdo k) e te m)
+| step_do_2: forall f l ps CMP bg v ty k e te m,
+    sstep (ExprState f l ps CMP bg (Eval v ty) (Kdo k) e te m)
+          E0 (State f ps CMP bg Sskip k e te m)
 
-| step_seq:  forall f ps CMP bg pct s1 s2 k e te m,
-    sstep (State f ps CMP bg pct (Ssequence s1 s2) k e te m)
-          E0 (State f ps CMP bg pct s1 (Kseq s2 k) e te m)
-| step_skip_seq: forall f ps CMP bg pct s k e te m,
-    sstep (State f ps CMP bg pct Sskip (Kseq s k) e te m)
-          E0 (State f ps CMP bg pct s k e te m)
-| step_continue_seq: forall f ps CMP bg pct loc s k e te m,
-    sstep (State f ps CMP bg pct (Scontinue loc) (Kseq s k) e te m)
-          E0 (State f ps CMP bg pct (Scontinue loc) k e te m)
-| step_break_seq: forall f ps CMP bg pct loc s k e te m,  
-    sstep (State f ps CMP bg pct (Sbreak loc) (Kseq s k) e te m)
-          E0 (State f ps CMP bg pct (Sbreak loc) k e te m)
+| step_seq:  forall f ps CMP bg s1 s2 k e te m,
+    sstep (State f ps CMP bg (Ssequence s1 s2) k e te m)
+          E0 (State f ps CMP bg s1 (Kseq s2 k) e te m)
+| step_skip_seq: forall f ps CMP bg s k e te m,
+    sstep (State f ps CMP bg Sskip (Kseq s k) e te m)
+          E0 (State f ps CMP bg s k e te m)
+| step_continue_seq: forall f ps CMP bg loc s k e te m,
+    sstep (State f ps CMP bg (Scontinue loc) (Kseq s k) e te m)
+          E0 (State f ps CMP bg (Scontinue loc) k e te m)
+| step_break_seq: forall f ps CMP bg loc s k e te m,  
+    sstep (State f ps CMP bg (Sbreak loc) (Kseq s k) e te m)
+          E0 (State f ps CMP bg (Sbreak loc) k e te m)
 
-| step_ifthenelse_1: forall f l ps CMP bg pct a s1 s2 olbl k e te m,
-    sstep (State f ps CMP bg pct (Sifthenelse a s1 s2 olbl l) k e te m)
-          E0 (ExprState f l ps CMP bg pct a (Kifthenelse s1 s2 olbl k) e te m)
-| step_ifthenelse_2:  forall f l ps CMP bg pct pct' v vt ty s1 s2 olbl k e te m b,
+| step_ifthenelse_1: forall f l ps CMP bg a s1 s2 olbl k e te m,
+    sstep (State f ps CMP bg (Sifthenelse a s1 s2 olbl l) k e te m)
+          E0 (ExprState f l ps CMP bg a (Kifthenelse s1 s2 olbl k) e te m)
+| step_ifthenelse_2:  forall f l ps CMP bg v vt ty s1 s2 olbl k e te m b,
     bool_val v ty m = Some b ->
-    sstep (ExprState f l ps CMP bg pct (Eval (v,vt) ty) (Kifthenelse s1 s2 olbl k) e te m)
-          E0 (State f ps CMP bg pct' (if b then s1 else s2) k e te m)
+    sstep (ExprState f l ps CMP bg (Eval (v,vt) ty) (Kifthenelse s1 s2 olbl k) e te m)
+          E0 (State f ps CMP bg (if b then s1 else s2) k e te m)
 
-| step_while: forall f ps CMP bg pct x s olbl l k e te m,
-    sstep (State f ps CMP bg pct (Swhile x s olbl l) k e te m)
-          E0 (ExprState f l ps CMP bg pct x (Kwhile1 x s olbl l k) e te m)
-| step_while_false: forall f ps CMP bg pct pct' v vt ty x s l l' olbl k e te m,
+| step_while: forall f ps CMP bg x s olbl l k e te m,
+    sstep (State f ps CMP bg (Swhile x s olbl l) k e te m)
+          E0 (ExprState f l ps CMP bg x (Kwhile1 x s olbl l k) e te m)
+| step_while_false: forall f ps CMP bg v vt ty x s l l' olbl k e te m,
     bool_val v ty m = Some false ->
-    sstep (ExprState f l ps CMP bg pct (Eval (v,vt) ty) (Kwhile1 x s olbl l' k) e te m)
-          E0 (State f ps CMP bg pct' Sskip k e te m)
-| step_while_true: forall f ps CMP bg pct pct' v vt ty x s l l' olbl k e te m,
+    sstep (ExprState f l ps CMP bg (Eval (v,vt) ty) (Kwhile1 x s olbl l' k) e te m)
+          E0 (State f ps CMP bg Sskip k e te m)
+| step_while_true: forall f ps CMP bg v vt ty x s l l' olbl k e te m,
     bool_val v ty m = Some true ->
-    sstep (ExprState f l ps CMP bg pct (Eval (v,vt) ty) (Kwhile1 x s olbl l' k) e te m)
-          E0 (State f ps CMP bg pct' s (Kwhile2 x s olbl l' k) e te m)
-| step_skip_while: forall f ps CMP bg pct l x s olbl k e te m,
-    sstep (State f ps CMP bg pct Sskip (Kwhile2 x s olbl l k) e te m)
-          E0 (State f ps CMP bg pct (Swhile x s olbl l) k e te m)
-| step_continue_while: forall f ps CMP bg pct l l' x s olbl k e te m,
-    sstep (State f ps CMP bg pct (Scontinue l) (Kwhile2 x s olbl l' k) e te m)
-          E0 (State f ps CMP bg pct (Swhile x s olbl l') k e te m)
-| step_break_while: forall f ps CMP bg pct x s l l' olbl k e te m,
-    sstep (State f ps CMP bg pct (Sbreak l) (Kwhile2 x s olbl l' k) e te m)
-          E0 (State f ps CMP bg pct Sskip k e te m)
+    sstep (ExprState f l ps CMP bg (Eval (v,vt) ty) (Kwhile1 x s olbl l' k) e te m)
+          E0 (State f ps CMP bg s (Kwhile2 x s olbl l' k) e te m)
+| step_skip_while: forall f ps CMP bg l x s olbl k e te m,
+    sstep (State f ps CMP bg Sskip (Kwhile2 x s olbl l k) e te m)
+          E0 (State f ps CMP bg (Swhile x s olbl l) k e te m)
+| step_continue_while: forall f ps CMP bg l l' x s olbl k e te m,
+    sstep (State f ps CMP bg (Scontinue l) (Kwhile2 x s olbl l' k) e te m)
+          E0 (State f ps CMP bg (Swhile x s olbl l') k e te m)
+| step_break_while: forall f ps CMP bg x s l l' olbl k e te m,
+    sstep (State f ps CMP bg (Sbreak l) (Kwhile2 x s olbl l' k) e te m)
+          E0 (State f ps CMP bg Sskip k e te m)
 
-| step_dowhile: forall f ps CMP bg pct a s l olbl k e te m,
-    sstep (State f ps CMP bg pct (Sdowhile a s olbl l) k e te m)
-          E0 (State f ps CMP bg pct s (Kdowhile1 a s olbl l k) e te m)
-| step_skip_dowhile: forall f ps CMP bg pct l x s olbl k e te m,
-    sstep (State f ps CMP bg pct Sskip (Kdowhile1 x s olbl l k) e te m)
-          E0 (ExprState f l ps CMP bg pct x (Kdowhile2 x s olbl l k) e te m)
-| step_continue_dowhile: forall f ps CMP bg pct l l' x s olbl k e te m,
-    sstep (State f ps CMP bg pct (Scontinue l) (Kdowhile1 x s olbl l' k) e te m)
-          E0 (ExprState f l' ps CMP bg pct x (Kdowhile2 x s olbl l' k) e te m)
-| step_dowhile_false: forall f ps CMP bg pct pct' v vt ty x s l l' olbl k e te m,
+| step_dowhile: forall f ps CMP bg a s l olbl k e te m,
+    sstep (State f ps CMP bg (Sdowhile a s olbl l) k e te m)
+          E0 (State f ps CMP bg s (Kdowhile1 a s olbl l k) e te m)
+| step_skip_dowhile: forall f ps CMP bg l x s olbl k e te m,
+    sstep (State f ps CMP bg Sskip (Kdowhile1 x s olbl l k) e te m)
+          E0 (ExprState f l ps CMP bg x (Kdowhile2 x s olbl l k) e te m)
+| step_continue_dowhile: forall f ps CMP bg l l' x s olbl k e te m,
+    sstep (State f ps CMP bg (Scontinue l) (Kdowhile1 x s olbl l' k) e te m)
+          E0 (ExprState f l' ps CMP bg x (Kdowhile2 x s olbl l' k) e te m)
+| step_dowhile_false: forall f ps CMP bg  v vt ty x s l l' olbl k e te m,
     bool_val v ty m = Some false ->
-    sstep (ExprState f l ps CMP bg pct (Eval (v,vt) ty) (Kdowhile2 x s olbl l' k) e te m)
-          E0 (State f ps CMP bg pct' Sskip k e te m)
-| step_dowhile_true: forall f ps CMP bg pct pct' v vt ty x s l l' olbl k e te m,
+    sstep (ExprState f l ps CMP bg (Eval (v,vt) ty) (Kdowhile2 x s olbl l' k) e te m)
+          E0 (State f ps CMP bg Sskip k e te m)
+| step_dowhile_true: forall f ps CMP bg v vt ty x s l l' olbl k e te m,
     bool_val v ty m = Some true ->
-    SplitT l pct vt olbl = ret pct' ->
-    sstep (ExprState f l ps CMP bg pct (Eval (v,vt) ty) (Kdowhile2 x s olbl l' k) e te m)
-          E0 (State f ps CMP bg pct' (Sdowhile x s olbl l') k e te m)
-| step_break_dowhile: forall f ps CMP bg pct a s l l' olbl k e te m,
-    sstep (State f ps CMP bg pct (Sbreak l) (Kdowhile1 a s olbl l' k) e te m)
-          E0 (State f ps CMP bg pct Sskip k e te m)
+    sstep (ExprState f l ps CMP bg (Eval (v,vt) ty) (Kdowhile2 x s olbl l' k) e te m)
+          E0 (State f ps CMP bg (Sdowhile x s olbl l') k e te m)
+| step_break_dowhile: forall f ps CMP bg a s l l' olbl k e te m,
+    sstep (State f ps CMP bg (Sbreak l) (Kdowhile1 a s olbl l' k) e te m)
+          E0 (State f ps CMP bg Sskip k e te m)
 
-| step_for_start: forall f ps CMP bg pct a1 a2 a3 s l olbl k e te m,
+| step_for_start: forall f ps CMP bg a1 a2 a3 s l olbl k e te m,
     a1 <> Sskip ->
-    sstep (State f ps CMP bg pct (Sfor a1 a2 a3 s olbl l) k e te m)
-          E0 (State f ps CMP bg pct a1 (Kseq (Sfor Sskip a2 a3 s olbl l) k) e te m)
-| step_for: forall f ps CMP bg pct a2 a3 s l olbl k e te m,
-    sstep (State f ps CMP bg pct (Sfor Sskip a2 a3 s olbl l) k e te m)
-          E0 (ExprState f l ps CMP bg pct a2 (Kfor2 a2 a3 s olbl l k) e te m)
-| step_for_false: forall f ps CMP bg pct pct' v vt ty a2 a3 s l l' olbl k e te m,
+    sstep (State f ps CMP bg (Sfor a1 a2 a3 s olbl l) k e te m)
+          E0 (State f ps CMP bg a1 (Kseq (Sfor Sskip a2 a3 s olbl l) k) e te m)
+| step_for: forall f ps CMP bg a2 a3 s l olbl k e te m,
+    sstep (State f ps CMP bg (Sfor Sskip a2 a3 s olbl l) k e te m)
+          E0 (ExprState f l ps CMP bg a2 (Kfor2 a2 a3 s olbl l k) e te m)
+| step_for_false: forall f ps CMP bg v vt ty a2 a3 s l l' olbl k e te m,
     bool_val v ty m = Some false ->
-    SplitT l pct vt olbl = ret pct' ->
-    sstep (ExprState f l ps CMP bg pct (Eval (v,vt) ty) (Kfor2 a2 a3 s olbl l' k) e te m)
-          E0 (State f ps CMP bg pct' Sskip k e te m)
-| step_for_true: forall f ps CMP bg pct pct' v vt ty a2 a3 s l l' olbl k e te m,
+    sstep (ExprState f l ps CMP bg (Eval (v,vt) ty) (Kfor2 a2 a3 s olbl l' k) e te m)
+          E0 (State f ps CMP bg Sskip k e te m)
+| step_for_true: forall f ps CMP bg v vt ty a2 a3 s l l' olbl k e te m,
     bool_val v ty m = Some true ->
-    SplitT l pct vt olbl = ret pct' ->
-    sstep (ExprState f l ps CMP bg pct (Eval (v,vt) ty) (Kfor2 a2 a3 s olbl l' k) e te m)
-          E0 (State f ps CMP bg pct' s (Kfor3 a2 a3 s olbl l' k) e te m)
-| step_skip_for3: forall f ps CMP bg pct a2 a3 s l olbl k e te m,
-    sstep (State f ps CMP bg pct Sskip (Kfor3 a2 a3 s olbl l k) e te m)
-          E0 (State f ps CMP bg pct a3 (Kfor4 a2 a3 s olbl l k) e te m)
-| step_continue_for3: forall f ps CMP bg pct a2 a3 s l l' olbl k e te m,
-    sstep (State f ps CMP bg pct (Scontinue l) (Kfor3 a2 a3 s olbl l' k) e te m)
-          E0 (State f ps CMP bg pct a3 (Kfor4 a2 a3 s olbl l' k) e te m)
-| step_break_for3: forall f ps CMP bg pct a2 a3 s l l' olbl k e te m,
-    sstep (State f ps CMP bg pct (Sbreak l) (Kfor3 a2 a3 s olbl l' k) e te m)
-          E0 (State f ps CMP bg pct Sskip k e te m)
-| step_skip_for4: forall f ps CMP bg pct a2 a3 s l olbl k e te m,
-    sstep (State f ps CMP bg pct Sskip (Kfor4 a2 a3 s olbl l k) e te m)
-          E0 (State f ps CMP bg pct (Sfor Sskip a2 a3 s olbl l) k e te m)
+    sstep (ExprState f l ps CMP bg (Eval (v,vt) ty) (Kfor2 a2 a3 s olbl l' k) e te m)
+          E0 (State f ps CMP bg s (Kfor3 a2 a3 s olbl l' k) e te m)
+| step_skip_for3: forall f ps CMP bg a2 a3 s l olbl k e te m,
+    sstep (State f ps CMP bg Sskip (Kfor3 a2 a3 s olbl l k) e te m)
+          E0 (State f ps CMP bg a3 (Kfor4 a2 a3 s olbl l k) e te m)
+| step_continue_for3: forall f ps CMP bg a2 a3 s l l' olbl k e te m,
+    sstep (State f ps CMP bg (Scontinue l) (Kfor3 a2 a3 s olbl l' k) e te m)
+          E0 (State f ps CMP bg a3 (Kfor4 a2 a3 s olbl l' k) e te m)
+| step_break_for3: forall f ps CMP bg a2 a3 s l l' olbl k e te m,
+    sstep (State f ps CMP bg (Sbreak l) (Kfor3 a2 a3 s olbl l' k) e te m)
+          E0 (State f ps CMP bg Sskip k e te m)
+| step_skip_for4: forall f ps CMP bg a2 a3 s l olbl k e te m,
+    sstep (State f ps CMP bg Sskip (Kfor4 a2 a3 s olbl l k) e te m)
+          E0 (State f ps CMP bg (Sfor Sskip a2 a3 s olbl l) k e te m)
 
-| step_return_none: forall f ps CMP bg pct pct' l k e te m m',
-    do_free_variables l pct m (variables_of_env e) = ret (pct', m') ->
-    sstep (State f ps CMP bg pct (Sreturn None l) k e te m)
-          E0 (Returnstate (Internal f) ps CMP bg l pct' (Vundef, def_tag) (call_cont k) m')
-| step_return_none_fail0: forall f ps CMP bg pct l k e te m failure,
-    do_free_variables l pct m (variables_of_env e) = raise failure ->
-    sstep (State f ps CMP bg pct (Sreturn None l) k e te m)
+| step_return_none: forall f ps CMP bg l k e te m m',
+    do_free_variables l tt m (variables_of_env e) = ret (tt, m') ->
+    sstep (State f ps CMP bg (Sreturn None l) k e te m)
+          E0 (Returnstate (Internal f) ps CMP bg l (Vundef, def_tag) (call_cont k) m')
+| step_return_none_fail0: forall f ps CMP bg l k e te m failure,
+    do_free_variables l tt m (variables_of_env e) = raise failure ->
+    sstep (State f ps CMP bg (Sreturn None l) k e te m)
           E0 (Failstop failure (snd ps))
-| step_return_1: forall f ps CMP bg pct l x k e te m,
-    sstep (State f ps CMP bg pct (Sreturn (Some x) l) k e te m)
-          E0 (ExprState f l ps CMP bg pct x (Kreturn k) e te m)
-| step_return_2:  forall f ps CMP bg pct pct' l v vt ty k e te m v' m',
+| step_return_1: forall f ps CMP bg l x k e te m,
+    sstep (State f ps CMP bg (Sreturn (Some x) l) k e te m)
+          E0 (ExprState f l ps CMP bg x (Kreturn k) e te m)
+| step_return_2:  forall f ps CMP bg l v vt ty k e te m v' m',
     sem_cast v ty f.(fn_return) m = Some v' ->
-    do_free_variables l pct m (variables_of_env e) = ret (pct', m') ->
-    sstep (ExprState f l ps CMP bg pct (Eval (v,vt) ty) (Kreturn k) e te m)
-          E0 (Returnstate (Internal f) ps CMP bg l pct' (v',vt) (call_cont k) m')
+    do_free_variables l tt m (variables_of_env e) = ret (tt, m') ->
+    sstep (ExprState f l ps CMP bg (Eval (v,vt) ty) (Kreturn k) e te m)
+          E0 (Returnstate (Internal f) ps CMP bg l (v',vt) (call_cont k) m')
 | step_return_fail0:  forall f ps CMP bg pct l v vt ty k e te m v' failure,
     sem_cast v ty f.(fn_return) m = Some v' ->
     do_free_variables l pct m (variables_of_env e) = raise failure ->
-    sstep (ExprState f l ps CMP bg pct (Eval (v,vt) ty) (Kreturn k) e te m)
+    sstep (ExprState f l ps CMP bg (Eval (v,vt) ty) (Kreturn k) e te m)
           E0 (Failstop failure (snd ps))
-| step_skip_call: forall f ps CMP bg pct k e te m,
+| step_skip_call: forall f ps CMP bg k e te m,
     is_call_cont k ->
-    sstep (State f ps CMP bg pct Sskip k e te m)
-          E0 (State f ps CMP bg pct (Sreturn None Cabs.no_loc) k e te m)
+    sstep (State f ps CMP bg Sskip k e te m)
+          E0 (State f ps CMP bg (Sreturn None Cabs.no_loc) k e te m)
           
-| step_switch: forall f ps CMP bg pct x sl l k e te m,
-    sstep (State f ps CMP bg pct (Sswitch x sl l) k e te m)
-          E0 (ExprState f l ps CMP bg pct x (Kswitch1 sl k) e te m)
-| step_expr_switch: forall f ps CMP bg pct l ty sl k e te m v vt n,
+| step_switch: forall f ps CMP bg x sl l k e te m,
+    sstep (State f ps CMP bg (Sswitch x sl l) k e te m)
+          E0 (ExprState f l ps CMP bg x (Kswitch1 sl k) e te m)
+| step_expr_switch: forall f ps CMP bg l ty sl k e te m v vt n,
     sem_switch_arg v ty = Some n ->
-    sstep (ExprState f l ps CMP bg pct (Eval (v,vt) ty) (Kswitch1 sl k) e te m)
-          E0 (State f ps CMP bg pct (seq_of_labeled_statement (select_switch n sl)) (Kswitch2 k) e te m)
-| step_skip_switch: forall f ps CMP bg pct k e te m,
-    sstep (State f ps CMP bg pct Sskip (Kswitch2 k) e te m)
-          E0 (State f ps CMP bg pct Sskip k e te m)
-| step_break_switch: forall f ps CMP bg pct l k e te m,
-    sstep (State f ps CMP bg pct (Sbreak l) (Kswitch2 k) e te m)
-          E0 (State f ps CMP bg pct Sskip k e te m)
-| step_continue_switch: forall f ps CMP bg pct l k e te m,
-    sstep (State f ps CMP bg pct (Scontinue l) (Kswitch2 k) e te m)
-          E0 (State f ps CMP bg pct (Scontinue l) k e te m)
+    sstep (ExprState f l ps CMP bg (Eval (v,vt) ty) (Kswitch1 sl k) e te m)
+          E0 (State f ps CMP bg (seq_of_labeled_statement (select_switch n sl)) (Kswitch2 k) e te m)
+| step_skip_switch: forall f ps CMP bg k e te m,
+    sstep (State f ps CMP bg Sskip (Kswitch2 k) e te m)
+          E0 (State f ps CMP bg Sskip k e te m)
+| step_break_switch: forall f ps CMP bg l k e te m,
+    sstep (State f ps CMP bg (Sbreak l) (Kswitch2 k) e te m)
+          E0 (State f ps CMP bg Sskip k e te m)
+| step_continue_switch: forall f ps CMP bg l k e te m,
+    sstep (State f ps CMP bg (Scontinue l) (Kswitch2 k) e te m)
+          E0 (State f ps CMP bg (Scontinue l) k e te m)
 
-| step_label: forall f ps CMP bg pct pct' lbl s k e te m,
-    LabelT (loc_of s) pct lbl = ret pct' ->
-    sstep (State f ps CMP bg pct (Slabel lbl s) k e te m)
-          E0 (State f ps CMP bg pct' s k e te m)
+| step_label: forall f ps CMP bg lbl s k e te m,
+    sstep (State f ps CMP bg (Slabel lbl s) k e te m)
+          E0 (State f ps CMP bg s k e te m)
 
-| step_goto: forall f ps CMP bg pct lbl l k e te m s' k',
+| step_goto: forall f ps CMP bg lbl l k e te m s' k',
     find_label lbl f.(fn_body) (call_cont k) = Some (s', k') ->
-    sstep (State f ps CMP bg pct (Sgoto lbl l) k e te m)
-          E0 (State f ps CMP bg pct s' k' e te m)
+    sstep (State f ps CMP bg (Sgoto lbl l) k e te m)
+          E0 (State f ps CMP bg s' k' e te m)
 
-| step_internal_function: forall f l ps CMP bg bg' bg'' pct pct' pct'' pct''' vft vargs k m e m' e' m'',
+| step_internal_function: forall f l ps ps' CMP bg bg' bg'' vargs k m e m' e' m'',
     list_norepet (var_names (fn_params f) ++ var_names (fn_vars f)) ->
-    CallT l pct vft = ret pct' ->
-    do_alloc_variables l CMP bg pct' empty_env m f.(fn_vars) = ret (bg', pct'', e, m') ->
-    do_init_params l CMP bg' pct'' e m' (option_zip f.(fn_params) vargs) = ret (bg'' pct''', e', m'') ->
-    sstep (Callstate (Internal f) l ps CMP bg pct vft vargs k m)
-          E0 (State f ps CMP bg pct''' f.(fn_body) k e' empty_tenv m'')
-| step_internal_function_fail1: forall f l ps CMP bg pct pct' vft vargs k m failure,
+    do_alloc_variables l CMP bg empty_env m f.(fn_vars) false ps = (Success (bg', e, m'), ps') ->
+    do_init_params l CMP bg' e m' (option_zip f.(fn_params) vargs) = ret (bg'', e', m'') ->
+    sstep (Callstate (Internal f) l ps CMP bg vargs k m)
+          E0 (State f ps CMP bg f.(fn_body) k e' empty_tenv m'')
+| step_internal_function_fail1: forall f l ps ps' CMP bg pct pct' vft vargs k m failure,
     list_norepet (var_names (fn_params f) ++ var_names (fn_vars f)) ->
-    CallT l pct vft = ret pct' ->
-    do_alloc_variables l ps CMP bg pct' empty_env m f.(fn_vars) = raise failure ->
-    sstep (Callstate (Internal f) l ps CMP bg pct vft vargs k m)
+    do_alloc_variables l CMP bg empty_env m f.(fn_vars) false ps = (Fail failure, ps') ->
+    sstep (Callstate (Internal f) l ps CMP bg vargs k m)
           E0 (Failstop failure (snd ps))
-| step_internal_function_fail2: forall f l ps CMP bg bg' pct pct' pct'' vft vargs k m e m' failure,
+| step_internal_function_fail2: forall f l ps ps' ps'' CMP bg bg' vargs k m e m' failure,
     list_norepet (var_names (fn_params f) ++ var_names (fn_vars f)) ->
-    CallT l pct vft = ret pct' ->
-    do_alloc_variables l CMP bg pct' empty_env m f.(fn_vars) = ret (bg', pct'', e, m') ->
-    do_init_params l CMP bg pct'' e m' (option_zip f.(fn_params) vargs) = raise failure ->
-    sstep (Callstate (Internal f) l ps CMP bg pct vft vargs k m)
-          E0 (Failstop failure (snd ps))
+    do_alloc_variables l CMP bg empty_env m f.(fn_vars) false ps = (Success (bg', e, m'), ps') ->
+    do_init_params l CMP bg e m' (option_zip f.(fn_params) vargs) ps' = (Fail failure, ps'') ->
+    sstep (Callstate (Internal f) l ps CMP bg vargs k m)
+          E0 (Failstop failure (snd ps''))
 
 | step_external_function: forall l ef ps CMP bg pct vft pct' targs tres cc vargs k m vres t m',
-    external_call l ef ps (L CMP) ge vargs pct vft m t (ret (vres, pct', m')) ->
-    sstep (Callstate (External ef targs tres cc) l ps CMP bg pct vft vargs k m)
-          t (Returnstate (External ef targs tres cc) ps CMP bg l pct' vres k m')
+    external_call l ef ge vargs pct vft m t (ret (vres, pct', m')) ->
+    sstep (Callstate (External ef targs tres cc) l ps CMP bg vargs k m)
+          t (Returnstate (External ef targs tres cc) ps CMP bg l vres k m')
 | step_external_function_fail0: forall l ef ps CMP bg pct vft targs tres cc vargs k m t failure,
-    external_call l ef ps (L CMP) ge vargs pct vft m t (raise failure) ->
-    sstep (Callstate (External ef targs tres cc) l ps CMP bg pct vft vargs k m)
+    external_call l ef ge vargs pct vft m t (raise failure) ->
+    sstep (Callstate (External ef targs tres cc) l ps CMP bg vargs k m)
           t (Failstop failure (snd ps))
 | step_external_function_fail1: forall l ef ps CMP bg pct vft targs tres cc vargs k m t failure,
-    external_call l ef ps (L CMP) ge vargs pct vft m t (raise failure) ->
-    sstep (Callstate (External ef targs tres cc) l ps CMP bg pct vft vargs k m)
+    external_call l ef ge vargs pct vft m t (raise failure) ->
+    sstep (Callstate (External ef targs tres cc) l ps CMP bg vargs k m)
           t (Failstop failure (snd ps))
 
-| step_returnstate: forall l v vt vt' f fd ps CMP bg pct oldloc oldpct pct' e C ty k te m,
-    RetT l pct oldpct vt = ret (pct', vt') ->
-    sstep (Returnstate fd ps CMP bg l pct (v,vt) (Kcall f e te oldloc oldpct C ty k) m)
-          E0 (ExprState f oldloc ps CMP bg pct' (C (Eval (v,vt') ty)) k e te m)
+| step_returnstate: forall l v vt vt' f fd ps CMP bg oldloc oldpct  C ty k e te m,
+    sstep (Returnstate fd ps CMP bg l (v,vt) (Kcall f e te oldloc oldpct C ty k) m)
+          E0 (ExprState f oldloc ps CMP bg (C (Eval (v,vt') ty)) k e te m)
 .
 
 Definition step (S: state) (t: trace) (S': state) : Prop :=
@@ -1056,8 +1174,8 @@ End SEM.
       Genv.find_symbol ge p.(prog_main) = Some (SymIFun _ b pt) ->
       Genv.find_funct_ptr ge b = Some f ->
       type_of_fundef f = Tfunction Tnil type_int32s cc_default ->
-      initial_state' p (Callstate f Cabs.no_loc init_comp init_bg
-                                  init_state InitPCT def_tag nil Kstop m0).
+      initial_state' p (Callstate f Cabs.no_loc (init_state,[]) init_comp init_bg
+                                  nil Kstop m0).
 
   Definition initial_state := initial_state'.
 
@@ -1071,4 +1189,3 @@ End SEM.
     Semantics_gen step (initial_state p) final_state ge ce.
 
 End CompartmentCsem.
-*)
