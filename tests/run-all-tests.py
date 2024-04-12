@@ -82,6 +82,8 @@ if __name__ == '__main__':
                           nofault_cleanexit)
     runACFileWithoutInput("allocator_basic.c", doublefree,
                           nofault_cleanexit)
+    runACFileWithoutInput("allocator_single_OOM.c", doublefree,
+                          nofault_cleanexit)
 
     print("\n\t=======\nTesting FLAllocator\n\t=======\n")
     runACFileWithoutInput("allocator_smallestpossible.c", PVI,
@@ -89,6 +91,8 @@ if __name__ == '__main__':
     runACFileWithoutInput("allocator_single.c", PVI,
                           nofault_cleanexit)
     runACFileWithoutInput("allocator_basic.c", PVI,
+                          nofault_cleanexit)
+    runACFileWithoutInput("allocator_single_OOM.c", PVI,
                           nofault_cleanexit)
     
     print("\n=======\npvi tests (without input)\n=======")
