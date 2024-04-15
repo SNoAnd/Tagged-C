@@ -1,0 +1,1340 @@
+@article{Denning77:SecureInformationFlow,
+author = {Denning, Dorothy E. and Denning, Peter J.},
+title = {Certification of Programs for Secure Information Flow},
+year = {1977},
+issue_date = {July 1977},
+publisher = {Association for Computing Machinery},
+address = {New York, NY, USA},
+volume = {20},
+number = {7},
+issn = {0001-0782},
+url = {https://doi.org/10.1145/359636.359712},
+abstract = {ertification mechanism for verifying the secure flow of information through a program. Because it exploits the properties of a lattice structure among security classes, the procedure is sufficiently simple that it can easily be included in the analysis phase of most existing compilers. Appropriate semantics are presented and proved correct. An important application is the confinement problem: The mechanism can prove that a program cannot cause supposedly nonconfidential results to depend on confidential input data.},
+journal = {Commun. ACM},
+month = jul,
+pages = {504–513},
+numpages = {10},
+keywords = {program certification, confinement, information flow, security, lattice, protection, security classes}
+}
+
+@article{Denning76:SFIlattice,
+author = {Denning, Dorothy E.},
+title = {A Lattice Model of Secure Information Flow},
+year = {1976},
+issue_date = {May 1976},
+publisher = {Association for Computing Machinery},
+address = {New York, NY, USA},
+volume = {19},
+number = {5},
+issn = {0001-0782},
+url = {https://doi.org/10.1145/360051.360056},
+abstract = {This paper investigates mechanisms that guarantee secure information flow in a computer system. These mechanisms are examined within a mathematical framework suitable for formulating the requirements of secure information flow among security classes. The central component of the model is a lattice structure derived from the security classes and justified by the semantics of information flow. The lattice properties permit concise formulations of the security requirements of different existing systems and facilitate the construction of mechanisms that enforce security. The model provides a unifying view of all systems that restrict information flow, enables a classification of them according to security objectives, and suggests some new approaches. It also leads to the construction of automatic program certification mechanisms for verifying the secure flow of information through a program.},
+journal = {Commun. ACM},
+month = may,
+pages = {236–243},
+numpages = {8},
+keywords = {protection, program certification, security class, lattice, security, information flow}
+}
+
+                  
+@misc{coq,
+author = {{Coq Team}},
+title = {The {Coq} Proof Assistant},
+url={https://coq.inria.fr}
+}
+
+@inproceedings{Chhak21:Tagine,
+author = {Chhak, CHR and Tolmach, Andrew and Anderson, Sean},
+title = {Towards Formally Verified Compilation of Tag-Based Policy Enforcement},
+year = {2021},
+isbn = {9781450382991},
+url = {https://doi.org/10.1145/3437992.3439929},
+abstract = {Hardware-assisted reference monitoring is receiving increasing attention as a way to improve the security of existing software. One example is the PIPE architecture extension, which attaches metadata tags to register and memory values and executes tag-based rules at each machine instruction to enforce a software-defined security policy. To use PIPE effectively, engineers should be able to write security policies in terms of source-level concepts like functions, local variables, and structured control operators, which are not visible at machine level. It is the job of the compiler to generate PIPE-aware machine code that enforces these source-level policies. The compiler thus becomes part of the monitored system’s trusted computing base---and hence a prime candidate for verification. To formalize compiler correctness in this setting, we extend the source language semantics with its own form of user-specified tag-based monitoring, and show that the compiler preserves that monitoring behavior. The challenges of compilation include mapping source-level monitoring policies to instruction-level tag rules, preserving fail-stop behaviors, and satisfying the surprisingly complex preconditions for conventional optimizations. In this paper, we describe the design and verification of Tagine, a small prototype compiler that translates a simple tagged WHILE language to a tagged register transfer language and performs simple optimizations. Tagine is based on the RTLgen and Deadcode phases of the CompCert compiler, and hence is written and verified in Coq. This work is a first step toward verification of a full-scale compiler for a realistic tagged source language.},
+booktitle = {Proceedings of the 10th ACM SIGPLAN International Conference on Certified Programs and Proofs},
+pages = {137–151},
+numpages = {15},
+keywords = {tag-based secure hardware, reference monitors, verified compilers, Coq proof assistant},
+location = {Virtual, Denmark},
+}
+% series = {CPP 2021}
+%publisher = {Association for Computing Machinery},
+%address = {New York, NY, USA},
+
+@inproceedings{Dhawan14:PUMP,
+    title = {{PUMP: A Programmable Unit for Metadata Processing}},
+    year = {2014},
+    booktitle = {Proceedings of the Third Workshop on Hardware and Architectural Support for Security and Privacy},
+    author = {Dhawan, Udit and Vasilakis, Nikos and Rubin, Raphael and Chiricescu, Silviu and Smith, Jonathan M and Knight Jr., Thomas F and Pierce, Benjamin C and DeHon, André},
+    pages = {8:1–8:8},
+    series = {HASP '14},
+    publisher = {ACM},
+    url = {http://doi.acm.org/10.1145/2611765.2611773},
+    address = {New York, NY, USA},
+    isbn = {978-1-4503-2777-0},
+    keywords = {control-flow integrity, memory safety, metadata, security, tagged architecture, taint tracking}
+}
+
+@INPROCEEDINGS{NWF20:Cornucopia,  author={Wesley Filardo, Nathaniel and Gutstein, Brett F. and Woodruff, Jonathan and Ainsworth, Sam and Paul-Trifu, Lucian and Davis, Brooks and Xia, Hongyan and Tomasz Napierala, Edward and Richardson, Alexander and Baldwin, John and Chisnall, David and Clarke, Jessica and Gudka, Khilan and Joannou, Alexandre and Theodore Markettos, A. and Mazzinghi, Alfredo and Norton, Robert M. and Roe, Michael and Sewell, Peter and Son, Stacey and Jones, Timothy M. and Moore, Simon W. and Neumann, Peter G. and Watson, Robert N. M.},  booktitle={2020 IEEE Symposium on Security and Privacy (SP)},   title={Cornucopia: Temporal Safety for {CHERI} Heaps},   year={2020},  volume={},  number={},  pages={608-625},  doi={10.1109/SP40000.2020.00098}}
+
+@article{Skorstengaard19:stktokens,
+  title={{StkTokens: Enforcing Well-bracketed Control Flow and Stack Encapsulation using Linear Capabilities}},
+  author={Skorstengaard, Lau and Devriese, Dominique and Birkedal, Lars},
+  journal={Proceedings of the ACM on Programming Languages},
+  volume={3},
+  number={POPL},
+  pages={1--28},
+  year={2019},
+  publisher={ACM New York, NY, USA}
+}
+
+@techreport{Anderson72:PlanningStudy,
+  author = {Anderson, James P.},
+  title = {Computer security technology planning study},
+  type = {Technical Report},
+  number = {ESD-TR-73-51},
+  institution = {U.S. Air Force Electronic Systems Division},
+  month = oct,
+  year = {1972},
+  url = {http://csrc.nist.gov/publications/history/ande72.pdf},
+}
+
+                  
+@inproceedings{Goguen82:SecurityPolicies,
+  added-at = {2016-06-15T00:00:00.000+0200},
+  author = {Goguen, Joseph A. and Meseguer, José},
+  booktitle = {IEEE Symposium on Security and Privacy},
+  ee = {http://doi.ieeecomputersociety.org/10.1109/SP.1982.10014},
+  isbn = {0-8186-0410-7},
+  keywords = {dblp},
+  pages = {11-20},
+  publisher = {IEEE Computer Society},
+  title = {Security Policies and Security Models.},
+  url = {http://dblp.uni-trier.de/db/conf/sp/sp1982.html#GoguenM82a},
+  year = 1982
+}
+
+@phdthesis{Erlingsson04:IRM,
+  author       = {{\'{U}}lfar Erlingsson},
+  title        = {The Inlined Reference Monitor Approach to Security Policy Enforcement},
+  school       = {Cornell University, {USA}},
+  year         = {2004},
+  timestamp    = {Wed, 30 Mar 2022 16:07:49 +0200},
+  biburl       = {https://dblp.org/rec/phd/us/Erlingsson04.bib},
+  bibsource    = {dblp computer science bibliography, https://dblp.org}
+}
+
+﻿@phdthesis{Lundblad13:IRM,
+   author = {Lundblad, Andreas},
+   institution = {KTH, Theoretical Computer Science, TCS},
+   note = {{QC} 20130220},
+   pages = {viii, 20},
+   school = {KTH, Theoretical Computer Science, TCS},
+   title = {Inlined Reference Monitors : Certification,Concurrency and Tree Based Monitoring},
+   series = {Trita-CSC-A},
+   ISSN = {1653-5723},
+   number = {2013:01},
+   keywords = {Runtime monitoring, policy enforcement, tree automata, monitor inlining, certification, concurrency},
+   abstract = {Reference monitor inlining is a technique for enforcing security policies by injecting security checks into the untrusted software in a style similar to aspect-oriented programming. The intention is that the injected code enforces compliance with the policy (security), without adding behavior (conservativity) or affecting existing policy compliant behavior (transparency). This thesis consists of four papers which covers a range of topics including formalization of monitor inlining correctness properties, certification of inlined monitors, limitations in multithreaded settings and extensions using data-flow monitoring. The first paper addresses the problem of having a potentially complex program rewriter as part of the trusted computing base. By means of proof-carrying code we show how the inliner can be replaced by a relatively simple proof-checker. This technique also enables the use of monitor inlining for quality assurance at development time, while minimizing the need for post-shipping code rewrites. The second paper focuses on the issues associated with monitor inlining in a concurrent setting. Specifically, it discusses the problem of maintaining transparency when introducing locks for synchronizing monitor state reads and updates. Due to Java's relaxed memory model, it turns out to be impossible for a monitor to be entirely transparent without sacrificing the security property. To accommodate for this, the paper proposes a set of new correctness properties shown to be realistic and realizable. The third paper also focuses on problems due to concurrency and identifies a class of race-free policies that precisely characterizes the set of inlineable policies. This is done by showing that inlining of a policy outside this class is either not secure or not transparent, and by exhibiting a concrete algorithm for inlining of policies inside the class which is secure, conservative, and transparent. The paper also discusses how certification in the style of proof-carrying code could be supported in multithreaded Java programs. The fourth paper formalizes a new type of data centric runtime monitoring which combines monitor inlining with taint tracking. As opposed to ordinary techniques which focus on monitoring linear flows of events, the approach presented here relies on tree shaped traces. The paper describes how the approach can be efficiently implemented and presents a denotational semantics for a simple ``while'' language illustrating how the theoretical foundations is to be used in a practical setting. Each paper is concluded by a practical evaluation of the theoretical results, based on a prototype implementation and case studies on real-world applications and policies. },
+   ISBN = {978-91-7501-654-2},
+   year = {2013}
+}
+
+@article{Bessey10:Coverity,
+author = {Bessey, Al and Block, Ken and Chelf, Ben and Chou, Andy and Fulton, Bryan and Hallem, Seth and Henri-Gros, Charles and Kamsky, Asya and McPeak, Scott and Engler, Dawson},
+title = {A Few Billion Lines of Code Later: Using Static Analysis to Find Bugs in the Real World},
+year = {2010},
+issue_date = {February 2010},
+publisher = {Association for Computing Machinery},
+address = {New York, NY, USA},
+volume = {53},
+number = {2},
+issn = {0001-0782},
+url = {https://doi.org/10.1145/1646353.1646374},
+abstract = {How Coverity built a bug-finding tool, and a business, around the unlimited supply of bugs in software systems.},
+journal = {Commun. ACM},
+month = feb,
+pages = {66–75},
+numpages = {10}
+}
+
+@article{Leroy09:CompCert,
+author = {Leroy, Xavier},
+title = {Formal Verification of a Realistic Compiler},
+year = {2009},
+issue_date = {July 2009},
+publisher = {Association for Computing Machinery},
+address = {New York, NY, USA},
+volume = {52},
+number = {7},
+issn = {0001-0782},
+url = {https://doi.org/10.1145/1538788.1538814},
+abstract = {This paper reports on the development and formal verification (proof of semantic preservation) of CompCert, a compiler from Clight (a large subset of the C programming language) to PowerPC assembly code, using the Coq proof assistant both for programming the compiler and for proving its correctness. Such a verified compiler is useful in the context of critical software and its formal verification: the verification of the compiler guarantees that the safety properties proved on the source code hold for the executable compiled code as well.},
+journal = {Commun. ACM},
+month = jul,
+pages = {107–115},
+numpages = {9}
+}
+
+@misc{Leroy23:CompCertManual,
+title = {The {CompCert} {C} verified compiler: Documentation and user's manual, Version 3.13},
+author={Xavier Leroy},
+month = jul,
+year = 2023,
+url = {https://compcert.org/man/}
+}
+
+@misc{CompCert3.10,
+title={Compcert 3.10},
+author={Xavier Leroy},
+url= {https://github.com/AbsInt/CompCert/releases/tag/v3.10}                  
+}
+
+% nice to see this no longer requires an extra package to play nicely with acm bib
+% https://www.acm.org/publications/authors/reference-formatting 
+% https://www.acm.org/publications/authors/bibtex-formatting 
+%Example from above 
+% online{Thornburg01,
+% author ={Harry Thornburg},
+% year = {2001},
+% title ={Introduction to Bayesian Statistics},
+% url ={http://ccrma.stanford.edu/~jos/bayes/bayes.html},
+% month ={mar},
+% lastaccessed ={March 2, 2005},
+%}
+
+@online{apache97:main-site,
+author ={The Apache Software Foundation},
+year = {1997},
+title ={Apache HTTP Server Project},
+url ={https://httpd.apache.org/},
+lastaccessed ={April 11, 2023},
+}
+
+% oldest comment appears to date from 2015, but I can't find an exact publication date
+ @online{Munoz:PoweredbyC,
+author ={Daniel Munoz},
+year = {}, 
+title ={After All These Years, the World is Still Powered by {C} Programming},
+url ={https://www.toptal.com/c/after-all-these-years-the-world-is-still-powered-by-c-programming},
+lastaccessed ={April 11, 2023},
+}
+
+ @online{stackoverflow22:dev-survey,
+author ={{Stack Overflow}},
+year = {2022},
+title ={2022 Stack Overflow Annual Developer Survey},
+url ={https://survey.stackoverflow.co/2022/},
+lastaccessed ={April 11, 2023},
+}
+
+@InProceedings{Askarov08:TINILeaks,
+author="Askarov, Aslan
+and Hunt, Sebastian
+and Sabelfeld, Andrei
+and Sands, David",
+editor="Jajodia, Sushil
+and Lopez, Javier",
+title="Termination-Insensitive Noninterference Leaks More Than Just a Bit",
+booktitle="Computer Security - ESORICS 2008",
+year="2008",
+publisher="Springer Berlin Heidelberg",
+address="Berlin, Heidelberg",
+pages="333--348",
+abstract="Current tools for analysing information flow in programs build upon ideas going back to Denning's work from the 70's. These systems enforce an imperfect notion of information flow which has become known as termination-insensitive noninterference. Under this version of noninterference, information leaks are permitted if they are transmitted purely by the program's termination behaviour (i.e., whether it terminates or not). This imperfection is the price to pay for having a security condition which is relatively liberal (e.g. allowing while-loops whose termination may depend on the value of a secret) and easy to check. But what is the price exactly? We argue that, in the presence of output, the price is higher than the ``one bit'' often claimed informally in the literature, and effectively such programs can leak all of their secrets. In this paper we develop a definition of termination-insensitive noninterference suitable for reasoning about programs with outputs. We show that the definition generalises ``batch-job'' style definitions from the literature and that it is indeed satisfied by a Denning-style program analysis with output. Although more than a bit of information can be leaked by programs satisfying this condition, we show that the best an attacker can do is a brute-force attack, which means that the attacker cannot reliably (in a technical sense) learn the secret in polynomial time in the size of the secret. If we further assume that secrets are uniformly distributed, we show that the advantage the attacker gains when guessing the secret after observing a polynomial amount of output is negligible in the size of the secret.",
+isbn="978-3-540-88313-5"
+}
+
+@article{Memarian16:DeFacto,
+author = {Memarian, Kayvan and Matthiesen, Justus and Lingard, James and Nienhuis, Kyndylan and Chisnall, David and Watson, Robert N. M. and Sewell, Peter},
+title = {Into the Depths of {C}: Elaborating the de Facto Standards},
+year = {2016},
+issue_date = {June 2016},
+publisher = {Association for Computing Machinery},
+address = {New York, NY, USA},
+volume = {51},
+number = {6},
+issn = {0362-1340},
+url = {https://doi.org/10.1145/2980983.2908081},
+abstract = {C remains central to our computing infrastructure. It is notionally defined by ISO standards, but in reality the properties of C assumed by systems code and those implemented by compilers have diverged, both from the ISO standards and from each other, and none of these are clearly understood. We make two contributions to help improve this error-prone situation. First, we describe an in-depth analysis of the design space for the semantics of pointers and memory in C as it is used in practice. We articulate many specific questions, build a suite of semantic test cases, gather experimental data from multiple implementations, and survey what C experts believe about the de facto standards. We identify questions where there is a consensus (either following ISO or differing) and where there are conflicts. We apply all this to an experimental C implemented above capability hardware. Second, we describe a formal model, Cerberus, for large parts of C. Cerberus is parameterised on its memory model; it is linkable either with a candidate de facto memory object model, under construction, or with an operational C11 concurrency model; it is defined by elaboration to a much simpler Core language for accessibility, and it is executable as a test oracle on small examples. This should provide a solid basis for discussion of what mainstream C is now: what programmers and analysis tools can assume and what compilers aim to implement. Ultimately we hope it will be a step towards clear, consistent, and accepted semantics for the various use-cases of C.},
+journal = {SIGPLAN Not.},
+month = jun,
+pages = {1–15},
+numpages = {15},
+keywords = {C}
+}
+
+@article{Memarian19:ExploringCSemantics,
+author = {Memarian, Kayvan and Gomes, Victor B. F. and Davis, Brooks and Kell, Stephen and Richardson, Alexander and Watson, Robert N. M. and Sewell, Peter},
+title = {Exploring {C} Semantics and Pointer Provenance},
+year = 2019,
+issue_date = {January 2019},
+publisher = {Association for Computing Machinery},
+address = {New York, NY, USA},
+volume = 3,
+number = {POPL},
+url = {https://doi.org/10.1145/3290380},
+abstract = {The semantics of pointers and memory objects in C has been a vexed question for many years. C values cannot be treated as either purely abstract or purely concrete entities: the language exposes their representations, but compiler optimisations rely on analyses that reason about provenance and initialisation status, not just runtime representations. The ISO WG14 standard leaves much of this unclear, and in some respects differs with de facto standard usage --- which itself is difficult to investigate. In this paper we explore the possible source-language semantics for memory objects and pointers, in ISO C and in C as it is used and implemented in practice, focussing especially on pointer provenance. We aim to, as far as possible, reconcile the ISO C standard, mainstream compiler behaviour, and the semantics relied on by the corpus of existing C code. We present two coherent proposals, tracking provenance via integers and not; both address many design questions. We highlight some pros and cons and open questions, and illustrate the discussion with a library of test cases. We make our semantics executable as a test oracle, integrating it with the Cerberus semantics for much of the rest of C, which we have made substantially more complete and robust, and equipped with a web-interface GUI. This allows us to experimentally assess our proposals on those test cases. To assess their viability with respect to larger bodies of C code, we analyse the changes required and the resulting behaviour for a port of FreeBSD to CHERI, a research architecture supporting hardware capabilities, which (roughly speaking) traps on the memory safety violations which our proposals deem undefined behaviour. We also develop a new runtime instrumentation tool to detect possible provenance violations in normal C code, and apply it to some of the SPEC benchmarks. We compare our proposal with a source-language variant of the twin-allocation LLVM semantics proposal of Lee et al. Finally, we describe ongoing interactions with WG14, exploring how our proposals could be incorporated into the ISO standard.},
+journal = {Proc. ACM Program. Lang.},
+month = jan,
+articleno = 67,
+numpages = 32,
+keywords = {C}
+}
+
+
+@misc{arm-mte,
+key="arm",
+title= "Armv8.5-A Memory Tagging Extension White Paper",
+url="https://developer.arm.com/-/media/Arm\%20Developer\%20Community/PDF/Arm_Memory_Tagging_Extension_Whitepaper.pdf"                  
+}
+                  
+@INPROCEEDINGS {Gollapudi+23,
+author = {R. Gollapudi and G. Yuksek and D. Demicco and M. Cole and G. N. Kothari and R. H. Kulkarni and X. Zhang and K. Ghose and A. Prakash and Z. Umrigar},
+booktitle = {2023 IEEE Symposium on Security and Privacy (SP)},
+title = {Control Flow and Pointer Integrity Enforcement in a Secure Tagged Architecture},
+year = {2023},
+volume = {},
+issn = {},
+pages = {2974-2989},
+abstract = {Control flow attacks exploit software vulnerabilities to divert the flow of control into unintended paths to ultimately execute attack code. This paper explores the use of instruction and data tagging as a general means of thwarting such control flow attacks, including attacks that rely on violating pointer integrity. Using specific types of narrow-width data tags along with narrow-width instruction tags embedded within the binary facilitates the security policies required to protect against such attacks, leading to a practically viable solution. Co-locating instruction tags close to their corresponding instructions within cache lines eliminates the need for separate mechanisms for instruction tag accesses. Information gleaned from the analysis phase of a compiler is augmented and used to generate the instruction and data tags. A full-stack implementation that consists of a modified LLVM compiler, modified Linux OS support for tags and a FPGA-implemented CPU hardware prototype for enforcing CFI, data pointer and code pointer integrity is demonstrated. With a modest hardware enhancement, the execution time of benchmark applications on the prototype system is shown to be limited to low, single-digit percentages of a baseline system without tagging.},
+keywords = {control-flow-integrity,-hardware-security,-pointer-integrity,-security-architectures,-security-and-privacy-policies},
+url = {https://doi.ieeecomputersociety.org/10.1109/SP46215.2023.00102},
+month = may
+}
+%publisher = {IEEE Computer Society},
+%address = {Los Alamitos, CA, USA},
+
+
+
+@inproceedings{Dhawan+15,
+ author = {Dhawan, Udit and Hritcu, Catalin and Rubin, Raphael and Vasilakis, Nikos and Chiricescu, Silviu and Smith, Jonathan M. and Knight,Jr., Thomas F. and Pierce, Benjamin C. and DeHon, Andre},
+ title = {Architectural Support for Software-Defined Metadata Processing},
+ booktitle = {Proceedings of the Twentieth International Conference on Architectural Support for Programming Languages and Operating Systems},
+ year = {2015},
+ isbn = {978-1-4503-2835-7},
+ location = {Istanbul, Turkey},
+ pages = {487--502},
+ numpages = {16},
+ url = {http://doi.acm.org/10.1145/2694344.2694383},
+ acmid = {2694383},
+ keywords = {CFI, memory safety, metadata, security, tagged architecture, taint tracking},
+}
+% series = {ASPLOS '15},
+%publisher = {ACM},
+% address = {New York, NY, USA},
+ 
+
+@article{Azevedo+16,
+  author    = {Arthur {Azevedo de Amorim} and
+               Nathan Collins and
+               Andr{\'{e}} DeHon and
+               Delphine Demange and
+               Catalin Hritcu and
+               David Pichardie and
+               Benjamin C. Pierce and
+               Randy Pollack and
+               Andrew Tolmach},
+  title     = {A verified information-flow architecture},
+  journal   = {Journal of Computer Security},
+  volume    = {24},
+  number    = {6},
+  pages     = {689--734},
+  year      = {2016},
+  url       = {http://dx.doi.org/10.3233/JCS-15784},
+  timestamp = {Thu, 08 Dec 2016 18:00:27 +0100},
+  biburl    = {http://dblp.uni-trier.de/rec/bib/journals/jcs/AmorimCDDHPPPT16},
+  bibsource = {dblp computer science bibliography, http://dblp.org}
+}
+
+@inproceedings{Azevedo+15,
+  title = {Micro-Policies: Formally Verified, Tag-Based Security Monitors},
+  author = {Arthur {Azevedo de Amorim} and Maxime Dénès and Nick Giannarakis and Catalin Hritcu and Benjamin C. Pierce and Antal Spector-Zabusky and Andrew P. Tolmach},
+  month = may,
+  year = {2015},
+  url = {http://dx.doi.org/10.1109/SP.2015.55},
+  researchr = {https://researchr.org/publication/AmorimDGHPST15},
+  cites = {0},
+  citedby = {0},
+  pages = {813-830},
+  booktitle = {2015 IEEE Symposium on Security and Privacy},
+}
+%  booktitle = {2015 IEEE Symposium on Security and Privacy, SP 2015, San Jose, CA, USA, May 17-21, 2015},
+%  publisher = {IEEE Computer Society},
+%  isbn = {978-1-4673-6949-7},
+                  
+@inproceedings{Dhawan+14,
+    title = {{PUMP: A Programmable Unit for Metadata Processing}},
+    year = {2014},
+    booktitle = {Proceedings of the Third Workshop on Hardware and Architectural Support for Security and Privacy},
+    author = {Dhawan, Udit and Vasilakis, Nikos and Rubin, Raphael and Chiricescu, Silviu and Smith, Jonathan M and Knight Jr., Thomas F and Pierce, Benjamin C and DeHon, André},
+    pages = {8:1–8:8},
+    series = {HASP '14},
+    publisher = {ACM},
+    url = {http://doi.acm.org/10.1145/2611765.2611773},
+    address = {New York, NY, USA},
+    isbn = {978-1-4503-2777-0},
+    keywords = {control-flow integrity, memory safety, metadata, security, tagged architecture, taint tracking}
+}
+
+@misc{Dover20,
+author="{Dover Microsystems}",
+title="Coreguard Overview",
+url="https://www.dovermicrosystems.com/solutions/coreguard/"
+}
+
+@misc{DraperISP,
+author="Draper Laboratories",
+title="Inherently Secure Processor",
+url="https://www.draper.com/explore-solutions/inherently-secure-processor",
+}                  
+
+@InProceedings{Dover16,
+  author =	 {
+  Andr\'{e} DeHon and
+    Eli Boling and
+    Rishiyur Nikhil and
+    Darius Rad and
+    Julie Schwarz and
+    Niraj Sharma and
+    Joseph Stoy and
+    Greg Sullivan and
+    Andrew Sutherland
+  },
+  title =	 {{DOVER}: {A} {M}etadata-{E}xtended {RISC-V}},
+  month =	 jan,
+  year =	 2016,
+  url = {http://riscv.org/wp-content/uploads/2016/01/Wed1430-dover_riscv_jan2016_v3.pdf},
+  booktitle =	 {RISC-V Workshop}
+}
+
+
+@inproceedings{RoesslerD18,
+  author    = {Nick Roessler and
+               Andr{\'{e}} DeHon},
+  title     = {Protecting the Stack with Metadata Policies and Tagged Hardware},
+  booktitle = {Proc. 2018 {IEEE} Symposium on Security and Privacy, {SP} 2018},
+  pages     = {478--495},
+  year      = {2018},
+  url       = {https://doi.org/10.1109/SP.2018.00066},
+  timestamp = {Wed, 16 Oct 2019 14:14:51 +0200},
+  biburl    = {https://dblp.org/rec/bib/conf/sp/RoesslerD18},
+  bibsource = {dblp computer science bibliography, https://dblp.org}
+}
+
+@inproceedings{Clause07:MemsafeTainting,
+author = {Clause, James and Doudalis, Ioannis and Orso, Alessandro and Prvulovic, Milos},
+title = {Effective Memory Protection Using Dynamic Tainting},
+year = {2007},
+isbn = {9781595938824},
+url = {https://doi.org/10.1145/1321631.1321673},
+abstract = {Programs written in languages that provide direct access tomemory through pointers often contain memory-related faults, which may cause non-deterministic failures and even security vulnerabilities. In this paper, we present a new technique based on dynamic tainting for protecting programs from illegal memory accesses. When memory is allocated, at runtime, our technique taints both the memory and the corresponding pointer using the same taint mark. Taint marks are then suitably propagated while the program executes and are checked every time a memory address m is accessed through a pointer p; if the taint marks associated with mand p differ, the execution is stopped and the illegalaccess is reported. To allow for a low-overhead, hardware-assisted implementation of the approach, we make several key technical and engineering decisions in the definition of our technique. In particular, we use a configurable, low number of reusable taint marks instead of a unique mark for each area of memory allocated, which reduces the overhead of the approach without limiting its flexibility and ability to target most memory-related faults and attacks known to date. We also define the technique at the binary level, which lets us handle the (very) common case of applications that use third-party libraries whose source code is unavailable. To investigate the effectiveness and practicality of our approach, we implemented it for heap-allocated memory and performed a preliminary empirical study on a set of programs. Our results show that (1) our technique can identify a large class of memory-related faults, even when using only two unique taint marks, and (2)a hardware-assisted implementation of the technique could achieve overhead in the single digits},
+booktitle = {Proceedings of the 22nd IEEE/ACM International Conference on Automated Software Engineering},
+pages = {284–292},
+numpages = {9},
+keywords = {hardware support, illegal memory accesses, dynamic tainting},
+location = {Atlanta, Georgia, USA},
+}
+%publisher = {Association for Computing Machinery},
+%series = {ASE '07}
+%address = {New York, NY, USA},
+
+@article{Michael23:MSWASM,
+author = {Michael, Alexandra E. and Gollamudi, Anitha and Bosamiya, Jay and Johnson, Evan and Denlinger, Aidan and Disselkoen, Craig and Watt, Conrad and Parno, Bryan and Patrignani, Marco and Vassena, Marco and Stefan, Deian},
+title = {{MSWasm}: Soundly Enforcing Memory-Safe Execution of Unsafe Code},
+year = {2023},
+issue_date = {January 2023},
+publisher = {Association for Computing Machinery},
+address = {New York, NY, USA},
+volume = {7},
+number = {POPL},
+url = {https://doi.org/10.1145/3571208},
+abstract = {Most programs compiled to WebAssembly (Wasm) today are written in unsafe languages like C and C++. Unfortunately, memory-unsafe C code remains unsafe when compiled to Wasm—and attackers can exploit buffer overflows and use-after-frees in Wasm almost as easily as they can on native platforms. Memory- Safe WebAssembly (MSWasm) proposes to extend Wasm with language-level memory-safety abstractions to precisely address this problem. In this paper, we build on the original MSWasm position paper to realize this vision. We give a precise and formal semantics of MSWasm, and prove that well-typed MSWasm programs are, by construction, robustly memory safe. To this end, we develop a novel, language-independent memory-safety property based on colored memory locations and pointers. This property also lets us reason about the security guarantees of a formal C-to-MSWasm compiler—and prove that it always produces memory-safe programs (and preserves the semantics of safe programs). We use these formal results to then guide several implementations: Two compilers of MSWasm to native code, and a C-to-MSWasm compiler (that extends Clang). Our MSWasm compilers support different enforcement mechanisms, allowing developers to make security-performance trade-offs according to their needs. Our evaluation shows that on the PolyBenchC suite, the overhead of enforcing memory safety in software ranges from 22% (enforcing spatial safety alone) to 198% (enforcing full memory safety), and 51.7% when using hardware memory capabilities for spatial safety and pointer integrity. More importantly, MSWasm’s design makes it easy to swap between enforcement mechanisms; as fast (especially hardware-based) enforcement techniques become available, MSWasm will be able to take advantage of these advances almost for free.},
+journal = {Proc. ACM Program. Lang.},
+month = jan,
+articleno = {15},
+numpages = {30},
+keywords = {Secure Compilation, Memory-safety, WebAssembly, Semantics}
+}
+
+
+% google claims 300, acm 100, contains the phrase "We present CHERI"
+@article{10.1145/2678373.2665740,
+author = {Woodruff, Jonathan and Watson, Robert N.M. and Chisnall, David and Moore, Simon W. and Anderson, Jonathan and Davis, Brooks and Laurie, Ben and Neumann, Peter G. and Norton, Robert and Roe, Michael},
+title = {The {CHERI} Capability Model: Revisiting {RISC} in an Age of Risk},
+year = {2014},
+issue_date = {June 2014},
+publisher = {Association for Computing Machinery},
+address = {New York, NY, USA},
+volume = {42},
+number = {3},
+issn = {0163-5964},
+url = {https://doi.org/10.1145/2678373.2665740},
+abstract = {Motivated by contemporary security challenges, we reevaluate and refine capability-based addressing for the RISC era. We present CHERI, a hybrid capability model that extends the 64-bit MIPS ISA with byte-granularity memory protection. We demonstrate that CHERI enables language memory model enforcement and fault isolation in hardware rather than software, and that the CHERI mechanisms are easily adopted by existing programs for efficient in-program memory safety. In contrast to past capability models, CHERI complements, rather than replaces, the ubiquitous page-based protection mechanism, providing a migration path towards deconflating data-structure protection and OS memory management. Furthermore, CHERI adheres to a strict RISC philosophy: it maintains a load-store architecture and requires only singlecycle instructions, and supplies protection primitives to the compiler, language runtime, and operating system. We demonstrate a mature FPGA implementation that runs the FreeBSD operating system with a full range of software and an open-source application suite compiled with an extended LLVM to use CHERI memory protection. A limit study compares published memory safety mechanisms in terms of instruction count and memory overheads. The study illustrates that CHERI is performance-competitive even while providing assurance and greater flexibility with simpler hardware},
+journal = {SIGARCH Comput. Archit. News},
+month = jun,
+pages = {457–468},
+numpages = {12}
+}
+
+@inproceedings{Woodruff14:IntroCHERI,
+author = {Woodruff, Jonathan and Watson, Robert N.M. and Chisnall, David and Moore, Simon W. and Anderson, Jonathan and Davis, Brooks and Laurie, Ben and Neumann, Peter G. and Norton, Robert and Roe, Michael},
+title = {The {CHERI} Capability Model: Revisiting {RISC} in an Age of Risk},
+year = {2014},
+isbn = {9781479943944},
+publisher = {IEEE Press},
+abstract = {Motivated by contemporary security challenges, we reevaluate and refine capability-based addressing for the RISC era. We present CHERI, a hybrid capability model that extends the 64-bit MIPS ISA with byte-granularity memory protection. We demonstrate that CHERI enables language memory model enforcement and fault isolation in hardware rather than software, and that the CHERI mechanisms are easily adopted by existing programs for efficient in-program memory safety. In contrast to past capability models, CHERI complements, rather than replaces, the ubiquitous page-based protection mechanism, providing a migration path towards deconflating data-structure protection and OS memory management. Furthermore, CHERI adheres to a strict RISC philosophy: it maintains a load-store architecture and requires only singlecycle instructions, and supplies protection primitives to the compiler, language runtime, and operating system. We demonstrate a mature FPGA implementation that runs the FreeBSD operating system with a full range of software and an open-source application suite compiled with an extended LLVM to use CHERI memory protection. A limit study compares published memory safety mechanisms in terms of instruction count and memory overheads. The study illustrates that CHERI is performance-competitive even while providing assurance and greater flexibility with simpler hardware},
+booktitle = {Proceeding of the 41st Annual International Symposium on Computer Architecuture},
+pages = {457–468},
+numpages = {12},
+location = {Minneapolis, Minnesota, USA},
+series = {ISCA '14}
+}
+
+@INPROCEEDINGS{Watson15:CHERIcompartments,
+
+  author={Watson, Robert N.M. and Woodruff, Jonathan and Neumann, Peter G. and Moore, Simon W. and Anderson, Jonathan and Chisnall, David and Dave, Nirav and Davis, Brooks and Gudka, Khilan and Laurie, Ben and Murdoch, Steven J. and Norton, Robert and Roe, Michael and Son, Stacey and Vadera, Munraj},
+  booktitle={2015 IEEE Symposium on Security and Privacy}, 
+  title={CHERI: A Hybrid Capability-System Architecture for Scalable Software Compartmentalization}, 
+  year={2015},
+  volume={},
+  number={},
+  pages={20-37},
+  doi={10.1109/SP.2015.9}
+  }
+
+
+% 200+ citations, cited by several cheri papers
+% per word level protection (8 bits) mostly interested in OS,VM
+%"we believe the need for flexible, efficient, fine-grained memory protection and sharing has been neglected in modem computing
+% systems."
+% many of the others are cfi focused
+@inproceedings{Witchel02:MondrianMem,
+author = {Witchel, Emmett and Cates, Josh and Asanovi\'{c}, Krste},
+title = {Mondrian Memory Protection},
+year = {2002},
+isbn = {1581135742},
+publisher = {Association for Computing Machinery},
+address = {New York, NY, USA},
+url = {https://doi.org/10.1145/605397.605429},
+abstract = {Mondrian memory protection (MMP) is a fine-grained protection scheme that allows multiple protection domains to flexibly share memory and export protected services. In contrast to earlier page-based systems, MMP allows arbitrary permissions control at the granularity of individual words. We use a compressed permissions table to reduce space overheads and employ two levels of permissions caching to reduce run-time overheads. The protection tables in our implementation add less than 9% overhead to the memory space used by the application. Accessing the protection tables adds than 8% additional memory references to the accesses made by the application. Although it can be layered on top of demand-paged virtual memory, MMP is also well-suited to embedded systems with a single physical address space. We extend MMP to support segment translation which allows a memory segment to appear at another location in the address space. We use this translation to implement zero-copy networking underneath the standard read system call interface, where packet payload fragments are connected together by the translation system to avoid data copying. This saves 52% of the memory references used by a traditional copying network stack.},
+booktitle = {Proceedings of the 10th International Conference on Architectural Support for Programming Languages and Operating Systems},
+pages = {304–316},
+numpages = {13},
+location = {San Jose, California},
+series = {ASPLOS X}
+}
+
+@book{USDoD85:OrangeBook,
+author = {},
+title = {Trusted Computer System Evaluation Criteria},
+year = {1985},
+isbn = { DOD 5200.28-STD},
+publisher = {United States Department of Defense},
+}
+
+@inproceedings{Havelund08:RVC,
+author = {Havelund, Klaus},
+year = {2008},
+month = {01},
+pages = {7-22},
+title = {Runtime Verification of {C} Programs},
+volume = {5047},
+isbn = {978-3-540-68514-2},
+doi = {10.1007/978-3-540-68524-1_3}
+}
+
+@techreport{Ball02:slic,
+author = {Ball, Thomas and Rajamani, Sriram},
+title = {{SLIC}: A Specification Language for Interface Checking (of {C})},
+year = {2002},
+month = {January},
+abstract = {Modern software systems are built by a multitude of programmers using application program interfaces (APIs). When a software system is built using APIs, there are several classes of problems that can hamper its dependability: a client P of an API may use it improperly; an implementation L may not properly implement the API. There are many requirements on both the client and implementer of an API that are typically stated only in the documentation for the API. Currently, only a small portion of these requirements |namely, the number of arguments of a function, and the types of each argument and return value| are stated in the header file for the API and checked for agreement at call sites by the compiler. We wish to express temporal safety requirements [15] on the API, such as rules about ordering of function calls with associated constraints on the data values visible at the API boundary, and automatically check (statically or dynamically) if these requirements are satisfied by the client and the implementer of the API.},
+url = {https://www.microsoft.com/en-us/research/publication/slic-a-specification-language-for-interface-checking-of-c/},
+pages = {12},
+number = {MSR-TR-2001-21},
+}
+
+@inproceedings{Havelund22:LogScope,
+author = {Havelund, Klaus},
+title = {Specification-Based Monitoring In {C++}},
+year = {2022},
+isbn = {978-3-031-19848-9},
+publisher = {Springer-Verlag},
+url = {https://doi.org/10.1007/978-3-031-19849-6_5},
+abstract = {Software systems cannot in general be assumed proven correct before deployment. Testing is still the most common approach to demonstrate a satisfactory level of correctness. However, some errors will survive verification efforts, and it is therefore reasonable to monitor a system after deployment, to determine whether it executes correctly. Both for testing and post-deployment monitoring, it may be desirable to be able to formalize correctness properties that can be monitored against program executions. This is also referred to as runtime verification. We present a specification language and a monitoring system for monitoring such specifications against event streams. The monitoring engine front-end, written in Scala, translates the specification to C++, whereas the back-end (the monitoring engine), written in C++, interprets the generated C++ monitor on an event stream. This makes it feasible to monitor the execution of C and C++ programs online.},
+booktitle = {Leveraging Applications of Formal Methods, Verification and Validation. Verification Principles: 11th International Symposium, ISoLA 2022, Proceedings, Part I},
+pages = {65–87},
+numpages = {23},
+location = {Rhodes, Greece}
+}
+%booktitle = {Leveraging Applications of Formal Methods, Verification and Validation. Verification Principles: 11th International Symposium, ISoLA 2022, Rhodes, Greece, October 22–30, 2022, Proceedings, Part I},
+%address = {Berlin, Heidelberg},
+
+@article{Schneider00:Automata,
+author = {Schneider, Fred B.},
+title = {Enforceable Security Policies},
+year = {2000},
+issue_date = {Feb. 2000},
+publisher = {Association for Computing Machinery},
+address = {New York, NY, USA},
+volume = {3},
+number = {1},
+issn = {1094-9224},
+url = {https://doi.org/10.1145/353323.353382},
+abstract = {A precise characterization is given for the class of security policies enforceable with mechanisms that work by monitoring system execution, and automata are introduced for specifying exactly that class of security policies. Techniques to enforce security policies specified by such automata are also discussed.},
+journal = {ACM Trans. Inf. Syst. Secur.},
+month = {feb},
+pages = {30–50},
+numpages = {21},
+keywords = {proof carrying code, EM security policies, security automata, inlined reference monitors, safety properties, security policies, SASI}
+}
+
+@InProceedings{Kiczales97:AOP,
+author="Kiczales, Gregor
+and Lamping, John
+and Mendhekar, Anurag
+and Maeda, Chris
+and Lopes, Cristina
+and Loingtier, Jean-Marc
+and Irwin, John",
+editor="Ak{\c{s}}it, Mehmet
+and Matsuoka, Satoshi",
+title="Aspect-oriented programming",
+booktitle="ECOOP'97 --- Object-Oriented Programming",
+year="1997",
+publisher="Springer",
+pages="220--242",
+abstract="We have found many programming problems for which neither procedural nor object-oriented programming techniques are sufficient to clearly capture some of the important design decisions the program must implement. This forces the implementation of those design decisions to be scattered throughout the code, resulting in ``tangled'' code that is excessively difficult to develop and maintain. We present an analysis of why certain design decisions have been so difficult to clearly capture in actual code. We call the properties these decisions address aspects, and show that the reason they have been hard to capture is that they cross-cut the system's basic functionality. We present the basis for a new programming technique, called aspect-oriented programming, that makes it possible to clearly express programs involving such aspects, including appropriate isolation, composition and reuse of the aspect code. The discussion is rooted in systems we have built using aspect-oriented programming.",
+isbn="978-3-540-69127-3"
+}
+%editor="Ak{\c{s}}it, Mehmet
+%and Matsuoka, Satoshi",
+%address="Berlin, Heidelberg",
+
+@article{Lampson74:Protection,
+author = {Lampson, Butler W.},
+title = {Protection},
+year = {1974},
+issue_date = {January 1974},
+publisher = {Association for Computing Machinery},
+address = {New York, NY, USA},
+volume = {8},
+number = {1},
+issn = {0163-5980},
+url = {https://doi.org/10.1145/775265.775268},
+abstract = {Abstract models are given which reflect the properties of most existing mechanisms for enforcing protection or access control, together with some possible implementations. The properties of existing systems are explicated in terms of the model and implementations.},
+journal = {SIGOPS Oper. Syst. Rev.},
+month = {Jan},
+pages = {18–24},
+numpages = {7}
+}
+
+@article{Leroy09:CompCertBackend,
+author = {Leroy, Xavier},
+title = {A Formally Verified Compiler Back-End},
+year = {2009},
+issue_date = {December  2009},
+publisher = {Springer-Verlag},
+address = {Berlin, Heidelberg},
+volume = {43},
+number = {4},
+issn = {0168-7433},
+url = {https://doi.org/10.1007/s10817-009-9155-4},
+abstract = {This article describes the development and formal verification (proof of semantic preservation) of a compiler back-end from Cminor (a simple imperative intermediate language) to PowerPC assembly code, using the Coq proof assistant both for programming the compiler and for proving its soundness. Such a verified compiler is useful in the context of formal methods applied to the certification of critical software: the verification of the compiler guarantees that the safety properties proved on the source code hold for the executable compiled code as well.},
+journal = {J. Autom. Reason.},
+month = {dec},
+pages = {363–446},
+numpages = {84},
+keywords = {The Coq theorem prover, Semantic preservation, Program proof, Formal methods, Compiler verification, Compiler transformations and optimizations}
+}
+
+@techreport{Leroy12:CompCertMM,
+  TITLE = {{The CompCert Memory Model, Version 2}},
+  AUTHOR = {Leroy, Xavier and Appel, Andrew W. and Blazy, Sandrine and Stewart, Gordon},
+  URL = {https://hal.inria.fr/hal-00703441},
+  TYPE = {Research Report},
+  NUMBER = {RR-7987},
+  PAGES = {26},
+  INSTITUTION = {{INRIA}},
+  YEAR = {2012},
+  MONTH = Jun,
+  KEYWORDS = {Memory models ; formal semantics ; verified compilation ; CompCert},
+  PDF = {https://hal.inria.fr/hal-00703441/file/RR-7987.pdf},
+  HAL_ID = {hal-00703441},
+  HAL_VERSION = {v1},
+}
+
+@article{Blazy09:CompCertClight,
+  author       = {Sandrine Blazy and
+                  Xavier Leroy},
+  title        = {Mechanized Semantics for the Clight Subset of the {C} Language},
+  journal      = {J. Autom. Reason.},
+  volume       = {43},
+  number       = {3},
+  pages        = {263--288},
+  year         = {2009},
+  url          = {https://doi.org/10.1007/s10817-009-9148-3},
+  timestamp    = {Wed, 02 Sep 2020 13:30:03 +0200},
+  biburl       = {https://dblp.org/rec/journals/jar/BlazyL09.bib},
+  bibsource    = {dblp computer science bibliography, https://dblp.org}
+}
+
+@inproceedings{Cassel19:FlowNotation,
+author = {Cassel, Darion and Huang, Yan and Jia, Limin},
+title = {Uncovering Information Flow Policy Violations in {C} Programs (Extended Abstract)},
+year = {2019},
+isbn = {978-3-030-29961-3},
+publisher = {Springer-Verlag},
+url = {https://doi.org/10.1007/978-3-030-29962-0_2},
+abstract = {Programmers of cryptographic applications written in C need to avoid common mistakes such as sending private data over public channels or improperly ordering protocol steps. These secrecy, integrity, and sequencing policies can be cumbersome to check with existing general-purpose tools. We have developed a novel means of specifying and uncovering violations of these policies that allows for a much lighter-weight approach than previous tools. We embed the policy annotations in C’s type system via a source-to-source translation and leverage existing C compilers to check for policy violations, achieving high performance and scalability. We show through case studies of recent cryptographic libraries and applications that our work is able to express detailed policies for large bodies of C code and can find subtle policy violations. We show formal connections between the policy annotations and an information flow type system and prove a noninterference guarantee of our design.},
+booktitle = {Proc. Computer Security – ESORICS 2019, Part II},
+pages = {26–46},
+numpages = {21},
+keywords = {Information flow, Type systems, Security},
+location = {Luxembourg, Luxembourg}
+}
+% address = {Berlin, Heidelberg},
+%: 24th European Symposium on Research in Computer Security, Luxembourg, September 23–27, 2019, Proceedings, Part II},
+
+@inproceedings{Tsampas2017:TowardsAC,
+  title={Towards Automatic Compartmentalization of {C} Programs on Capability Machines},
+  author={Stelios Tsampas and Akram El-Korashy and Marco Patrignani and Dominique Devriese and Deepak Garg and Frank Piessens},
+  year={2017},
+  url={https://api.semanticscholar.org/CorpusID:32838507}
+}
+
+
+@INPROCEEDINGS{Sullivan+17,
+  author={Sullivan, Gregory T. and DeHon, André and Milburn, Steven and Boling, Eli and Ciaffi, Marco and Rosenberg, Jothy and Sutherland, Andrew},
+  booktitle={2017 IEEE International Symposium on Technologies for Homeland Security (HST)}, 
+  title={The Dover inherently secure processor}, 
+  year={2017},
+  volume={},
+  number={},
+  pages={1-5},
+  doi={10.1109/THS.2017.7943502}}
+
+
+@INPROCEEDINGS{Chabot+15,
+  author={Chabot, Martial and Mazet, Kevin and Pierre, Laurence},
+  booktitle={2015 ACM/IEEE International Conference on Formal Methods and Models for Codesign (MEMOCODE)}, 
+  title={Automatic and configurable instrumentation of C programs with temporal assertion checkers}, 
+  year={2015},
+  volume={},
+  number={},
+  pages={208-217},
+  doi={10.1109/MEMCOD.2015.7340488}}
+
+@inproceedings{engler2000checking,
+  title={Checking System Rules Using System-Specific, Programmer-Written Compiler Extensions.},
+  author={Engler, Dawson R and Chelf, Benjamin and Chou, Andy and Hallem, Seth},
+  booktitle={OSDI},
+  pages={1--16},
+  year={2000}
+}
+}
+
+@inproceedings{Austin12:Facets,
+author = {Austin, Thomas H. and Flanagan, Cormac},
+title = {Multiple Facets for Dynamic Information Flow},
+year = 2012,
+isbn = 9781450310833,
+publisher = {Association for Computing Machinery},
+url = {https://doi.org/10.1145/2103656.2103677},
+abstract = {JavaScript has become a central technology of the web, but it is also the source of many security problems, including cross-site scripting attacks and malicious advertising code. Central to these problems is the fact that code from untrusted sources runs with full privileges. We implement information flow controls in Firefox to help prevent violations of data confidentiality and integrity. Most previous information flow techniques have primarily relied on either static type systems, which are a poor fit for JavaScript, or on dynamic analyses that sometimes get stuck due to problematic implicit flows, even in situations where the target web application correctly satisfies the desired security policy. We introduce faceted values, a new mechanism for providing information flow security in a dynamic manner that overcomes these limitations. Taking inspiration from secure multi-execution, we use faceted values to simultaneously and efficiently simulate multiple executions for different security levels, thus providing non-interference with minimal overhead, and without the reliance on the stuck executions of prior dynamic approaches.},
+booktitle = {Proceedings of the 39th Annual ACM SIGPLAN-SIGACT Symposium on Principles of Programming Languages},
+pages = {165–178},
+numpages = 14,
+keywords = {information flow control, javascript, web security, dynamic analysis},
+location = {Philadelphia, PA, USA},
+series = {POPL '12}
+}
+
+@INPROCEEDINGS{Russo10:FlowSensitiveAnalysis,
+
+  author={Russo, Alejandro and Sabelfeld, Andrei},
+
+  booktitle={2010 23rd IEEE Computer Security Foundations Symposium}, 
+
+  title={Dynamic vs. Static Flow-Sensitive Security Analysis}, 
+
+  year={2010},
+
+  volume={},
+
+  number={},
+
+  pages={186-199},
+
+  doi={10.1109/CSF.2010.20}}
+@article{Bourgeat2021AMF,
+  title={A Multipurpose Formal RISC-V Specification},
+  author={Thomas Bourgeat and Ian Clester and Andres Erbsen and Samuel Gruetter and A. Wright and A. Chlipala},
+  journal={ArXiv},
+  year={2021},
+  volume={abs/2104.00762}
+}
+
+@article{sabelfeld2003language,
+  title={Language-based information-flow security},
+  author={Sabelfeld, Andrei and Myers, Andrew C},
+  journal={IEEE Journal on selected areas in communications},
+  volume={21},
+  number={1},
+  pages={5--19},
+  year={2003},
+  publisher={IEEE}
+}
+                  
+@article{SkorstengaardSTKJFP,
+  author    = {Lau Skorstengaard and
+               Dominique Devriese and
+               Lars Birkedal},
+  title     = {StkTokens: Enforcing well-bracketed control flow and stack encapsulation
+               using linear capabilities},
+  journal   = {J. Funct. Program.},
+  volume    = {31},
+  pages     = {e9},
+  year      = {2021},
+  url       = {https://doi.org/10.1017/S095679682100006X},
+  doi       = {10.1017/S095679682100006X},
+  timestamp = {Sun, 16 May 2021 00:13:31 +0200},
+  biburl    = {https://dblp.org/rec/journals/jfp/SkorstengaardDB21.bib},
+  bibsource = {dblp computer science bibliography, https://dblp.org}
+}
+
+@inproceedings{Cowan+98,
+author = {Cowan, Crispin and Pu, Calton and Maier, Dave and Hintony, Heather and Walpole, Jonathan and Bakke, Peat and Beattie, Steve and Grier, Aaron and Wagle, Perry and Zhang, Qian},
+title = {StackGuard: Automatic Adaptive Detection and Prevention of Buffer-Overflow Attacks},
+year = {1998},
+publisher = {USENIX Association},
+address = {USA},
+booktitle = {Proceedings of the 7th Conference on USENIX Security Symposium - Volume 7},
+pages = {5},
+numpages = {1},
+location = {San Antonio, Texas},
+series = {SSYM’98}
+}
+
+@inproceedings{Dang+15,
+author = {Dang, Thurston H.Y. and Maniatis, Petros and Wagner, David},
+title = {The Performance Cost of Shadow Stacks and Stack Canaries},
+year = {2015},
+isbn = {9781450332453},
+publisher = {Association for Computing Machinery},
+address = {New York, NY, USA},
+url = {https://doi.org/10.1145/2714576.2714635},
+doi = {10.1145/2714576.2714635},
+booktitle = {Proceedings of the 10th ACM Symposium on Information, Computer and Communications Security},
+pages = {555–566},
+numpages = {12},
+keywords = {shadow stack, stack cookie, stack canary},
+location = {Singapore, Republic of Singapore},
+series = {ASIA CCS ’15}
+}
+
+
+
+@inproceedings{Shanbhogue+19,
+author = {Shanbhogue, Vedvyas and Gupta, Deepak and Sahita, Ravi},
+title = {Security Analysis of Processor Instruction Set Architecture for Enforcing Control-Flow Integrity},
+year = {2019},
+isbn = {9781450372268},
+publisher = {Association for Computing Machinery},
+address = {New York, NY, USA},
+url = {https://doi.org/10.1145/3337167.3337175},
+doi = {10.1145/3337167.3337175},
+booktitle = {Proceedings of the 8th International Workshop on Hardware and Architectural Support for Security and Privacy},
+articleno = {8},
+numpages = {11},
+keywords = {ROP, control flow subversion attacks, COP, Control-flow integrity, shadow stack, JOP},
+location = {Phoenix, AZ, USA},
+series = {HASP ’19}
+}
+
+@inproceedings{Kuznetsov+14,
+author = {Kuznetsov, Volodymyr and Szekeres, L\'{a}szl\'{o} and Payer, Mathias and Candea, George and Sekar, R. and Song, Dawn},
+title = {Code-Pointer Integrity},
+year = {2014},
+isbn = {9781931971164},
+publisher = {USENIX Association},
+address = {USA},
+booktitle = {Proceedings of the 11th USENIX Conference on Operating Systems Design and Implementation},
+pages = {147–163},
+numpages = {17},
+location = {Broomfield, CO},
+series = {OSDI’14}
+}
+
+@inproceedings{NagarakatteZMZ10,
+  author    = {Santosh Nagarakatte and
+               Jianzhou Zhao and
+               Milo M. K. Martin and
+               Steve Zdancewic},
+  title     = {{CETS}: compiler enforced temporal safety for {C}},
+  booktitle = {9th International Symposium on Memory Management},
+  shortbooktitle = {ISMM},
+  year      = {2010},
+  pages     = {31-40},
+  publisher = {ACM},
+  isbn      = {978-1-4503-0054-4},
+  ee        = {http://doi.acm.org/10.1145/1806651.1806657},
+  url       = {http://acg.cis.upenn.edu/papers/ismm10_cets.pdf},
+}
+                  
+@inproceedings{NagarakatteZMZ09,
+  author    = {Santosh Nagarakatte and
+               Jianzhou Zhao and
+               Milo M. K. Martin and
+               Steve Zdancewic},
+  title     = {{SoftBound}: highly compatible and complete spatial memory
+               safety for {C}},
+  booktitle = {ACM SIGPLAN Conference on Programming
+               Language Design and Implementation (PLDI)},
+  shortbooktitle = {PLDI},
+  publisher = {ACM},
+  year      = {2009},
+  isbn      = {978-1-60558-392-1},
+  pages     = {245-258},
+  ee        = {http://doi.acm.org/10.1145/1542476.1542504},
+  url       = {http://repository.upenn.edu/cgi/viewcontent.cgi?article=1941&context=cis_reports},
+}
+  
+@inproceedings{DeviettiBMZ08,
+  author    = {Joe Devietti and
+               Colin Blundell and
+               Milo M. K. Martin and
+               Steve Zdancewic},
+  title     = {{HardBound}: Architectural Support for Spatial Safety of the
+               {C} Programming Language},
+  booktitle = {13th International Conference on Architectural
+               Support for Programming Languages and Operating Systems},
+  shortbooktitle = {ASPLOS},
+  year      = {2008},
+  pages     = {103-114},
+  ee        = {http://doi.acm.org/10.1145/1346281.1346295},
+  url       = {http://acg.cis.upenn.edu/papers/asplos08_hardbound.pdf},
+}
+
+@misc{intel_mpx2013,
+        author={Bracher, Richard S.},           
+       	title = {Introduction to {Intel Memory Protection} extensions},
+	key = {Intel Corporation},
+	howpublished = {\url{http://software.intel.com/en-us/articles/introduction-to-intel-memory-protection-extensions}},
+	Note = {Accessed: 2020-07-03},
+        date = 2013                  
+}
+                  
+                  
+@article{SkorstengaardLocal,
+author = {Skorstengaard, Lau and Devriese, Dominique and Birkedal, Lars},
+title = {Reasoning about a Machine with Local Capabilities: Provably Safe Stack and Return Pointer Management},
+year = {2019},
+issue_date = {January 2020},
+publisher = {Association for Computing Machinery},
+address = {New York, NY, USA},
+volume = {42},
+number = {1},
+issn = {0164-0925},
+url = {https://doi.org/10.1145/3363519},
+doi = {10.1145/3363519},
+journal = {ACM Trans. Program. Lang. Syst.},
+month = dec,
+articleno = {5},
+numpages = {53},
+keywords = {Capability machines, logical relations, local capabilities, CHERI, well-bracketed control flow, stack encapsulation, secure compilation}
+}
+
+  
+
+@article{SkorstengaardSTK,
+ author = {Skorstengaard, Lau and Devriese, Dominique and Birkedal, Lars},
+ title = {StkTokens: Enforcing Well-Bracketed Control Flow and Stack Encapsulation Using Linear Capabilities},
+ year = {2019},
+ issue_date = {January 2019},
+ publisher = {Association for Computing Machinery},
+ address = {New York, NY, USA},
+ volume = {3},
+ number = {POPL},
+ url = {https://doi.org/10.1145/3290332},
+ doi = {10.1145/3290332},
+ journal = {Proc. ACM Program. Lang.},
+ month = jan,
+ articleno = {Article 19},
+ numpages = {28},
+ keywords = {well-bracketed control flow, secure compilation, linear capabilities, fully abstract compilation, stack frame encapsulation, fully abstract overlay semantics, capability machines}
+}
+
+
+@inproceedings{Chisnall+15,
+author = {Chisnall, David and Rothwell, Colin and Watson, Robert N.M. and Woodruff, Jonathan and Vadera, Munraj and Moore, Simon W. and Roe, Michael and Davis, Brooks and Neumann, Peter G.},
+title = {Beyond the PDP-11: Architectural Support for a Memory-Safe C Abstract Machine},
+year = {2015},
+isbn = {9781450328357},
+publisher = {Association for Computing Machinery},
+address = {New York, NY, USA},
+url = {https://doi.org/10.1145/2694344.2694367},
+doi = {10.1145/2694344.2694367},
+booktitle = {Proceedings of the Twentieth International Conference on Architectural Support for Programming Languages and Operating Systems},
+pages = {117–130},
+numpages = {14},
+keywords = {security, memory safety, compilers, processor design, bounds checking, capabilities, memory protection, C language},
+location = {Istanbul, Turkey},
+series = {ASPLOS ’15}
+}
+  
+
+
+@inproceedings{Woodruff+14,
+author = {Woodruff, Jonathan and Watson, Robert N.M. and Chisnall, David and Moore, Simon W. and Anderson, Jonathan and Davis, Brooks and Laurie, Ben and Neumann, Peter G. and Norton, Robert and Roe, Michael},
+title = {The CHERI Capability Model: Revisiting RISC in an Age of Risk},
+year = {2014},
+isbn = {9781479943944},
+publisher = {IEEE Press},
+booktitle = {Proceeding of the 41st Annual International Symposium on Computer Architecuture},
+pages = {457–468},
+numpages = {12},
+location = {Minneapolis, Minnesota, USA},
+series = {ISCA ’14}
+}
+
+  
+
+@article{provenance,
+author = {Memarian, Kayvan and Gomes, Victor and Davis, Brooks and Kell, Stephen and Richardson, Alexander and Watson, Robert and Sewell, Peter},
+year = {2019},
+month = {01},
+pages = {1-32},
+title = {Exploring C semantics and pointer provenance},
+volume = {3},
+journal = {Proceedings of the ACM on Programming Languages},
+doi = {10.1145/3290380}
+}
+
+@INPROCEEDINGS{6234468,
+
+  author={J. A. {Goguen} and J. {Meseguer}},
+
+  booktitle={1982 IEEE Symposium on Security and Privacy}, 
+
+  title={Security Policies and Security Models}, 
+
+  year={1982},
+
+  volume={},
+
+  number={},
+
+  pages={11-11},}
+
+@inproceedings{Tsampas+19,
+  author    = {Stelios Tsampas and
+               Dominique Devriese and
+               Frank Piessens},
+  title     = {Temporal Safety for Stack Allocated Memory on Capability Machines},
+  booktitle = {32nd {IEEE} Computer Security Foundations Symposium, {CSF} 2019, Hoboken,
+               NJ, USA, June 25-28, 2019},
+  pages     = {243--255},
+  publisher = {{IEEE}},
+  year      = {2019},
+  url       = {https://doi.org/10.1109/CSF.2019.00024},
+  doi       = {10.1109/CSF.2019.00024},
+  timestamp = {Wed, 16 Oct 2019 14:14:49 +0200},
+  biburl    = {https://dblp.org/rec/conf/csfw/TsampasDP19.bib},
+  bibsource = {dblp computer science bibliography, https://dblp.org}
+}
+
+
+@article{Georges+21,
+  author    = {A{\"{\i}}na Linn Georges and
+               Arma{\"{e}}l Gu{\'{e}}neau and
+               Thomas Van Strydonck and
+               Amin Timany and
+               Alix Trieu and
+               Sander Huyghebaert and
+               Dominique Devriese and
+               Lars Birkedal},
+  title     = {Efficient and provable local capability revocation using uninitialized
+               capabilities},
+  journal   = {Proc. {ACM} Program. Lang.},
+  volume    = {5},
+  number    = {{POPL}},
+  pages     = {1--30},
+  year      = {2021},
+  url       = {https://doi.org/10.1145/3434287},
+  doi       = {10.1145/3434287},
+  timestamp = {Wed, 17 Feb 2021 08:54:00 +0100},
+  biburl    = {https://dblp.org/rec/journals/pacmpl/GeorgesGSTTHDB21.bib},
+  bibsource = {dblp computer science bibliography, https://dblp.org}
+}
+
+@misc{mit-riscv,
+        author={Samuel Gruetter},           
+       	title = {RISC-V Specification in Coq},
+	howpublished = {\url{https://github.com/mit-plv/riscv-coq}},
+        date = 2020
+}
+
+@article{JiaH11,
+  author    = {Yue Jia and
+               Mark Harman},
+  title     = {An Analysis and Survey of the Development of Mutation
+                  Testing},
+  journal   = {IEEE Transactions on Software Engineering},
+  volume    = {37},
+  number    = {5},
+  year      = {2011},
+  pages     = {649-678},
+  ee        = {http://doi.ieeecomputersociety.org/10.1109/TSE.2010.62},
+  bibsource = {DBLP, http://dblp.uni-trier.de},
+  url       = {http://crest.cs.ucl.ac.uk/fileadmin/crest/sebasepaper/JiaH10.pdf},
+}
+
+@inproceedings{GeorgesComplete,
+   author    = {A{\"{\i}}na Linn Georges and
+               Arma{\"{e}}l Gu{\'{e}}neau and
+               Alix Trieu and
+               Lars Birkedal},
+title="Toward Complete Stack Safety for Capability Machines",
+workshop="Workshop on Principles of Secure Compilation",
+month=jan,
+year=2021,
+url="https://www.cs.au.dk/~trieu/publications/PRISC21.pdf"
+}
+
+@article{Goguen1982SecurityPA,
+  title={Security Policies and Security Models},
+  author={J. A. Goguen and J. Meseguer},
+  journal={1982 IEEE Symposium on Security and Privacy},
+  year={1982},
+  pages={11-11}
+}
+
+@INPROCEEDINGS{Chiueh2001RAD,
+
+  author={Tzi-Cker Chiueh and Fu-Hau Hsu},
+
+  booktitle={Proceedings 21st International Conference on Distributed Computing Systems}, 
+
+  title={RAD: a compile-time solution to buffer overflow attacks}, 
+
+  year={2001},
+
+  volume={},
+
+  number={},
+
+  pages={409-417},
+
+  doi={10.1109/ICDSC.2001.918971}}
+
+@article{Georges22:TempsDesCerises,
+author = {Georges, A\"{\i}na Linn and Trieu, Alix and Birkedal, Lars},
+title = {Le Temps Des Cerises: Efficient Temporal Stack Safety on Capability Machines Using Directed Capabilities},
+year = {2022},
+issue_date = {April 2022},
+publisher = {Association for Computing Machinery},
+address = {New York, NY, USA},
+volume = {6},
+number = {OOPSLA1},
+url = {https://doi.org/10.1145/3527318},
+doi = {10.1145/3527318},
+abstract = {Capability machines are a type of CPUs that support fine-grained privilege separation using capabilities, machine words that include forms of authority. Formal models of capability machines and associated calling conventions have so far focused on establishing two forms of stack safety properties, namely local state encapsulation and well-bracketed control flow. We introduce a novel kind of directed capabilities and show how to use them to make an earlier suggested calling convention more efficient. In contrast to earlier work on capability machine models we do not only consider integrity properties but also confidentiality properties; we provide a unary logical relation to reason about the former and a binary logical relation to reason about the latter, each expressive enough to reason about temporal stack safety. While the logical relations are useful for reasoning about concrete examples, they do not on their own demonstrate that stack safety holds for a large class of programs. Therefore, we also show full abstraction of a compiler from an overlay semantics that internalizes the calling convention as a single call step and explicitly keeps track of the call stack and frame lifetimes to a base capability machine. All results have been mechanized in Coq.},
+journal = {Proc. ACM Program. Lang.},
+month = {apr},
+articleno = {74},
+numpages = {30},
+keywords = {security, full absraction, stack safety, capability machines, separation logic, logical relation, Iris}
+}
+
+@inproceedings{DBLP:conf/raid/VeendCB12,
+  author    = {Victor van der Veen and
+               Nitish dutt{-}Sharma and
+               Lorenzo Cavallaro and
+               Herbert Bos},
+  editor    = {Davide Balzarotti and
+               Salvatore J. Stolfo and
+               Marco Cova},
+  title     = {Memory Errors: The Past, the Present, and the Future},
+  booktitle = {Research in Attacks, Intrusions, and Defenses - 15th International
+               Symposium, {RAID} 2012, Amsterdam, The Netherlands, September 12-14,
+               2012. Proceedings},
+  series    = {Lecture Notes in Computer Science},
+  volume    = {7462},
+  pages     = {86--106},
+  publisher = {Springer},
+  year      = {2012},
+  url       = {https://doi.org/10.1007/978-3-642-33338-5\_5},
+  doi       = {10.1007/978-3-642-33338-5\_5},
+  timestamp = {Thu, 14 Oct 2021 10:16:20 +0200},
+  biburl    = {https://dblp.org/rec/conf/raid/VeendCB12.bib},
+  bibsource = {dblp computer science bibliography, https://dblp.org}
+}
+
+@inproceedings{DBLP:conf/sp/SzekeresPWS13,
+  author    = {Laszlo Szekeres and
+               Mathias Payer and
+               Tao Wei and
+               Dawn Song},
+  title     = {SoK: Eternal War in Memory},
+  booktitle = {2013 {IEEE} Symposium on Security and Privacy, {SP} 2013, Berkeley,
+               CA, USA, May 19-22, 2013},
+  pages     = {48--62},
+  publisher = {{IEEE} Computer Society},
+  year      = {2013},
+  url       = {https://doi.org/10.1109/SP.2013.13},
+  doi       = {10.1109/SP.2013.13},
+  timestamp = {Wed, 16 Oct 2019 14:14:51 +0200},
+  biburl    = {https://dblp.org/rec/conf/sp/SzekeresPWS13.bib},
+  bibsource = {dblp computer science bibliography, https://dblp.org}
+}
+
+@inproceedings{DBLP:conf/sp/HuSACSL16,
+  author    = {Hong Hu and
+               Shweta Shinde and
+               Sendroiu Adrian and
+               Zheng Leong Chua and
+               Prateek Saxena and
+               Zhenkai Liang},
+  title     = {Data-Oriented Programming: On the Expressiveness of Non-control Data
+               Attacks},
+  booktitle = {{IEEE} Symposium on Security and Privacy, {SP} 2016, San Jose, CA,
+               USA, May 22-26, 2016},
+  pages     = {969--986},
+  publisher = {{IEEE} Computer Society},
+  year      = {2016},
+  url       = {https://doi.org/10.1109/SP.2016.62},
+  doi       = {10.1109/SP.2016.62},
+  timestamp = {Thu, 23 Jun 2022 19:55:24 +0200},
+  biburl    = {https://dblp.org/rec/conf/sp/HuSACSL16.bib},
+  bibsource = {dblp computer science bibliography, https://dblp.org}
+}
+
+@misc{RISC-V-CC,
+author={RISC-V Consortium},           
+       	title = {RISC-V Calling Conventions},
+	howpublished = {\url{https://github.com/riscv-non-isa/riscv-elf-psabi-doc/blob/master/riscv-cc.adoc}},
+        date = 2022
+}
+
+@inproceedings{DBLP:conf/pldi/YangCER11,
+  author    = {Xuejun Yang and
+               Yang Chen and
+               Eric Eide and
+               John Regehr},
+  editor    = {Mary W. Hall and
+               David A. Padua},
+  title     = {Finding and understanding bugs in {C} compilers},
+  booktitle = {Proceedings of the 32nd {ACM} {SIGPLAN} Conference on Programming
+               Language Design and Implementation, {PLDI} 2011, San Jose, CA, USA,
+               June 4-8, 2011},
+  pages     = {283--294},
+  publisher = {{ACM}},
+  year      = {2011},
+  url       = {https://doi.org/10.1145/1993498.1993532},
+  doi       = {10.1145/1993498.1993532},
+  timestamp = {Mon, 02 Aug 2021 08:40:03 +0200},
+  biburl    = {https://dblp.org/rec/conf/pldi/YangCER11.bib},
+  bibsource = {dblp computer science bibliography, https://dblp.org}
+}
+
+@inproceedings{DBLP:conf/sp/WatsonWNMACDDGL15,
+  author    = {Robert N. M. Watson and
+               Jonathan Woodruff and
+               Peter G. Neumann and
+               Simon W. Moore and
+               Jonathan Anderson and
+               David Chisnall and
+               Nirav H. Dave and
+               Brooks Davis and
+               Khilan Gudka and
+               Ben Laurie and
+               Steven J. Murdoch and
+               Robert M. Norton and
+               Michael Roe and
+               Stacey D. Son and
+               Munraj Vadera},
+  title     = {{CHERI:} {A} Hybrid Capability-System Architecture for Scalable Software
+               Compartmentalization},
+  booktitle = {2015 {IEEE} Symposium on Security and Privacy, {SP} 2015, San Jose,
+               CA, USA, May 17-21, 2015},
+  pages     = {20--37},
+  publisher = {{IEEE} Computer Society},
+  year      = {2015},
+  url       = {https://doi.org/10.1109/SP.2015.9},
+  doi       = {10.1109/SP.2015.9},
+  timestamp = {Sat, 09 Apr 2022 12:42:54 +0200},
+  biburl    = {https://dblp.org/rec/conf/sp/WatsonWNMACDDGL15.bib},
+  bibsource = {dblp computer science bibliography, https://dblp.org}
+}
+
+@article{phrack96:smashingthestack,
+  author = {One, Aleph},
+  biburl = {https://www.bibsonomy.org/bibtex/2daff1a97f8fa80ac9e0f9ab58a370b30/liangzk},
+  journal = {Phrack},
+  month = {November},
+  number = 49,
+  title = {Smashing the Stack for Fun and Profit},
+  url = {http://www.phrack.com/issues.html?issue=49&id=14},
+  volume = 7,
+  year = 1996
+}
+
+
+@misc{mitre-cwe,
+author="{MITRE Corporation}",
+title="Common Weakness Enumeration:2022 Top 25 Most Dangerous Software Weaknesses",
+howpublished = {\url{https://cwe.mitre.org/top25/archive/2022/2022_cwe_top25.html}},
+year=2022}
+
+@misc{msrc-bluehat,
+author="Matt Miller",
+title="Trends, challenges, and strategic shifts in the software vulnerability mitigation landscape",
+howpublished={\url{https://github.com/Microsoft/MSRC-Security-Research/blob/master/presentations/2019_02_BlueHatIL/}},
+year=2019}
+
+@misc{chromium-security,
+author="{Chromium Projects}",
+title="Chromium Security:Memory Safety",
+howpublished={\url{https://www.chromium.org/Home/chromium-security/memory-safety/}}
+}
+
+
+@INPROCEEDINGS{Gollapudi:23,
+author = {R. Gollapudi and G. Yuksek and D. Demicco and M. Cole and G. N. Kothari and R. H. Kulkarni and X. Zhang and K. Ghose and A. Prakash and Z. Umrigar},
+booktitle = {2023 2023 IEEE Symposium on Security and Privacy (SP) (SP)},
+title = {Control Flow and Pointer Integrity Enforcement in a Secure Tagged Architecture},
+year = {2023},
+volume = {},
+issn = {},
+pages = {1780-1795},
+keywords = {control-flow-integrity,-hardware-security,-pointer-integrity,-security-architectures,-security-and-privacy-policies},
+doi = {10.1109/SP46215.2023.00102},
+url = {https://doi.ieeecomputersociety.org/10.1109/SP46215.2023.00102},
+publisher = {IEEE Computer Society},
+address = {Los Alamitos, CA, USA},
+month = {may}
+}
+
+
+@inproceedings{Castro:06,
+author = {Castro, Miguel and Costa, Manuel and Harris, Tim},
+title = {Securing Software by Enforcing Data-Flow Integrity},
+year = {2006},
+isbn = {1931971471},
+publisher = {USENIX Association},
+address = {USA},
+abstract = {Software attacks often subvert the intended data-flow in a vulnerable program. For example, attackers exploit buffer overflows and format string vulnerabilities to write data to unintended locations. We present a simple technique that prevents these attacks by enforcing data-flow integrity. It computes a data-flow graph using static analysis, and it instruments the program to ensure that the flow of data at runtime is allowed by the data-flow graph. We describe an efficient implementation of data-flow integrity enforcement that uses static analysis to reduce instrumentation overhead. This implementation can be used in practice to detect a broad class of attacks and errors because it can be applied automatically to C and C++ programs without modifications, it does not have false positives, and it has low overhead.},
+booktitle = {Proceedings of the 7th Symposium on Operating Systems Design and Implementation},
+pages = {147–160},
+numpages = {14},
+location = {Seattle, Washington},
+series = {OSDI '06}
+}
+
+@misc{Georges22:personalcommunication,
+        author={A{\"{\i}}na Linn Georges},
+	howpublished = {Personal communication},
+        date = 2022
+}
+

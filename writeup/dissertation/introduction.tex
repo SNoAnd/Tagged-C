@@ -6,88 +6,64 @@
 
 \chapter{Introduction}
 
-Many essential technologies rely on new and old C code. Operating systems (Linux, Windows, OSX, BSD),
-databases (Oracle, sqlite3), the internet (Apache, NGNIX, NetBSD, Cisco IOS), and the 
-embedded devices that run our homes and hospitals are built in and on C.
-The safety of these technologies depends on the security of their underlying C codebases.
-Insecurity can arise from C undefined behavior (UB) such as memory errors
-(e.g. buffer overflows, use-after-free, double-free), logic errors
-(e.g. SQL injection, input-sanitization flaws), or larger-scale architectural flaws
-(e.g. over-provisioning access rights).
+The computing infrastructure that underpins today's world is insecure. Code written
+in unsafe languages (e.g., C) may hide any number of programming bugs that go uncaught
+until they are exploited in the wild, especially memory errors. Safe or not, any code
+might contain logic errors (SQL injection, input-sanitization flaws, etc.) that subvert
+its security requirements.
 
-Although static analyses can detect and mitigate many C insecurities, an important line of
+Although static analyses can detect and mitigate many insecurities, an important line of
 defense against undetected or unfixable vulnerabilities is runtime enforcement of
 {\em security policies} using a reference monitor~\cite{Anderson72:PlanningStudy}. In particular, 
 many useful policies can be specified in terms of flow constraints on 
 \emph{metadata tags}, which augment the underlying data with information like type, provenance,
-ownership, or security classification. A tag-based policy takes the form of a set of
-rules that check and update the metadata tags at key points during execution; if a rule violation is
-encountered, the program \emph{failstops}.
+ownership, or security classification.
 
 Tag-based policies are well-suited for efficient hardware enforcement, using 
 processor extensions such as ARM MTE~\cite{arm-mte},
-STAR~\cite{Gollapudi+23}, and
+STAR~\cite{Gollapudi:23}, and
 PIPE.  PIPE\footnote{ Variants of PIPE have
 been called PUMP~\cite{Dhawan+15} or %Dhawan+14},
 SDMP~\cite{RoesslerD18}% ,Dover16}},
 and marketed commercially under the names Dover CoreGuard and Draper Inherently Secure Processor.}
 (Processor Interlocks for Policy Enforcement)~\cite{Azevedo+16,Azevedo+15},%Dhawan+15,
 the specific motivator for this work, is a programmable hardware mechanism that supports monitoring 
-at the granularity of individual instructions. PIPE is highly flexible: it supports
+at the granularity of individual instructions. A customizable set of rules updates the metadata tags
+at key points during execution, maintaining a relationship between the tags and the security-relevant
+behavior of the system as a whole. If the tags would enter a configuration corresponding to insecure
+or undesirable behavior, the program \emph{failstops}. PIPE is highly flexible: it supports
 arbitrary software-defined tag rules over large (word-sized) tags with arbitrary structure,
 which enables fine-grained policies and composition of multiple policies.
-With such flexible tools comes a challenge of specification: how does one define a security policy,
-either in terms of its concrete implementation, or the higher-level notion of security that it
-aims to implement?
 
-For example, the call stack is an ancient~\cite{phrack96:smashingthestack} and
-perennial~\cite{mitre-cwe,DBLP:conf/raid/VeendCB12,
-  DBLP:conf/sp/SzekeresPWS13,
-  DBLP:conf/sp/HuSACSL16,msrc-bluehat,chromium-security}
-target for low-level attacks, and thus {\em stack safety} is an equally
-widespread objective of software and hardware protections, most relevantly
-%
-using hardware capabilities~\cite{Woodruff+14,Chisnall+15,
-  SkorstengaardLocal,SkorstengaardSTKJFP,Georges22:TempsDesCerises},
-and hardware tag monitors~\cite{DBLP:conf/sp/RoesslerD18,Gollapudi+23}.
-But the protean nature of the stack makes it difficult to pin down an
-exact specification that these mechanisms aim to satisfy.
-Unlike ``the heap,'' the ISA-level stack does not correspond to a single
-high-level language concept: different compilers use it in different
-ways to support procedural and functional abstraction mechanisms from
-a wide range of languages.
+This dissertation centers around the problem of specifying PIPE-style policies.
+(Although the work is not specific to PIPE, PIPE's basic structure serves to represent the
+likely capabilities of tag-based enforcement mechanisms in general.) Specification
+means both the operational definition of how policies work in the concrete sense, and
+the higher-level formal definitions that capture the kind of security they aim to enforce.
 
-In the first section of this dissertation,
-I propose a new formal characterization of stack safety using concepts
-from language-based security. Rather than treating
-stack safety as a monolithic property, I decompose it into an
-integrity property and a confidentiality property for each of the
-caller and the callee, plus a control-flow property: five properties
-in all.
-%
-This formulation is motivated by a particular class of enforcement
-mechanisms, the ``lazy'' stack safety micro-policies studied by
-Roessler and DeHon~\cite{DBLP:conf/sp/RoesslerD18}, which permit
-functions to write into one another's frames but taint the
-changed locations so that the frame's owner cannot access them. No
-existing characterization of stack safety captures this style of
-safety; I capture it here by stating its properties in terms of the
-observable behavior of the system.
+In the literature, PIPE policies are defined at the assembly level. If they aim to enforce
+source-level constructs, such as memory safety, they do so with the help of compiler annotations;
+such constructs do not take advantage of the PIPE model's flexibility. If they instead
+aim to enforce narrower program-specific notions of security, they require careful hand-annotation
+by an engineer familiar with the source code. Some works have proven or tested their policies
+against a higher-level security specification, but so far this is restricted to simple specifications
+and straightforward implementations. When policies are optimized to give up some security in the name
+of performance, it is very hard to specify the security that remains.
 
-The stack safety properties are defined at the level of assembly code,
-which also corresponds to the typical level at which PIPE policies are written,
-including those of Roessler and DeHon.
-But PIPE policies can be difficult for a C engineer to write: their tags and rules
+The work is divided into three main parts. The first proposes a new formal characterization of
+stack safety using concepts from language-based security. Though not specific to a PIPE
+implementation, this formulation is motivated by a particular class of PIPE-based enforcement
+mechanisms, the ``lazy'' stack safety policies studied by Roessler and DeHon~\cite{RoesslerD18},
+which permit functions to write into one another's frames but taint the changed locations so that the
+frame's owner cannot access them. No prior characterization of stack safety captures this style of
+safety.
+
+Next, I present Tagged C, a \emph{source-level}
+specification framework that allows engineers to describe policies in terms of familiar
+C-level concepts. PIPE policies can be difficult for a C engineer to write: their tags and rules
 are defined in terms of individual machine instructions and ISA-level
 concepts, and in practice they depend on reverse engineering the behavior
-of specific compilers.
-Moreover, some security policies can only be expressed in terms of high-level code
-features that are not preserved at machine level, such as function
-arguments, structured types, and structured control flow.
-
-In light of the above constraints, I move on to present Tagged C, a \emph{source-level}
-specification framework that allows engineers to describe policies in terms of familiar
-C-level concepts. Tagged C takes the form of a variant C language whose semantics are
+of specific compilers. Tagged C takes the form of a variant C language whose semantics are
 parameterized by tags attached to C functions, variables and data values, and rules triggered at
 \emph{control points} that correspond to significant execution events, such as function calls,
 expression evaluation, and pointer-based memory accesses.
@@ -101,67 +77,77 @@ a compartmentalization property in the form of
 a novel abstract compartmentalized semantics, define a Tagged C policy that enforces it,
 and prove in Coq that the policy satisfies its specification.
 
-\section{Organization}
+\section{Contributions and Organization}
 
-The remainder of the dissertation is organized as follows. In Chapter \ref{ch:background},
-I give an overview of what a tag-based reference monitor is and the implementation assumptions
-used throughout the rest of the work. Chapter \ref{ch:stacksafety} defines my stack safety
-property and discusses validation.
+Chapter \ref{ch:background} introduces the concept of tag-based reference monitors
+and brings the reader up to date on the state-of-the-art in that and related areas.
+The contributions in this dissertation are divided across its three main topics.
 
-Chapters \ref{ch:taggedc} and \ref{ch:pragmatics} focus on the Tagged C language. Of these,
-Chapter \ref{ch:taggedc} focuses on explaining the semantics and interpreter, while 
-Chapter \ref{ch:pragmatics} discusses design decisions made in the process and how they
-impact the actual process of defining policies for Tagged C.
+\paragraph{Stack Safety}
 
-Finally, Chapter \ref{ch:compartments} introduces a novel compartmentalization scheme
-and details the process of proving that its associated policy does in fact implement it.
+The work discussed in Chapter \ref{ch:stacksafety} was first published at the
+IEEE Computer Security Foundations Symposium, July 2023 as
+``Formalizing Stack Safety as a Security Policy,'' a
+joint work with Roberto Blanco, Leonidas Lampropoulos, Benjamin Pierce, and Andrew Tolmach.
+Its contributions are:
 
-\section{Contributions}
-
-My contributions, divided across the three main topics of this dissertation, are:
 \begin{itemize}
-\item Stack safety:
-  \begin{itemize}
-  \item A novel characterization of stack safety as a conjunction
-    of security properties---confidentiality and integrity for callee
-    and caller---plus well-bracketed control-flow.
-    The properties are parameterized over a notion of
-    external observation, allowing them to characterize lazy enforcement
-    mechanisms.
-  \item An extension of these core definitions to
-    describe a realistic setting with argument passing on the stack,
-    callee-saves registers, and tail-call elimination. The model is
-    modular enough that adding these features is straightforward.
-  \item Validation of a published enforcement mechanism,
-    \emph{Lazy Tagging and Clearing}, via property-based random testing; I find that
-    it falls short, and propose and validate a fix.
-  \end{itemize}
-\item Tagged C:
-  \begin{itemize}
-  \item The design of a comprehensive set of {\em control points} at which the C language interfaces
-    with a tag-based policy. These expand on prior work by encompassing the full C language
-    while being powerful enough to enable a range of policies even in the presence of C's more
-    challenging constructs (e.g., {\tt goto}, conditional expressions, etc.).
-  \item Tagged C policies enforcing: (1) compartmentalization;
-    (2) memory safety, with realistic memory models that support varying kinds of low-level idioms;
-    and (3) secure information flow.
-  \item A full formal semantic definition for Tagged C, formalized in Coq, describing how the
-    control points interact with programs, and an interpreter, implemented and verified against
-    the semantics in Coq and extracted to OCaml.
-  \end{itemize}
-\item Compartmentalization:
-  \begin{itemize}
-  \item A novel compartmentalization policy for Tagged C that supports cross-compartment
-    sharing with fewer constraints on available tags than similar systems from the literature.
-  \item A formal model of C compartmentalization in the form of an abstract machine that
-    supports sharing between compartments while keeping their memories isolated by construction.
-  \item A proof that the compartmentalization policy is safe with respect to the abstract semantics.
-  \end{itemize}
+\item A novel characterization of stack safety as a conjunction
+  of security properties---confidentiality and integrity for callee
+  and caller---plus well-bracketed control-flow.
+  The properties are parameterized over a notion of
+  external observation, allowing them to characterize lazy enforcement
+  mechanisms.
+\item An extension of these core definitions to
+  describe a realistic setting with argument passing on the stack,
+  callee-saves registers, and tail-call elimination. The model is
+  modular enough that adding these features is straightforward.
+\item Validation of a published enforcement mechanism,
+  \emph{Lazy Tagging and Clearing}, via property-based random testing; we find that
+  it falls short, and propose and validate a fix.
 \end{itemize}
 
-\section{Related Work}
+\paragraph{Tagged C}
 
-\chapter{About Tag-based Reference Monitors}
+This work was first published at the International Conference on Runtime Verification,
+October 2023 as ``Flexible Runtime Security Enforcement with Tagged C,'' a joint work
+with Andrew Tolmach and Allison Naaktgeboren. Its contributions are:
+ 
+\begin{itemize}
+\item The design of a comprehensive set of {\em control points} at which the C language interfaces
+  with a tag-based policy. These expand on prior work by encompassing the full C language
+  while being powerful enough to enable a range of policies even in the presence of C's more
+  challenging constructs (e.g., {\tt goto}, conditional expressions, etc.).
+\item Tagged C policies enforcing: (1) compartmentalization;
+  (2) memory safety, with realistic memory models that support varying kinds of low-level idioms;
+  and (3) secure information flow.
+\item A full formal semantic definition for Tagged C, formalized in Coq, describing how the
+  control points interact with programs, and an interpreter, implemented and verified against
+  the semantics in Coq and extracted to OCaml.
+\end{itemize}
+
+Chapter \ref{ch:taggedc} corresponds to the original paper. It introduces the Tagged C language
+and explains the semantics and interpreter. Chapter \ref{ch:pragmatics} discusses the underlying
+design decisions that inform how Tagged C works, and how those choices
+impact the actual process of defining policies for Tagged C.
+
+\paragraph{Compartmentalization}
+
+The compartmentalization work is not yet submitted for publication.
+
+\begin{itemize}
+\item A formal model of C compartmentalization in the form of an abstract machine that
+  supports sharing between compartments while keeping their memories isolated by construction.
+\item A novel compartmentalization policy for Tagged C that supports cross-compartment
+  sharing with fewer constraints on available tags than similar systems from the literature.
+\item A proof that the compartmentalization policy is safe with respect to the abstract semantics.
+\end{itemize}
+
+These topics are split between Chapter \ref{ch:compartments}, which defines the compartmentalization
+model, and Chapter \ref{ch:proof}, which covers the associated policy and the proof effort to show that
+it enforces that model.
+
+\chapter{Tags and Monitors}
 \label{ch:background}
 
 \chapter{Formalizing Stack Safety as a Security Policy}
@@ -176,6 +162,12 @@ My contributions, divided across the three main topics of this dissertation, are
 \chapter{Formalizing Compartmentalization as an Abstract Machine}
 \label{ch:compartments}
 
+\chapter{Proving Compartmentalization}
+\label{ch:proof}
+
 \chapter{Conclusion}
+
+\bibliographystyle{acm}
+\bibliography{taggedc.bib}
 
 \end{document}
