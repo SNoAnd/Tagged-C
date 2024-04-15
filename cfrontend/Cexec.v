@@ -42,11 +42,12 @@ Module Cexec (Pol: Policy)
  
   Module InterpreterEvents := InterpreterEvents Pol M A.
   Export InterpreterEvents.
-  About Csem.
   Export Csem.
   Import M.
   Import A.
   Import TLib.
+  Print addr. 
+  About addr.
   
   (* Policy-agnostic Tactics *)
   Ltac mydestr :=
@@ -737,14 +738,22 @@ Section EXPRS.
                 top <<=
                 let! v <- sem_cast v1 ty1 ty m;
                 let! ofs <- match v with Vptr ofs => Some ofs | _ => None end;
-                let! (w', tr, res) <- do_deref_loc w ty m ofs vt1 Full;
-                match res ps with
-                | (Success (_, lts), ps') =>
-                    try pt', ps'' <- IPCastT lc pct vt1 lts ty ps';
-                    catch "failred_cast_int_ptr", tr;
-                    Rred "red_cast_int_ptr" pct (Eval (v,pt') ty) te m tr ps''
-                | _ => Stuckred
-                end
+                if (Int64.eq (ofs) null) 
+                  then (
+                    try pt', ps' <- IPCastT lc pct vt1 None ty ps;
+                    catch "failred_cast_int_ptr", E0;
+                    Rred "red_cast_int_ptr" pct (Eval (v,pt') ty) te m E0 ps'
+                  )
+                  else (
+                    let! (w', tr, res) <- do_deref_loc w ty m ofs vt1 Full;
+                    match res ps with
+                    | (Success (_, lts), ps') =>
+                        try pt', ps'' <- IPCastT lc pct vt1 (Some lts) ty ps';
+                        catch "failred_cast_int_ptr", tr;
+                        Rred "red_cast_int_ptr" pct (Eval (v,pt') ty) te m tr ps''
+                    | _ => Stuckred
+                    end
+                  )
             | _, _ => 
                 top <<=
                     let! v <- sem_cast v1 ty1 ty m;
