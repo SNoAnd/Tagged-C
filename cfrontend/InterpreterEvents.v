@@ -29,17 +29,14 @@ Ltac mydestr :=
   | _ => idtac
   end.
 
-
-Module InterpreterEvents (Pol: Policy)
-                         (M : Memory ConcretePointer Pol)
-                         (A: Allocator ConcretePointer Pol M).
+Module InterpreterEvents (Pol: Policy) (A: Memory ConcretePointer Pol).
  
-  Module Deterministic := Deterministic Pol M A.
+  Module Deterministic := Deterministic Pol A.
   Export Deterministic.
   Export Csem.
-  Import M.
-  Import TLib.
   Import A.
+  Import TLib.
+  Import ConcretePointer.
   
   Section EXEC.
     Variable ge: genv.
@@ -229,7 +226,7 @@ Module InterpreterEvents (Pol: Policy)
 
     (** Volatile memory accesses. *)
     Definition do_volatile_load (w: world) (chunk: memory_chunk) (m: mem)
-               (p: ptr) : option (world * trace * PolicyResult (val * list val_tag)) :=
+               (p: ptr) : option (world * trace * PolicyResult (val * list val_tag * list loc_tag)) :=
       let id_if_vol := match invert_symbol_ptr ge p with
                        | Some (id, gv) =>
                            if gv.(gvar_volatile)
@@ -242,8 +239,10 @@ Module InterpreterEvents (Pol: Policy)
           '(res,w') <- nextworld_vload w chunk id p;;
           '(vres,vt) <- atom_of_eventval res (type_of_chunk chunk);;
           let vts := repeat vt (size_chunk_nat chunk) in
-          Some (w', Event_vload chunk id p res :: nil,
-                 (fun s => (Success (Values.load_result chunk vres, vts), s)))
+          let res' :=
+            '(_, _, lts) <- load chunk m p;;
+            ret (Values.load_result chunk vres, vts, lts) in
+          Some (w', [Event_vload chunk id p res], res')
       | None =>
           let res := load chunk m p in
           Some (w, E0, res)

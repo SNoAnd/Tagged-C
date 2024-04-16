@@ -14,7 +14,6 @@ Require Export Memdata.
 Require Import Memory.
 Require Import Encoding.
 Require Import Allocator.
-Require Import Initializers.
 Require Import ExtLib.Structures.Monads. Import MonadNotation.
 
 Open Scope monad_scope.
@@ -34,13 +33,13 @@ Notation "'check' A ; B" := (if A then B else None)
 Open Scope option_monad_scope.
 
 Module FLAllocator (Pol : Policy).
-  Module CM := ConcMem ConcretePointer Pol.
+  Module M := ConcMem ConcretePointer Pol.
 
-  Module A : Allocator ConcretePointer Pol CM.
-  Import CM.
-  Import MD.
+  Module Inner: AllocatorImpl ConcretePointer Pol M.
+  Include M.
   Import TLib.
   Import Pol.
+  Import ConcretePointer.
 
   Definition freelist : Type := list (addr (* base *)
                                     * Z (* size *)
@@ -50,18 +49,21 @@ Module FLAllocator (Pol : Policy).
     fl : freelist;
   }.
   
-  Definition t : Type := (addr*heap_state).   
-  Definition mem : Type := (CM.mem * t).
+  Definition allocstate : Type := addr*heap_state.   
+  
+  Definition mem : Type := submem * allocstate.
+
   Definition stack_size := 4096. (* 4k*)
   Definition heap_size : Z := 4096. (* heap size? *)
   Definition heap_starting_addr : Z := 6000 . (* matches init, grows up*)
 
   Definition empty_heap : heap_state :=
     mkheap (ZMap.init None) [(Int64.repr heap_starting_addr, heap_size, DefHT)].
-  Definition init : t := (Int64.repr 6000,empty_heap). (* stack starts here, t is base of stack, stack goes down, 
-  globals go below the base of the start *)
-  Definition empty := (CM.empty, init).
   
+  Definition init (m: submem) : mem := (m,(Int64.repr 6000,empty_heap)).
+   (* stack starts here, t is base of stack, stack goes down, 
+      globals go below the base of the start *)
+
   (** Allocation of a fresh block with the given bounds.  Return an updated
       memory state and the address of the fresh block, which initially contains
       undefined cells.  Note that allocation never fails: we model an
@@ -112,7 +114,7 @@ Module FLAllocator (Pol : Policy).
     | None => raise (OtherFailure "Bad free")
    end.
 
-  Fixpoint globals (m : CM.mem) (gs : list (ident*Z)) (next : addr) : (CM.mem * PTree.t ptr) :=
+  Fixpoint globals (m : submem) (gs : list (ident*Z)) (next : addr) : (submem * PTree.t ptr) :=
     match gs with
     | [] => (m, PTree.empty ptr)
     | (id,sz)::gs' =>
@@ -126,68 +128,5 @@ Module FLAllocator (Pol : Policy).
     let (m', tree) := globals m gs (Int64.repr 8) in
     ((m',sp), tree).
 
-  Definition load (chunk:memory_chunk) (m:mem) (p:ptr) : PolicyResult (val * list val_tag) :=
-    match CM.load chunk (fst m) (of_ptr p) with
-    | Success v => ret v
-    | Fail f => raise f
-    end.
-
-  Definition load_ltags (chunk:memory_chunk) (m:mem) (p:ptr) : 
-  PolicyResult (list loc_tag) :=
-    match CM.load_ltags chunk (fst m) (of_ptr p) with
-    | Success lts => ret lts
-    | Fail f => raise f
-    end.
-
-  Definition load_all (chunk:memory_chunk) (m:mem) (p:ptr) :
-  PolicyResult (val * list val_tag * list loc_tag):=
-    match CM.load_all chunk (fst m) (of_ptr p) with
-    | Success (v,lts) => ret (v,lts)
-    | Fail f => raise f
-    end.
-
-  Definition loadbytes (m:mem) (p:ptr) (n:Z) : PolicyResult (list memval) :=
-    match CM.loadbytes (fst m) (of_ptr p) n with
-    | Success bytes => ret bytes
-    | Fail f => raise f
-    end.
-  
-  Definition loadtags (m:mem) (p:ptr) (n:Z) : PolicyResult (list loc_tag) :=
-    match CM.loadtags (fst m) (of_ptr p) n with
-    | Success tags => ret tags
-    | Fail f => raise f
-    end.
-  
-  Definition store (chunk:memory_chunk) (m:mem) (p:ptr) (v:TLib.atom) (lts:list loc_tag) :
-    PolicyResult mem :=
-    let '(m,st) := m in
-    match CM.store chunk m (of_ptr p) v lts with
-    | Success m' => ret (m',st)
-    | Fail f => raise f
-    end.
-
-  Definition store_atom (chunk:memory_chunk) (m:mem) (p:ptr) (v:TLib.atom)
-    : PolicyResult mem :=
-    let '(m,st) := m in
-    match CM.store_atom chunk m (of_ptr p) v with
-    | Success m' => ret (m',st)
-    | Fail f => raise f
-    end.
-  
-  Definition storebytes (m:mem) (p:ptr) (bytes:list memval) (lts:list loc_tag)
-    : PolicyResult mem :=
-    let '(m,st) := m in
-    match CM.storebytes m (of_ptr p) bytes lts with
-    | Success m' => ret (m',st)
-    | Fail f => raise f
-    end.  
-
-  End A.
-  
+  End Inner.
 End FLAllocator.
-
-Module TaggedCFL (Pol: Policy).
-  Module A := FLAllocator Pol.
-
-  Module Init := Initializers Pol A.CM A.A.
-End TaggedCFL.

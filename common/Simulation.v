@@ -12,21 +12,17 @@ Require Import Csem.
 Require Import Csyntax.
 Require Import AST Ctypes.
 
-Module ProgEquiv (Ptr1: Pointer) (Pol1: Policy)
-       (M1: Memory Ptr1 Pol1) (A1: Allocator Ptr1 Pol1 M1)
-       (Sem1: Semantics Ptr1 Pol1 M1 A1)
-       (Ptr2: Pointer) (Pol2: Policy)
-       (M2: Memory Ptr2 Pol2) (A2: Allocator Ptr2 Pol2 M2)
-       (Sem2: Semantics Ptr2 Pol2 M2 A2).
+Module ProgEquiv (Ptr1: Pointer) (Pol1: Policy) (A1: Memory Ptr1 Pol1) (Sem1: Semantics Ptr1 Pol1 A1)
+                 (Ptr2: Pointer) (Pol2: Policy) (A2: Memory Ptr2 Pol2) (Sem2: Semantics Ptr2 Pol2 A2).
 
   Module CS1 := Sem1.Csyntax.
-  Module TLib1 := M1.MD.TLib.
+  Module TLib1 := A1.MD.TLib.
   Import TLib1.
   Module Val1 := TLib1.Switch.BI.BI1.BI0.Values.
   Import Val1.
   
   Module CS2 := Sem2.Csyntax.
-  Module TLib2 := M2.MD.TLib.
+  Module TLib2 := A2.MD.TLib.
   Module Val2 := TLib2.Switch.BI.BI1.BI0.Values.
   Import Val2.
   
@@ -205,14 +201,10 @@ End ProgEquiv.
 
 (** The general form of a forward simulation. *)
 
-Module SIM (Ptr1: Pointer) (Pol1: Policy)
-       (M1: Memory Ptr1 Pol1) (A1: Allocator Ptr1 Pol1 M1)
-       (Sem1: Semantics Ptr1 Pol1 M1 A1)
-       (Ptr2: Pointer) (Pol2: Policy)
-       (M2: Memory Ptr2 Pol2) (A2: Allocator Ptr2 Pol2 M2)
-       (Sem2: Semantics Ptr2 Pol2 M2 A2).
-  Module PE := ProgEquiv Ptr1 Pol1 M1 A1 Sem1
-                         Ptr2 Pol2 M2 A2 Sem2.
+Module SIM (Ptr1: Pointer) (Pol1: Policy) (A1: Memory Ptr1 Pol1) (Sem1: Semantics Ptr1 Pol1 A1)
+           (Ptr2: Pointer) (Pol2: Policy) (A2: Memory Ptr2 Pol2) (Sem2: Semantics Ptr2 Pol2 A2).
+  Module PE := ProgEquiv Ptr1 Pol1 A1 Sem1
+                         Ptr2 Pol2 A2 Sem2.
   Import PE.
   Module S1 := Sem1.Smallstep.
   Module E1 := S1.Events.

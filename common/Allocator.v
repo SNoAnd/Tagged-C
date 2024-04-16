@@ -37,20 +37,17 @@ Notation "'check' A ; B" := (if A then B else None)
   (at level 200, A at level 100, B at level 200)
   : option_monad_scope.
 
-
-Module Type Allocator (Ptr: Pointer) (Pol : Policy) (M : Memory Ptr Pol).
-  Import M.
-  Import MD.
+Module Type AllocatorImpl (Ptr: Pointer) (Pol: Policy) (S: Submem Ptr Pol).
+  Import S.
+  Import Ptr.
   Import Pol.
-  Export TLib.
-  
-  Local Open Scope option_monad_scope.
-  
-  Parameter t : Type.  
-  Parameter init : t.
-  Definition mem : Type := (M.mem * t).
-  Parameter empty : mem.
-  
+
+  Parameter allocstate : Type.
+
+  Definition mem : Type := (submem * allocstate).
+
+  Parameter init : submem -> mem.
+
   Parameter stkalloc : mem
                        -> Z (* align *)
                        -> Z (* size *)
@@ -80,23 +77,37 @@ Module Type Allocator (Ptr: Pointer) (Pol : Policy) (M : Memory Ptr Pol).
                              * control_tag
                              * mem).
 
-  Parameter globalalloc : mem -> list (ident*Z) ->
-                          (mem * PTree.t ptr).
+  Parameter globalalloc : mem
+                       -> list (ident*Z)
+                       -> (mem * PTree.t ptr).
+End AllocatorImpl.
+
+Module Allocator (Ptr: Pointer) (Pol: Policy) (M: Submem Ptr Pol) (A: AllocatorImpl Ptr Pol M) : Memory Ptr Pol.
+
+  Import A.
+  Import M.
+  Module BI := BI.
+  Module MD := MD.
+  Export BI.
+  Export MD.
+  Import Pol.
+  Import Ptr.
+  Export TLib.
   
-  Definition load (chunk:memory_chunk) (m:mem) (p:ptr) : PolicyResult (val * list val_tag) :=
-    match M.load chunk (fst m) (of_ptr p) with
-    | Success v => ret v
-    | Fail f => raise f
-    end.
+  Local Open Scope option_monad_scope.
+ 
+  Definition addr := addr.
+  Definition of_ptr := of_ptr.
+  Definition addr_off := addr_off.
+  Definition addr_eq := addr_eq.
+  Definition null := null.
+  Definition null_zero := null_zero.
 
-  Definition load_ltags (chunk:memory_chunk) (m:mem) (p:ptr) : 
-  PolicyResult (list loc_tag) :=
-    match M.load_ltags chunk (fst m) (of_ptr p) with
-    | Success lts => ret lts
-    | Fail f => raise f
-    end.
+  Include A.
 
-  Definition load_all (chunk:memory_chunk) (m:mem) (p:ptr) :
+  Definition empty := init M.subempty.
+  
+  Definition load (chunk:memory_chunk) (m:mem) (p:ptr) :
   PolicyResult (val * list val_tag * list loc_tag):=
     match M.load_all chunk (fst m) (of_ptr p) with
     | Success (v,lts) => ret (v,lts)
@@ -138,4 +149,5 @@ Module Type Allocator (Ptr: Pointer) (Pol : Policy) (M : Memory Ptr Pol).
     | Success m' => ret (m',st)
     | Fail f => raise f
     end.
+
 End Allocator.

@@ -34,9 +34,8 @@ Require Import Ctypes.
 
 Set Implicit Arguments.
 
-Module Smallstep (Ptr: Pointer) (Pol: Policy)
-       (M: Memory Ptr Pol) (A:Allocator Ptr Pol M).
-  Module Events := Events Ptr Pol M A.
+Module Smallstep (Ptr: Pointer) (Pol: Policy) (A:Memory Ptr Pol).
+  Module Events := Events Ptr Pol A.
   Export Events.
   
   (** * Closures of transitions relations *)

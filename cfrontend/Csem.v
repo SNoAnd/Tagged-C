@@ -27,15 +27,14 @@ Require Import NullPolicy.
 
 Inductive kind : Type := LV | RV.
 
-Module Type Semantics (Ptr: Pointer) (Pol: Policy)
-       (M: Memory Ptr Pol) (A: Allocator Ptr Pol M).
-  Module Smallstep := Smallstep Ptr Pol M A.
+Module Type Semantics (Ptr: Pointer) (Pol: Policy) (A: Memory Ptr Pol).
+  Module Smallstep := Smallstep Ptr Pol A.
   Export Smallstep.
-  Module Csyntax := Csyntax Ptr Pol M A.
+  Module Csyntax := Csyntax Ptr Pol A.
   Export Csyntax.
-  Import M.
-  Import TLib.
   Import A.
+  Import TLib.
+  Import Ptr.
   
   Definition genv : Type := Genv.t fundef type.
   
@@ -60,18 +59,16 @@ Module Type Semantics (Ptr: Pointer) (Pol: Policy)
    
 End Semantics.
 
-Module TaggedCsem (Pol: Policy)
-                  (M : Memory ConcretePointer Pol)
-                  (A: Allocator ConcretePointer Pol M) <:
-    Semantics ConcretePointer Pol M A.
-    Module Smallstep := Smallstep ConcretePointer Pol M A.
+Module TaggedCsem (Pol: Policy) (A: Memory ConcretePointer Pol) <:
+    Semantics ConcretePointer Pol A.
+    Module Smallstep := Smallstep ConcretePointer Pol A.
     Export Smallstep.
-    Module Csyntax := Csyntax ConcretePointer Pol M A.
+    Module Csyntax := Csyntax ConcretePointer Pol A.
     Export Csyntax.
-    Import M.
-    Import TLib.
     Import A.
-  
+    Import TLib.
+    Import ConcretePointer.
+
     Definition genv : Type := Genv.t fundef type.
     
     Definition globalenv (p: program) : PolicyResult (Genv.t fundef type * composite_env * mem) :=
@@ -102,15 +99,11 @@ Module TaggedCsem (Pol: Policy)
   | deref_loc_value: forall chunk,
       access_mode ty = By_value chunk ->
       type_is_volatile ty = false ->
-      deref_loc ty m p pt Full E0 (load_all chunk m p)
+      deref_loc ty m p pt Full E0 (load chunk m p)
   | deref_loc_volatile: forall chunk t res,
       access_mode ty = By_value chunk -> type_is_volatile ty = true ->
       volatile_load ge chunk m p t res ->
-      let res' :=
-        '(v,vt) <- res;;
-        lts <- load_ltags chunk m p;;
-        ret ((v,vt),lts) in
-      deref_loc ty m p pt Full t res'
+      deref_loc ty m p pt Full t res
   | deref_loc_reference:
       access_mode ty = By_reference ->
       deref_loc ty m p pt Full E0 (ret (Vptr p, [pt],[]))
@@ -172,7 +165,7 @@ Module TaggedCsem (Pol: Policy)
     PolicyResult (control_tag * env * mem) :=
     '(m',base) <- stkalloc m (alignof ce ty) (sizeof ce ty);;
     '(pct', pt', lts') <- LocalT ce l pct ty;;
-    m'' <- storebytes m' base (repeat M.MD.Undef (Z.to_nat (sizeof ce ty))) lts';;
+    m'' <- storebytes m' base (repeat MD.Undef (Z.to_nat (sizeof ce ty))) lts';;
     ret (pct', PTree.set id (PUB base pt' ty) e, m'').
 
   Definition do_alloc_variables (l: Cabs.loc) (pct: control_tag) (e: env) (m: mem) (vs: list (ident * type)) :
