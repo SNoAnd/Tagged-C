@@ -44,45 +44,43 @@ Module Type AllocatorImpl (Ptr: Pointer) (Pol: Policy) (S: Submem Ptr Pol).
 
   Parameter allocstate : Type.
 
-  Definition mem : Type := (submem * allocstate).
+  Parameter init : submem -> (submem * allocstate).
 
-  Parameter init : submem -> mem.
-
-  Parameter stkalloc : mem
+  Parameter stkalloc : (submem * allocstate)
                        -> Z (* align *)
                        -> Z (* size *)
                        -> PolicyResult (
-                           mem
+                           (submem * allocstate)
                            * ptr (* base *)).
 
-  Parameter stkfree : mem
+  Parameter stkfree : (submem * allocstate)
                       -> Z (* align *)
                       -> Z (* size *)
-                      -> PolicyResult mem.
+                      -> PolicyResult (submem * allocstate).
 
-  Parameter heapalloc : mem
+  Parameter heapalloc : (submem * allocstate)
                         -> Z (* size *)
                         -> loc_tag
                         -> PolicyResult
-                             (mem
+                             ((submem * allocstate)
                               * ptr (* base *)).
   
   Parameter heapfree : Cabs.loc
                         -> control_tag     (* pct *)
-                        -> mem
+                        -> (submem * allocstate)
                         -> ptr
                         -> val_tag         (* pointer tag *)
                         -> PolicyResult
                             (Z             (* size of block *)
                              * control_tag
-                             * mem).
+                             * (submem * allocstate)).
 
-  Parameter globalalloc : mem
+  Parameter globalalloc : (submem * allocstate)
                        -> list (ident*Z)
-                       -> (mem * PTree.t ptr).
+                       -> ((submem * allocstate) * PTree.t ptr).
 End AllocatorImpl.
 
-Module Allocator (Ptr: Pointer) (Pol: Policy) (M: Submem Ptr Pol) (A: AllocatorImpl Ptr Pol M) : Memory Ptr Pol.
+Module Allocator (Ptr: Pointer) (Pol: Policy) (M: Submem Ptr Pol) (A: AllocatorImpl Ptr Pol M) <: Memory Ptr Pol.
 
   Import A.
   Import M.
@@ -93,7 +91,7 @@ Module Allocator (Ptr: Pointer) (Pol: Policy) (M: Submem Ptr Pol) (A: AllocatorI
   Import Pol.
   Import Ptr.
   Export TLib.
-  
+ 
   Local Open Scope option_monad_scope.
  
   Definition addr := addr.
@@ -105,8 +103,13 @@ Module Allocator (Ptr: Pointer) (Pol: Policy) (M: Submem Ptr Pol) (A: AllocatorI
 
   Include A.
 
+  Definition mem : Type := submem * allocstate.
+
   Definition empty := init M.subempty.
   
+  Definition direct_read (m:mem) (a:addr) : memval * loc_tag :=
+    M.direct_read (fst m) a.
+
   Definition load (chunk:memory_chunk) (m:mem) (p:ptr) :
   PolicyResult (val * list val_tag * list loc_tag):=
     match M.load_all chunk (fst m) (of_ptr p) with

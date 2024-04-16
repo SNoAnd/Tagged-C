@@ -21,16 +21,16 @@ open! Floats
 open Ctypes
 open Tags
 
-module C2CP (Pol: Policy) (A: module type of FLAllocator.TaggedCFL) =
-struct
+module C2CP (Pol: Policy) = struct
 
-module TC = A (Pol)
-module Init = TC.Init
-module Ctyping = Init.Cexec.InterpreterEvents.Deterministic.Ctyping
-module Csyntax = Ctyping.Csem.Csyntax
-module Cop = Csyntax.Cop
-module Val = TC.A.CM.MD.TLib.Switch.BI.BI1.BI0.Values
-open Val
+  module Als = Top.Allocators (Pol)
+  module CM = Als.CMA.CM
+  module AI = Allocator.Allocator (Values.ConcretePointer) (Pol) (CM)
+
+  module Inner (A: Allocator.AllocatorImpl) = struct
+    module Ctyping = TC.Cexec.InterpreterEvents.Deterministic.Ctyping
+    module Csyntax = Ctyping.Csem.Csyntax
+    module Cop = Csyntax.Cop
 
 (** ** Extracting information about global variables from their atom *)
 
@@ -1292,21 +1292,21 @@ let convertFundecl env (sto, id, ty, optinit) =
 let rec convertInit env init =
   match init with
   | C.Init_single e ->
-      Init.Init_single (convertExpr env e)
+      TC.Init_single (convertExpr env e)
   | C.Init_array il ->
-      Init.Init_array (convertInitList env (List.rev il) Init.Init_nil)
+      TC.Init_array (convertInitList env (List.rev il) TC.Init_nil)
   | C.Init_struct(_, flds) ->
-      Init.Init_struct (convertInitList env (List.rev_map snd flds) Init.Init_nil)
+      TC.Init_struct (convertInitList env (List.rev_map snd flds) TC.Init_nil)
   | C.Init_union(_, fld, i) ->
-      Init.Init_union (intern_string fld.fld_name, convertInit env i)
+      TC.Init_union (intern_string fld.fld_name, convertInit env i)
 
 and convertInitList env il accu =
   match il with
   | [] -> accu
-  | i :: il' -> convertInitList env il' (Init.Init_cons(convertInit env i, accu))
+  | i :: il' -> convertInitList env il' (TC.Init_cons(convertInit env i, accu))
 
 let convertInitializer env ty i =
-  match Init.transl_init
+  match TC.transl_init
                !comp_env (convertTyp env ty) (convertInit env i)
   with
   | Errors.OK init -> init
@@ -1511,4 +1511,6 @@ let convertProgram p =
         p'
   with Env.Error msg ->
     fatal_error "%s" (Env.error_message msg)
-                end
+                
+  end
+end

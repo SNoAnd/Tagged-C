@@ -43,7 +43,6 @@ Require Import Ctypes.
 Require Import Tags.
 Require Import Layout.
 Require Import Encoding.
-Require Import FLAllocator ConcreteAllocator.
 Require Import ExtLib.Structures.Monads. Import MonadNotation.
 
 Notation "s #1" := (fst s) (at level 9, format "s '#1'") : pair_scope.
@@ -61,7 +60,8 @@ Local Unset Case Analysis Schemes.
 Parameter ext : ident -> option (external_function * typelist * rettype * calling_convention)%type.
 
 Module Genv (Ptr: Pointer) (Pol: Policy) (A: Memory Ptr Pol).
-  Import A.
+  Module M := A.
+  Import M.
   Import MD.
   Import Ptr.
   Import TLib.
@@ -334,7 +334,7 @@ Module Genv (Ptr: Pointer) (Pol: Policy) (A: Memory Ptr Pol).
       
       Definition globalenv (p: AST.program F V) :
         PolicyResult (t * mem) :=
-        let (m,tree) := A.globalalloc A.empty (filter_var_sizes p.(AST.prog_defs)) in
+        let (m,tree) := globalalloc A.empty (filter_var_sizes p.(AST.prog_defs)) in
         (add_globals (empty_genv p.(AST.prog_public)) m tree p.(AST.prog_defs)).
       Section WITH_GE.
 

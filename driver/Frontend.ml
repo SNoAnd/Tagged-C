@@ -187,18 +187,22 @@ let init () =
     | _         -> assert false
   end
  
-module FrontendP (Pol: Tags.Policy) (A: module type of FLAllocator.TaggedCFL) =
-struct
+module FrontendP (Pol: Tags.Policy) = struct
+       
+  module InterpInst = InterpP (Pol)
 
-  module InterpInst = InterpP (Pol) (A)
-  module Printing = InterpInst.Printing
-  module C2CPInst = Printing.C2CPInst
-  module PragmaInst = Pragma (Pol) (A)
+  module Inner (TC: module type of InterpInst.PrintCsyntax.C2CPInst.FL.TaggedC) = struct
+
+    module InterpInner = InterpInst.Inner (TC)
+    module Printing = InterpInner.Printing
+    module C2CPInner = Printing.C2CPInner
+    module PragmaInst = Pragma (Pol)
+    module PragmaInner = PragmaInst.Inner (TC)
  
   let init_with () =
-  Env.set_builtins C2CPInst.builtins;
-  Cutil.declare_attributes C2CPInst.attributes;
-  PragmaInst.initialize()
+  Env.set_builtins C2CPInner.builtins;
+  Cutil.declare_attributes C2CPInner.attributes;
+  PragmaInner.initialize()
 
   (* From preprocessed C to Csyntax *)
 
@@ -216,7 +220,7 @@ struct
     (* Save C AST if requested *)
     Cprint.print_if ast;
     (* Conversion to Csyntax *)
-    let csyntax = Timing.time "CompCert C generation" C2CPInst.convertProgram ast in
+    let csyntax = Timing.time "CompCert C generation" C2CPInner.convertProgram ast in
     (* Save CompCert C AST if requested *)
     Printing.print_if csyntax;
     csyntax
@@ -224,16 +228,26 @@ struct
   let run_i_file sourcename preproname =
   Machine.config := Machine.compcert_interpreter !Machine.config;
   let csyntax = parse_c_file sourcename preproname in
-  InterpInst.execute csyntax
+  InterpInner.execute csyntax
+  end
 end
 
 (* Per Policies.md, add new policies in combination of module + desired allocator *)
 
 (* Single policies *)
-module WithNull = FrontendP (NullPolicy.NullPolicy) (FLAllocator.TaggedCFL)
-module WithPVI = FrontendP (PVI.PVI) (FLAllocator.TaggedCFL)
-module WithDoubleFree = FrontendP (DoubleFree.DoubleFree) (ConcreteAllocator.TaggedCConcrete)
-module WithHeapProblem = FrontendP (HeapProblem.HeapProblem) (ConcreteAllocator.TaggedCConcrete)
+module FrontendNull = FrontendP (NullPolicy.NullPolicy)
+module NullAlloc = FLAllocator.FLAllocator (NullPolicy.NullPolicy)
+module WithNull = FrontendNull.Inner (NullAlloc.TaggedC)
+
+module FrontendPVI = FrontendP (PVI.PVI)
+module PVIAlloc = FLAllocator.FLAllocator (PVI.PVI)
+module WithPVI = FrontendPVI.Inner (PVIAlloc.TaggedC)
+
+module FrontendDoubleFree = FrontendP (DoubleFree.DoubleFree)
+module DoubleFreeAlloc = ConcreteAllocator.ConcreteAllocator (DoubleFree.DoubleFree)
+module WithDoubleFree = FrontendDoubleFree.Inner (DoubleFreeAlloc.TaggedC)
+
+(*module WithHeapProblem = FrontendP (HeapProblem.HeapProblem) (ConcreteAllocator.TaggedCConcrete)
 
 (* Multiple Policies  
   In general, combined policies should all use (or be known to function with) 
@@ -249,4 +263,4 @@ module DFxHP = Product.PolProduct (DoubleFree.DoubleFree) (HeapProblem.HeapProbl
 module WithDFxHP = FrontendP (DFxHP) (ConcreteAllocator.TaggedCConcrete)
 
 module DFxPVI = Product.PolProduct (PVI.PVI) (DoubleFree.DoubleFree)
-module WithDFxPVI = FrontendP (DFxPVI) (ConcreteAllocator.TaggedCConcrete)
+module WithDFxPVI = FrontendP (DFxPVI) (ConcreteAllocator.TaggedCConcrete)*)

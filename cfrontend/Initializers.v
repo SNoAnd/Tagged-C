@@ -22,7 +22,7 @@ Open Scope error_monad_scope.
 Module Initializers (Pol: Policy).
   Module Outer := Cexec Pol.
 
-  Module Inner (I: AllocatorImpl ConcretePointer Pol Outer.M).
+  Module Inner (I: AllocatorImpl ConcretePointer Pol Outer.CM).
   Module Cexec := Outer.Inner I.
   Export Cexec.
   Import Csem.

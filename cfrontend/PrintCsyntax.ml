@@ -23,16 +23,18 @@ open! Ctypes
 open Tags
 open C2C
 
-module PrintCsyntaxP (Pol: Policy) (A: module type of FLAllocator.TaggedCFL) =
-struct
+module PrintCsyntaxP (Pol: Policy) = struct
+  module C2CPInst = C2CP (Pol)
+     
+  module Inner (Init: module type of C2CPInst.FL.TaggedC) =
+    struct
 
-module C2CPInst = C2CP (Pol) (A)
-module Init = C2CPInst.Init
-module Ctyping = Init.Cexec.InterpreterEvents.Deterministic.Ctyping
-module Csyntax = Ctyping.Csem.Csyntax
-module Cop = Csyntax.Cop
-module Val = C2CPInst.Val
-open Val
+    module C2CPInner = C2CPInst.Inner (Init)
+    module Ctyping = Init.Cexec.InterpreterEvents.Deterministic.Ctyping
+    module Csyntax = Ctyping.Csem.Csyntax
+    module Cop = Csyntax.Cop
+    module Val = C2CPInner.Val
+    open Val
 
 let name_unop = function
   | Values.Onotbool -> "!"
@@ -465,7 +467,7 @@ let print_fundef p id fd =
 let print_fundecl p id fd =
   match fd with
   | Ctypes.Internal f ->
-      let linkage = if C2CPInst.atom_is_static id then "static" else "extern" in
+      let linkage = if C2CPInner.atom_is_static id then "static" else "extern" in
       fprintf p "%s %s;@ @ " linkage
                 (name_cdecl (extern_atom id) (Csyntax.type_of_function f))
   | _ -> ()
@@ -540,7 +542,7 @@ let print_globvar p id v =
 let print_globvardecl p  id v =
   let name = extern_atom id in
   let name = if v.gvar_readonly then "const "^name else name in
-  let linkage = if C2CPInst.atom_is_static id then "static" else "extern" in
+  let linkage = if C2CPInner.atom_is_static id then "static" else "extern" in
   fprintf p "%s %s;@ @ " linkage (name_cdecl name v.gvar_info)
 
 let print_globdecl p (id,gd) =
@@ -590,4 +592,5 @@ let print_if prog =
       print_program (formatter_of_out_channel oc) prog;
       close_out oc
 
-                end
+  end
+end
