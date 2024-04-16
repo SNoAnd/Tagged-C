@@ -37,15 +37,15 @@ Notation " 'check' A ; B" := (if A then B else nil)
   : list_monad_scope.
 
 Module Cexec (Pol: Policy).
-  Module M := ConcMem ConcretePointer Pol.
+  Module CM := ConcMem ConcretePointer Pol.
 
-  Module Inner (I: AllocatorImpl ConcretePointer Pol M).
+  Module Inner (I: AllocatorImpl ConcretePointer Pol CM).
 
-  Module A := Allocator ConcretePointer Pol M I.
+  Module A := Allocator ConcretePointer Pol CM I.
  
   Module InterpreterEvents := InterpreterEvents Pol A.
   Export InterpreterEvents.
-  Export Csem.
+
   Import A.
   Import TLib.
   Import ConcretePointer.
