@@ -115,6 +115,8 @@ Module Type Memory (Ptr: Pointer) (Pol:Policy).
                        -> (mem * PTree.t ptr).
   (** Memory reads. *)
   
+  Parameter direct_read : mem -> addr -> memval * loc_tag.
+  
   (** [load chunk m a] perform a read in memory state [m], at address
       [a].  It returns the value of the memory chunk
       at that address.  [None] is returned if the accessed bytes
@@ -170,6 +172,8 @@ Module Type Submem (Ptr: Pointer) (Pol: Policy).
 
   Parameter null_zero : forall p, of_ptr p = null -> concretize p = Int64.zero.
 
+  Parameter direct_read : submem -> addr -> memval * loc_tag.
+
   Parameter load : memory_chunk -> submem -> addr -> Result (val*list val_tag).
   
   Parameter load_ltags : memory_chunk -> submem -> addr -> Result (list loc_tag).
@@ -224,6 +228,9 @@ Module ConcMem (Ptr: Pointer) (Pol: Policy) <: Submem Ptr Pol.
   }.
 
   Definition submem : Type := mem'.
+ 
+  Definition direct_read (m: submem) (a: addr) : (memval * loc_tag) :=
+    ZMap.get (Int64.unsigned a) m.(mem_contents).
   
   Definition get_perm (m: submem) (a: addr) : permission :=
     ZMap.get (Int64.unsigned a) m.(mem_access).

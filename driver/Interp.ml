@@ -20,7 +20,6 @@ open Camlcoq
 open AST
 (*open! Integers*)
 open! Ctypes
-open Maps
 open Tags
 open PrintCsyntax
 open Csem
@@ -35,22 +34,23 @@ let mode = ref First
 
 let timeoutMaxSteps = ref 0
 
-module InterpP (Pol: Policy) (A: module type of FLAllocator.TaggedCFL) =
-struct
+module InterpP (Pol: Policy) = struct
+       
+  module PrintCsyntax = PrintCsyntaxP (Pol)
 
-module Printing = PrintCsyntaxP (Pol) (A)
-module Init = Printing.Init
-module Cexec = Init.Cexec
-module Deterministic = Cexec.InterpreterEvents.Deterministic
-module Ctyping = Deterministic.Ctyping
-module Csem = Ctyping.Csem
-module Csyntax = Csem.Csyntax
-module Events = Csyntax.Cop.Smallstep.Events
-module Genv = Events.Genv
-module A = Printing.C2CPInst.TC.A.A
-module M = Printing.C2CPInst.TC.A.CM
-module Val = Printing.Val
-open Val
+  module Inner (Init: module type of PrintCsyntax.C2CPInst.FL.TaggedC) = struct
+
+    module Printing = PrintCsyntax.Inner (Init)
+    module Cexec = Init.Cexec
+    module Deterministic = Cexec.InterpreterEvents.Deterministic
+    module Ctyping = Deterministic.Ctyping
+    module Csem = Ctyping.Csem
+    module Csyntax = Csem.Csyntax
+    module Events = Csyntax.Cop.Smallstep.Events
+    module Genv = Events.Genv
+    module M = Genv.M
+    module Val = Printing.Val
+    open Val
 
 (* Printing events *)
 
@@ -157,11 +157,7 @@ let print_mem p m =
   let rec print_at i max =
     if i <= max then
      (fprintf p " %ld " (Int32.of_int i);
-      (match ZMap.get (coqint_of_camlint (Int32.of_int i)) (M.mem_access m) with
-      | M.Live -> fprintf p "L"
-      | M.Dead -> fprintf p "D"
-      | M.MostlyDead -> fprintf p "/");
-      let (mv,t) = (ZMap.get (coqint_of_camlint (Int32.of_int i)) (M.mem_contents m)) in
+      let (mv,t) = M.direct_read m (coqint_of_camlint (Int32.of_int i)) in
       match mv with
       | M.MD.Undef -> fprintf p " U '@' %s|" (print_lt t); print_at (i+1) max
       | M.MD.Byte (b,vt) ->
@@ -198,7 +194,7 @@ let print_state p (prog, ge, s) =
               (name_of_function prog f)
 	      (print_ct pct)
               Printing.print_stmt s;
-              if !trace > 2 then print_mem p (fst m) else ()
+              if !trace > 2 then print_mem p m else ()
   | Csem.ExprState(f, l, pstate, pct, r, k, e, te, m) ->
       Printing.print_pointer_hook := print_pointer (fst ge) e;
       fprintf p "in function %s, pct %s, expression@ @[<hv 0>%a@]"
@@ -364,15 +360,15 @@ let (>>=) opt f = match opt with None -> None | Some arg -> f arg
 let extract_string m ofs =
   let b = Buffer.create 80 in
   let rec extract ofs =
-    match A.load Mint8unsigned m ofs (Pol.init_state,[]) with
-    | (Success (Vint n,_),_) ->
-        let c = Char.chr (Z.to_int n) in
-        if c = '\000' then begin
-          Some(Buffer.contents b)
-        end else begin
-          Buffer.add_char b c;
-          extract (Z.succ ofs)
-        end
+    match M.direct_read m ofs with
+    | (M.MD.Byte (n,_), _) ->
+      let c = Char.chr (Z.to_int n) in
+      if c = '\000' then begin
+        Some(Buffer.contents b)
+      end else begin
+        Buffer.add_char b c;
+        extract (Z.succ ofs)
+      end
     | _ ->
         None in
   extract ofs
@@ -470,7 +466,7 @@ let do_printf m fmt args =
 let store_string m ofs buff size =
   let rec store m i = 
     if i < size then (* use default value and location tags for now; this is probably bogus *)
-      (match A.store Mint8unsigned m  (Z.add ofs (Z.of_sint i))
+      (match M.store Mint8unsigned m  (Z.add ofs (Z.of_sint i))
           (Vint (Z.of_uint (Char.code (Bytes.get buff i))),Pol.def_tag) [Pol.coq_DefLT] (Pol.init_state,[]) with
       | (Success m', _) -> store m' (i+1)
       | _ -> None)
@@ -574,16 +570,15 @@ and world_io ge m id args =
 
 and world_vload ge m chunk id ofs =
   Genv.find_symbol ge id >>=
-          fun res ->
-                match res with
-                | Genv.SymGlob(base,bound,t,gv) ->
-                         (match A.load chunk m ofs (Pol.init_state,[]) with
-                         | (Success (v,_),_) ->
-                           let vt = Pol.def_tag in
-                           Cexec.InterpreterEvents.eventval_of_atom ge (v,vt) (type_of_chunk chunk) >>= fun ev ->
-                           Some(ev, world ge m)
-                         | _ -> None)
-                | _ -> None
+    fun res ->
+    match res with
+    | Genv.SymGlob(base,bound,t,gv) ->
+      (match M.load chunk m ofs (Pol.init_state,[]) with
+       | (Success ((v,vts),lts),_) ->
+         Cexec.InterpreterEvents.eventval_of_atom ge (v,Pol.coq_EffectiveT Cabs.no_loc vts) (type_of_chunk chunk) >>= fun ev ->
+         Some(ev, world ge m)
+       | _ -> None)
+    | _ -> None
 
 and world_vstore ge m chunk id ofs ev =
   Genv.find_symbol ge id >>=
@@ -591,7 +586,7 @@ and world_vstore ge m chunk id ofs ev =
                 match res with
                 | Genv.SymGlob(base,bound,t,gv) ->
                         Cexec.InterpreterEvents.atom_of_eventval ge ev (type_of_chunk chunk) >>= fun v ->
-                         (match A.store chunk m ofs v [] (Pol.init_state,[]) with
+                         (match M.store chunk m ofs v [] (Pol.init_state,[]) with
                          | (Success m',_) -> Some(world ge m')
                          | _ -> None)
                 | _ -> None
@@ -869,5 +864,6 @@ let execute prog =
         | _ -> fprintf p "ERROR: Initial state undefined@."; exit 126)
       | _ ->
         fprintf p "ERROR: Initial state undefined@."; exit 126)
-  
+
+  end  
 end

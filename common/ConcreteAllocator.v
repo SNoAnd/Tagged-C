@@ -27,6 +27,7 @@ Require Export Memdata.
 Require Import Memory.
 Require Import Allocator.
 Require Import Encoding.
+Require Import Initializers.
 Require Import ExtLib.Structures.Monads. Import MonadNotation.
 
 Open Scope monad_scope.
@@ -45,12 +46,104 @@ Notation "'check' A ; B" := (if A then B else None)
 
 Open Scope option_monad_scope.
 
-Module ConcreteAllocator (Pol : Policy).
-  Module M := ConcMem ConcretePointer Pol.
+Module ConcMemAllocators (Pol : Policy).
+  Module Init := Initializers Pol.
+  Module CM := Init.Outer.CM.
 
-  Module Inner : AllocatorImpl ConcretePointer Pol M.
+  Module FLAllocator : AllocatorImpl ConcretePointer Pol CM.
+  Import CM.
+  Import TLib.
+  Import Pol.
+  Import ConcretePointer.
 
-  Include M.
+  Definition freelist : Type := list (addr (* base *)
+                                    * Z (* size *)
+                                    * loc_tag (* "header" loc tag *)).
+  Record heap_state : Type := mkheap {
+    regions : ZMap.t (option (Z*loc_tag));
+    fl : freelist;
+  }.
+  
+  Definition allocstate : Type := addr*heap_state.   
+  
+  Definition stack_size := 4096. (* 4k*)
+  Definition heap_size : Z := 4096. (* heap size? *)
+  Definition heap_starting_addr : Z := 6000 . (* matches init, grows up*)
+
+  Definition empty_heap : heap_state :=
+    mkheap (ZMap.init None) [(Int64.repr heap_starting_addr, heap_size, DefHT)].
+  
+  Definition init (m: submem) : submem * allocstate := (m,(Int64.repr 6000,empty_heap)).
+   (* stack starts here, t is base of stack, stack goes down, 
+      globals go below the base of the start *)
+
+  (** Allocation of a fresh block with the given bounds.  Return an updated
+      memory state and the address of the fresh block, which initially contains
+      undefined cells.  Note that allocation never fails: we model an
+      infinite memory. *)
+  Definition stkalloc (m: submem * allocstate) (al sz: Z) : PolicyResult ((submem * allocstate) * ptr) :=
+    let '(m,(sp,heap)) := m in
+    let sp' := (Int64.unsigned sp) - sz in
+    let aligned_sp := (Int64.repr (floor sp' al)) in
+    ret ((m,(aligned_sp,heap)),aligned_sp).
+
+  Definition stkfree (m: submem * allocstate) (al sz: Z) : PolicyResult (submem * allocstate) :=
+    let '(m,(sp,heap)) := m in
+    let sp' := (Int64.unsigned sp) - sz in
+    let aligned_sp := (Int64.repr (align sp' al)) in
+    ret (m,(aligned_sp,heap)).
+
+  (* This assumes that size is already 8-byte aligned *)
+  Fixpoint fl_alloc (fl : freelist) (size : Z) (lt : loc_tag) : (addr*freelist) :=
+    match fl with
+    | [] => (null, fl)
+    | (base, sz, lt') :: fl' =>
+        if sz =? size
+        then (base,fl')
+        else if size <? sz
+             then (base,(off base (Int64.repr size),sz - size,lt)::fl')
+             else 
+               let '(base',fl'') := fl_alloc fl' size lt in
+               (base', (base, sz, lt') :: fl'')
+    end.
+
+  Definition heapalloc (m : submem * allocstate) (size : Z) (lt_head: loc_tag) : PolicyResult (submem * allocstate*ptr) :=
+    let '(m, (sp,heap)) := m in
+    (* Make sure we're 8-byte aligned *)
+    let size := align size 8 in
+    let '(base,fl') := fl_alloc heap.(fl) size lt_head in
+    let regions' := ZMap.set (Int64.unsigned base) (Some (size,lt_head)) heap.(regions) in
+    ret ((m, (sp, mkheap regions' fl')), base).
+
+  Definition heapfree (l: Cabs.loc) (pct: control_tag) (m: submem * allocstate) (base: addr) (pt:val_tag)
+    : PolicyResult (Z*control_tag* (submem * allocstate)) :=
+    let '(m, (sp,heap)) := m in
+    match ZMap.get (Int64.unsigned base) heap.(regions) with
+    | Some (sz,lt) =>
+        '(pct',lt') <- FreeT l pct pt [lt];;
+        let heap' := (mkheap (ZMap.set (Int64.unsigned base) None heap.(regions))
+                             ((base,sz,lt')::heap.(fl))) in
+        ret (sz,pct',(m,(sp,heap')))
+    | None => raise (OtherFailure "Bad free")
+   end.
+
+  Fixpoint globals (m : submem) (gs : list (ident*Z)) (next : addr) : (submem * PTree.t ptr) :=
+    match gs with
+    | [] => (m, PTree.empty ptr)
+    | (id,sz)::gs' =>
+        let next_aligned := Int64.repr (align (Int64.unsigned next) 8) in
+        let (m',tree) := globals m gs' (off next_aligned (Int64.repr sz)) in
+        (set_perm_range m next_aligned (sz-1) Live, PTree.set id next tree)
+    end.
+  
+  Definition globalalloc (m : submem * allocstate) (gs : list (ident*Z)) : (submem * allocstate * PTree.t ptr) :=
+    let (m, sp) := m in
+    let (m', tree) := globals m gs (Int64.repr 8) in
+    ((m',sp), tree).
+  End FLAllocator.
+
+  Module ConcreteAllocator : AllocatorImpl ConcretePointer Pol CM.
+  Import CM.
   Import TLib.
   Import Pol.
   Import ConcretePointer.
@@ -59,7 +152,6 @@ Module ConcreteAllocator (Pol : Policy).
   Definition stack_size := 4096. (* 4k*)
   Definition heap_starting_addr : Z := 6000. (* grows up*)
   Definition heap_size : Z := 4096. (* heap size? *)
-  Definition mem : Type := (submem * allocstate).
 
   Definition superstore (chunk: memory_chunk) (m: submem) (ofs: Z)
              (a: TLib.atom) (lts: list loc_tag) : submem :=
@@ -84,13 +176,13 @@ Module ConcreteAllocator (Pol : Policy).
   *)
   Definition init (s: submem) := (init_heap subempty heap_starting_addr heap_size, 6000).
 
-  Definition stkalloc (m: mem) (al sz: Z) : PolicyResult (mem*ptr) :=
+  Definition stkalloc (m: submem * allocstate) (al sz: Z) : PolicyResult ((submem * allocstate) * ptr) :=
     let '(m,sp) := m in
     let sp' := sp - sz in
     let aligned_sp := floor sp' al in
     ret ((m,aligned_sp),Int64.repr (aligned_sp)).
 
-  Definition stkfree (m: mem) (al sz: Z) : PolicyResult mem :=
+  Definition stkfree (m: submem * allocstate) (al sz: Z) : PolicyResult (submem * allocstate) :=
     let '(m,sp) := m in
     let sp' := sp + sz in
     let aligned_sp := align sp' al in
@@ -176,15 +268,15 @@ Module ConcreteAllocator (Pol : Policy).
 
   (* NB: Bytes themselves should not be cleared on allocation, similiar to the way real malloc
       doesn't.*)
-  Definition heapalloc (m: mem) (size: Z) (header_lts : loc_tag): PolicyResult (mem * ptr) :=
+  Definition heapalloc (m: submem * allocstate) (size: Z) (header_lts : loc_tag): PolicyResult (submem * allocstate * ptr) :=
     let '(m,sp) := m in
     '(m',base) <- find_free 100 m (Int64.repr heap_starting_addr) size (repeat header_lts (Z.to_nat header_size));;
     ret ((m',sp),base).
 
   (* NB: Bytes themselves should not be cleared on deallocation, similiar to the way real malloc
       doesn't.*)    
-  Definition heapfree (l: Cabs.loc) (pct: control_tag) (m: mem) (p: ptr) (pt: val_tag) :
-    PolicyResult (Z * control_tag * mem) :=
+  Definition heapfree (l: Cabs.loc) (pct: control_tag) (m: submem * allocstate) (p: ptr) (pt: val_tag) :
+    PolicyResult (Z * control_tag * (submem * allocstate)) :=
     let (m, sp) := m in
     let head := Int64.repr (Int64.unsigned p - header_size) in
     '((v,_),header_lts) <- get_header m head;;
@@ -202,10 +294,11 @@ Module ConcreteAllocator (Pol : Policy).
         (set_perm_range m next_aligned (sz-1) Live, PTree.set id next tree)
     end.
   
-  Definition globalalloc (m : mem) (gs : list (ident*Z)) : (mem * PTree.t ptr) :=
+  Definition globalalloc (m : submem * allocstate) (gs : list (ident*Z)) : (submem * allocstate * PTree.t ptr) :=
     let (m, sp) := m in
     let (m', tree) := globals m gs (Int64.repr 8) in
     ((m',sp), tree).
 
-  End Inner.
-End ConcreteAllocator.
+  End ConcreteAllocator.
+
+End ConcMemAllocators.
