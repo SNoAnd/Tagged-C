@@ -45,7 +45,6 @@ Module Cexec (Pol: Policy).
  
   Module InterpreterEvents := InterpreterEvents Pol A.
   Export InterpreterEvents.
-  About Csem.
   Export Csem.
   Import A.
   Import TLib.
