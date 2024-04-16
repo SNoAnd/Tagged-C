@@ -27,7 +27,6 @@ Require Export Memdata.
 Require Import Memory.
 Require Import Allocator.
 Require Import Encoding.
-Require Import Initializers.
 Require Import ExtLib.Structures.Monads. Import MonadNotation.
 
 Open Scope monad_scope.
@@ -47,31 +46,30 @@ Notation "'check' A ; B" := (if A then B else None)
 Open Scope option_monad_scope.
 
 Module ConcreteAllocator (Pol : Policy).
-  Module CM := ConcMem ConcretePointer Pol.
+  Module M := ConcMem ConcretePointer Pol.
 
-  Module A : Allocator ConcretePointer Pol CM.
-  Import CM.
-  Import MD.
+  Module Inner : AllocatorImpl ConcretePointer Pol M.
+
+  Include M.
   Import TLib.
   Import Pol.
+  Import ConcretePointer.
 
-  Definition t : Type := (* stack pointer *) Z.
-  Definition init : t := 6000. (* stack starts here, t is base of stack, stack goes down, 
-                                  globals go below the base of the start *)
+  Definition allocstate : Type := (* stack pointer *) Z.
   Definition stack_size := 4096. (* 4k*)
-  Definition heap_starting_addr : Z := init . (* grows up*)
+  Definition heap_starting_addr : Z := 6000. (* grows up*)
   Definition heap_size : Z := 4096. (* heap size? *)
-  Definition mem : Type := (CM.mem * t).
+  Definition mem : Type := (submem * allocstate).
 
-  Definition superstore (chunk: memory_chunk) (m: CM.mem) (ofs: Z)
-             (a: TLib.atom) (lts: list loc_tag) : CM.mem :=
+  Definition superstore (chunk: memory_chunk) (m: submem) (ofs: Z)
+             (a: TLib.atom) (lts: list loc_tag) : submem :=
     {|
       mem_contents := setN (merge_vals_tags (encode_val chunk a) lts) ofs m.(mem_contents);
       mem_access := mem_access m;
       live := live m
     |}.
 
-  Definition init_heap (m: CM.mem) (base: Z) (sz: Z) : CM.mem :=
+  Definition init_heap (m: submem) (base: Z) (sz: Z) : submem :=
     let contents' := setN (repeat (Undef,DefHT) (Z.to_nat sz)) base m.(mem_contents) in
     let m' := {|
       mem_contents := contents';
@@ -84,7 +82,7 @@ Module ConcreteAllocator (Pol : Policy).
   (* OG
   Definition empty := (init_heap CM.empty 1000 1000, init).
   *)
-  Definition empty := (init_heap CM.empty heap_starting_addr heap_size, init).
+  Definition init (s: submem) := (init_heap subempty heap_starting_addr heap_size, 6000).
 
   Definition stkalloc (m: mem) (al sz: Z) : PolicyResult (mem*ptr) :=
     let '(m,sp) := m in
@@ -98,7 +96,7 @@ Module ConcreteAllocator (Pol : Policy).
     let aligned_sp := align sp' al in
     ret (m,aligned_sp).
 
-  Definition get_header (m: CM.mem) (base: ptr) : PolicyResult (val * list val_tag * list loc_tag) :=
+  Definition get_header (m: submem) (base: ptr) : PolicyResult (val * list val_tag * list loc_tag) :=
     match load_all Mint64 m base with
     | Success res => ret res
     | Fail failure => raise failure
@@ -114,8 +112,8 @@ Module ConcreteAllocator (Pol : Policy).
     | _ => raise (OtherFailure "ConcreteAllocator | parse_header | Header is not a long")
     end.
 
-  Definition update_header (m: CM.mem) (base: ptr) (live: bool) (sz: Z)
-             (lts: list loc_tag) : PolicyResult CM.mem :=
+  Definition update_header (m: submem) (base: ptr) (live: bool) (sz: Z)
+             (lts: list loc_tag) : PolicyResult submem :=
     if sz <? 0 then raise (OtherFailure "ConcreteAllocator| update_header | Attempting to allocate negative size")
     else
       let rec :=
@@ -127,9 +125,8 @@ Module ConcreteAllocator (Pol : Policy).
   Definition header_size := size_chunk Mint64.
   Definition block_align := align_chunk Mint64.
 
-  (* *)
-  Fixpoint find_free (c : nat) (m : CM.mem) (header : ptr) (sz : Z) (header_lts : list loc_tag) :
-    PolicyResult (CM.mem*ptr) :=
+  Fixpoint find_free (c : nat) (m : submem) (header : ptr) (sz : Z) (header_lts : list loc_tag) :
+    PolicyResult (submem*ptr) :=
     (* if its size 0, or we're beyond the edge of the heap (OOM), return 0 *)
     if ((sz =? 0) && (Int64.unsigned(concretize header) >? heap_starting_addr + heap_size)) then ret (m,Int64.zero) else
     match c with
@@ -196,7 +193,7 @@ Module ConcreteAllocator (Pol : Policy).
     m' <- update_header m head false sz (repeat lt' 8);;
     ret (sz,pct',(m',sp)).
 
-  Fixpoint globals (m : CM.mem) (gs : list (ident*Z)) (next : addr) : (CM.mem * PTree.t ptr) :=
+  Fixpoint globals (m : submem) (gs : list (ident*Z)) (next : addr) : (submem * PTree.t ptr) :=
     match gs with
     | [] => (m, PTree.empty ptr)
     | (id,sz)::gs' =>
@@ -210,67 +207,5 @@ Module ConcreteAllocator (Pol : Policy).
     let (m', tree) := globals m gs (Int64.repr 8) in
     ((m',sp), tree).
 
-  Definition load (chunk:memory_chunk) (m:mem) (p:ptr) : PolicyResult (val * list val_tag) :=
-    match CM.load chunk (fst m) (of_ptr p) with
-    | Success v => ret v
-    | Fail f => raise f
-    end.
-
-  Definition load_ltags (chunk:memory_chunk) (m:mem) (p:ptr) : 
-  PolicyResult (list loc_tag) :=
-    match CM.load_ltags chunk (fst m) (of_ptr p) with
-    | Success lts => ret lts
-    | Fail f => raise f
-    end.
-
-  Definition load_all (chunk:memory_chunk) (m:mem) (p:ptr) :
-  PolicyResult (val * list val_tag * list loc_tag):=
-    match CM.load_all chunk (fst m) (of_ptr p) with
-    | Success (v,lts) => ret (v,lts)
-    | Fail f => raise f
-    end.
-
-  Definition loadbytes (m:mem) (p:ptr) (n:Z) : PolicyResult (list memval) :=
-    match CM.loadbytes (fst m) (of_ptr p) n with
-    | Success bytes => ret bytes
-    | Fail f => raise f
-    end.
-  
-  Definition loadtags (m:mem) (p:ptr) (n:Z) : PolicyResult (list loc_tag) :=
-    match CM.loadtags (fst m) (of_ptr p) n with
-    | Success tags => ret tags
-    | Fail f => raise f
-    end.
-  
-  Definition store (chunk:memory_chunk) (m:mem) (p:ptr) (v:TLib.atom) (lts:list loc_tag) :
-    PolicyResult mem :=
-    let '(m,st) := m in
-    match CM.store chunk m (of_ptr p) v lts with
-    | Success m' => ret (m',st)
-    | Fail f => raise f
-    end.
-
-  Definition store_atom (chunk:memory_chunk) (m:mem) (p:ptr) (v:TLib.atom)
-    : PolicyResult mem :=
-    let '(m,st) := m in
-    match CM.store_atom chunk m (of_ptr p) v with
-    | Success m' => ret (m',st)
-    | Fail f => raise f
-    end.
-  
-  Definition storebytes (m:mem) (p:ptr) (bytes:list memval) (lts:list loc_tag)
-    : PolicyResult mem :=
-    let '(m,st) := m in
-    match CM.storebytes m (of_ptr p) bytes lts with
-    | Success m' => ret (m',st)
-    | Fail f => raise f
-    end.
-
-   End A.
+  End Inner.
 End ConcreteAllocator.
-
-Module TaggedCConcrete (Pol: Policy).
-  Module A := ConcreteAllocator Pol.
-
-  Module Init := Initializers Pol A.CM A.A.
-End TaggedCConcrete.

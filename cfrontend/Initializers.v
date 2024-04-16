@@ -19,16 +19,17 @@ Require Import Cexec Tags.
 
 Open Scope error_monad_scope.
 
-Module Initializers (Pol: Policy)
-                    (M : Memory ConcretePointer Pol)
-                    (A: Allocator ConcretePointer Pol M).
-  Module Cexec := Cexec Pol M A.
+Module Initializers (Pol: Policy).
+  Module Outer := Cexec Pol.
+
+  Module Inner (I: AllocatorImpl ConcretePointer Pol Outer.M).
+  Module Cexec := Outer.Inner I.
   Export Cexec.
   Import Csem.
-  Import M.
-  Import MD.
   Import A.
+  Import MD.
   Import TLib.
+  Import ConcretePointer.
  
 (** * Evaluation of compile-time constant expressions *)
 
@@ -483,4 +484,5 @@ Definition transl_init (ce: composite_env) (ty: type) (i: initializer)
   do s1 <- transl_init_rec ce s0 ty i 0;
   init_data_list_of_state s1.
 
+  End Inner.
 End Initializers.

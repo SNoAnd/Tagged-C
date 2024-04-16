@@ -32,11 +32,13 @@ Require Import Tags.
 Require Import ExtLib.Structures.Monads. Import MonadNotation.
 Require Import List. Import ListNotations.
 
-Module Events (Ptr: Pointer) (Pol: Policy) (M:Memory Ptr Pol) (A: Allocator Ptr Pol M).
-  Module Genv := Genv Ptr Pol M A.
+Module Events (Ptr: Pointer) (Pol: Policy) (A: Memory Ptr Pol).
+  Module Genv := Genv Ptr Pol A.
   Export Genv.
   Import A.
   Import Ptr.
+  Import TLib.
+  Import Pol.
   
 (** * Events and traces *)
 
@@ -399,14 +401,17 @@ Fixpoint output_trace (t: trace) : Prop :=
 
 (** * Semantics of volatile memory accesses *)
 Inductive volatile_load (ge: Genv.t F V):
-  memory_chunk -> mem -> ptr -> trace -> PolicyResult (val * list val_tag) -> Prop :=
+  memory_chunk -> mem -> ptr -> trace -> PolicyResult (val * list val_tag * list loc_tag) -> Prop :=
   | volatile_load_vol: forall chunk m p id gv ev v vt,
       invert_symbol_ptr ge p = Some (id, gv) ->
       gv.(gvar_volatile) = true ->
       eventval_match ge ev (type_of_chunk chunk) (v,vt) ->
       volatile_load ge chunk m p
                     (Event_vload chunk id p ev :: nil)
-                    (ret (Values.load_result chunk v,repeat vt (size_chunk_nat chunk)))
+                    ('(_,_,lts) <- load chunk m p;;
+                    ret (Values.load_result chunk v,
+                          repeat vt (size_chunk_nat chunk),
+                          lts))
   | volatile_load_nonvol: forall chunk m p res,
       (forall id gv, invert_symbol_ptr ge p = Some (id, gv) ->
                      gv.(gvar_volatile) = false) ->
@@ -445,8 +450,8 @@ Definition extcall_sem : Type :=
 
 (** ** Semantics of volatile loads *)
 Definition volatile_load_tags (l:Cabs.loc) (chunk: memory_chunk) (m:mem) (p:ptr)
-           (pt:val_tag) (vts: list val_tag) (pct:control_tag) : PolicyResult val_tag :=
-  lts <- load_ltags chunk m p;;
+           (pt:val_tag) (vts: list val_tag) (lts: list loc_tag) (pct:control_tag) :
+  PolicyResult val_tag :=
   vt <- CoalesceT l vts;;
   vt' <- LoadT l pct pt vt lts;;
   AccessT l pct vt'.  
@@ -454,9 +459,9 @@ Definition volatile_load_tags (l:Cabs.loc) (chunk: memory_chunk) (m:mem) (p:ptr)
 Inductive volatile_load_sem (l:Cabs.loc) (chunk: memory_chunk) (ge: Genv.t F V):
   list atom -> control_tag -> val_tag -> mem -> trace ->
   PolicyResult (atom * control_tag * mem) -> Prop :=
-| volatile_load_sem_intro: forall p pt m pct fpt t v vts vt',
-    volatile_load ge chunk m p t (ret (v,vts)) ->
-    volatile_load_tags l chunk m p pt vts pct = ret vt'->
+| volatile_load_sem_intro: forall p pt m pct fpt t v vts lts vt',
+    volatile_load ge chunk m p t (ret (v,vts,lts)) ->
+    volatile_load_tags l chunk m p pt vts lts pct = ret vt'->
     volatile_load_sem l chunk ge ((Vptr p, pt) :: nil) pct fpt m t
                       (ret ((v,vt'), pct, m)).
 
@@ -465,7 +470,7 @@ Inductive volatile_load_sem (l:Cabs.loc) (chunk: memory_chunk) (ge: Genv.t F V):
 Definition volatile_store_tags (l:Cabs.loc) (chunk: memory_chunk) (m:mem) (p: ptr)
            (pt:val_tag) (vt:val_tag) (pct:control_tag) :
   PolicyResult (control_tag*val_tag*list loc_tag) :=
-  '((_,vts),lts) <- load_all chunk m p;;
+  '(_,vts,lts) <- load chunk m p;;
   '(pct',vt') <-  AssignT l pct (EffectiveT l vts) vt;;
   '(pct'',vt'',lts') <- StoreT l pct' pt vt' lts;;
   ret (pct'',vt'', lts').
@@ -495,8 +500,8 @@ Definition alloc_size (v: val) (z:Z) : Prop :=
   mvs <- loadbytes m' base sz;;
   let mvs' := map (fun mv =>
                      match mv with
-                     | M.MD.Byte b vt => M.MD.Byte b vt_body
-                     | M.MD.Fragment (v,vt) q n => M.MD.Fragment (v,vt_body) q n
+                     | MD.Byte b vt => MD.Byte b vt_body
+                     | MD.Fragment (v,vt) q n => MD.Fragment (v,vt_body) q n
                      | Undef => Undef
                      end) mvs in
   m'' <- storebytes m' base mvs' (repeat lt (Z.to_nat sz));;

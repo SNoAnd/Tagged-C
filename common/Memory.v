@@ -75,53 +75,60 @@ Module Type Memory (Ptr: Pointer) (Pol:Policy).
   
   Parameter mem : Type.
   
-  (** Permissions *)
-  Parameter allowed_access : mem -> memory_chunk -> addr -> Prop.
-  Parameter aligned_access : memory_chunk -> addr -> Prop.
-  
-  Parameter allowed_access_dec:
-    forall m chunk a,
-      {allowed_access m chunk a} + {~ allowed_access m chunk a}.
-
-  Parameter aligned_access_dec:
-    forall chunk a,
-      {aligned_access chunk a} + {~ aligned_access chunk a}.
-  
   (** * Operations over memory stores *)
 
   (** The initial store *)
 
   Parameter empty : mem.
         
+  Parameter stkalloc : mem
+                       -> Z (* align *)
+                       -> Z (* size *)
+                       -> PolicyResult (
+                           mem
+                           * ptr (* base *)).
+
+  Parameter stkfree : mem
+                      -> Z (* align *)
+                      -> Z (* size *)
+                      -> PolicyResult mem.
+
+  Parameter heapalloc : mem
+                        -> Z (* size *)
+                        -> loc_tag
+                        -> PolicyResult
+                             (mem
+                              * ptr (* base *)).
+  
+  Parameter heapfree : Cabs.loc
+                        -> control_tag     (* pct *)
+                        -> mem
+                        -> ptr
+                        -> val_tag         (* pointer tag *)
+                        -> PolicyResult
+                            (Z             (* size of block *)
+                             * control_tag
+                             * mem).
+
+  Parameter globalalloc : mem
+                       -> list (ident*Z)
+                       -> (mem * PTree.t ptr).
   (** Memory reads. *)
   
   (** [load chunk m a] perform a read in memory state [m], at address
       [a].  It returns the value of the memory chunk
       at that address.  [None] is returned if the accessed bytes
       are not readable. *)
-  Parameter load : memory_chunk -> mem -> addr -> Result (val * list val_tag).
 
-  Parameter load_ltags : memory_chunk -> mem -> addr -> Result (list loc_tag).
-
-  Parameter load_all : memory_chunk -> mem -> addr -> Result (val * list val_tag * list loc_tag).
-  
-  Parameter load_all_compose :
-    forall chunk m a v vts lts,
-      load_all chunk m a = Success (v,vts,lts) <->
-        load chunk m a = Success (v,vts) /\ load_ltags chunk m a = Success lts.
-
-  Parameter load_all_fail :
-    forall chunk m a failure,
-      load_all chunk m a = Fail failure <->
-        load chunk m a = Fail failure /\ load_ltags chunk m a = Fail failure.
+  Parameter load : memory_chunk -> mem -> ptr -> PolicyResult (val * list val_tag * list loc_tag).
   
   (** [loadbytes m ofs n] reads [n] consecutive bytes starting at
       location [(b, ofs)].  Returns [None] if the accessed locations are
       not readable. *)
 
-  Parameter loadbytes : mem -> addr -> Z -> Result (list memval).
+  Parameter loadbytes : mem -> ptr -> Z -> PolicyResult (list memval).
 
-  Parameter loadtags : mem -> addr -> Z -> Result (list loc_tag).
+  Parameter loadtags : mem -> ptr -> Z -> PolicyResult (list loc_tag).
 
   (** Memory stores. *)
   
@@ -130,20 +137,58 @@ Module Type Memory (Ptr: Pointer) (Pol:Policy).
       Return the updated memory store, or [None] if the accessed bytes
       are not writable. *)
   
-  Parameter store : memory_chunk -> mem -> addr -> atom -> list loc_tag -> Result mem.
+  Parameter store : memory_chunk -> mem -> ptr -> atom -> list loc_tag -> PolicyResult mem.
 
-  Parameter store_atom : memory_chunk -> mem -> addr -> atom -> Result mem.
+  Parameter store_atom : memory_chunk -> mem -> ptr -> atom -> PolicyResult mem.
   
   (** [storebytes m ofs bytes] stores the given list of bytes [bytes]
       starting at location [(b, ofs)].  Returns updated memory state
       or [None] if the accessed locations are not writable. *)
-  Parameter storebytes : mem -> addr -> list memval -> list loc_tag -> Result mem.
+  Parameter storebytes : mem -> ptr -> list memval -> list loc_tag -> PolicyResult mem.
   
   Global Opaque Memory.store Memory.load Memory.storebytes Memory.loadbytes.
 
 End Memory.
 
-Module ConcMem (Ptr: Pointer) (Pol:Policy) <: Memory Ptr Pol.
+Module Type Submem (Ptr: Pointer) (Pol: Policy).
+  Module BI := Builtins Ptr.
+  Export BI.
+  Module MD := Memdata Ptr Pol.
+  Export MD.
+  Import TLib.
+  Export Ptr.
+
+  Parameter submem : Type.
+  Parameter subempty : submem.
+
+  Parameter addr : Type.
+  Parameter of_ptr : ptr -> addr.
+  Parameter addr_off : addr -> int64 -> addr.
+  Parameter addr_eq : addr -> addr -> bool.
+
+  Parameter null : addr.
+
+  Parameter null_zero : forall p, of_ptr p = null -> concretize p = Int64.zero.
+
+  Parameter load : memory_chunk -> submem -> addr -> Result (val*list val_tag).
+  
+  Parameter load_ltags : memory_chunk -> submem -> addr -> Result (list loc_tag).
+
+  Parameter load_all : memory_chunk -> submem -> addr -> Result (val * list val_tag * list loc_tag).
+
+  Parameter loadbytes : submem -> addr -> Z -> Result (list memval).
+
+  Parameter loadtags : submem -> addr -> Z -> Result (list loc_tag).
+
+  Parameter store : memory_chunk -> submem -> addr -> atom -> list loc_tag -> Result submem.
+
+  Parameter store_atom : memory_chunk -> submem -> addr -> atom -> Result submem.
+
+  Parameter storebytes : submem -> addr -> list memval -> list loc_tag -> Result submem.
+ 
+End Submem.
+
+Module ConcMem (Ptr: Pointer) (Pol: Policy) <: Submem Ptr Pol.
   Module BI := Builtins Ptr.
   Export BI.
   Module MD := Memdata Ptr Pol.
@@ -178,15 +223,15 @@ Module ConcMem (Ptr: Pointer) (Pol:Policy) <: Memory Ptr Pol.
     live: list (Z*Z);
   }.
 
-  Definition mem : Type := mem'.
+  Definition submem : Type := mem'.
   
-  Definition get_perm (m: mem) (a: addr) : permission :=
+  Definition get_perm (m: submem) (a: addr) : permission :=
     ZMap.get (Int64.unsigned a) m.(mem_access).
 
-  Definition set_perm (m: mem) (a: addr) (p: permission) : mem :=
+  Definition set_perm (m: submem) (a: addr) (p: permission) : submem :=
     mkmem m.(mem_contents) (ZMap.set (Int64.unsigned a) p m.(mem_access)) m.(live).
 
-  Definition set_perm_range (m: mem) (base: addr) (size: Z) (p: permission) : mem :=
+  Definition set_perm_range (m: submem) (base: addr) (size: Z) (p: permission) : submem :=
     let fix loop n m :=
       match n with
       | O => set_perm m base p
@@ -196,7 +241,7 @@ Module ConcMem (Ptr: Pointer) (Pol:Policy) <: Memory Ptr Pol.
       end in
     loop (Z.to_nat size) m.
   
-  Definition perm (m: mem) (a: addr) (p: permission) : Prop :=
+  Definition perm (m: submem) (a: addr) (p: permission) : Prop :=
     get_perm m a = p.
 
   Theorem perm_dec:
@@ -205,7 +250,7 @@ Module ConcMem (Ptr: Pointer) (Pol:Policy) <: Memory Ptr Pol.
     unfold perm; intros. eapply permission_dec.
   Defined.
 
-  Definition range_perm (m: mem) (lo hi: Z) (p: permission) : Prop :=
+  Definition range_perm (m: submem) (lo hi: Z) (p: permission) : Prop :=
     forall a, lo <= a < hi -> perm m (Int64.repr a) p.
 
   Lemma range_perm_dec:
@@ -226,7 +271,7 @@ Module ConcMem (Ptr: Pointer) (Pol:Policy) <: Memory Ptr Pol.
     - left; red; intros. extlia.
   Defined.
   
-  Definition range_perm_neg (m: mem) (lo hi: Z) (p: permission) : Prop :=
+  Definition range_perm_neg (m: submem) (lo hi: Z) (p: permission) : Prop :=
     forall a, lo <= a < hi -> ~ perm m (Int64.repr a) p.
   (** * Operations over memory stores *)
  
@@ -247,7 +292,7 @@ Module ConcMem (Ptr: Pointer) (Pol:Policy) <: Memory Ptr Pol.
     - left; red; intros. extlia.
   Defined.
 
-  Definition allowed_access (m: mem) (chunk: memory_chunk) (a: addr) : Prop :=
+  Definition allowed_access (m: submem) (chunk: memory_chunk) (a: addr) : Prop :=
     range_perm_neg m (Int64.unsigned a) ((Int64.unsigned a) + size_chunk chunk) Dead.
 
   Definition aligned_access (chunk: memory_chunk) (a: addr) : Prop :=
@@ -270,7 +315,7 @@ Module ConcMem (Ptr: Pointer) (Pol:Policy) <: Memory Ptr Pol.
     intros. destruct (Zdivide_dec (align_chunk chunk) (Int64.unsigned a)); auto.
   Qed.
 
-  Definition empty: mem :=
+  Definition subempty: submem :=
     mkmem (ZMap.init (Undef, DefLT))
           (ZMap.init MostlyDead)
           [].
@@ -281,7 +326,7 @@ Module ConcMem (Ptr: Pointer) (Pol:Policy) <: Memory Ptr Pol.
     | S n' => ZMap.get p c :: getN n' (p + 1) c
     end.
  
-  Definition load (chunk: memory_chunk) (m: mem) (a: addr): Result (val*list val_tag) :=
+  Definition load (chunk: memory_chunk) (m: submem) (a: addr): Result (val*list val_tag) :=
     if aligned_access_dec chunk a then
       if allowed_access_dec m chunk a
       then Success (decode_val chunk (map (fun x => fst x)
@@ -290,14 +335,14 @@ Module ConcMem (Ptr: Pointer) (Pol:Policy) <: Memory Ptr Pol.
       else Fail (PrivateLoad (Int64.unsigned a))
     else Fail (MisalignedLoad (align_chunk chunk) (Int64.unsigned a)).
   
-  Definition load_ltags (chunk: memory_chunk) (m: mem) (a: addr): Result (list loc_tag) :=
+  Definition load_ltags (chunk: memory_chunk) (m: submem) (a: addr): Result (list loc_tag) :=
     if aligned_access_dec chunk a then
       if allowed_access_dec m chunk a
       then Success (map (fun x => snd x) (getN (size_chunk_nat chunk) (Int64.unsigned a) (m.(mem_contents))))
       else Fail (PrivateLoad (Int64.unsigned a))
     else Fail (MisalignedLoad (align_chunk chunk) (Int64.unsigned a)).
 
-Definition load_all (chunk: memory_chunk) (m: mem) (a: addr): Result (val * list val_tag * list loc_tag) :=
+Definition load_all (chunk: memory_chunk) (m: submem) (a: addr): Result (val * list val_tag * list loc_tag) :=
     if aligned_access_dec chunk a then
       if allowed_access_dec m chunk a
       then
@@ -347,12 +392,12 @@ Definition load_all (chunk: memory_chunk) (m: mem) (a: addr): Result (val * list
       intro H; destruct H as [H1 H2]; inv H1; inv H2; auto.
   Qed.
 
-  Definition loadbytes (m: mem) (a: addr) (n: Z): Result (list memval) :=
+  Definition loadbytes (m: submem) (a: addr) (n: Z): Result (list memval) :=
     if range_perm_neg_dec m (Int64.unsigned a) ((Int64.unsigned a) + n) Dead
     then Success (map (fun x => fst x) (getN (Z.to_nat n) (Int64.unsigned a) (m.(mem_contents))))
     else Fail (PrivateLoad (Int64.unsigned a)).
 
-  Definition loadtags (m: mem) (a: addr) (n: Z) : Result (list loc_tag) :=
+  Definition loadtags (m: submem) (a: addr) (n: Z) : Result (list loc_tag) :=
     if range_perm_neg_dec m (Int64.unsigned a) ((Int64.unsigned a) + n) Dead
     then Success (map (fun x => snd x) (getN (Z.to_nat n) (Int64.unsigned a) (m.(mem_contents))))
     else Fail (PrivateLoad (Int64.unsigned a)).
@@ -375,8 +420,8 @@ Definition load_all (chunk: memory_chunk) (m: mem) (a: addr): Result (val * list
     | _ => []
     end.
   
-  Definition store (chunk: memory_chunk) (m: mem) (a: addr) (v:atom) (lts:list loc_tag)
-    : Result mem :=
+  Definition store (chunk: memory_chunk) (m: submem) (a: addr) (v:atom) (lts:list loc_tag)
+    : Result submem :=
     if aligned_access_dec chunk a then
       if allowed_access_dec m chunk a then
         Success (mkmem (setN (merge_vals_tags (encode_val chunk v) lts) (Int64.unsigned a) (m.(mem_contents)))
@@ -384,8 +429,8 @@ Definition load_all (chunk: memory_chunk) (m: mem) (a: addr): Result (val * list
       else Fail (PrivateStore (Int64.unsigned a))
     else Fail (MisalignedStore (align_chunk chunk) (Int64.unsigned a)).
 
-  Definition store_atom (chunk: memory_chunk) (m: mem) (a: addr) (v: atom)
-    : Result mem :=
+  Definition store_atom (chunk: memory_chunk) (m: submem) (a: addr) (v: atom)
+    : Result submem :=
     if aligned_access_dec chunk a then
       if allowed_access_dec m chunk a then
         let lts := map snd (getN (Z.to_nat (size_chunk chunk)) (Int64.unsigned a) (m.(mem_contents))) in
@@ -394,8 +439,8 @@ Definition load_all (chunk: memory_chunk) (m: mem) (a: addr): Result (val * list
       else Fail (PrivateStore (Int64.unsigned a))
     else Fail (MisalignedStore (align_chunk chunk) (Int64.unsigned a)).
 
-  Definition storebytes (m: mem) (a: addr) (bytes: list memval) (lts:list loc_tag)
-    : Result mem :=
+  Definition storebytes (m: submem) (a: addr) (bytes: list memval) (lts:list loc_tag)
+    : Result submem :=
     if range_perm_neg_dec m (Int64.unsigned a) ((Int64.unsigned a) + Z.of_nat (length bytes)) Dead then 
       Success (mkmem
                        (setN (merge_vals_tags bytes lts) (Int64.unsigned a) (m.(mem_contents)))
@@ -404,7 +449,7 @@ Definition load_all (chunk: memory_chunk) (m: mem) (a: addr): Result (val * list
   
 End ConcMem.
 
-Module MultiMem (Pol: Policy) <: Memory SemiconcretePointer Pol.
+Module MultiMem (Pol: Policy).
   Module CM := ConcMem SemiconcretePointer Pol.
   Export CM.
   Module BI := BI.
@@ -433,8 +478,8 @@ Module MultiMem (Pol: Policy) <: Memory SemiconcretePointer Pol.
   
   Record myMem := mkMem
     {
-      comp_locals : PMap.t CM.mem;
-      shares : PMap.t CM.mem;
+      comp_locals : PMap.t CM.submem;
+      shares : PMap.t CM.submem;
     }.
   
   Definition mem : Type := myMem.
@@ -456,44 +501,14 @@ Module MultiMem (Pol: Policy) <: Memory SemiconcretePointer Pol.
       {aligned_access chunk a} + {~ aligned_access chunk a}.
   
   Definition empty : mem :=
-    mkMem (PMap.init CM.empty) (PMap.init CM.empty).
-  
-  Definition load (chunk: memory_chunk) (m: mem) (a: addr) : Result (val*list val_tag) :=
-    match a with
-    | (LocInd C, i) => CM.load chunk (m.(comp_locals)#C) i
-    | (ShareInd b _, i) => CM.load chunk (m.(comp_locals)#b) i
-    end.
-
-  Definition load_ltags (chunk: memory_chunk) (m: mem) (a: addr) : Result (list loc_tag) :=
-    match a with
-    | (LocInd C, i) => CM.load_ltags chunk (m.(comp_locals)#C) i
-    | (ShareInd b _, i) => CM.load_ltags chunk (m.(comp_locals)#b) i
-    end.
-  
-  Definition load_all (chunk: memory_chunk) (m: mem) (a: addr) : Result (val * list val_tag * list loc_tag) :=
+    mkMem (PMap.init CM.subempty) (PMap.init CM.subempty).
+   
+  Definition load (chunk: memory_chunk) (m: mem) (a: addr) : Result (val * list val_tag * list loc_tag) :=
     match a with
     | (LocInd C, i) => CM.load_all chunk (m.(comp_locals)#C) i
     | (ShareInd b _, i) => CM.load_all chunk (m.(comp_locals)#b) i
     end.
-  
-  Lemma load_all_compose :
-    forall chunk m a v vts lts,
-      load_all chunk m a = Success (v, vts, lts) <->
-        load chunk m a = Success (v, vts) /\ load_ltags chunk m a = Success lts.
-  Proof.
-    unfold load, load_ltags, load_all. intros until a.
-    destruct a; destruct i; apply CM.load_all_compose.
-  Qed.
-    
-  Lemma load_all_fail :
-    forall chunk m a failure,
-      load_all chunk m a = Fail failure <->
-        load chunk m a = Fail failure /\ load_ltags chunk m a = Fail failure.
-  Proof.
-    unfold load, load_ltags, load_all. intros until a.
-    destruct a; destruct i; apply CM.load_all_fail.
-  Qed.
-  
+ 
   Definition loadbytes (m: mem) (a: addr) (num: Z) : Result (list memval) :=
     match a with
     | (LocInd C, i) => CM.loadbytes (m.(comp_locals)#C) i num

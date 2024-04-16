@@ -30,14 +30,14 @@ Require Import Smallstep.
 Require Archi.
 Require Import ExtLib.Structures.Monads. Import MonadNotation.
 
-Module Cop (Ptr: Pointer) (Pol: Policy) (M: Memory Ptr Pol) (A: Allocator Ptr Pol M).
-  Module Smallstep := Smallstep Ptr Pol M A.
+Module Cop (Ptr: Pointer) (Pol: Policy) (A: Memory Ptr Pol).
+  Module Smallstep := Smallstep Ptr Pol A.
   Export Smallstep.
-  Import M.
+  Import A.
   Import TLib.
   Import Values.
   Import Genv.
-  Import A.
+  Import Ptr.
 
 Inductive incr_or_decr : Type := Incr | Decr.
 
@@ -1048,7 +1048,7 @@ Definition bitfield_normalize (sz: intsize) (sg: signedness) (width: Z) (n: int)
 
 Definition do_load_bitfield (sz: intsize) (sg: signedness) (pos width: Z)
   (p:ptr) (m:mem) : PolicyResult (val * list val_tag * list loc_tag) :=
-  '(v, vts, lts) <- load_all (chunk_for_carrier sz) m p;;
+  '(v, vts, lts) <- load (chunk_for_carrier sz) m p;;
   match v with
   | Vint c => ret (Vint (bitfield_extract sz sg pos width c), vts, lts)
   | _ => ret (Vundef, vts, lts)
@@ -1064,7 +1064,7 @@ Inductive load_bitfield: type -> intsize -> signedness -> Z -> Z -> mem -> ptr -
 
 Definition do_store_bitfield (sz: intsize) (sg: signedness)
            (pos width: Z) (p: ptr) (m:mem) (n: int) (vt: val_tag) (lts: list loc_tag) :=
-  '(v, _) <- load (chunk_for_carrier sz) m p;;
+  '(v, _, _) <- load (chunk_for_carrier sz) m p;;
   let v' := match v with
             | Vint c =>
                 Vint (Int.bitfield_insert (first_bit sz pos width) width c n)

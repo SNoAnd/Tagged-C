@@ -36,17 +36,20 @@ Notation " 'check' A ; B" := (if A then B else nil)
   (at level 200, A at level 100, B at level 200)
   : list_monad_scope.
 
-Module Cexec (Pol: Policy)
-             (M : Memory ConcretePointer Pol)
-             (A: Allocator ConcretePointer Pol M).
+Module Cexec (Pol: Policy).
+  Module M := ConcMem ConcretePointer Pol.
+
+  Module Inner (I: AllocatorImpl ConcretePointer Pol M).
+
+  Module A := Allocator ConcretePointer Pol M I.
  
-  Module InterpreterEvents := InterpreterEvents Pol M A.
+  Module InterpreterEvents := InterpreterEvents Pol A.
   Export InterpreterEvents.
   About Csem.
   Export Csem.
-  Import M.
   Import A.
   Import TLib.
+  Import ConcretePointer.
   
   (* Policy-agnostic Tactics *)
   Ltac mydestr :=
@@ -254,17 +257,9 @@ Module Cexec (Pol: Policy)
           | By_value chunk =>
               match type_is_volatile ty with
               | false =>
-                  Some (w, E0, load_all chunk m p)
+                  Some (w, E0, load chunk m p)
               | true =>
-                  match do_volatile_load ge w chunk m p with
-                  | Some (w', tr, res) =>
-                      let res' :=
-                        '(v,vts) <- res;;
-                        lts <- load_ltags chunk m p;;
-                        ret (v, vts, lts) in
-                        Some (w', tr, res')
-                  | None => None
-                  end
+                  do_volatile_load ge w chunk m p
               end
           | By_reference => Some (w, E0, ret ((Vptr p, [pt]), []))
           | By_copy => Some (w, E0, ret ((Vptr p, [pt]),[]))
@@ -370,7 +365,7 @@ Module Cexec (Pol: Policy)
       unfold do_deref_loc; intros until res.
       destruct bf.
       - destruct (access_mode ty) eqn:?; mydestr; try congruence.
-        + intros. inv Heqo. exploit do_volatile_load_sound; eauto.
+        + intros. exploit do_volatile_load_sound; eauto.
           intuition. eapply deref_loc_volatile; eauto.
         + intros. split.
           * eapply deref_loc_value; eauto.
@@ -394,7 +389,7 @@ Module Cexec (Pol: Policy)
       unfold do_deref_loc; intros. inv H.
       - rewrite H1.
         inv H0. rewrite H2. auto.
-      - repeat cronch. apply (do_volatile_load_complete ge w _ _ _ w') in H3; cronch; auto.
+      - repeat cronch. apply (do_volatile_load_complete ge w _ _ _ w') in H3; auto.
       - inv H0. rewrite H1. auto.
       - inv H0. rewrite H1. auto.
       - inv H0. inv H1.
@@ -2879,5 +2874,6 @@ Definition at_final_state (S: Csem.state): option (int * logs) :=
   | _ => None
   end.
 
+  End Inner.
 End Cexec.
 
