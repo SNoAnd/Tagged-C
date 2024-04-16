@@ -29,6 +29,9 @@ Module Type Pointer.
   Parameter concretize : ptr -> int64.
   Parameter off : ptr -> int64 -> ptr.
   
+  Parameter nullptr : ptr.
+  Parameter null_zero : concretize nullptr = Int64.zero.
+
   Parameter alignp : ptr -> Z.
 
   Parameter lt : ptr -> ptr -> Prop.
@@ -50,6 +53,11 @@ Module ConcretePointer <: Pointer.
   
   Definition concretize (p: ptr) : int64 := p.
   Definition off (p: ptr) (i: int64) : ptr := Int64.add p i.
+
+  Definition nullptr : ptr := Int64.zero.
+  Lemma null_zero : concretize nullptr = Int64.zero.
+  Proof. auto. Qed.
+
   Definition alignp (p: ptr) : Z := 8.
 
   Definition lt (p1 p2: ptr) := Int64.lt p1 p2 = true.
@@ -85,6 +93,7 @@ Module SemiconcretePointer <: Pointer.
   Inductive index : Type :=
   | LocInd (C:Comp)
   | ShareInd (b:block) (base:int64)
+  | Null
   .
 
   Inductive myContext : Type :=
@@ -110,6 +119,11 @@ Module SemiconcretePointer <: Pointer.
 
   Definition off (p: ptr) (i: int64) : ptr :=
     let (ind, pos) := p in (ind, Int64.add pos i).
+
+  Definition nullptr := (Null, Int64.zero).
+
+  Lemma null_zero : concretize nullptr = Int64.zero.
+  Proof. auto. Qed.
 
   Definition alignp (p: ptr) : Z := 8.
 

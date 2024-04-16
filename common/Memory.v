@@ -443,6 +443,7 @@ Module MultiMem (Pol: Policy) <: Memory SemiconcretePointer Pol.
     match a with
     | (LocInd C, i) => CM.allowed_access (m.(comp_locals)#C) chunk i
     | (ShareInd b _, i) => CM.allowed_access (m.(comp_locals)#b) chunk i
+    | _ => False
     end.
     
   Parameter aligned_access : memory_chunk -> addr -> Prop.
@@ -462,18 +463,21 @@ Module MultiMem (Pol: Policy) <: Memory SemiconcretePointer Pol.
     match a with
     | (LocInd C, i) => CM.load chunk (m.(comp_locals)#C) i
     | (ShareInd b _, i) => CM.load chunk (m.(comp_locals)#b) i
+    | _ => Fail (PrivateLoad (Int64.unsigned (concretize a)))
     end.
 
   Definition load_ltags (chunk: memory_chunk) (m: mem) (a: addr) : Result (list loc_tag) :=
     match a with
     | (LocInd C, i) => CM.load_ltags chunk (m.(comp_locals)#C) i
     | (ShareInd b _, i) => CM.load_ltags chunk (m.(comp_locals)#b) i
+    | _ => Fail (PrivateLoad (Int64.unsigned (concretize a)))
     end.
   
   Definition load_all (chunk: memory_chunk) (m: mem) (a: addr) : Result (val * list val_tag * list loc_tag) :=
     match a with
     | (LocInd C, i) => CM.load_all chunk (m.(comp_locals)#C) i
     | (ShareInd b _, i) => CM.load_all chunk (m.(comp_locals)#b) i
+    | _ => Fail (PrivateLoad (Int64.unsigned (concretize a)))
     end.
   
   Lemma load_all_compose :
@@ -482,7 +486,8 @@ Module MultiMem (Pol: Policy) <: Memory SemiconcretePointer Pol.
         load chunk m a = Success (v, vts) /\ load_ltags chunk m a = Success lts.
   Proof.
     unfold load, load_ltags, load_all. intros until a.
-    destruct a; destruct i; apply CM.load_all_compose.
+    destruct a; destruct i; try apply CM.load_all_compose.
+    split; intros; inv H. inv H0.
   Qed.
     
   Lemma load_all_fail :
@@ -491,19 +496,24 @@ Module MultiMem (Pol: Policy) <: Memory SemiconcretePointer Pol.
         load chunk m a = Fail failure /\ load_ltags chunk m a = Fail failure.
   Proof.
     unfold load, load_ltags, load_all. intros until a.
-    destruct a; destruct i; apply CM.load_all_fail.
-  Qed.
+    destruct a; destruct i; try apply CM.load_all_fail.
+    split; intros.
+    - inv H. split; simpl; auto.
+    - destruct H. inv H. inv H0. simpl. auto. 
+    Qed.
   
   Definition loadbytes (m: mem) (a: addr) (num: Z) : Result (list memval) :=
     match a with
     | (LocInd C, i) => CM.loadbytes (m.(comp_locals)#C) i num
     | (ShareInd b _, i) => CM.loadbytes (m.(comp_locals)#b) i num
+    | _ => Fail (PrivateLoad (Int64.unsigned (concretize a)))
     end.    
 
   Definition loadtags (m: mem) (a: addr) (num: Z) : Result (list loc_tag) :=
     match a with
     | (LocInd C, i) => CM.loadtags (m.(comp_locals)#C) i num
     | (ShareInd b _, i) => CM.loadtags (m.(comp_locals)#b) i num
+    | _ => Fail (PrivateLoad (Int64.unsigned (concretize a)))
     end.    
 
   Definition store (chunk: memory_chunk) (m: mem) (a: addr) (v: atom) (lts: list loc_tag) : Result mem :=
@@ -518,7 +528,8 @@ Module MultiMem (Pol: Policy) <: Memory SemiconcretePointer Pol.
         | Success cm => Success (mkMem (PMap.set b cm m.(shares)) m.(comp_locals))
         | Fail f => Fail f
         end
-      end.
+    | _ => Fail (PrivateStore (Int64.unsigned (concretize a)))
+    end.
     
   Definition store_atom (chunk: memory_chunk) (m: mem) (a: addr) (v: atom) : Result mem :=
     match a with
@@ -532,6 +543,7 @@ Module MultiMem (Pol: Policy) <: Memory SemiconcretePointer Pol.
         | Success cm => Success (mkMem (PMap.set b cm m.(shares)) m.(comp_locals))
         | Fail f => Fail f
         end
+    | _ => Fail (PrivateStore (Int64.unsigned (concretize a)))
     end.
 
   Definition storebytes (m: mem) (p: ptr) (mvs: list memval) (lts: list loc_tag) : Result mem :=
@@ -546,6 +558,7 @@ Module MultiMem (Pol: Policy) <: Memory SemiconcretePointer Pol.
         | Success cm => Success (mkMem (PMap.set b cm m.(shares)) m.(comp_locals))
         | Fail f => Fail f
         end
+    | _ => Fail (PrivateStore (Int64.unsigned (concretize p)))
     end.    
 
 End MultiMem.

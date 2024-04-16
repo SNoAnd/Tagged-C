@@ -46,8 +46,6 @@ Module Cexec (Pol: Policy)
   Import M.
   Import A.
   Import TLib.
-  Print addr. 
-  About addr.
   
   (* Policy-agnostic Tactics *)
   Ltac mydestr :=

@@ -206,20 +206,20 @@ Module Log (P:Policy) <: Policy.
     log _ ("FieldT(" ++ print_ct pct ++ "," ++ print_vt vt ++ ") = " ++ print_vt vt');;
     ret vt'.
 
-  Definition PICastT (l: loc) (pct: control_tag) (pt: val_tag) (lts: list loc_tag) (ty: type) :
+  Definition PICastT (l: loc) (pct: control_tag) (pt: val_tag) (lts: option (list loc_tag)) (ty: type) :
     PolicyResult val_tag :=
     vt' <- P.PICastT l pct pt lts ty;;
     log _ ("PICastT(" ++ print_ct pct ++ "," ++ print_vt pt ++ ") = " ++ print_vt vt');;
     ret vt'.
           
-  Definition IPCastT (l: loc) (pct: control_tag) (vt: val_tag)  (lts: list loc_tag) (ty: type) :
+  Definition IPCastT (l: loc) (pct: control_tag) (vt: val_tag)  (lts: option (list loc_tag)) (ty: type) :
     PolicyResult val_tag :=
     vt' <- P.IPCastT l pct vt lts ty;;
     log _ ("IPCastT(" ++ print_ct pct ++ "," ++ print_vt vt ++ ") = " ++ print_vt vt');;
     ret vt'.
 
-  Definition PPCastT (l: loc) (pct: control_tag) (vt: val_tag) (lts1: list loc_tag) (lts2: list loc_tag)
-    (ty: type) : PolicyResult val_tag :=
+  Definition PPCastT (l: loc) (pct: control_tag) (vt: val_tag)
+    (lts1: option (list loc_tag)) (lts2: option (list loc_tag)) (ty: type) : PolicyResult val_tag :=
     vt' <- P.PPCastT l pct vt lts1 lts2 ty;;
     log _ ("PPCastT(" ++ print_ct pct ++ "," ++ print_vt vt ++ ") = " ++ print_vt vt');;
     ret vt'.
