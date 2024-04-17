@@ -13,7 +13,7 @@
 (** Compile-time evaluation of initializers for global C variables. *)
 
 Require Import Coqlib Maps Errors.
-Require Import Integers Floats Values AST Encoding Memory Allocator Globalenvs.
+Require Import Integers Floats Values AST Encoding Memory Allocator AllocatorImpl Globalenvs.
 Require Import Ctypes Cop Csyntax Csem.
 Require Import Cexec Tags.
 

@@ -26,15 +26,16 @@ open C2C
 module PrintCsyntaxP (Pol: Policy) = struct
   module C2CPInst = C2CP (Pol)
      
-  module Inner (Init: module type of C2CPInst.FL.TaggedC) =
+  module Inner (I: C2CPInst.CMA.ConcAllocatorImpl) =
     struct
 
-    module C2CPInner = C2CPInst.Inner (Init)
-    module Ctyping = Init.Cexec.InterpreterEvents.Deterministic.Ctyping
-    module Csyntax = Ctyping.Csem.Csyntax
+    module C2CPInner = C2CPInst.Inner (I)
+    module Cexec = C2CPInner.Cexec
+    module Ctyping = C2CPInner.Ctyping
+    module Csyntax = C2CPInner.Csyntax
     module Cop = Csyntax.Cop
-    module Val = C2CPInner.Val
-    open Val
+    module Vals = C2CPInner.Vals
+    open Vals
 
 let name_unop = function
   | Values.Onotbool -> "!"

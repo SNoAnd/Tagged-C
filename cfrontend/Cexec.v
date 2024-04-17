@@ -17,7 +17,7 @@ Require Import FunctionalExtensionality.
 Require Import Axioms Classical.
 Require Import String Coqlib Decidableplus.
 Require Import Errors Maps Integers Floats.
-Require Import AST Values Memory Allocator Events Globalenvs Builtins Csem.
+Require Import AST Values Memory AllocatorImpl Allocator Events Globalenvs Builtins Csem.
 Require Import Tags.
 Require Import List. Import ListNotations.
 Require Import InterpreterEvents Ctypes.
@@ -701,7 +701,7 @@ Section EXPRS.
                 let! v <- sem_cast v1 ty1 ty m;
                 let! ofs1 <- match v1 with Vptr ofs1 => Some ofs1 | _ => None end;
                 let! ofs <- match v with Vptr ofs => Some ofs | _ => None end;
-                if Int64.eq ofs null || Int64.eq ofs1 null
+                if Int64.eq ofs nullptr || Int64.eq ofs1 nullptr
                 then try pt', ps' <- PPCastT lc pct vt1 None None ty ps;
                      catch "failred_cast_ptr_ptr", E0;
                      Rred "red_cast_ptr_ptr" pct (Eval (v,pt') ty) te m E0 ps'
@@ -722,7 +722,7 @@ Section EXPRS.
                 top <<=
                 let! v <- sem_cast v1 ty1 ty m;
                 let! ofs <- match v1 with Vptr ofs => Some ofs | _ => None end;
-                if Int64.eq ofs null
+                if Int64.eq ofs nullptr
                   then try pt', ps' <- PICastT lc pct vt1 None ty ps;
                        catch "failred_cast_ptr_int", E0;
                        Rred "red_cast_ptr_int" pct (Eval (v,pt') ty) te m E0 ps'
@@ -738,7 +738,7 @@ Section EXPRS.
                 top <<=
                 let! v <- sem_cast v1 ty1 ty m;
                 let! ofs <- match v with Vptr ofs => Some ofs | _ => None end;
-                if Int64.eq ofs null
+                if Int64.eq ofs nullptr
                   then try pt', ps' <- IPCastT lc pct vt1 None ty ps;
                        catch "failred_cast_int_ptr", E0;
                        Rred "red_cast_int_ptr" pct (Eval (v,pt') ty) te m E0 ps'
@@ -1101,7 +1101,7 @@ Definition invert_expr_prop (lc:Cabs.loc) (a: expr) (ps: pstate) (pct: control_t
       exists v ofs1 ofs,
       sem_cast v1 (Tpointer ty1 attr1) (Tpointer ty attr) m = Some v /\
         v1 = Vptr ofs1 /\ v = Vptr ofs /\
-        (ofs <> null /\ ofs1 <> null) ->
+        (ofs <> nullptr /\ ofs1 <> nullptr) ->
         exists tr1 w' res v2 vt2 lts1 tr w'' res' v3 vt3 lts ps' ps'',
           deref_loc ge (Tpointer ty1 attr1) m ofs1 vt1 Full tr1 res /\
           res ps = (Success ((v2,vt2), lts1),ps') /\
@@ -1113,7 +1113,7 @@ Definition invert_expr_prop (lc:Cabs.loc) (a: expr) (ps: pstate) (pct: control_t
       exists v ofs1,
       sem_cast v1 (Tpointer ty1 attr1) ty m = Some v /\
         v1 = Vptr ofs1 /\
-        ofs1 <> null ->
+        ofs1 <> nullptr ->
         exists  tr1 w' res v2 vt2 lts1 ps',
           deref_loc ge (Tpointer ty1 attr1) m ofs1 vt1 Full tr1 res /\
           res ps = (Success ((v2,vt2), lts1), ps') /\
@@ -1122,7 +1122,7 @@ Definition invert_expr_prop (lc:Cabs.loc) (a: expr) (ps: pstate) (pct: control_t
       exists v ofs,
       sem_cast v1 ty1 (Tpointer ty attr) m = Some v /\
         v = Vptr ofs /\
-        ofs <> null ->
+        ofs <> nullptr ->
         exists tr w' res v2 vt2 lts ps',
           deref_loc ge (Tpointer ty attr) m ofs vt1 Full tr res /\
           res ps = (Success ((v2,vt2), lts), ps') /\

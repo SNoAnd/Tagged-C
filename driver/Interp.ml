@@ -34,14 +34,13 @@ let mode = ref First
 
 let timeoutMaxSteps = ref 0
 
-module InterpP (Pol: Policy) = struct
-       
+module InterpP (Pol: Policy) = struct 
   module PrintCsyntax = PrintCsyntaxP (Pol)
 
-  module Inner (Init: module type of PrintCsyntax.C2CPInst.FL.TaggedC) = struct
+  module Inner (I: PrintCsyntax.C2CPInst.CMA.ConcAllocatorImpl) = struct
 
-    module Printing = PrintCsyntax.Inner (Init)
-    module Cexec = Init.Cexec
+    module Printing = PrintCsyntax.Inner (I)
+    module Cexec = Printing.Cexec
     module Deterministic = Cexec.InterpreterEvents.Deterministic
     module Ctyping = Deterministic.Ctyping
     module Csem = Ctyping.Csem
@@ -49,8 +48,8 @@ module InterpP (Pol: Policy) = struct
     module Events = Csyntax.Cop.Smallstep.Events
     module Genv = Events.Genv
     module M = Genv.M
-    module Val = Printing.Val
-    open Val
+    module Vals = Printing.Vals
+    open Vals
 
 (* Printing events *)
 

@@ -301,9 +301,9 @@ let cmdline_actions =
                 if arg = "pvi"
                 then (runner := WithPVI.run_i_file; initter := WithPVI.init_with)
                 else (if arg = "dfree"
-                then (runner := WithDoubleFree.run_i_file; initter := WithDoubleFree.init_with)
+                then (runner := WithDF.run_i_file; initter := WithDF.init_with)
                 else (if arg = "heapproblem"
-                then (runner := WithHeapProblem.run_i_file; initter := WithHeapProblem.init_with)
+                then (runner := WithHP.run_i_file; initter := WithHP.init_with)
                 else (if arg = "dfxpvi"
                 then (runner := WithDFxPVI.run_i_file; initter := WithDFxPVI.init_with)
                 else (if arg = "null"

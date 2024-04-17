@@ -25,7 +25,7 @@ Require Import Ctypes.
 Require Import Tags.
 Require Export Memdata.
 Require Import Memory.
-Require Import Allocator.
+Require Import Allocator AllocatorImpl.
 Require Import Encoding.
 Require Import Initializers.
 Require Import ExtLib.Structures.Monads. Import MonadNotation.
@@ -50,7 +50,9 @@ Module ConcMemAllocators (Pol : Policy).
   Module Init := Initializers Pol.
   Module CM := Init.Outer.CM.
 
-  Module FLAllocator : AllocatorImpl ConcretePointer Pol CM.
+  Module Type ConcAllocatorImpl := AllocatorImpl ConcretePointer Pol CM.
+
+  Module FLAllocator : ConcAllocatorImpl.
   Import CM.
   Import TLib.
   Import Pol.
@@ -142,7 +144,7 @@ Module ConcMemAllocators (Pol : Policy).
     ((m',sp), tree).
   End FLAllocator.
 
-  Module ConcreteAllocator : AllocatorImpl ConcretePointer Pol CM.
+  Module ConcreteAllocator : ConcAllocatorImpl.
   Import CM.
   Import TLib.
   Import Pol.

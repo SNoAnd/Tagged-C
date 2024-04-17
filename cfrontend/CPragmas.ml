@@ -23,10 +23,10 @@ open C2C
 module Pragma (Pol: Policy) = struct
   module C2CPInst = C2CP (Pol)
 
-  module Inner (TC: module type of C2CPInst.FL.TaggedC) =
+  module Inner (I: C2CPInst.CMA.ConcAllocatorImpl) =
     struct
 
-    module C2CPInner = C2CPInst.Inner (TC)
+    module C2CPInner = C2CPInst.Inner (I)
 
 
 (* #pragma section *)

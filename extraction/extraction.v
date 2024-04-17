@@ -24,20 +24,13 @@ Require Ctypes.
 Require Csyntax.
 Require Parser.
 (* Per Policies.md, add new policies here*)
-Require Import Values Tags Memory Allocator Csem Initializers
+Require Import Values Tags Memory Allocator AllocatorImpl Csem Initializers
                Product NullPolicy PVI DoubleFree HeapProblem
-               ConcreteAllocator. 
+               ConcreteAllocator.
 
   (* Standard lib *)
   Require Import ExtrOcamlBasic.
   Require Import ExtrOcamlString.
-
-  Module Allocators (Pol: Policy).
-    Module CMA := ConcMemAllocators Pol.
-    Module Init := CMA.Init.
-    Module FL := CMA.FLAllocator.
-    Module CA := CMA.ConcreteAllocator.
-  End Allocators.
 
   (* Coqlib *)
   Extract Inlined Constant Coqlib.proj_sumbool => "(fun x -> x)".
@@ -95,7 +88,7 @@ Require Import Values Tags Memory Allocator Csem Initializers
 
   (* Needed in Coq 8.4 to avoid problems with Function definitions. *)
   Set Extraction AccessOpaque.
-  About AllocatorImpl.
+  
   (* Go! *)
   Cd "extraction".
   
@@ -103,7 +96,8 @@ Require Import Values Tags Memory Allocator Csem Initializers
   Separate Extraction
            Values
            Tags NullPolicy PVI DoubleFree HeapProblem PolProduct
-           Allocator AllocatorImpl Allocators ConcretePointer
+           Initializers Allocator AllocatorImpl ConcretePointer
+           ConcreteAllocator
            Ctypes.merge_attributes Ctypes.remove_attributes
            Ctypes.build_composite_env Ctypes.signature_of_type Ctypes.typlist_of_typelist
            Cabs

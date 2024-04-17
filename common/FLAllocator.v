@@ -13,7 +13,7 @@ Require Import Tags.
 Require Export Memdata.
 Require Import Memory.
 Require Import Encoding.
-Require Import Allocator.
+Require Import Allocator AllocatorImpl.
 Require Import Initializers.
 Require Import ExtLib.Structures.Monads. Import MonadNotation.
 

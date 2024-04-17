@@ -221,22 +221,22 @@ Module PolProduct (P1:Policy) (P2: Policy) <: Policy.
                 (P2.FieldT l ce  (snd pct) (snd vt) ty id)
                 (fun vt1 vt2 => (vt1, vt2)).
 
-  Definition PICastT (l: loc) (pct: control_tag) (pt: val_tag) (lts: list loc_tag) (ty: type) :
+  Definition PICastT (l: loc) (pct: control_tag) (pt: val_tag) (lts: option (list loc_tag)) (ty: type) :
     PolicyResult val_tag :=
-    double_bind (P1.PICastT l (fst pct) (fst pt) (map fst lts) ty)
-                (P2.PICastT l (snd pct) (snd pt) (map snd lts) ty)
+    double_bind (P1.PICastT l (fst pct) (fst pt) (option_map (map fst) lts) ty)
+                (P2.PICastT l (snd pct) (snd pt) (option_map (map snd) lts) ty)
                 (fun vt1 vt2 => (vt1, vt2)).
           
-  Definition IPCastT (l: loc) (pct: control_tag) (vt: val_tag)  (lts: list loc_tag) (ty: type) :
+  Definition IPCastT (l: loc) (pct: control_tag) (vt: val_tag)  (lts: option (list loc_tag)) (ty: type) :
     PolicyResult val_tag :=
-    double_bind (P1.IPCastT l (fst pct) (fst vt) (map fst lts) ty)
-                (P2.IPCastT l (snd pct) (snd vt) (map snd lts) ty)
+    double_bind (P1.IPCastT l (fst pct) (fst vt) (option_map (map fst) lts) ty)
+                (P2.IPCastT l (snd pct) (snd vt) (option_map (map snd) lts) ty)
                 (fun vt1 vt2 => (vt1, vt2)).
 
-  Definition PPCastT (l: loc) (pct: control_tag) (vt: val_tag) (lts1: list loc_tag) (lts2: list loc_tag)
-    (ty: type) : PolicyResult val_tag :=
-    double_bind (P1.PPCastT l (fst pct) (fst vt) (map fst lts1) (map fst lts2) ty)
-                (P2.PPCastT l (snd pct) (snd vt) (map snd lts1) (map snd lts2) ty)
+  Definition PPCastT (l: loc) (pct: control_tag) (vt: val_tag)
+    (lts1: option (list loc_tag)) (lts2: option (list loc_tag)) (ty: type) : PolicyResult val_tag :=
+    double_bind (P1.PPCastT l (fst pct) (fst vt) (option_map (map fst) lts1) (option_map (map fst) lts2) ty)
+                (P2.PPCastT l (snd pct) (snd vt) (option_map (map snd) lts1) (option_map (map snd) lts2) ty)
                 (fun vt1 vt2 => (vt1, vt2)).
 
   Definition IICastT (l: loc) (pct: control_tag) (vt: val_tag) (ty: type) :

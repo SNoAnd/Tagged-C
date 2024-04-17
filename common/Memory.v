@@ -495,6 +495,7 @@ Module MultiMem (Pol: Policy).
     match a with
     | (LocInd C, i) => CM.allowed_access (m.(comp_locals)#C) chunk i
     | (ShareInd b _, i) => CM.allowed_access (m.(comp_locals)#b) chunk i
+    | _ => False
     end.
     
   Parameter aligned_access : memory_chunk -> addr -> Prop.
@@ -514,19 +515,22 @@ Module MultiMem (Pol: Policy).
     match a with
     | (LocInd C, i) => CM.load_all chunk (m.(comp_locals)#C) i
     | (ShareInd b _, i) => CM.load_all chunk (m.(comp_locals)#b) i
+    | _ => Fail (PrivateLoad (Int64.unsigned (concretize a)))
     end.
  
   Definition loadbytes (m: mem) (a: addr) (num: Z) : Result (list memval) :=
     match a with
     | (LocInd C, i) => CM.loadbytes (m.(comp_locals)#C) i num
     | (ShareInd b _, i) => CM.loadbytes (m.(comp_locals)#b) i num
-    end.    
+    | _ => Fail (PrivateLoad (Int64.unsigned (concretize a)))
+    end.
 
   Definition loadtags (m: mem) (a: addr) (num: Z) : Result (list loc_tag) :=
     match a with
     | (LocInd C, i) => CM.loadtags (m.(comp_locals)#C) i num
     | (ShareInd b _, i) => CM.loadtags (m.(comp_locals)#b) i num
-    end.    
+    | _ => Fail (PrivateLoad (Int64.unsigned (concretize a)))
+    end.
 
   Definition store (chunk: memory_chunk) (m: mem) (a: addr) (v: atom) (lts: list loc_tag) : Result mem :=
     match a with
@@ -540,7 +544,8 @@ Module MultiMem (Pol: Policy).
         | Success cm => Success (mkMem (PMap.set b cm m.(shares)) m.(comp_locals))
         | Fail f => Fail f
         end
-      end.
+    | _ => Fail (PrivateStore (Int64.unsigned (concretize a)))
+    end.
     
   Definition store_atom (chunk: memory_chunk) (m: mem) (a: addr) (v: atom) : Result mem :=
     match a with
@@ -554,6 +559,7 @@ Module MultiMem (Pol: Policy).
         | Success cm => Success (mkMem (PMap.set b cm m.(shares)) m.(comp_locals))
         | Fail f => Fail f
         end
+    | _ => Fail (PrivateStore (Int64.unsigned (concretize a)))
     end.
 
   Definition storebytes (m: mem) (p: ptr) (mvs: list memval) (lts: list loc_tag) : Result mem :=
@@ -568,6 +574,7 @@ Module MultiMem (Pol: Policy).
         | Success cm => Success (mkMem (PMap.set b cm m.(shares)) m.(comp_locals))
         | Fail f => Fail f
         end
+    | _ => Fail (PrivateStore (Int64.unsigned (concretize p)))
     end.    
 
 End MultiMem.

@@ -191,13 +191,13 @@ module FrontendP (Pol: Tags.Policy) = struct
        
   module InterpInst = InterpP (Pol)
 
-  module Inner (TC: module type of InterpInst.PrintCsyntax.C2CPInst.FL.TaggedC) = struct
+  module Inner (I: InterpInst.PrintCsyntax.C2CPInst.CMA.ConcAllocatorImpl) = struct
 
-    module InterpInner = InterpInst.Inner (TC)
+    module InterpInner = InterpInst.Inner (I)
     module Printing = InterpInner.Printing
     module C2CPInner = Printing.C2CPInner
     module PragmaInst = Pragma (Pol)
-    module PragmaInner = PragmaInst.Inner (TC)
+    module PragmaInner = PragmaInst.Inner (I)
  
   let init_with () =
   Env.set_builtins C2CPInner.builtins;
@@ -236,18 +236,20 @@ end
 
 (* Single policies *)
 module FrontendNull = FrontendP (NullPolicy.NullPolicy)
-module NullAlloc = FLAllocator.FLAllocator (NullPolicy.NullPolicy)
-module WithNull = FrontendNull.Inner (NullAlloc.TaggedC)
+module NullAlloc = FrontendNull.InterpInst.PrintCsyntax.C2CPInst.CMA.FLAllocator
+module WithNull = FrontendNull.Inner (NullAlloc)
 
 module FrontendPVI = FrontendP (PVI.PVI)
-module PVIAlloc = FLAllocator.FLAllocator (PVI.PVI)
-module WithPVI = FrontendPVI.Inner (PVIAlloc.TaggedC)
+module PVIAlloc = FrontendPVI.InterpInst.PrintCsyntax.C2CPInst.CMA.FLAllocator
+module WithPVI = FrontendPVI.Inner (PVIAlloc)
 
-module FrontendDoubleFree = FrontendP (DoubleFree.DoubleFree)
-module DoubleFreeAlloc = ConcreteAllocator.ConcreteAllocator (DoubleFree.DoubleFree)
-module WithDoubleFree = FrontendDoubleFree.Inner (DoubleFreeAlloc.TaggedC)
+module FrontendDF = FrontendP (DoubleFree.DoubleFree)
+module DFAlloc = FrontendPVI.InterpInst.PrintCsyntax.C2CPInst.CMA.ConcreteAllocator
+module WithDF = FrontendPVI.Inner (DFAlloc)
 
-(*module WithHeapProblem = FrontendP (HeapProblem.HeapProblem) (ConcreteAllocator.TaggedCConcrete)
+module FrontendHP = FrontendP (HeapProblem.HeapProblem)
+module HPAlloc = FrontendPVI.InterpInst.PrintCsyntax.C2CPInst.CMA.ConcreteAllocator
+module WithHP = FrontendPVI.Inner (HPAlloc)
 
 (* Multiple Policies  
   In general, combined policies should all use (or be known to function with) 
@@ -260,7 +262,11 @@ module WithDoubleFree = FrontendDoubleFree.Inner (DoubleFreeAlloc.TaggedC)
 
     Perhaps an ugrad or masters student would like to help in the future? *)
 module DFxHP = Product.PolProduct (DoubleFree.DoubleFree) (HeapProblem.HeapProblem)
-module WithDFxHP = FrontendP (DFxHP) (ConcreteAllocator.TaggedCConcrete)
+module FrontendDFxHP = FrontendP (DFxHP)
+module DFxHPAlloc = FrontendDFxHP.InterpInst.PrintCsyntax.C2CPInst.CMA.ConcreteAllocator
+module WithDFxHP = FrontendDFxHP.Inner (DFxHPAlloc)
 
 module DFxPVI = Product.PolProduct (PVI.PVI) (DoubleFree.DoubleFree)
-module WithDFxPVI = FrontendP (DFxPVI) (ConcreteAllocator.TaggedCConcrete)*)
+module FrontendDFxPVI = FrontendP (DFxPVI)
+module DFxPVIAlloc = FrontendDFxPVI.InterpInst.PrintCsyntax.C2CPInst.CMA.ConcreteAllocator
+module WithDFxPVI = FrontendDFxPVI.Inner (DFxPVIAlloc)
