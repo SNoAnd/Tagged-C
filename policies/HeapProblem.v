@@ -299,7 +299,7 @@ Module HeapProblem <: Policy.
     (* location the ptr was assigned memory (l) != location of this load (ptr_l) *)
     | PointerWithColor ptr_l ptr_color =>
       ltop.(mmap) (CheckforColorMatchOnLoad ptr_color ptr_l l) lts;; ret vt
-    | _ => raise (PolicyFailure (inj_loc "HeapProblem|| LoadT tried to load an invalid pointer tag at source location " l)) 
+    | _ => raise (PolicyFailure (inj_loc "HeapProblem|| LoadT tried to load an invalid pointer tag " l)) 
     end.
   
 (* StoreT & helper functions
