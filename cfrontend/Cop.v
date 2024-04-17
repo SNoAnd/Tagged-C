@@ -98,7 +98,7 @@ Definition classify_cast (tfrom tto: type) : classify_cast_cases :=
   | Tint IBool _ _, Tfloat F64 _ => cast_case_f2bool
   | Tint IBool _ _, Tfloat F32 _ => cast_case_s2bool
   | Tint IBool _ _, (Tpointer _ _ | Tarray _ _ _ | Tfunction _ _ _) => 
-      (*if Archi.ptr64 then*) cast_case_l2bool (*else cast_case_i2bool*)
+      cast_case_l2bool
   (* To [int] other than [_Bool] *)
   | Tint sz2 si2 _, Tint _ _ _ =>
       (*if Archi.ptr64 then*) cast_case_i2i sz2 si2
@@ -108,17 +108,15 @@ Definition classify_cast (tfrom tto: type) : classify_cast_cases :=
   | Tint sz2 si2 _, Tfloat F64 _ => cast_case_f2i sz2 si2
   | Tint sz2 si2 _, Tfloat F32 _ => cast_case_s2i sz2 si2
   | Tint sz2 si2 _, (Tpointer _ _ | Tarray _ _ _ | Tfunction _ _ _) =>
-      (*if Archi.ptr64 then*) cast_case_l2i sz2 si2
-      (*else if intsize_eq sz2 I32 then cast_case_pointer
-      else cast_case_i2i sz2 si2*)
+      cast_case_l2i sz2 si2
   (* To [long] *)
   | Tlong _ _, Tlong _ _ =>
-      (*if Archi.ptr64 then*) cast_case_pointer (*else cast_case_l2l*)
+      cast_case_pointer
   | Tlong _ _, Tint sz1 si1 _ => cast_case_i2l si1
   | Tlong si2 _, Tfloat F64 _ => cast_case_f2l si2
   | Tlong si2 _, Tfloat F32 _ => cast_case_s2l si2
   | Tlong si2 _, (Tpointer _ _ | Tarray _ _ _ | Tfunction _ _ _) =>
-      (*if Archi.ptr64 then*) cast_case_pointer (*else cast_case_i2l si2*)
+      cast_case_pointer
   (* To [float] *)
   | Tfloat F64 _, Tint sz1 si1 _ => cast_case_i2f si1
   | Tfloat F32 _, Tint sz1 si1 _ => cast_case_i2s si1
@@ -129,10 +127,10 @@ Definition classify_cast (tfrom tto: type) : classify_cast_cases :=
   | Tfloat F64 _, Tfloat F32 _ => cast_case_s2f
   | Tfloat F32 _, Tfloat F64 _ => cast_case_f2s
   (* To pointer types *)
-  | Tpointer _ _, Tint _ si _ =>
-      (*if Archi.ptr64 then*) cast_case_i2l si (*else cast_case_pointer*)
+  | Tpointer _ _, Tint _ _ _ =>
+      cast_case_pointer
   | Tpointer _ _, Tlong _ _ =>
-      (*if Archi.ptr64 then*) cast_case_pointer (*else cast_case_l2i I32 Unsigned*)
+      cast_case_pointer (*else cast_case_l2i I32 Unsigned*)
   | Tpointer _ _, (Tpointer _ _ | Tarray _ _ _ | Tfunction _ _ _) => cast_case_pointer
   (* To struct or union types *)
   | Tstruct id2 _, Tstruct id1 _ => cast_case_struct id1 id2
@@ -214,8 +212,8 @@ Definition sem_cast (v: val) (t1 t2: type) (m: mem): option val :=
   | cast_case_pointer =>
       match v with
       | Vfptr _ => Some v
-      | Vint _ => Some v
-      | Vlong _ => Some v
+      | Vint i => if Int.eq i Int.zero then Some Vnullptr else Some v
+      | Vlong i => if Int64.eq i Int64.zero then Some Vnullptr else Some v
       | Vptr _ => Some v
       | _ => None
       end
@@ -897,6 +895,16 @@ Definition cmp_ptr (m: mem) (c: comparison) (v1 v2: val): option val :=
   | Vint _, Vint _ => option_map Values.of_bool (Values.cmpu_bool c v1 v2)
   | Vlong _, Vlong _ => option_map Values.of_bool (Values.cmplu_bool c v1 v2)
   | Vfptr _, Vfptr _ => option_map Values.of_bool (Values.cmplu_bool c v1 v2)
+  | Vptr p, Vlong _ =>
+    let v1' := Vlong (concretize p) in
+    option_map Values.of_bool (Values.cmplu_bool c v1' v2)
+  | Vlong _, Vptr p =>
+    let v2' := Vlong (concretize p) in
+    option_map Values.of_bool (Values.cmplu_bool c v1 v2')
+  | Vptr p1, Vptr p2 =>
+    let v1' := Vlong (concretize p1) in
+    let v2' := Vlong (concretize p2) in
+    option_map Values.of_bool (Values.cmplu_bool c v1' v2')
   | _, _ => None
   end.
 

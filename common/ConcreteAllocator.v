@@ -222,16 +222,16 @@ Module ConcMemAllocators (Pol : Policy).
   Fixpoint find_free (c : nat) (m : submem) (header : ptr) (sz : Z) (header_lts : list loc_tag) :
     PolicyResult (submem*ptr) :=
     (* if its size 0, or we're beyond the edge of the heap (OOM), return 0 *)
-    if ((sz =? 0) && (Int64.unsigned(concretize header) >? heap_starting_addr + heap_size)) then ret (m,Int64.zero) else
+    if ((sz =? 0) || (Int64.unsigned(concretize header) >? heap_starting_addr + heap_size)) then ret (m,Int64.zero) else
     match c with
     | O => raise (OtherFailure "ConcreteAllocator| find_free| Too many steps looking for free block")
     | S c' =>
-        let base := off header (Int64.repr header_size) in
-        (* Load a long from base.
+        (* Load a long from header.
            Sign indicates: is this a live block? (Negative no, positive/zero yes)
            Magnitude indicates size *)
         '((v,_),_) <- get_header m header;;
         '(live,bs) <- parse_header v;;
+        let base := off header (Int64.repr header_size) in
         if live
         then (* block is live *)
           (* [base ][=================][next] *)

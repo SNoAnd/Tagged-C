@@ -187,7 +187,7 @@ Definition Vmone: val := Vint Int.mone.
 Definition Vtrue: val := Vint Int.one.
 Definition Vfalse: val := Vint Int.zero.
 
-Definition Vnullptr := Vlong Int64.zero.
+Definition Vnullptr := Vptr nullptr.
 Definition Vofptrsize (z:Z) := Vlong (Int64.repr z).
 
 (** * Operations over values *)

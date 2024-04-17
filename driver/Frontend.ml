@@ -244,12 +244,12 @@ module PVIAlloc = FrontendPVI.InterpInst.PrintCsyntax.C2CPInst.CMA.FLAllocator
 module WithPVI = FrontendPVI.Inner (PVIAlloc)
 
 module FrontendDF = FrontendP (DoubleFree.DoubleFree)
-module DFAlloc = FrontendPVI.InterpInst.PrintCsyntax.C2CPInst.CMA.ConcreteAllocator
-module WithDF = FrontendPVI.Inner (DFAlloc)
+module DFAlloc = FrontendDF.InterpInst.PrintCsyntax.C2CPInst.CMA.ConcreteAllocator
+module WithDF = FrontendDF.Inner (DFAlloc)
 
 module FrontendHP = FrontendP (HeapProblem.HeapProblem)
-module HPAlloc = FrontendPVI.InterpInst.PrintCsyntax.C2CPInst.CMA.ConcreteAllocator
-module WithHP = FrontendPVI.Inner (HPAlloc)
+module HPAlloc = FrontendHP.InterpInst.PrintCsyntax.C2CPInst.CMA.ConcreteAllocator
+module WithHP = FrontendHP.Inner (HPAlloc)
 
 (* Multiple Policies  
   In general, combined policies should all use (or be known to function with) 
