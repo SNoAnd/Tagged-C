@@ -164,7 +164,7 @@ Module ConcMemAllocators (Pol : Policy).
     |}.
 
   Definition init_heap (m: submem) (base: Z) (sz: Z) : submem :=
-    let contents' := setN (repeat (Undef,DefHT) (Z.to_nat sz)) base m.(mem_contents) in
+    let contents' := setN (repeat (Byte Byte.zero InitT,DefHT) (Z.to_nat sz)) base m.(mem_contents) in
     let m' := {|
       mem_contents := contents';
       mem_access := m.(mem_access);

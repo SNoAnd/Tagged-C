@@ -323,7 +323,7 @@ Module ConcMem (Ptr: Pointer) (Pol: Policy) <: Submem Ptr Pol.
   Qed.
 
   Definition subempty: submem :=
-    mkmem (ZMap.init (Undef, DefLT))
+    mkmem (ZMap.init (Byte Byte.zero InitT, DefLT))
           (ZMap.init MostlyDead)
           [].
 

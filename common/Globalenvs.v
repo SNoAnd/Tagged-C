@@ -356,7 +356,7 @@ Module Genv (Ptr: Pointer) (Pol: Policy) (A: Memory Ptr Pol).
                   inj_value Q64 (Vefptr ef tyargs tyres cc, pt)
               | Some (SymGlob base bound pt gv) =>
                   inj_value Q64 (Vptr base, t)
-              | None   => List.repeat Undef 8%nat
+              | None   => List.repeat (Byte Byte.zero InitT) 8%nat
               end
           end.
 

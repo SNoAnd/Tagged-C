@@ -31,6 +31,7 @@ Require Import List. Import ListNotations.
 Module Memdata (Ptr: Pointer) (Pol: Policy).
   Module TLib := TagLib Ptr Pol.
   Import TLib.
+  Import Ptr.
 (** * Memory values *)
 
 (** A ``memory value'' is a byte-sized quantity that describes the current
@@ -43,9 +44,8 @@ Module Memdata (Ptr: Pointer) (Pol: Policy).
 (** Values stored in memory cells. *)
 
 Inductive memval: Type :=
-  | Undef: memval
   | Byte: byte -> val_tag -> memval
-  | Fragment: atom -> quantity -> nat -> memval.
+  | Fragment: atom -> quantity -> nat -> byte -> memval.
 
 (** * Encoding and decoding values *)
 
@@ -69,31 +69,39 @@ Proof.
   intros. apply List.map_length.
 Qed.
 
-Fixpoint inj_value_rec (n: nat) (a:atom) (q: quantity) {struct n}: list memval :=
-  match n with
-  | O => nil
-  | S m => Fragment a q m :: inj_value_rec m a q
+Fixpoint inj_value_rec (n: nat) (a:atom) (q: quantity) (bytes: list byte) {struct n}: list memval :=
+  match n, bytes with
+  | O,_ => []
+  | _,[] => []
+  | S m, byte::bytes' => Fragment a q m byte :: inj_value_rec m a q bytes'
   end.
 
 Definition inj_value (q: quantity) (a:atom): list memval :=
-  inj_value_rec (size_quantity_nat q) a q.
+  let bytes :=
+    match a with
+    | (Vptr p,_) => encode_int 8%nat (Int64.unsigned (concretize p))
+    | _ => encode_int 8%nat 0
+    end in
+  inj_value_rec (size_quantity_nat q) a q bytes.
 
-Fixpoint proj_value (vl: list memval) : val * list val_tag :=
+Fixpoint proj_value (vl: list memval) : option val * list val_tag * list byte :=
   match vl with
-  | [] => (Vundef, []) 
-  | [Fragment (v,vt) q n] =>
+  | [] => (None, [], []) 
+  | [Fragment (v,vt) q n byte] =>
       if Nat.eqb n O
-      then (v, [vt])
-      else (Vundef, [vt])
-  | Fragment (v,vt) q n :: vl' =>
-      let '(v',vts) := proj_value vl' in
-      if Values.eq v v' && Nat.eqb n (length vts)
-      then (v, vt :: vts)
-      else (Vundef, vt :: vts)
-  | (Byte _ vt)::vl' =>
-      let '(_,vts) := proj_value vl' in (Vundef, vt::vts)
-  | Undef::vl' =>
-      let '(_,vts) := proj_value vl' in (Vundef, def_tag::vts)
+      then (Some v, [vt], [byte])
+      else (None, [vt], [byte])
+  | Fragment (v,vt) q n byte :: vl' =>
+      match proj_value vl' with
+      | (Some v', vts, bytes) =>
+        if Values.eq v v' && Nat.eqb n (length vts)
+        then (Some v, vt::vts, byte::bytes)
+        else (None, vt::vts, byte::bytes)
+      | (None, vts, bytes) =>
+        (None, vt::vts, byte::bytes)
+      end
+  | (Byte byte vt)::vl' =>
+      let '(_,vts,bytes) := proj_value vl' in (None, vt::vts, byte::bytes)
   end.
 
 Definition encode_val (chunk: memory_chunk) (a:atom) : list memval :=
@@ -101,9 +109,9 @@ Definition encode_val (chunk: memory_chunk) (a:atom) : list memval :=
   | (Vint n, t), (Mint8signed | Mint8unsigned) => inj_bytes (encode_int 1%nat (Int.unsigned n)) t
   | (Vint n, t), (Mint16signed | Mint16unsigned) => inj_bytes (encode_int 2%nat (Int.unsigned n)) t
   | (Vint n, t), Mint32 => inj_bytes (encode_int 4%nat (Int.unsigned n)) t
-  | (Vfptr b, t), Mint32 => List.repeat Undef 4%nat
-  | (Vefptr _ _ _ _, t), Mint32 => List.repeat Undef 4%nat
-  | (Vptr b, t), Mint32 => List.repeat Undef 4%nat
+  | (Vfptr b, t), Mint32 => inj_value Q32 a
+  | (Vefptr _ _ _ _, t), Mint32 => inj_value Q32 a
+  | (Vptr p, t), Mint32 =>  inj_value Q32 a
   | (Vlong n, t), Mint64 => inj_bytes (encode_int 8%nat (Int64.unsigned n)) t
   | (Vfptr b, t), Mint64 => inj_value Q64 a
   | (Vefptr _ _ _ _, t), Mint64 => inj_value Q64 a
@@ -112,31 +120,38 @@ Definition encode_val (chunk: memory_chunk) (a:atom) : list memval :=
   | (Vfloat n, t), Mfloat64 => inj_bytes (encode_int 8%nat (Int64.unsigned (Float.to_bits n))) t
   | (v, t), Many32 => inj_value Q32 a
   | (v, t), Many64 => inj_value Q64 a
-  | (_, t), _ => List.repeat Undef (size_chunk_nat chunk)
+  | (_, t), _ => inj_bytes (repeat Byte.zero (size_chunk_nat chunk)) t
+  end.
+
+Definition decode_helper (chunk: memory_chunk) (bytes: list byte) : val :=
+  match chunk with
+  | Mint8signed => Vint(Int.sign_ext 8 (Int.repr (decode_int bytes)))
+  | Mint8unsigned => Vint(Int.zero_ext 8 (Int.repr (decode_int bytes)))
+  | Mint16signed => Vint(Int.sign_ext 16 (Int.repr (decode_int bytes)))
+  | Mint16unsigned => Vint(Int.zero_ext 16 (Int.repr (decode_int bytes)))
+  | Mint32 => Vint(Int.repr(decode_int bytes))
+  | Mint64 => Vlong(Int64.repr(decode_int bytes))
+  | Mfloat32 => Vsingle(Float32.of_bits (Int.repr (decode_int bytes)))
+  | Mfloat64 => Vfloat(Float.of_bits (Int64.repr (decode_int bytes)))
+  | Many32 => Vundef
+  | Many64 => Vundef
   end.
 
 Definition decode_val (chunk: memory_chunk) (vl: list memval) : (val * list val_tag) :=
   match proj_bytes vl with
   | Some bl =>
       let bytes := map fst bl in
-      let tags := map snd bl in
-      let v := 
-        match chunk with
-        | Mint8signed => Vint(Int.sign_ext 8 (Int.repr (decode_int bytes)))
-        | Mint8unsigned => Vint(Int.zero_ext 8 (Int.repr (decode_int bytes)))
-        | Mint16signed => Vint(Int.sign_ext 16 (Int.repr (decode_int bytes)))
-        | Mint16unsigned => Vint(Int.zero_ext 16 (Int.repr (decode_int bytes)))
-        | Mint32 => Vint(Int.repr(decode_int bytes))
-        | Mint64 => Vlong(Int64.repr(decode_int bytes))
-        | Mfloat32 => Vsingle(Float32.of_bits (Int.repr (decode_int bytes)))
-        | Mfloat64 => Vfloat(Float.of_bits (Int64.repr (decode_int bytes)))
-        | Many32 => Vundef
-        | Many64 => Vundef
-        end in
-      (v, tags)
+      let vts := map snd bl in
+      let v := decode_helper chunk bytes in
+      (v, vts)
   | None =>
-      let '(v, vt) := proj_value vl in
-      (Values.load_result chunk v, vt)
+      match proj_value vl with    
+      | (Some v, vts, _) =>
+        (Values.load_result chunk v, vts)
+      | (None, vts, bytes) =>
+        let v := decode_helper chunk bytes in
+        (v, vts)
+      end
   end.
 
 Ltac solve_encode_val_length :=
@@ -154,14 +169,14 @@ Proof.
   rewrite EQ at 1. simpl. destruct v. rewrite check_inj_value. auto.
 Qed.*)
 
-Remark in_inj_value:
+(*Remark in_inj_value:
   forall mv v q, In mv (inj_value q v) -> exists n, mv = Fragment v q n.
 Proof.
 Local Transparent inj_value.
   unfold inj_value; intros until q. generalize (size_quantity_nat q). induction n; simpl; intros.
   contradiction.
   destruct H. exists n; auto. eauto.
-Qed.
+Qed.*)
 
 Definition decode_encode_val (v1: val) (chunk1 chunk2: memory_chunk) (v2: val) : Prop :=
   match v1, chunk1, chunk2 with

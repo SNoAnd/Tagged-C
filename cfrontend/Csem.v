@@ -160,12 +160,13 @@ Module TaggedCsem (Pol: Policy) (A: Memory ConcretePointer Pol) <:
     end.
 
   (* Allocates local (public) variables *)
-
+  
   Definition do_alloc_variable (l: Cabs.loc) (pct: control_tag) (e: env) (m: mem) (id: ident) (ty:type) :
     PolicyResult (control_tag * env * mem) :=
     '(m',base) <- stkalloc m (alignof ce ty) (sizeof ce ty);;
     '(pct', pt', lts') <- LocalT ce l pct ty;;
-    m'' <- storebytes m' base (repeat MD.Undef (Z.to_nat (sizeof ce ty))) lts';;
+    mvs <- loadbytes m' base (sizeof ce ty);;
+    m'' <- storebytes m' base mvs lts';;
     ret (pct', PTree.set id (PUB base pt' ty) e, m'').
 
   Definition do_alloc_variables (l: Cabs.loc) (pct: control_tag) (e: env) (m: mem) (vs: list (ident * type)) :

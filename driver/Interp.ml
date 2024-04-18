@@ -158,11 +158,10 @@ let print_mem p m =
      (fprintf p " %ld " (Int32.of_int i);
       let (mv,t) = M.direct_read m (coqint_of_camlint (Int32.of_int i)) in
       match mv with
-      | M.MD.Undef -> fprintf p " U '@' %s|" (print_lt t); print_at (i+1) max
       | M.MD.Byte (b,vt) ->
                       fprintf p " %lu '@' %s '@' %s|" (camlint_of_coqint b) (print_vt vt) (print_lt t);
                       print_at (i+1) max
-      | M.MD.Fragment ((v,vt), q, n) -> fprintf p "| %a '@' %s '@' %s |" print_val v (print_vt vt) (print_lt t);
+      | M.MD.Fragment ((v,vt), q, n, b) -> fprintf p "| %a '@' %s '@' %s |" print_val v (print_vt vt) (print_lt t);
          print_at (i+(camlint_of_coqnat (Encoding.size_quantity_nat q))) max)
     else () in
   print_at 1000 1015;
