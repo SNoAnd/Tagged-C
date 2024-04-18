@@ -106,7 +106,7 @@ VLIB=Axioms.v Coqlib.v Intv.v Maps.v Heaps.v Lattice.v Ordered.v \
 
 COMMON=Errors.v AST.v Linking.v Encoding.v \
   Events.v Globalenvs.v Memdata.v Memory.v Allocator.v \
-  ConcreteAllocator.v FLAllocator.v \
+  ConcreteAllocator.v \
   Values.v Tags.v Smallstep.v Switch.v Unityping.v \
   Builtins0.v Builtins1.v Builtins.v Determinism.v \
   Simulation.v

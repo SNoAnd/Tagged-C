@@ -93,47 +93,47 @@ Module SemiconcretePointer <: Pointer.
   Inductive index : Type :=
   | LocInd (C:Comp)
   | ShareInd (b:block) (base:int64)
+  .
+
+  Inductive myPtr : Type :=
+  | P (i:index) (a:int64)
   | Null
   .
 
-  Inductive myContext : Type :=
-  | L (C:Comp)
-  | S (b:block)
-  .
-
-  Definition ptr : Type := (index * int64).
+  Definition ptr : Type := myPtr.
   
   Lemma ptr_eq_dec : forall (p1 p2:ptr), {p1 = p2} + {p1 <> p2}.
   Proof. repeat decide equality.
-         - destruct (Int64.eq b i0) eqn:?.
+         - destruct (Int64.eq a a0) eqn:?.
            + left. apply Int64.same_if_eq; auto.
            + right. intro. subst.
-           rewrite Int64.eq_true in Heqb0. discriminate.
+             rewrite Int64.eq_true in Heqb. discriminate.
          - destruct (Int64.eq base base0) eqn:?.
            + left. apply Int64.same_if_eq; auto.
            + right. intro. subst.
-             rewrite Int64.eq_true in Heqb2. discriminate.
+             rewrite Int64.eq_true in Heqb1. discriminate.
   Qed.
 
-  Definition concretize (p: ptr) : int64 := snd p.
+  Definition concretize (p: ptr) : int64 :=
+    match p with
+    | P _ a => a
+    | Null => Int64.zero
+    end. 
 
-  Definition off (p: ptr) (i: int64) : ptr :=
-    let (ind, pos) := p in (ind, Int64.add pos i).
+  Definition off (p: ptr) (ofs: int64) : ptr :=
+    match p with
+    | P i a => P i (Int64.add a ofs)
+    | Null => Null
+    end.
 
-  Definition nullptr := (Null, Int64.zero).
+  Definition nullptr := Null.
 
   Lemma null_zero : concretize nullptr = Int64.zero.
   Proof. auto. Qed.
 
   Definition alignp (p: ptr) : Z := 8.
 
-  Definition ltb (p1 p2: ptr) :=
-    match p1, p2 with
-    | (LocInd C1, i1), (LocInd C2, i2) => peq C1 C2 && Int64.lt i1 i2
-    | (ShareInd b1 _, i1), (ShareInd b2 _, i2) => peq b1 b2 && Int64.lt i1 i2
-    | _, _ => false
-    end.
-
+  Definition ltb (p1 p2: ptr) := Int64.lt (concretize p1) (concretize p2).
   Definition lt (p1 p2: ptr) := ltb p1 p2 = true.
 
   Definition leb (p1 p2: ptr) := ltb p1 p2 || ptr_eq_dec p1 p2.

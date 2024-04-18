@@ -1,5 +1,6 @@
 Require Import Coqlib Errors Maps.
-Require Import Integers Floats Values AST Memory Allocator Builtins Events Globalenvs Tags. 
+Require Import Integers Floats Values AST Memory Allocator AllocatorImpl.
+Require Import Builtins Events Globalenvs Tags. 
 Require Import Ctypes Cop Csyntax.
 Require Import Smallstep.
 Require Import List. Import ListNotations.
@@ -10,18 +11,32 @@ Require Import Csem.
 
 Module M := MultiMem NullPolicy.
 
-Module CompartmentCsem (A: Allocator SemiconcretePointer NullPolicy M)
-<: Semantics SemiconcretePointer NullPolicy M A.
+Module Type AllocatorSpec (Ptr: Pointer) (Pol: Policy) (S: Submem Ptr Pol).
+  Import S.
 
-  Module Csyntax := Csyntax SemiconcretePointer NullPolicy M A.
+  Parameter t : Type.
+  Parameter context : Type.
+
+  Parameter live : t -> (context*addr*addr).
+  Parameter stkalloc : t -> Z -> (addr*t).
+  Parameter stkfree : t -> t.
+  Parameter heapalloc : t -> Z -> (addr*t).
+  Parameter heapfree : t -> addr -> t.
+
+End AllocatorSpec.
+
+Module CompartmentCsem (A: AllocatorSpec SemiconcretePointer NullPolicy M).
+
+  Module Inner : Semantics SemiconcretePointer NullPolicy MA.
+
+  Module Smallstep := Smallstep SemiconcretePointer NullPolicy MA.
+  Export Smallstep.
+  Module Csyntax := Csyntax SemiconcretePointer NullPolicy MA.
   Export Csyntax.
   Import M.
   Import TLib.
   Import A.
 
-  (*Module Smallstep := Smallstep SemiconcretePointer NullPolicy M A.
-  Export Smallstep.*)
-  
   (** * Operational semantics *)
 
   (** The semantics uses two environments.  The global environment
@@ -69,15 +84,11 @@ Module CompartmentCsem (A: Allocator SemiconcretePointer NullPolicy M)
   | deref_loc_value: forall chunk,
       access_mode ty = By_value chunk ->
       type_is_volatile ty = false ->
-      deref_loc ty m p pt Full E0 (load_all chunk m p)
+      deref_loc ty m p pt Full E0 (load chunk m p)
   | deref_loc_volatile: forall chunk t res,
       access_mode ty = By_value chunk -> type_is_volatile ty = true ->
       volatile_load ge chunk m p t res ->
-      let res' :=
-        '(v,vt) <- res;;
-        lts <- load_ltags chunk m p;;
-        ret ((v,vt),lts) in
-      deref_loc ty m p pt Full t res'
+      deref_loc ty m p pt Full t res
   | deref_loc_reference:
       access_mode ty = By_reference ->
       deref_loc ty m p pt Full E0 (ret (Vptr p, [pt],[]))
@@ -229,18 +240,15 @@ Module CompartmentCsem (A: Allocator SemiconcretePointer NullPolicy M)
   | cast_args_nil:
     cast_arguments l pct fpt m Enil Tnil (ret (pct, []))
   | cast_args_cons: forall pct' pct'' v vt vt' ty el targ1 targs v1 vl,
-      ArgT l pct fpt vt (exprlist_len el) targ1 = ret (pct', vt') ->
       sem_cast v ty targ1 m = Some v1 ->
       cast_arguments l pct' fpt m el targs (ret (pct'',vl)) ->
       cast_arguments l pct fpt m (Econs (Eval (v,vt) ty) el) (Tcons targ1 targs)
                      (ret (pct'',(v1, vt') :: vl))
   | cast_args_fail_now: forall v v1 vt ty el targ1 targs failure,
-      ArgT l pct fpt vt (exprlist_len el) targ1 = raise failure ->
       sem_cast v ty targ1 m = Some v1 ->
       cast_arguments l pct fpt m (Econs (Eval (v,vt) ty) el) (Tcons targ1 targs)
                      (raise failure)
-  | cast_args_fail_later: forall pct' v vt vt' ty el targ1 targs v1 failure,
-      ArgT l pct fpt vt (exprlist_len el) targ1 = ret (pct', vt') ->
+  | cast_args_fail_later: forall pct' v vt ty el targ1 targs v1 failure,
       sem_cast v ty targ1 m = Some v1 ->
       cast_arguments l pct' fpt m el targs (raise failure) ->
       cast_arguments l pct fpt m (Econs (Eval (v,vt) ty) el) (Tcons targ1 targs)
@@ -368,7 +376,7 @@ Module CompartmentCsem (A: Allocator SemiconcretePointer NullPolicy M)
         sem_cast v1 ty1 ty m = Some v ->
         v = Vptr ofs ->
         deref_loc ty m ofs vt1 Full tr <<ps0>> (Success ((v2,vt2), lts)) <<ps1>> ->
-        IPCastT l pct vt1 lts ty ps1 = (Success pt', ps2) ->
+        IPCastT l pct vt1 (Some lts) ty ps1 = (Success pt', ps2) ->
         rred pct (Ecast (Eval (v1,vt1) ty1) ty) te m tr
              pct (Eval (v,pt') ty) te m ps0 ps2
     | red_cast_ptr_int: forall ty v1 vt1 ty1 te m v ofs tr v2 vt2 lts vt' ty' attr ps0 ps1 ps2,
@@ -377,7 +385,7 @@ Module CompartmentCsem (A: Allocator SemiconcretePointer NullPolicy M)
         sem_cast v1 ty1 ty m = Some v ->
         v1 = Vptr ofs ->
         deref_loc ty1 m ofs vt1 Full tr <<ps0>> (Success ((v2,vt2), lts)) <<ps1>> ->
-        PICastT l pct vt1 lts ty ps1 = (Success vt',ps2) ->
+        PICastT l pct vt1 (Some lts) ty ps1 = (Success vt',ps2) ->
         rred pct (Ecast (Eval (v1,vt1) ty1) ty) te m tr
              pct (Eval (v,vt') ty) te m ps0 ps2
     | red_cast_ptr_ptr: forall ty v1 vt1 ty1 te m v ofs ofs1 tr tr1
@@ -388,7 +396,7 @@ Module CompartmentCsem (A: Allocator SemiconcretePointer NullPolicy M)
         v1 = Vptr ofs1 -> v = Vptr ofs ->
         deref_loc ty1 m ofs1 vt1 Full tr1 <<ps0>> (Success ((v2,vt2),lts1)) <<ps1>> ->
         deref_loc ty m ofs vt1 Full tr <<ps1>> (Success ((v3,vt3),lts)) <<ps2>> ->
-        PPCastT l pct vt1 lts1 lts ty ps2 = (Success pt',ps3) ->
+        PPCastT l pct vt1 (Some lts1) (Some lts) ty ps2 = (Success pt',ps3) ->
         rred pct (Ecast (Eval (v1,vt1) ty1) ty) te m (tr1 ++ tr)
              pct (Eval (v,pt') ty) te m ps0 ps3
     | red_seqand_true: forall v1 vt1 ty1 r2 ty te m pct' ps0 ps1,
@@ -653,7 +661,7 @@ Module CompartmentCsem (A: Allocator SemiconcretePointer NullPolicy M)
         sem_cast v1 ty1 ty m = Some v ->
         v = Vptr ofs ->
         deref_loc ty m ofs vt1 Full tr <<ps0>> (Success ((v2,vt2), lts)) <<ps1>> ->
-        IPCastT l pct vt1 lts ty ps0 = (Fail failure,ps2) ->
+        IPCastT l pct vt1 (Some lts) ty ps0 = (Fail failure,ps2) ->
         rfailred pct (Ecast (Eval (v1,vt1) ty1) ty) te m tr failure ps0 ps2
     | failred_cast_ptr_int:
       forall ty v1 vt1 ty1 te m v ofs tr v2 vt2 lts ty' attr failure ps0 ps1 ps2,
@@ -662,7 +670,7 @@ Module CompartmentCsem (A: Allocator SemiconcretePointer NullPolicy M)
         sem_cast v1 ty1 ty m = Some v ->
         v1 = Vptr ofs ->
         deref_loc ty1 m ofs vt1 Full tr <<ps0>> (Success ((v2,vt2), lts)) <<ps1>> ->
-        PICastT l pct vt1 lts ty ps1 = (Fail failure, ps2) ->
+        PICastT l pct vt1 (Some lts) ty ps1 = (Fail failure, ps2) ->
         rfailred pct (Ecast (Eval (v1,vt1) ty1) ty) te m tr failure ps0 ps2
     | failred_cast_ptr_ptr:
       forall ty v1 vt1 ty1 te m v ofs ofs1 tr tr1 v2 vt2 v3 vt3 lts lts1 ty1' attr1 ty' attr2 failure ps0 ps1 ps2 ps3,
@@ -673,7 +681,7 @@ Module CompartmentCsem (A: Allocator SemiconcretePointer NullPolicy M)
         v = Vptr ofs ->
         deref_loc ty1 m ofs1 vt1 Full tr1 <<ps0>> (Success ((v2,vt2), lts1)) <<ps1>> ->
         deref_loc ty m ofs vt1 Full tr <<ps1>> (Success ((v3,vt3), lts)) <<ps2>> ->
-        PPCastT l pct vt1 lts1 lts ty ps2 = (Fail failure,ps3) ->
+        PPCastT l pct vt1 (Some lts1) (Some lts) ty ps2 = (Fail failure,ps3) ->
         rfailred pct (Ecast (Eval (v1,vt1) ty1) ty) te m (tr1 ++ tr) failure ps0 ps3
 
     | red_call_internal_fail: forall ty te m b fd vft tyf tyargs tyres cconv el failure ps0 ps1,
@@ -1133,7 +1141,7 @@ Inductive sstep: state -> trace -> state -> Prop :=
     do_init_params l CMP bg' e m' (option_zip f.(fn_params) vargs) = ret (bg'', e', m'') ->
     sstep (Callstate (Internal f) l ps CMP bg vargs k m)
           E0 (State f ps CMP bg f.(fn_body) k e' empty_tenv m'')
-| step_internal_function_fail1: forall f l ps ps' CMP bg pct pct' vft vargs k m failure,
+| step_internal_function_fail1: forall f l ps ps' CMP bg vargs k m failure,
     list_norepet (var_names (fn_params f) ++ var_names (fn_vars f)) ->
     do_alloc_variables l CMP bg empty_env m f.(fn_vars) false ps = (Fail failure, ps') ->
     sstep (Callstate (Internal f) l ps CMP bg vargs k m)
@@ -1188,4 +1196,5 @@ End SEM.
   Definition semantics (p: program) (ge: Genv.t fundef type) (ce: composite_env) :=
     Semantics_gen step (initial_state p) final_state ge ce.
 
+  End Inner.
 End CompartmentCsem.

@@ -80,7 +80,8 @@ Module Type AllocatorImpl (Ptr: Pointer) (Pol: Policy) (S: Submem Ptr Pol).
                        -> ((submem * allocstate) * PTree.t ptr).
 End AllocatorImpl.
 
-Module Allocator (Ptr: Pointer) (Pol: Policy) (M: Submem Ptr Pol) (A: AllocatorImpl Ptr Pol M) <: Memory Ptr Pol.
+Module MemWithAlloc (Ptr: Pointer) (Pol: Policy) (M: Submem Ptr Pol) (A: AllocatorImpl Ptr Pol M) <:
+  Memory Ptr Pol.
 
   Import A.
   Import M.
@@ -98,6 +99,7 @@ Module Allocator (Ptr: Pointer) (Pol: Policy) (M: Submem Ptr Pol) (A: AllocatorI
   Definition of_ptr := of_ptr.
   Definition addr_off := addr_off.
   Definition addr_eq := addr_eq.
+  Definition addr_sub := addr_sub.
   Definition null := null.
   Definition null_zero := null_zero.
 
@@ -112,7 +114,7 @@ Module Allocator (Ptr: Pointer) (Pol: Policy) (M: Submem Ptr Pol) (A: AllocatorI
 
   Definition load (chunk:memory_chunk) (m:mem) (p:ptr) :
   PolicyResult (val * list val_tag * list loc_tag):=
-    match M.load_all chunk (fst m) (of_ptr p) with
+    match M.load chunk (fst m) (of_ptr p) with
     | Success (v,lts) => ret (v,lts)
     | Fail f => raise f
     end.
@@ -153,4 +155,4 @@ Module Allocator (Ptr: Pointer) (Pol: Policy) (M: Submem Ptr Pol) (A: AllocatorI
     | Fail f => raise f
     end.
 
-End Allocator.
+End MemWithAlloc.

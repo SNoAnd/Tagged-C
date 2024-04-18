@@ -41,7 +41,7 @@ Module Cexec (Pol: Policy).
 
   Module Inner (I: AllocatorImpl ConcretePointer Pol CM).
 
-  Module A := Allocator ConcretePointer Pol CM I.
+  Module A := MemWithAlloc ConcretePointer Pol CM I.
  
   Module InterpreterEvents := InterpreterEvents Pol A.
   Export InterpreterEvents.
@@ -49,7 +49,7 @@ Module Cexec (Pol: Policy).
   Import A.
   Import TLib.
   Import ConcretePointer.
-  
+ 
   (* Policy-agnostic Tactics *)
   Ltac mydestr :=
     match goal with
