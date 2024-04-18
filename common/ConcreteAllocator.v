@@ -290,21 +290,23 @@ Module ConcMemAllocators (Pol : Policy).
   (* NB: Bytes themselves should not be cleared on allocation, similiar to the way real malloc
       doesn't.*)
   Definition heapalloc (m: submem * allocstate) (size: Z) (header_lts : loc_tag): PolicyResult (submem * allocstate * ptr) :=
-    let '(m,sp) := m in
-    '(m',base) <- find_free 100 m (Int64.repr heap_starting_addr) size (repeat header_lts (Z.to_nat header_size));;
-    ret ((m',sp),base).
+    let '(sm,sp) := m in
+    '(sm',base) <- find_free 100 sm (Int64.repr heap_starting_addr) size (repeat header_lts (Z.to_nat header_size));;
+    let sm'' := add_heap sm' base size in
+    ret ((sm'',sp),base).
 
   (* NB: Bytes themselves should not be cleared on deallocation, similiar to the way real malloc
       doesn't.*)    
   Definition heapfree (l: Cabs.loc) (pct: control_tag) (m: submem * allocstate) (p: ptr) (pt: val_tag) :
     PolicyResult (Z * control_tag * (submem * allocstate)) :=
-    let (m, sp) := m in
+    let (sm, sp) := m in
     let head := Int64.repr (Int64.unsigned p - header_size) in
-    '((v,_),header_lts) <- get_header m head;;
+    '((v,_),header_lts) <- get_header sm head;;
     '(pct',lt') <- FreeT l pct pt header_lts;;
     '(live,sz) <- parse_header v;;
-    m' <- update_header m head false sz (repeat lt' 8);;
-    ret (sz,pct',(m',sp)).
+    sm' <- update_header sm head false sz (repeat lt' 8);;
+    let sm'' := remove_heap sm' (of_ptr p) (addr_off (of_ptr p) (Int64.repr sz)) in
+    ret (sz,pct',(sm'',sp)).
 
   Fixpoint globals (m : submem) (gs : list (ident*Z)) (next : addr) : (submem * PTree.t ptr) :=
     match gs with

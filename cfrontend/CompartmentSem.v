@@ -11,21 +11,55 @@ Require Import Csem.
 
 Module M := MultiMem NullPolicy.
 
-Module Type AllocatorSpec (Ptr: Pointer) (Pol: Policy) (S: Submem Ptr Pol).
+Module Type AllocatorAxioms (Ptr: Pointer) (Pol: Policy) (S: Submem Ptr Pol).
   Import S.
+  Import Pol.
 
-  Parameter t : Type.
+  Parameter allocstate : Type.
   Parameter context : Type.
+  Parameter init : submem -> (submem * allocstate).
 
-  Parameter live : t -> (context*addr*addr).
-  Parameter stkalloc : t -> Z -> (addr*t).
-  Parameter stkfree : t -> t.
-  Parameter heapalloc : t -> Z -> (addr*t).
-  Parameter heapfree : t -> addr -> t.
+  Parameter heapfree : context -> Cabs.loc -> control_tag -> (submem * allocstate) ->
+    ptr -> val_tag -> PolicyResult (Z * control_tag * (submem * allocstate)).
 
-End AllocatorSpec.
+  Parameter globalalloc : context -> (submem * allocstate) -> list (ident*Z) ->
+    ((submem * allocstate) * PTree.t ptr).
 
-Module CompartmentCsem (A: AllocatorSpec SemiconcretePointer NullPolicy M).
+  Parameter live : submem -> context -> addr -> addr -> Prop.
+
+  Axiom live_stack : forall m a1 a2, In (a1,a2) (stack m) -> exists c, live m c a1 a2.
+  Axiom live_heap : forall m a1 a2, In (a1,a2) (heap m) -> exists c, live m c a1 a2.
+
+  Parameter stkalloc : context -> (submem * allocstate) -> Z -> Z ->
+    option ((submem * allocstate) * ptr).
+
+  Axiom stkalloc_spec : forall c m st al sz m' st' p,
+    stkalloc c (m,st) al sz = Some (m',st',p) ->
+    (p = nullptr /\ m' = m) \/
+    ((stack m') = (of_ptr p,addr_off (of_ptr p) (Int64.repr sz))::(stack m) /\
+    heap m' = heap m).
+
+  Parameter stkfree : context -> (submem * allocstate) -> Z -> Z ->
+    option (submem * allocstate).
+
+  Axiom stkfree_spec : forall c m st al sz m' st' a1 a2 stk',
+    stkfree c (m,st) al sz = Some (m',st') ->
+    stack m = (a1,a2)::stk' ->
+    stack m' = stk' /\ heap m' = heap m.
+
+  Parameter heapalloc : context -> (submem * allocstate) -> Z -> loc_tag ->
+    option ((submem * allocstate) * ptr).
+
+  Axiom heapalloc_spec : forall c m st sz lt m' st' p,
+    heapalloc c (m,st) sz lt = Some (m',st',p) ->
+    stack m = stack m' /\
+    (forall a1 a2, In (a1,a2) (heap m) -> In (a1,a2) (heap m')) /\
+    (p = nullptr \/ (In (of_ptr p, addr_off (of_ptr p) (Int64.repr sz)) (heap m'))).
+  
+
+End AllocatorAxioms.
+
+Module CompartmentCsem (A: AllocatorAxioms SemiconcretePointer NullPolicy M).
 
   Module Inner : Semantics SemiconcretePointer NullPolicy MA.
 

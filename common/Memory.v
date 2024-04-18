@@ -64,7 +64,7 @@ Module Type Memory (Ptr: Pointer) (Pol:Policy).
   Parameter of_ptr : ptr -> addr.
   Parameter addr_off : addr -> int64 -> addr.
   Parameter addr_eq : addr -> addr -> bool.
-  Parameter addr_sub : addr -> addr -> option addr.
+  Parameter addr_sub : addr -> addr -> option int64.
 
   (*Parameter addr_off_distributes :
     forall p ofs,
@@ -164,7 +164,7 @@ Module Type Submem (Ptr: Pointer) (Pol: Policy).
   Parameter of_ptr : ptr -> addr.
   Parameter addr_off : addr -> int64 -> addr.
   Parameter addr_eq : addr -> addr -> bool.
-  Parameter addr_sub : addr -> addr -> option addr.
+  Parameter addr_sub : addr -> addr -> option int64.
 
   Parameter null : addr.
   Parameter null_zero : forall p, of_ptr p = null -> concretize p = Int64.zero.
@@ -205,7 +205,7 @@ Module ConcMem (Ptr: Pointer) (Pol: Policy) <: Submem Ptr Pol.
   Definition addr_eq (a1 a2: addr) : bool :=
     Int64.eq a1 a2.
 
-  Definition addr_sub (a1 a2: addr) : option addr :=
+  Definition addr_sub (a1 a2: addr) : option int64 :=
     Some (Int64.sub a1 a2).
 
   Definition null : addr := Int64.zero.
@@ -215,6 +215,9 @@ Module ConcMem (Ptr: Pointer) (Pol: Policy) <: Submem Ptr Pol.
 
   Record mem' : Type := mkmem {
     mem_contents: ZMap.t (memval*loc_tag);  (**r [offset -> memval] *)
+    (* ZMaps are total, so mem_contents is infinite, but in practice limited to the size of
+       the address space (int64). In the future it should be further restricted to model unmapped
+       regions. *)
     mem_access: ZMap.t permission;      (**r [offset -> option permission] *)
     stack: list (addr*addr);
     heap: list (addr*addr)
@@ -473,15 +476,15 @@ Module MultiMem (Pol: Policy) : Submem SemiconcretePointer Pol.
     | _, _ => false
     end.
 
-  Definition addr_sub (a1 a2: addr) : option addr :=
+  Definition addr_sub (a1 a2: addr) : option int64 :=
     match a1, a2 with
     | (LocInd C, a1'), (LocInd C', a2') =>
       if (peq C C')
-      then Some (LocInd C, Int64.sub a1' a2')
+      then Some (Int64.sub a1' a2')
       else None
     | (ShareInd b base, a1'), (ShareInd b' _, a2') =>
       if (peq b b')
-      then Some (ShareInd b base, Int64.sub a1' a2')
+      then Some (Int64.sub a1' a2')
       else None
     | _, _ => None
     end.
