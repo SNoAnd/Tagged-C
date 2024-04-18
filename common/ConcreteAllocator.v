@@ -159,8 +159,9 @@ Module ConcMemAllocators (Pol : Policy).
              (a: TLib.atom) (lts: list loc_tag) : submem :=
     {|
       mem_contents := setN (merge_vals_tags (encode_val chunk a) lts) ofs m.(mem_contents);
-      mem_access := mem_access m;
-      live := live m
+      mem_access := m.(mem_access);
+      stack := m.(stack);
+      heap := m.(heap)
     |}.
 
   Definition init_heap (m: submem) (base: Z) (sz: Z) : submem :=
@@ -168,7 +169,8 @@ Module ConcMemAllocators (Pol : Policy).
     let m' := {|
       mem_contents := contents';
       mem_access := m.(mem_access);
-      live := m.(live) |} in
+      stack := m.(stack);
+      heap := m.(heap) |} in
     let szv := Vlong (Int64.neg (Int64.repr sz)) in
     superstore Mint64 m' base (szv, InitT) (repeat DefHT 8).
 
@@ -179,19 +181,36 @@ Module ConcMemAllocators (Pol : Policy).
   Definition init (s: submem) := (init_heap subempty heap_starting_addr heap_size, 6000).
 
   Definition stkalloc (m: submem * allocstate) (al sz: Z) : PolicyResult ((submem * allocstate) * ptr) :=
-    let '(m,sp) := m in
+    let '(sm,sp) := m in
     let sp' := sp - sz in
     let aligned_sp := floor sp' al in
-    ret ((m,aligned_sp),Int64.repr (aligned_sp)).
+    let sm' := {|
+      mem_contents := sm.(mem_contents);
+      mem_access := sm.(mem_access);
+      stack := (Int64.repr aligned_sp, Int64.repr sp)::sm.(stack);
+      heap := sm.(heap)
+    |} in
+    ret ((sm',aligned_sp),Int64.repr (aligned_sp)).
 
   Definition stkfree (m: submem * allocstate) (al sz: Z) : PolicyResult (submem * allocstate) :=
-    let '(m,sp) := m in
+    let '(sm,sp) := m in
     let sp' := sp + sz in
     let aligned_sp := align sp' al in
-    ret (m,aligned_sp).
+    match sm.(stack) with
+    | [] => raise (OtherFailure "Stack free, but stack should be empty!")
+    | (base,bound)::stack' =>
+      (* Trusting that the semantics requested the correct size *)
+      let sm' := {|
+        mem_contents := sm.(mem_contents);
+        mem_access := sm.(mem_access);
+        stack := stack';
+        heap := sm.(heap)
+      |} in
+      ret (sm',aligned_sp)
+    end.
 
   Definition get_header (m: submem) (base: ptr) : PolicyResult (val * list val_tag * list loc_tag) :=
-    match load_all Mint64 m base with
+    match load Mint64 m base with
     | Success res => ret res
     | Fail failure => raise failure
     end.
