@@ -502,8 +502,7 @@ Definition alloc_size (v: val) (z:Z) : Prop :=
   let mvs' := map (fun mv =>
                      match mv with
                      | MD.Byte b vt => MD.Byte b vt_body
-                     | MD.Fragment (v,vt) q n => MD.Fragment (v,vt_body) q n
-                     | MD.Undef => MD.Undef
+                     | MD.Fragment (v,vt) q n byte => MD.Fragment (v,vt_body) q n byte
                      end) mvs in
   let lts := repeat lt_body (Z.to_nat sz) in
   let lts_pad := repeat lt_pad (Z.to_nat padding) in
