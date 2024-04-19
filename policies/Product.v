@@ -187,11 +187,11 @@ Module PolProduct (P1:Policy) (P2: Policy) <: Policy.
                    ((pct1,pct2),(vt1,vt2),(lt1,lt2))).
 
   Definition MallocT (l:loc) (pct: control_tag) (fpt: val_tag) :
-    PolicyResult (control_tag * val_tag * val_tag * loc_tag  * loc_tag) :=
+    PolicyResult (control_tag * val_tag * val_tag * loc_tag  * loc_tag * loc_tag) :=
     double_bind (P1.MallocT l (fst pct) (fst fpt))
                 (P2.MallocT l (snd pct) (snd fpt))
-                (fun '(pct1, pt1, iv1, vht1, lt1) '(pct2, pt2, iv2, vht2, lt2) =>
-                   ((pct1, pct2), (pt1, pt2), (iv1, iv2), (vht1, vht2), (lt1, lt2))).
+                (fun '(pct1, pt1, iv1, vht1, lt1, plt1) '(pct2, pt2, iv2, vht2, lt2, plt2) =>
+                   ((pct1, pct2), (pt1, pt2), (iv1, iv2), (vht1, vht2), (lt1, lt2), (plt1, plt2))).
 
   (* lts is really the header tags now *)
   Definition FreeT (l:loc) (pct: control_tag) (pt : val_tag) (lts: list loc_tag ) :

@@ -172,12 +172,13 @@ Module Log (P:Policy) <: Policy.
     ret (pct', vt, lt).
 
   Definition MallocT (l:loc) (pct: control_tag) (fpt: val_tag) :
-    PolicyResult (control_tag * val_tag * val_tag * loc_tag  * loc_tag) :=
-    '(pct', vt1, vt2, lt1, lt2) <- P.MallocT l pct fpt;;
+    PolicyResult (control_tag * val_tag * val_tag * loc_tag  * loc_tag * loc_tag) :=
+    '(pct', vt1, vt2, lt1, lt2, plt) <- P.MallocT l pct fpt;;
     log _ ("MallocT(" ++ print_ct pct ++ "," ++ print_vt fpt ++ ") = (" ++
     print_ct pct' ++ "," ++ print_vt vt1 ++ "," ++ print_vt vt2 ++ "," ++
-    print_lt lt1 ++ "," ++ print_lt lt2 ++ ")");;
-    ret (pct', vt1, vt2, lt1, lt2).
+    print_lt lt1 ++ "," ++ print_lt lt2 ++
+    print_lt plt ++ ")");;
+    ret (pct', vt1, vt2, lt1, lt2, plt).
 
   (* lts is really the header tags now *)
   Definition FreeT (l:loc) (pct: control_tag) (pt : val_tag) (lts: list loc_tag ) :

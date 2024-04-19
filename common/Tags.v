@@ -368,7 +368,9 @@ Module Type Policy.
                             * val_tag       (* Pointer tag *)
                             * val_tag       (* Initial tag on values in allocated block *)
                             * loc_tag       (* Tag on the location bytes in the block's header *)
-                            * loc_tag)      (* Tag to be copied over all memory locations *).
+                            * loc_tag       (* Tag to be copied over all memory locations user code knows about *)
+                            * loc_tag).     (* Tag to be copied over padding memory locations  that might be needed for 8 byte alignment.
+                                                This is memory out of bounds for the user. *)
 
   (* The follow tag rules process the body of free. So a call to free@fpt(p@pt) is structured:
                                          p

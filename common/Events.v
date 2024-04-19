@@ -488,10 +488,9 @@ Definition alloc_size (v: val) (z:Z) : Prop :=
 
   Definition do_extcall_malloc (l:Cabs.loc) (pct: control_tag) (fpt st: val_tag) (m: mem) (sz: Z)
   : PolicyResult (atom * control_tag * mem) :=
-  (*let sz_aligned := align sz 8 in*)
-    (* AMN: this is the size of the header, harding coding to 8 for now *)
-  '(pct1, pt, vt_body, vt_head, lt) <- MallocT l pct fpt;;
-  '(m', base) <- heapalloc m sz vt_head;;
+
+  '(pct1, pt, vt_body, lt_head, lt_body, lt_pad) <- MallocT l pct fpt;;
+  '(m', base) <- heapalloc m sz lt_head;;
   mvs <- loadbytes m' base sz;;
   let mvs' := map (fun mv =>
                      match mv with
@@ -499,7 +498,7 @@ Definition alloc_size (v: val) (z:Z) : Prop :=
                      | M.MD.Fragment (v,vt) q n => M.MD.Fragment (v,vt_body) q n
                      | Undef => Undef
                      end) mvs in
-  m'' <- storebytes m' base mvs' (repeat lt (Z.to_nat sz));;
+  m'' <- storebytes m' base mvs' ((repeat lt_body (Z.to_nat sz)) ++ (repeat lt_pad (Z.to_nat (8 - (Z.modulo sz 8)))));;
   ret ((Vptr base, pt), pct1, m'').
 
 Inductive extcall_malloc_sem (l:Cabs.loc) (ge: Genv.t F V):
