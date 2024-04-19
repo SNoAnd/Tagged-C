@@ -123,6 +123,7 @@
  *    - do we have a linter or style guide?
  *    - documentation clean up, largely for Greg's sanity
  *    - can the helper functions be rolled into 1 fn? store/load for N are very similair with string changes 
+ *    - can the helper functions be rolled into 1 fn? store/load for N are very similair with string changes 
  *)
 Require Import Coqlib.
 Require Import AST.
