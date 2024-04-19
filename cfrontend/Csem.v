@@ -27,10 +27,10 @@ Require Import NullPolicy.
 
 Inductive kind : Type := LV | RV.
 
-Module Type Semantics (Ptr: Pointer) (Pol: Policy) (A: Memory Ptr Pol).
-  Module Smallstep := Smallstep Ptr Pol A.
+Module Type Semantics (Ptr: Pointer) (Pol: Policy) (Reg: Region) (A: Memory Ptr Pol Reg).
+  Module Smallstep := Smallstep Ptr Pol Reg A.
   Export Smallstep.
-  Module Csyntax := Csyntax Ptr Pol A.
+  Module Csyntax := Csyntax Ptr Pol Reg A.
   Export Csyntax.
   Import A.
   Import TLib.
@@ -59,15 +59,16 @@ Module Type Semantics (Ptr: Pointer) (Pol: Policy) (A: Memory Ptr Pol).
    
 End Semantics.
 
-Module TaggedCsem (Pol: Policy) (A: Memory ConcretePointer Pol) <:
-    Semantics ConcretePointer Pol A.
-    Module Smallstep := Smallstep ConcretePointer Pol A.
+Module TaggedCsem (Pol: Policy) (A: Memory ConcretePointer Pol UnitRegion) <:
+    Semantics ConcretePointer Pol UnitRegion A.
+    Module Smallstep := Smallstep ConcretePointer Pol UnitRegion A.
     Export Smallstep.
-    Module Csyntax := Csyntax ConcretePointer Pol A.
+    Module Csyntax := Csyntax ConcretePointer Pol UnitRegion A.
     Export Csyntax.
     Import A.
     Import TLib.
     Import ConcretePointer.
+    Import UnitRegion.
 
     Definition genv : Type := Genv.t fundef type.
     
@@ -163,7 +164,7 @@ Module TaggedCsem (Pol: Policy) (A: Memory ConcretePointer Pol) <:
   
   Definition do_alloc_variable (l: Cabs.loc) (pct: control_tag) (e: env) (m: mem) (id: ident) (ty:type) :
     PolicyResult (control_tag * env * mem) :=
-    '(m',base) <- stkalloc m (alignof ce ty) (sizeof ce ty);;
+    '(m',base) <- stkalloc m tt (alignof ce ty) (sizeof ce ty);;
     '(pct', pt', lts') <- LocalT ce l pct ty;;
     mvs <- loadbytes m' base (sizeof ce ty);;
     m'' <- storebytes m' base mvs lts';;
@@ -201,7 +202,7 @@ Module TaggedCsem (Pol: Policy) (A: Memory ConcretePointer Pol) <:
     match vs with
     | [] => ret (pct,m)
     | (base,ty) :: vs' =>
-        m' <- stkfree m (alignof ce ty) (sizeof ce ty);;
+        m' <- stkfree m tt (alignof ce ty) (sizeof ce ty);;
         '(pct', vt', lts') <- DeallocT l ce pct ty;;
         do_free_variables l pct' m' vs'
     end.
@@ -1405,7 +1406,7 @@ Inductive sstep: state -> trace -> state -> Prop :=
           
 | step_external_function: forall l ef ps ps' ps'' pct vft pct' pct'' targs tres cc vargs k m vres t m',
     ExtCallT l ef pct vft (map snd vargs) ps = (Success pct',ps') ->
-    external_call l ef ge vargs pct' vft m t <<ps'>> (Success (vres, pct'', m')) <<ps''>> ->
+    external_call l ef tt ge vargs pct' vft m t <<ps'>> (Success (vres, pct'', m')) <<ps''>> ->
     sstep (Callstate (External ef targs tres cc) l ps pct vft vargs k m)
           t (Returnstate (External ef targs tres cc) l ps'' pct'' vres k m')
 | step_external_function_fail0: forall l ef ps pct vft targs tres cc vargs k m t failure ps',
@@ -1414,7 +1415,7 @@ Inductive sstep: state -> trace -> state -> Prop :=
           t (Failstop failure (snd ps'))
 | step_external_function_fail1: forall l ef ps pct vft targs tres cc vargs k m t failure ps' ps'' pct',
     ExtCallT l ef pct vft (map snd vargs) ps = (Success pct',ps') ->
-    external_call l ef ge vargs pct vft m t <<ps'>> (Fail failure) <<ps''>> ->
+    external_call l ef tt ge vargs pct vft m t <<ps'>> (Fail failure) <<ps''>> ->
     sstep (Callstate (External ef targs tres cc) l ps pct vft vargs k m)
           t (Failstop failure (snd ps''))
 

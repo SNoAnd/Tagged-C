@@ -237,11 +237,11 @@ Module Cexec (Pol: Policy).
     Hypothesis do_external_function_sound:
       forall id sg ge vargs pct fpt m t res w w',
         do_external_function id sg ge w vargs pct fpt m = Some(w', t, res) ->
-        external_functions_sem id sg ge vargs pct fpt m t res /\ possible_trace w t w'.
+        external_functions_sem id sg tt ge vargs pct fpt m t res /\ possible_trace w t w'.
     
     Hypothesis do_external_function_complete:
       forall id sg ge vargs pct fpt m t res w w',
-        external_functions_sem id sg ge vargs pct fpt m t res ->
+        external_functions_sem id sg tt ge vargs pct fpt m t res ->
         possible_trace w t w' ->
         do_external_function id sg ge w vargs pct fpt m = Some(w', t, res).
 
@@ -2894,4 +2894,3 @@ Definition at_final_state (S: Csem.state): option (int * logs) :=
 
   End Inner.
 End Cexec.
-

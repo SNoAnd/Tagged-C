@@ -128,8 +128,8 @@ Definition program := Ctypes.program function.
 
 End Ctop.*)
 
-Module Csyntax (Ptr: Pointer) (Pol: Policy) (A: Memory Ptr Pol).
-  Module Cop := Cop Ptr Pol A.
+Module Csyntax (Ptr: Pointer) (Pol: Policy) (Reg: Region) (A: Memory Ptr Pol Reg).
+  Module Cop := Cop Ptr Pol Reg A.
   Export Cop.
   Import A.
   Import TLib.

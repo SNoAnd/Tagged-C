@@ -52,13 +52,29 @@ Local Unset Case Analysis Schemes.
 
 Local Notation "a # b" := (PMap.get b a) (at level 1).
 
-Module Type Memory (Ptr: Pointer) (Pol:Policy).
+Module Type Region.
+
+  (* The region type designates some subdivision of memory that may
+     inform the allocator; we use it for compartmentalization, but it
+     could be any arbitrary division. *)
+
+  Parameter region : Type.
+  (* Maybe later we can use this module type to map global variables into regions? *)
+
+End Region.
+
+Module UnitRegion <: Region.
+  Definition region : Type := unit.
+End UnitRegion.
+
+Module Type Memory (Ptr: Pointer) (Pol: Policy) (Reg: Region).
   Module BI := Builtins Ptr.
   Export BI.
   Module MD := Memdata Ptr Pol.
   Export MD.
   Import TLib.
   Export Ptr.
+  Export Reg.
 
   Parameter addr : Type.
   Parameter of_ptr : ptr -> addr.
@@ -77,8 +93,9 @@ Module Type Memory (Ptr: Pointer) (Pol:Policy).
   (** The initial store *)
 
   Parameter empty : mem.
-        
+
   Parameter stkalloc : mem
+                       -> region
                        -> Z (* align *)
                        -> Z (* size *)
                        -> PolicyResult (
@@ -86,11 +103,13 @@ Module Type Memory (Ptr: Pointer) (Pol:Policy).
                            * ptr (* base *)).
 
   Parameter stkfree : mem
+                      -> region
                       -> Z (* align *)
                       -> Z (* size *)
                       -> PolicyResult mem.
 
   Parameter heapalloc : mem
+                        -> region
                         -> Z (* size *)
                         -> loc_tag
                         -> PolicyResult
@@ -100,6 +119,7 @@ Module Type Memory (Ptr: Pointer) (Pol:Policy).
   Parameter heapfree : Cabs.loc
                         -> control_tag     (* pct *)
                         -> mem
+                        -> region
                         -> ptr
                         -> val_tag         (* pointer tag *)
                         -> PolicyResult
