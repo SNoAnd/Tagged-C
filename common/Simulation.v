@@ -12,8 +12,10 @@ Require Import Csem.
 Require Import Csyntax.
 Require Import AST Ctypes.
 
-Module ProgEquiv (Ptr1: Pointer) (Pol1: Policy) (A1: Memory Ptr1 Pol1) (Sem1: Semantics Ptr1 Pol1 A1)
-                 (Ptr2: Pointer) (Pol2: Policy) (A2: Memory Ptr2 Pol2) (Sem2: Semantics Ptr2 Pol2 A2).
+Module ProgEquiv (Ptr1: Pointer) (Pol1: Policy) (Reg1: Region)
+                 (A1: Memory Ptr1 Pol1 Reg1) (Sem1: Semantics Ptr1 Pol1 Reg1 A1)
+                 (Ptr2: Pointer) (Pol2: Policy) (Reg2: Region)
+                 (A2: Memory Ptr2 Pol2 Reg2) (Sem2: Semantics Ptr2 Pol2 Reg2 A2).
 
   Module CS1 := Sem1.Csyntax.
   Module TLib1 := A1.MD.TLib.
@@ -201,10 +203,12 @@ End ProgEquiv.
 
 (** The general form of a forward simulation. *)
 
-Module SIM (Ptr1: Pointer) (Pol1: Policy) (A1: Memory Ptr1 Pol1) (Sem1: Semantics Ptr1 Pol1 A1)
-           (Ptr2: Pointer) (Pol2: Policy) (A2: Memory Ptr2 Pol2) (Sem2: Semantics Ptr2 Pol2 A2).
-  Module PE := ProgEquiv Ptr1 Pol1 A1 Sem1
-                         Ptr2 Pol2 A2 Sem2.
+Module SIM (Ptr1: Pointer) (Pol1: Policy) (Reg1: Region)
+           (A1: Memory Ptr1 Pol1 Reg1) (Sem1: Semantics Ptr1 Pol1 Reg1 A1)
+           (Ptr2: Pointer) (Pol2: Policy) (Reg2: Region)
+           (A2: Memory Ptr2 Pol2 Reg2) (Sem2: Semantics Ptr2 Pol2 Reg2 A2).
+  Module PE := ProgEquiv Ptr1 Pol1 Reg1 A1 Sem1
+                         Ptr2 Pol2 Reg2 A2 Sem2.
   Import PE.
   Module S1 := Sem1.Smallstep.
   Module E1 := S1.Events.

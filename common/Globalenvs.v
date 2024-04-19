@@ -59,7 +59,7 @@ Local Unset Case Analysis Schemes.
 
 Parameter ext : ident -> option (external_function * typelist * rettype * calling_convention)%type.
 
-Module Genv (Ptr: Pointer) (Pol: Policy) (A: Memory Ptr Pol).
+Module Genv (Ptr: Pointer) (Pol: Policy) (Reg: Region) (A: Memory Ptr Pol Reg).
   Module M := A.
   Import M.
   Import MD.

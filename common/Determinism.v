@@ -31,7 +31,7 @@ Require Import Memory.
 Require Import Csem.
 Require Import Ctyping.
 
-Module Deterministic (Pol: Policy) (A: Memory ConcretePointer Pol).
+Module Deterministic (Pol: Policy) (A: Memory ConcretePointer Pol UnitRegion).
  
   Module Ctyping := Ctyping Pol A.
   Export Ctyping.

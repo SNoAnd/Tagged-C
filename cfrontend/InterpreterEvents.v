@@ -29,7 +29,7 @@ Ltac mydestr :=
   | _ => idtac
   end.
 
-Module InterpreterEvents (Pol: Policy) (A: Memory ConcretePointer Pol).
+Module InterpreterEvents (Pol: Policy) (A: Memory ConcretePointer Pol UnitRegion).
  
   Module Deterministic := Deterministic Pol A.
   Export Deterministic.
@@ -342,11 +342,11 @@ Module InterpreterEvents (Pol: Policy) (A: Memory ConcretePointer Pol).
     Hypothesis do_external_function_sound:
       forall id sg ge vargs pct fpt m t res w w',
         do_external_function id sg ge w vargs pct fpt m = Some(w', t, res) ->
-        external_functions_sem id sg ge vargs pct fpt m t res /\ possible_trace w t w'.
+        external_functions_sem id sg tt ge vargs pct fpt m t res /\ possible_trace w t w'.
 
     Hypothesis do_external_function_complete:
       forall id sg ge vargs pct fpt m t res w w',
-        external_functions_sem id sg ge vargs pct fpt m t res ->
+        external_functions_sem id sg tt ge vargs pct fpt m t res ->
         possible_trace w t w' ->
         do_external_function id sg ge w vargs pct fpt m = Some(w', t, res).
 
@@ -389,13 +389,13 @@ Module InterpreterEvents (Pol: Policy) (A: Memory ConcretePointer Pol).
       match vargs with
       | [(v,st)] =>
           sz <- do_alloc_size v;;
-          Some (w, E0, do_extcall_malloc l pct fpt st m sz)          
+          Some (w, E0, do_extcall_malloc l tt pct fpt st m sz)          
       | _ => None
       end.
 
     Lemma do_ef_malloc_complete :
       forall l vargs pct fpt m tr res w w',
-        extcall_malloc_sem l ge vargs pct fpt m tr res ->
+        extcall_malloc_sem l tt ge vargs pct fpt m tr res ->
         possible_trace w tr w' ->
         do_ef_malloc l w vargs pct fpt m = Some (w', tr, res).
     Admitted.
@@ -409,7 +409,7 @@ Module InterpreterEvents (Pol: Policy) (A: Memory ConcretePointer Pol).
     Lemma do_ef_malloc_sound :
       forall l vargs pct fpt m tr res w w',
         do_ef_malloc l w vargs pct fpt m = Some (w', tr, res) ->
-        extcall_malloc_sem l ge vargs pct fpt m tr res /\ possible_trace w tr w'.
+        extcall_malloc_sem l tt ge vargs pct fpt m tr res /\ possible_trace w tr w'.
 (*    Proof.
       unfold do_ef_malloc. intros.
       destruct vargs as [| [v vt]]; try congruence.
@@ -437,13 +437,13 @@ Module InterpreterEvents (Pol: Policy) (A: Memory ConcretePointer Pol).
       : option (world * trace * (PolicyResult (atom * control_tag * mem))) :=
       match vargs with
       | [(Vptr p,pt)] =>
-          Some (w, E0, do_extcall_free l pct fpt pt p m)
+          Some (w, E0, do_extcall_free l tt pct fpt pt p m)
       | _ => None
       end.
 
     Lemma do_ef_free_complete :
       forall l vargs pct fpt m tr res w w',
-        extcall_free_sem l ge vargs pct fpt m tr res ->
+        extcall_free_sem l tt ge vargs pct fpt m tr res ->
         possible_trace w tr w' ->
         do_ef_free l w vargs pct fpt m = Some (w', tr, res).
     Admitted.
@@ -461,7 +461,7 @@ Module InterpreterEvents (Pol: Policy) (A: Memory ConcretePointer Pol).
     Lemma do_ef_free_sound :
       forall l vargs pct fpt m tr res w w',
         do_ef_free l w vargs pct fpt m = Some (w', tr, res) ->
-        extcall_free_sem l ge vargs pct fpt m tr res /\ possible_trace w tr w'.
+        extcall_free_sem l tt ge vargs pct fpt m tr res /\ possible_trace w tr w'.
     Admitted.
     (*Proof.
       unfold do_ef_free. intros.
@@ -495,7 +495,7 @@ Module InterpreterEvents (Pol: Policy) (A: Memory ConcretePointer Pol).
     Lemma do_ef_external_sound:
       forall ef l w vargs pct fpt m w' t res,
         do_external ef l w vargs pct fpt m = Some (w', t, res) ->
-        external_call l ef ge vargs pct fpt m t res /\ possible_trace w t w'.
+        external_call l ef tt ge vargs pct fpt m t res /\ possible_trace w t w'.
     Proof with try congruence.
       intros until res.
       destruct ef; simpl...
@@ -509,7 +509,7 @@ Module InterpreterEvents (Pol: Policy) (A: Memory ConcretePointer Pol).
 
     Lemma do_ef_external_complete:
       forall ef w l vargs pct fpt m w' t res,
-        external_call l ef ge vargs pct fpt m t res -> possible_trace w t w' ->
+        external_call l ef tt ge vargs pct fpt m t res -> possible_trace w t w' ->
         do_external ef l w vargs pct fpt m = Some (w', t, res).
     Proof.
       intros. destruct ef eqn:?; simpl in *.

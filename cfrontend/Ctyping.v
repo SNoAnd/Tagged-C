@@ -24,7 +24,7 @@ Require Import Ctypes Cop Csyntax Csem.
 
 Local Open Scope error_monad_scope.
 
-Module Ctyping (Pol: Policy) (A: Memory ConcretePointer Pol).
+Module Ctyping (Pol: Policy) (A: Memory ConcretePointer Pol UnitRegion).
  
   Module Csem := TaggedCsem Pol A.
   Export Csem.

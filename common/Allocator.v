@@ -33,7 +33,7 @@ Local Unset Elimination Schemes.
 Local Unset Case Analysis Schemes.
 
 Module MemWithAlloc (Ptr: Pointer) (Pol: Policy) (M: Submem Ptr Pol) (A: AllocatorImpl Ptr Pol M) <:
-  Memory Ptr Pol.
+  Memory Ptr Pol UnitRegion.
 
   Import A.
   Import M.
@@ -44,6 +44,7 @@ Module MemWithAlloc (Ptr: Pointer) (Pol: Policy) (M: Submem Ptr Pol) (A: Allocat
   Import Pol.
   Import Ptr.
   Export TLib.
+  Export UnitRegion.
  
   Definition addr := addr.
   Definition of_ptr := of_ptr.
@@ -63,10 +64,10 @@ Module MemWithAlloc (Ptr: Pointer) (Pol: Policy) (M: Submem Ptr Pol) (A: Allocat
   Definition direct_read (m:mem) (a:addr) : memval * loc_tag :=
     M.direct_read (fst m) a.
 
-  Definition stkalloc := stkalloc.
-  Definition stkfree := stkfree.
-  Definition heapalloc := heapalloc.
-  Definition heapfree := heapfree.
+  Definition stkalloc (m:mem) (r:region) := stkalloc m.
+  Definition stkfree (m:mem) (r:region) := stkfree m.
+  Definition heapalloc (m:mem) (r:region) := heapalloc m.
+  Definition heapfree (lc: Cabs.loc) (pct: control_tag) (m:mem) (r:region) := heapfree lc pct m.
   Definition globalalloc := globalalloc.
 
   Definition load (chunk:memory_chunk) (m:mem) (p:ptr) :

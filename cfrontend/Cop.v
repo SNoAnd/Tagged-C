@@ -30,8 +30,8 @@ Require Import Smallstep.
 Require Archi.
 Require Import ExtLib.Structures.Monads. Import MonadNotation.
 
-Module Cop (Ptr: Pointer) (Pol: Policy) (A: Memory Ptr Pol).
-  Module Smallstep := Smallstep Ptr Pol A.
+Module Cop (Ptr: Pointer) (Pol: Policy) (Reg: Region) (A: Memory Ptr Pol Reg).
+  Module Smallstep := Smallstep Ptr Pol Reg A.
   Export Smallstep.
   Import A.
   Import TLib.

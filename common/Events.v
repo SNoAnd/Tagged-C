@@ -32,8 +32,8 @@ Require Import Tags.
 Require Import ExtLib.Structures.Monads. Import MonadNotation.
 Require Import List. Import ListNotations.
 
-Module Events (Ptr: Pointer) (Pol: Policy) (A: Memory Ptr Pol).
-  Module Genv := Genv Ptr Pol A.
+Module Events (Ptr: Pointer) (Pol: Policy) (Reg: Region) (A: Memory Ptr Pol Reg).
+  Module Genv := Genv Ptr Pol Reg A.
   Export Genv.
   Import A.
   Import Ptr.
@@ -445,7 +445,7 @@ Inductive volatile_store (ge: Genv.t F V):
 *)
 
 Definition extcall_sem : Type :=
-  Genv.t F V -> list atom -> control_tag (* PC *) -> val_tag (* function ptr *) -> mem -> trace ->
+  region -> Genv.t F V -> list atom -> control_tag (* PC *) -> val_tag (* function ptr *) -> mem -> trace ->
   (PolicyResult (atom * control_tag * mem)) -> Prop.
 
 (** ** Semantics of volatile loads *)
@@ -456,13 +456,13 @@ Definition volatile_load_tags (l:Cabs.loc) (chunk: memory_chunk) (m:mem) (p:ptr)
   vt' <- LoadT l pct pt vt lts;;
   AccessT l pct vt'.  
 
-Inductive volatile_load_sem (l:Cabs.loc) (chunk: memory_chunk) (ge: Genv.t F V):
+Inductive volatile_load_sem (l:Cabs.loc) (chunk: memory_chunk) (r: region) (ge: Genv.t F V):
   list atom -> control_tag -> val_tag -> mem -> trace ->
   PolicyResult (atom * control_tag * mem) -> Prop :=
 | volatile_load_sem_intro: forall p pt m pct fpt t v vts lts vt',
     volatile_load ge chunk m p t (ret (v,vts,lts)) ->
     volatile_load_tags l chunk m p pt vts lts pct = ret vt'->
-    volatile_load_sem l chunk ge ((Vptr p, pt) :: nil) pct fpt m t
+    volatile_load_sem l chunk r ge [(Vptr p, pt)] pct fpt m t
                       (ret ((v,vt'), pct, m)).
 
 (** ** Semantics of volatile stores *)
@@ -491,12 +491,12 @@ Definition alloc_size (v: val) (z:Z) : Prop :=
   | _ => False
   end.
 
-  Definition do_extcall_malloc (l:Cabs.loc) (pct: control_tag) (fpt st: val_tag) (m: mem) (sz: Z)
+  Definition do_extcall_malloc (l:Cabs.loc) (r: region) (pct: control_tag) (fpt st: val_tag) (m: mem) (sz: Z)
   : PolicyResult (atom * control_tag * mem) :=
   (*let sz_aligned := align sz 8 in*)
     (* AMN: this is the size of the header, harding coding to 8 for now *)
   '(pct1, pt, vt_body, vt_head, lt) <- MallocT l pct fpt;;
-  '(m', base) <- heapalloc m sz vt_head;;
+  '(m', base) <- heapalloc m r sz vt_head;;
   mvs <- loadbytes m' base sz;;
   let mvs' := map (fun mv =>
                      match mv with
@@ -506,32 +506,32 @@ Definition alloc_size (v: val) (z:Z) : Prop :=
   m'' <- storebytes m' base mvs' (repeat lt (Z.to_nat sz));;
   ret ((Vptr base, pt), pct1, m'').
 
-Inductive extcall_malloc_sem (l:Cabs.loc) (ge: Genv.t F V):
+Inductive extcall_malloc_sem (l:Cabs.loc) (r: region) (ge: Genv.t F V):
   list atom -> control_tag -> val_tag -> mem -> trace ->
   (PolicyResult (atom * control_tag * mem)) -> Prop :=
 | extcall_malloc_sem_intro: forall v sz st pct fpt m,
     alloc_size v sz ->
-    extcall_malloc_sem l ge ((v,st) :: nil) pct fpt m E0
-                       (do_extcall_malloc l pct fpt st m sz).
+    extcall_malloc_sem l r ge [(v,st)] pct fpt m E0
+                       (do_extcall_malloc l r pct fpt st m sz).
 
-Definition do_extcall_free (l:Cabs.loc) (pct: control_tag)  (fpt pt: val_tag) (p: ptr) (m: mem)
+Definition do_extcall_free (l:Cabs.loc) (r: region) (pct: control_tag)  (fpt pt: val_tag) (p: ptr) (m: mem)
   : PolicyResult (atom * control_tag * mem) :=
   if Int64.eq (concretize p) Int64.zero
   then ret ((Vundef,InitT), pct, m)
   else
-    '(sz,pct',m') <- heapfree l pct m p pt;;
+    '(sz,pct',m') <- heapfree l pct m r p pt;;
     mvs <- loadbytes m' p sz;;
     lts <- loadtags m' p sz;;
     lts' <- ltop.(mmap) (ClearT l pct' pt) lts;;
     m'' <- storebytes m' p mvs lts';;
     ret ((Vundef,InitT), pct', m'').
 
-Inductive extcall_free_sem (l:Cabs.loc) (ge: Genv.t F V):
+Inductive extcall_free_sem (l:Cabs.loc) (r: region) (ge: Genv.t F V):
   list atom -> control_tag -> val_tag -> mem -> trace ->
   (PolicyResult (atom * control_tag * mem)) -> Prop :=
 | extcall_free_sem_intro: forall p pct fpt pt m,
-    extcall_free_sem l ge ((Vptr p,pt) :: nil) pct fpt m E0
-                     (do_extcall_free l pct fpt pt p m).
+    extcall_free_sem l r ge [(Vptr p,pt)] pct fpt m E0
+                     (do_extcall_free l r pct fpt pt p m).
 
 (** ** Semantics of [memcpy] operations. *)
 
@@ -647,11 +647,11 @@ Qed.*)
 
 (** ** Semantics of annotations. *)
 
-Inductive extcall_annot_sem (text: string) (targs: list typ) (ge: Genv.t F V):
+Inductive extcall_annot_sem (text: string) (targs: list typ) (r: region) (ge: Genv.t F V):
               list atom -> control_tag -> mem -> trace -> atom -> control_tag -> mem -> Prop :=
   | extcall_annot_sem_intro: forall vargs pct m args,
       eventval_list_match ge args targs vargs ->
-      extcall_annot_sem text targs ge vargs pct m (Event_annot text args :: E0) (Vundef,def_tag) pct m.
+      extcall_annot_sem text targs r ge vargs pct m (Event_annot text args :: E0) (Vundef,def_tag) pct m.
 
 (*Lemma extcall_annot_ok:
   forall text targs,
@@ -688,16 +688,16 @@ Proof.
   split. constructor. auto.
 Qed.*)
 
-Inductive extcall_annot_val_sem (text: string) (targ: typ) (ge: Genv.t F V):
+Inductive extcall_annot_val_sem (text: string) (targ: typ) (r: region) (ge: Genv.t F V):
               list atom -> control_tag -> mem -> trace -> atom -> control_tag -> mem -> Prop :=
   | extcall_annot_val_sem_intro: forall varg pct m arg,
       eventval_match ge arg targ varg ->
-      extcall_annot_val_sem text targ ge (varg :: nil) pct m (Event_annot text (arg :: nil) :: E0) varg pct m.
+      extcall_annot_val_sem text targ r ge (varg :: nil) pct m (Event_annot text (arg :: nil) :: E0) varg pct m.
 
-Inductive extcall_debug_sem (ge: Genv.t F V):
+Inductive extcall_debug_sem (r: region) (ge: Genv.t F V):
               list atom -> control_tag -> mem -> trace -> atom -> control_tag -> mem -> Prop :=
   | extcall_debug_sem_intro: forall vargs pct m,
-      extcall_debug_sem ge vargs pct m E0 (Vundef,def_tag) pct m.
+      extcall_debug_sem r ge vargs pct m E0 (Vundef,def_tag) pct m.
 
 (** ** Semantics of known built-in functions. *)
 
@@ -705,12 +705,12 @@ Inductive extcall_debug_sem (ge: Genv.t F V):
   as defined in the [Builtin] modules.
   These built-in functions have no observable effects and do not access memory. *)
 
-Inductive known_builtin_sem (bf: builtin_function) (ge: Genv.t F V):
+Inductive known_builtin_sem (bf: builtin_function) (r: region) (ge: Genv.t F V) :
   list atom -> control_tag -> val_tag -> mem -> trace ->
   PolicyResult (atom * control_tag * mem) -> Prop :=
   | known_builtin_sem_intro: forall vargs vres pct fpt m,
       builtin_function_sem bf vargs = Some vres ->
-      known_builtin_sem bf ge (map (fun v => (v,def_tag)) vargs) pct fpt m E0
+      known_builtin_sem bf r ge (map (fun v => (v,def_tag)) vargs) pct fpt m E0
                         (ret ((vres,InitT), pct, m)).
 
 (** ** Semantics of external functions. *)
@@ -763,14 +763,14 @@ Qed.*)
 
 This predicate is used in the semantics of all CompCert languages. *)
 
-Definition external_call (l:Cabs.loc) (ef: external_function): extcall_sem :=
+Definition external_call (l:Cabs.loc) (ef: external_function) : extcall_sem :=
   match ef with
   | EF_external name sg  => external_functions_sem name sg
 (*  | EF_builtin name sg   => builtin_or_external_sem name sg
   | EF_vload chunk       => volatile_load_sem chunk
   | EF_vstore chunk      => volatile_store_sem chunk*)
-  | EF_malloc            => fun ge => extcall_malloc_sem l ge
-  | EF_free              => fun ge => extcall_free_sem l ge
+  | EF_malloc            => extcall_malloc_sem l
+  | EF_free              => extcall_free_sem l
 (*  | EF_memcpy sz al      => extcall_memcpy_sem sz al
   | EF_annot kind txt targs   => extcall_annot_sem txt targs
   | EF_annot_val kind txt targ => extcall_annot_val_sem txt targ
