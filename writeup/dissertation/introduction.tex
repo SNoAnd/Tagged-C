@@ -1,5 +1,6 @@
 \documentclass{report}
 
+\usepackage{geometry}
 \usepackage{verbatim}
 
 \begin{document}
@@ -85,34 +86,43 @@ The contributions in this dissertation are divided across its three main topics.
 
 \paragraph{Stack Safety}
 
-The work discussed in Chapter \ref{ch:stacksafety} was first published at the
-IEEE Computer Security Foundations Symposium, July 2023 as
-``Formalizing Stack Safety as a Security Policy,'' a
-joint work with Roberto Blanco, Leonidas Lampropoulos, Benjamin Pierce, and Andrew Tolmach
-\cite{Anderson23:StackSafety}. Its contributions are:
+Chapter \ref{ch:stacksafety} gives a novel formalization of stack safety in the
+form of a collection of trace properties. Stack Safety exemplifies the specification problem:
+"the stack" is not a clearly defined language concept, but a loosely defined component of
+a system's ABI that is relied on by many different higher-level abstractions.
+Our trace properties describe the behavior that those abstractions
+should be able to expect from a well-behaved stack, even when enforced with the
+optimized "lazy" tagging approach of Roessler and DeHon \cite{RoesslerD18}.
+Our contributions are:
 
 \begin{itemize}
-\item A novel characterization of stack safety as a conjunction
-  of security properties---confidentiality and integrity for callee
-  and caller---plus well-bracketed control-flow.
-  The properties are parameterized over a notion of
-  external observation, allowing them to characterize lazy enforcement
-  mechanisms.
-\item An extension of these core definitions to
-  describe a realistic setting with argument passing on the stack,
-  callee-saves registers, and tail-call elimination. The model is
-  modular enough that adding these features is straightforward.
-\item Validation of a published enforcement mechanism,
-  \emph{Lazy Tagging and Clearing}, via property-based random testing; we find that
-  it falls short, and propose and validate a fix.
+  \item A novel characterization of stack safety as a conjunction
+        of security properties---confidentiality and integrity for callee
+        and caller---plus well-bracketed control-flow.
+        The properties are parameterized over a notion of
+        external observation, allowing them to characterize lazy enforcement
+        mechanisms.
+  \item An extension of these core definitions to
+        describe a realistic setting with argument passing on the stack,
+        callee-saves registers, and tail-call elimination. The model is
+        modular enough that adding these features is straightforward.
+  \item Validation of a published enforcement mechanism,
+        \emph{Lazy Tagging and Clearing}, via property-based random testing; we find that
+        it falls short, and propose and validate a fix.
 \end{itemize}
+
+This chapter was first published at the IEEE Computer Security Foundations Symposium,
+July 2023 as ``Formalizing Stack Safety as a Security Policy,'' a
+joint work with Roberto Blanco, Leonidas Lampropoulos, Benjamin Pierce, and Andrew Tolmach
+\cite{Anderson23:StackSafety}.
 
 \paragraph{Tagged C}
 
-This work was first published at the International Conference on Runtime Verification,
-October 2023 as ``Flexible Runtime Security Enforcement with Tagged C,'' a joint work
-with Andrew Tolmach and Allison Naaktgeboren. Its contributions are:
- 
+In Chapter \ref{ch:taggedc}, we attack the definition problem by lifting tagged enforcement
+to the level of C source code. We introduce Tagged C, a C variant whose semantics are parameterized
+by an arbitrary tag-based policy. The Tagged C semantics and interpreter are based on those of
+CompCert C \cite{Leroy09:CompCert}.
+
 \begin{itemize}
 \item The design of a comprehensive set of {\em control points} at which the C language interfaces
   with a tag-based policy. These expand on prior work by encompassing the full C language
@@ -126,14 +136,24 @@ with Andrew Tolmach and Allison Naaktgeboren. Its contributions are:
   the semantics in Coq and extracted to OCaml.
 \end{itemize}
 
-Chapter \ref{ch:taggedc} corresponds to the original paper. It introduces the Tagged C language
-and explains the semantics and interpreter. Chapter \ref{ch:pragmatics} discusses the underlying
-design decisions that inform how Tagged C works, and how those choices
-impact the actual process of defining policies for Tagged C.
+The core of this chapter was first published at the International Conference on Runtime Verification,
+October 2023 as ``Flexible Runtime Security Enforcement with Tagged C,'' a joint work
+with Andrew Tolmach and Allison Naaktgeboren \cite{Anderson23:TaggedC}. Some technical
+details are also published in Chaak et al. \cite{}, a joint work with CHR Chaak and Andrew Tolmach.
+The original content has been updated to reflect further development, and the chapter has been
+extended with a detailed discussion of the design decisions that inform the current development.
 
 \paragraph{Compartmentalization}
 
-The compartmentalization work is not yet submitted for publication.
+Finally, I return to the specification and validation problems, now at the C level. Chapter
+\ref{ch:compartments} presents a compartmentalization policy in conjunction with the abstract
+compartmentalization scheme that it enforces, and proves that the policy indeed enforces the
+abstract model. In this case the specification takes the form of an abstract machine.
+
+Both the specification and the policy that enforces it are novel, and improve upon the
+state-of-the art in tag-based compartmentalization by allowing objects to be shared between
+compartments via passed pointers, without the overhead of protecting every object individually.
+The proof is mechanized.
 
 \begin{itemize}
 \item A formal model of C compartmentalization in the form of an abstract machine that
@@ -143,9 +163,7 @@ The compartmentalization work is not yet submitted for publication.
 \item A proof that the compartmentalization policy is safe with respect to the abstract semantics.
 \end{itemize}
 
-These topics are split between Chapter \ref{ch:compartments}, which defines the compartmentalization
-model, and Chapter \ref{ch:proof}, which covers the associated policy and the proof effort to show that
-it enforces that model.
+The compartmentalization work is not yet submitted for publication.
 
 \chapter{Tags and Monitors}
 \label{ch:background}
@@ -156,14 +174,8 @@ it enforces that model.
 \chapter{Flexible Runtime Security Enforcement with Tagged C}
 \label{ch:taggedc}
 
-\chapter{Pragmatics of Tagged C and Policy Design}
-\label{ch:pragmatics}
-
 \chapter{Formalizing Compartmentalization as an Abstract Machine}
 \label{ch:compartments}
-
-\chapter{Proving Compartmentalization}
-\label{ch:proof}
 
 \chapter{Conclusion}
 
