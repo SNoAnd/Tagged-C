@@ -37,47 +37,67 @@ arbitrary software-defined tag rules over large (word-sized) tags with arbitrary
 which enables fine-grained policies and composition of multiple policies.
 
 This dissertation centers around the definition, specification, and verification of
-PIPE-style policies. These problems are closely related. Tag policies are difficult to write:
+PIPE-style policies. These problems are closely related, and their difficulty is a result 
+of the extreme flexibility offered by tag policies, as well as the fact that such policies
+are typically defined at the assembly level.
 
+\paragraph{The Definition Problem}
 
-Specification
-means both the operational definition of how policies work in the concrete sense, and
-the higher-level formal definitions that capture the kind of security they aim to enforce.
+Tag policies are difficult to write:
+each policy consists of a collection of rules, each associated with a family of opcodes,
+that taken in aggregate determine its behavior. Almost all policies will need to distinguish
+individual special instructions, since many opcodes can play different roles that need to be
+treated differently in the policy. Defining a policy requires knowledge of both the assembly
+language of the host ISA, and the behavior of the compiler, so that the policy designer can
+indentify which instructions serve special purposes. Some policies even require the binary
+to be rewritten with additional instructions whose primary purpose is moving and manipulating
+tags.
 
-In the literature, PIPE policies are defined at the assembly level. If they aim to enforce
-source-level constructs, such as memory safety, they do so with the help of compiler annotations;
-such constructs do not take advantage of the PIPE model's flexibility. If they instead
-aim to enforce narrower program-specific notions of security, they require careful hand-annotation
-by an engineer familiar with the source code. Some works have proven or tested their policies
-against a higher-level security specification, but so far this is restricted to simple specifications
-and straightforward implementations. When policies are optimized to give up some security in the name
-of performance, it is very hard to specify the security that remains.
+\paragraph{The Specification Problem}
 
-The work is divided into three main parts. The first proposes a new formal characterization of
-stack safety using concepts from language-based security. Though not specific to a PIPE
-implementation, this formulation is motivated by a particular class of PIPE-based enforcement
+Because tag policies are so complex, it is important to either prove or
+at least thoroughly test the correctness of a given policy. But in many cases, there is no
+standard specification for the kind of security that the policy hopes to enforce.
+Even in cases where there is an existing formal specification, such as memory safety \cite{Azevedo+16},
+trade-offs between performance and protection may result in a policy that does not precisely match it.
+Instead, the policy designer must determine what degree of security their policy is meant to enforce,
+and characterize that with a security property.
+
+Many policies aim to enforce security concepts that do not exist at the assembly level. Memory safety
+is an example again: assembly code has no notion of a heap. Specifying such a policy at the assembly
+level typically requires one to explicitly account for how the compiler implements that source-level
+construct.
+
+\paragraph{The Verification Problem}
+
+Ideally, verifying a tag policy would mean proving that it can be applied to any (well-formed)
+program and maintain the relevant security property. It is much harder to prove a property over all
+programs is much than a property of one program, especially assembly programs. The point above applies:
+for source-level constructs, proving them at the assembly level requires a detailed accounting of 
+how the compiler implemented them. A prover can similarly not depend on any source-level constructs,
+like structured control flow, in their proof.
+
+\paragraph{Addressing the problems}
+
+This dissertation is divided into three main parts. The first proposes a new formal characterization of
+stack safety using concepts from language-based security. Though not specific to a tag-based
+implementation, this formulation is motivated by a particular class of tag-based enforcement
 mechanisms, the ``lazy'' stack safety policies studied by Roessler and DeHon~\cite{RoesslerD18},
 which permit functions to write into one another's frames but taint the changed locations so that the
 frame's owner cannot access them. No prior characterization of stack safety captures this style of
 safety.
 
-Next, I present Tagged C, a \emph{source-level}
-specification framework that allows engineers to describe policies in terms of familiar
-C-level concepts. PIPE policies can be difficult for a C engineer to write: their tags and rules
-are defined in terms of individual machine instructions and ISA-level
-concepts, and in practice they depend on reverse engineering the behavior
-of specific compilers. Tagged C takes the form of a variant C language whose semantics are
-parameterized by tags attached to C functions, variables and data values, and rules triggered at
-\emph{control points} that correspond to significant execution events, such as function calls,
-expression evaluation, and pointer-based memory accesses.
-Tagged C may be seen as an operational specification for instrumenting C with a
-tag-based reference monitor: it describes policies in terms of their concrete effects
-on the execution state of the underlying C semantics.
+Next, it presents Tagged C, a \emph{source-level} specification framework that allows engineers to
+describe policies in terms of familiar C-level concepts. Tagged C takes the form of a variant C language
+whose semantics are parameterized by tags attached to C functions, variables and data values, and rules
+triggered at \emph{control points} that correspond to significant execution events, such as function calls,
+expression evaluation, and pointer-based memory accesses. The control points give structure to the task of
+policy definition, and the Tagged-C semantics gives a formal definition of what each control point does,
+enabling source-level proofs.
 
-Armed with this knowledge, a Tagged C user may then prove that a given policy enforces
-a higher-level security specification. In the final third of this dissertation I define
-a compartmentalization property in the form of
-a novel abstract compartmentalized semantics, define a Tagged C policy that enforces it,
+The final third of this dissertation makes use of Tagged C to perform a source-level specification and
+verification of a novel compartmentalization property. The specification takes the form of
+an abstract compartmentalized semantics. I define a Tagged C policy that enforces it,
 and prove in Coq that the policy satisfies its specification.
 
 \section{Contributions and Organization}
@@ -123,7 +143,11 @@ joint work with Roberto Blanco, Leonidas Lampropoulos, Benjamin Pierce, and Andr
 In Chapter \ref{ch:taggedc}, we attack the definition problem by lifting tagged enforcement
 to the level of C source code. We introduce Tagged C, a C variant whose semantics are parameterized
 by an arbitrary tag-based policy. The Tagged C semantics and interpreter are based on those of
-CompCert C \cite{Leroy09:CompCert}.
+CompCert C \cite{Leroy09:CompCert}. Tagged C addresses the definition problem by allowing policies
+to be defined at the source level and by presenting a fixed interface for the definition of
+policies. Where assembly instructions can serve different roles and must be distinguished for
+tag purposes, each Tagged C control point serves one clear role. The policy designer needs little
+knowledge of how the control points might be compiled.
 
 \begin{itemize}
 \item The design of a comprehensive set of {\em control points} at which the C language interfaces
@@ -155,7 +179,8 @@ abstract model. In this case the specification takes the form of an abstract mac
 Both the specification and the policy that enforces it are novel, and improve upon the
 state-of-the art in tag-based compartmentalization by allowing objects to be shared between
 compartments via passed pointers, without the overhead of protecting every object individually.
-The proof is mechanized.
+The proof is mechanized. It both serves as a contribution in its own right, and a demonstration
+of how Tagged C can enable this style of verification in general. 
 
 \begin{itemize}
 \item A formal model of C compartmentalization in the form of an abstract machine that
@@ -165,7 +190,7 @@ The proof is mechanized.
 \item A proof that the compartmentalization policy is safe with respect to the abstract semantics.
 \end{itemize}
 
-The compartmentalization work is not yet submitted for publication.
+This work is not yet submitted for publication.
 
 \chapter{Tags and Monitors}
 \label{ch:background}
