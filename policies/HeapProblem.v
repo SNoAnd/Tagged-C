@@ -675,7 +675,7 @@ Module HeapProblem <: Policy.
 
   (* ClearT is for the tags on lts, the location tags. Works tag by tag *)
   Definition ClearT (l:loc) (pct: control_tag) (pt: val_tag) (currlt: loc_tag) : PolicyResult (loc_tag) :=
-    (*log ("ClearT called on " ++ (print_lt currlt));;*)
+    log ("ClearT called on " ++ (print_lt currlt));;
     match pt, currlt with 
     | PointerWithColor ptr_l ptr_c, Allocated m_l m_c => 
       (* header color/loc, pointer color/loc, and lts color/loc should match *)
