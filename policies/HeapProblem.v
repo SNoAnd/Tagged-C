@@ -133,6 +133,7 @@ Require Import Ctypes.
 Require Import Cabs.
 Require Import String.
 Require Import Tags.
+Require Import Show.
 Require Import ExtLib.Structures.Monads. Import MonadNotation.
 
 Module HeapProblem <: Policy.
@@ -231,14 +232,6 @@ Module HeapProblem <: Policy.
   Definition rw_err_msg(s: string) (belongstoloc failloc: loc) :=
     s ++ " " ++ (print_loc belongstoloc) ++ " at " ++ (print_loc failloc).
 
-  (*hattip to SNA *)
-  Definition print_integer (z:Z) : string :=
-    match z with
-    | Zpos p => extern_atom p
-    | Zneg p => "-" ++ (extern_atom p)
-    | Z0 => "0"
-    end.
-  
   Definition print_vt (t : val_tag) : string :=
     match t with
     | N => "Not heap related value (N)"
@@ -247,7 +240,7 @@ Module HeapProblem <: Policy.
     
   Definition print_ct (t : control_tag) : string := 
     match t with
-    | PC_Extra next_color => "PC tag, next color will be " ++ (print_integer next_color)
+    | PC_Extra next_color => "PC tag, next color will be " ++ (show next_color)
     end
     .
 
@@ -674,7 +667,7 @@ Module HeapProblem <: Policy.
 
   (* ClearT is for the tags on lts, the location tags. Works tag by tag *)
   Definition ClearT (l:loc) (pct: control_tag) (pt: val_tag) (currlt: loc_tag) : PolicyResult (loc_tag) :=
-    (*log ("ClearT called on " ++ (print_lt currlt));;*)
+    log ("ClearT called on " ++ (print_lt currlt));;
     match pt, currlt with 
     | PointerWithColor ptr_l ptr_c, Allocated m_l m_c => 
       (* header color/loc, pointer color/loc, and lts color/loc should match *)

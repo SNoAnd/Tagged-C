@@ -510,8 +510,8 @@ Module Passthrough.
     Definition ArgT (l:loc) (pct:control_tag) (fpt vt: val_tag) (idx:nat) (ty: type) :
       PolicyResult (control_tag * val_tag) := ret (pct,vt).
 
-    Definition RetT (l:loc) (pct_clr pct_cle: control_tag) (vt: val_tag) :
-      PolicyResult (control_tag * val_tag) := ret (pct_cle,vt).
+    Definition RetT (l:loc) (pct oldpct: control_tag) (vt: val_tag) :
+      PolicyResult (control_tag * val_tag) := ret (pct,vt).
 
     Definition AccessT (l:loc) (pct: control_tag) (vt: val_tag) :
       PolicyResult val_tag := ret vt.

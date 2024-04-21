@@ -491,14 +491,18 @@ Definition alloc_size (v: val) (z:Z) : Prop :=
 
   '(pct1, pt, vt_body, lt_head, lt_body, lt_pad) <- MallocT l pct fpt;;
   '(m', base) <- heapalloc m sz lt_head;;
-  mvs <- loadbytes m' base sz;;
+  let aligned_sz := align sz 8 in
+  mvs <- loadbytes m' base aligned_sz;;
+  let padding := aligned_sz - sz in
   let mvs' := map (fun mv =>
                      match mv with
                      | M.MD.Byte b vt => M.MD.Byte b vt_body
                      | M.MD.Fragment (v,vt) q n => M.MD.Fragment (v,vt_body) q n
-                     | Undef => Undef
+                     | M.MD.Undef => M.MD.Undef
                      end) mvs in
-  m'' <- storebytes m' base mvs' ((repeat lt_body (Z.to_nat sz)) ++ (repeat lt_pad (Z.to_nat (8 - (Z.modulo sz 8)))));;
+  let lts := repeat lt_body (Z.to_nat sz) in
+  let lts_pad := repeat lt_pad (Z.to_nat padding) in
+  m'' <- storebytes m' base mvs' (lts ++ lts_pad);;
   ret ((Vptr base, pt), pct1, m'').
 
 Inductive extcall_malloc_sem (l:Cabs.loc) (ge: Genv.t F V):
