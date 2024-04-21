@@ -16,60 +16,172 @@ Module Type AllocatorAxioms (Ptr: Pointer) (Pol: Policy) (S: Submem Ptr Pol).
   Import Pol.
 
   Parameter allocstate : Type.
-  Parameter context : Type.
   Parameter init : submem -> (submem * allocstate).
 
-  Parameter heapfree : context -> Cabs.loc -> control_tag -> (submem * allocstate) ->
-    ptr -> val_tag -> PolicyResult (Z * control_tag * (submem * allocstate)).
+  Parameter live : submem -> addr -> addr -> Prop.
 
-  Parameter globalalloc : context -> (submem * allocstate) -> list (ident*Z) ->
-    ((submem * allocstate) * PTree.t ptr).
+  Axiom live_stack : forall m a1 a2, In (a1,a2) (stack m) -> live m a1 a2.
+  Axiom live_heap : forall m a1 a2, In (a1,a2) (heap m) -> live m a1 a2.
 
-  Parameter live : submem -> context -> addr -> addr -> Prop.
-
-  Axiom live_stack : forall m a1 a2, In (a1,a2) (stack m) -> exists c, live m c a1 a2.
-  Axiom live_heap : forall m a1 a2, In (a1,a2) (heap m) -> exists c, live m c a1 a2.
-
-  Parameter stkalloc : context -> (submem * allocstate) -> Z -> Z ->
+  Parameter stkalloc : (submem * allocstate) -> Z -> Z ->
     option ((submem * allocstate) * ptr).
 
-  Axiom stkalloc_spec : forall c m st al sz m' st' p,
-    stkalloc c (m,st) al sz = Some (m',st',p) ->
+  Axiom stkalloc_spec : forall m st al sz m' st' p,
+    stkalloc (m,st) al sz = Some (m',st',p) ->
     (p = nullptr /\ m' = m) \/
     ((stack m') = (of_ptr p,addr_off (of_ptr p) (Int64.repr sz))::(stack m) /\
     heap m' = heap m).
 
-  Parameter stkfree : context -> (submem * allocstate) -> Z -> Z ->
+  Parameter stkfree : (submem * allocstate) -> Z -> Z ->
     option (submem * allocstate).
 
-  Axiom stkfree_spec : forall c m st al sz m' st' a1 a2 stk',
-    stkfree c (m,st) al sz = Some (m',st') ->
+  Axiom stkfree_spec : forall m st al sz m' st' a1 a2 stk',
+    stkfree (m,st) al sz = Some (m',st') ->
     stack m = (a1,a2)::stk' ->
     stack m' = stk' /\ heap m' = heap m.
 
-  Parameter heapalloc : context -> (submem * allocstate) -> Z -> loc_tag ->
-    option ((submem * allocstate) * ptr).
+  Parameter heapalloc : (submem * allocstate) -> Z -> option ((submem * allocstate) * ptr).
 
-  Axiom heapalloc_spec : forall c m st sz lt m' st' p,
-    heapalloc c (m,st) sz lt = Some (m',st',p) ->
+  Axiom heapalloc_spec : forall m st sz m' st' p,
+    heapalloc (m,st) sz = Some (m',st',p) ->
     stack m = stack m' /\
     (forall a1 a2, In (a1,a2) (heap m) -> In (a1,a2) (heap m')) /\
     (p = nullptr \/ (In (of_ptr p, addr_off (of_ptr p) (Int64.repr sz)) (heap m'))).
-  
+
+  Parameter heapfree : (submem * allocstate) -> ptr -> option (Z*(submem * allocstate)).
+
+  Parameter globalalloc : (submem * allocstate) -> list (ident*Z) ->
+    ((submem * allocstate) * PTree.t ptr).
 
 End AllocatorAxioms.
 
+Module MemRegionAgnostic (Pol: Policy) (Reg: Region) (M: Submem SemiconcretePointer Pol)
+  (A: AllocatorAxioms SemiconcretePointer Pol M) : Memory SemiconcretePointer Pol Reg.
+
+  Import A.
+  Import M.
+  Module BI := BI.
+  Module MD := MD.
+  Export BI.
+  Export MD.
+  Import Pol.
+  Import Reg.
+  Import SemiconcretePointer.
+  Export TLib.
+ 
+  Definition addr := addr.
+  Definition of_ptr := of_ptr.
+  Definition addr_off := addr_off.
+  Definition addr_eq := addr_eq.
+  Definition addr_sub := addr_sub.
+  Definition null := null.
+  Definition null_zero := null_zero.
+
+  Definition allocstate := allocstate.
+  Definition init := init.
+
+  Definition mem : Type := submem * allocstate.
+
+  Definition empty := init M.subempty.
+  
+  Definition direct_read (m:mem) (a:addr) : memval * loc_tag :=
+    M.direct_read (fst m) a.
+
+  Definition stkalloc (m: mem) (r:region) (al sz: Z) : PolicyResult (mem * ptr) :=
+    match stkalloc m al sz with
+    | Some (m',p) => ret (m',p)
+    | None => raise (OtherFailure "OOM")
+    end.
+
+  Definition stkfree (m:mem) (r:region) (al sz: Z) : PolicyResult mem :=
+    match stkfree m al sz with
+    | Some m' => ret m'
+    | None => raise (OtherFailure "Bad stack free")
+    end.
+
+  Definition heapalloc (m:mem) (r:region) (sz: Z) (lt: loc_tag): PolicyResult (mem*ptr) :=
+    match heapalloc m sz with
+    | Some (m',p) => ret (m',p)
+    | None => ret (m, nullptr)
+    end.
+
+  Definition heapfree (lc: Cabs.loc) (pct: control_tag) (m:mem) (r:region) (p:ptr) (pt:val_tag) :
+    PolicyResult (Z*control_tag*mem) :=
+    match heapfree m p with
+    | Some (sz,m') => ret (sz,pct,m')
+    | None => raise (OtherFailure "Bad heap free")
+    end.
+
+  Definition globalalloc := globalalloc.
+
+  Definition load (chunk:memory_chunk) (m:mem) (p:ptr) :
+  PolicyResult (val * list val_tag * list loc_tag):=
+    match M.load chunk (fst m) (of_ptr p) with
+    | Success (v,lts) => ret (v,lts)
+    | Fail f => raise f
+    end.
+
+  Definition loadbytes (m:mem) (p:ptr) (n:Z) : PolicyResult (list memval) :=
+    match M.loadbytes (fst m) (of_ptr p) n with
+    | Success bytes => ret bytes
+    | Fail f => raise f
+    end.
+  
+  Definition loadtags (m:mem) (p:ptr) (n:Z) : PolicyResult (list loc_tag) :=
+    match M.loadtags (fst m) (of_ptr p) n with
+    | Success tags => ret tags
+    | Fail f => raise f
+    end.
+  
+  Definition store (chunk:memory_chunk) (m:mem) (p:ptr) (v:TLib.atom) (lts:list loc_tag) :
+    PolicyResult mem :=
+    let '(m,st) := m in
+    match M.store chunk m (of_ptr p) v lts with
+    | Success m' => ret (m',st)
+    | Fail f => raise f
+    end.
+
+  Definition store_atom (chunk:memory_chunk) (m:mem) (p:ptr) (v:TLib.atom)
+    : PolicyResult mem :=
+    let '(m,st) := m in
+    match M.store_atom chunk m (of_ptr p) v with
+    | Success m' => ret (m',st)
+    | Fail f => raise f
+    end.
+  
+  Definition storebytes (m:mem) (p:ptr) (bytes:list memval) (lts:list loc_tag)
+    : PolicyResult mem :=
+    let '(m,st) := m in
+    match M.storebytes m (of_ptr p) bytes lts with
+    | Success m' => ret (m',st)
+    | Fail f => raise f
+    end.
+
+End MemRegionAgnostic.
+
+Module CompReg <: Region.
+  Inductive region' : Type :=
+  | Lcl (CMP: SemiconcretePointer.Comp)
+  | Shr (b: block)
+  .
+
+  Definition region := region'.
+  
+End CompReg.
+
 Module CompartmentCsem (A: AllocatorAxioms SemiconcretePointer NullPolicy M).
 
-  Module Inner : Semantics SemiconcretePointer NullPolicy MA.
+  Module MA := MemRegionAgnostic NullPolicy CompReg M A.
 
-  Module Smallstep := Smallstep SemiconcretePointer NullPolicy MA.
+  Module Inner : Semantics SemiconcretePointer NullPolicy CompReg MA.
+
+  Module Smallstep := Smallstep SemiconcretePointer NullPolicy CompReg MA.
   Export Smallstep.
-  Module Csyntax := Csyntax SemiconcretePointer NullPolicy MA.
+  Module Csyntax := Csyntax SemiconcretePointer NullPolicy CompReg MA.
   Export Csyntax.
-  Import M.
+  Import MA.
   Import TLib.
-  Import A.
+  Import CompReg.
 
   (** * Operational semantics *)
 
@@ -180,10 +292,9 @@ Module CompartmentCsem (A: AllocatorAxioms SemiconcretePointer NullPolicy M).
     end.
 
   (* Allocates local (public) variables *)
-
   Definition do_alloc_variable (l: Cabs.loc) (CMP: Comp) (bg: block_generator) (e: env) (m: mem) (id: ident) (ty:type) (shared: bool):
     PolicyResult (block_generator * env * mem) :=
-    '(m',base) <- stkalloc m (alignof ce ty) (sizeof ce ty);;
+    '(m',base) <- stkalloc m (Lcl CMP) (alignof ce ty) (sizeof ce ty);;
     ret (bg, PTree.set id (PUB base tt ty) e, m').
 
   Definition do_alloc_variables (l: Cabs.loc) (CMP: Comp) (bg: block_generator) (e: env) (m: mem) (vs: list (ident * type)) (shared: bool) :
@@ -212,14 +323,14 @@ Module CompartmentCsem (A: AllocatorAxioms SemiconcretePointer NullPolicy M).
                  do_init_param l CMP bg e' m' id ty init)
               ps (ret (bg, e, m)).    
     
-  Fixpoint do_free_variables (l: Cabs.loc) (pct: control_tag) (m: mem) (vs: list (ptr*type))
+  Fixpoint do_free_variables (l: Cabs.loc) (CMP: Comp) (pct: control_tag) (m: mem) (vs: list (ptr*type))
     : PolicyResult (control_tag * mem) :=
     match vs with
     | [] => ret (pct,m)
     | (base,ty) :: vs' =>
-        m' <- stkfree m (alignof ce ty) (sizeof ce ty);;
+        m' <- stkfree m (Lcl CMP) (alignof ce ty) (sizeof ce ty);;
         '(pct', vt', lts') <- DeallocT l ce pct ty;;
-        do_free_variables l pct' m' vs'
+        do_free_variables l CMP pct' m' vs'
     end.
 
   (** Return the list of types in the (public) codomain of [e]. *)
@@ -1118,11 +1229,11 @@ Inductive sstep: state -> trace -> state -> Prop :=
           E0 (State f ps CMP bg (Sfor Sskip a2 a3 s olbl l) k e te m)
 
 | step_return_none: forall f ps CMP bg l k e te m m',
-    do_free_variables l tt m (variables_of_env e) = ret (tt, m') ->
+    do_free_variables l CMP tt m (variables_of_env e) = ret (tt, m') ->
     sstep (State f ps CMP bg (Sreturn None l) k e te m)
           E0 (Returnstate (Internal f) ps CMP bg l (Vundef, def_tag) (call_cont k) m')
 | step_return_none_fail0: forall f ps CMP bg l k e te m failure,
-    do_free_variables l tt m (variables_of_env e) = raise failure ->
+    do_free_variables l CMP tt m (variables_of_env e) = raise failure ->
     sstep (State f ps CMP bg (Sreturn None l) k e te m)
           E0 (Failstop failure (snd ps))
 | step_return_1: forall f ps CMP bg l x k e te m,
@@ -1130,12 +1241,12 @@ Inductive sstep: state -> trace -> state -> Prop :=
           E0 (ExprState f l ps CMP bg x (Kreturn k) e te m)
 | step_return_2:  forall f ps CMP bg l v vt ty k e te m v' m',
     sem_cast v ty f.(fn_return) m = Some v' ->
-    do_free_variables l tt m (variables_of_env e) = ret (tt, m') ->
+    do_free_variables l CMP tt m (variables_of_env e) = ret (tt, m') ->
     sstep (ExprState f l ps CMP bg (Eval (v,vt) ty) (Kreturn k) e te m)
           E0 (Returnstate (Internal f) ps CMP bg l (v',vt) (call_cont k) m')
 | step_return_fail0:  forall f ps CMP bg pct l v vt ty k e te m v' failure,
     sem_cast v ty f.(fn_return) m = Some v' ->
-    do_free_variables l pct m (variables_of_env e) = raise failure ->
+    do_free_variables l CMP pct m (variables_of_env e) = raise failure ->
     sstep (ExprState f l ps CMP bg (Eval (v,vt) ty) (Kreturn k) e te m)
           E0 (Failstop failure (snd ps))
 | step_skip_call: forall f ps CMP bg k e te m,
@@ -1188,15 +1299,15 @@ Inductive sstep: state -> trace -> state -> Prop :=
           E0 (Failstop failure (snd ps''))
 
 | step_external_function: forall l ef ps CMP bg pct vft pct' targs tres cc vargs k m vres t m',
-    external_call l ef ge vargs pct vft m t (ret (vres, pct', m')) ->
+    external_call l ef (Lcl CMP) ge vargs pct vft m t (ret (vres, pct', m')) ->
     sstep (Callstate (External ef targs tres cc) l ps CMP bg vargs k m)
           t (Returnstate (External ef targs tres cc) ps CMP bg l vres k m')
 | step_external_function_fail0: forall l ef ps CMP bg pct vft targs tres cc vargs k m t failure,
-    external_call l ef ge vargs pct vft m t (raise failure) ->
+    external_call l ef (Lcl CMP) ge vargs pct vft m t (raise failure) ->
     sstep (Callstate (External ef targs tres cc) l ps CMP bg vargs k m)
           t (Failstop failure (snd ps))
 | step_external_function_fail1: forall l ef ps CMP bg pct vft targs tres cc vargs k m t failure,
-    external_call l ef ge vargs pct vft m t (raise failure) ->
+    external_call l ef (Lcl CMP) ge vargs pct vft m t (raise failure) ->
     sstep (Callstate (External ef targs tres cc) l ps CMP bg vargs k m)
           t (Failstop failure (snd ps))
 
