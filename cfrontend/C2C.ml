@@ -31,7 +31,7 @@ module C2CP (Pol: Policy) = struct
     module Ctyping = Cexec.InterpreterEvents.Deterministic.Ctyping
     module Csyntax = Ctyping.Csem.Csyntax
     module Cop = Csyntax.Cop
-    module Vals = TC.Cexec.A.MD.TLib.Switch.BI.BI1.BI0.Values
+    module Vals = TC.Cexec.A.Genv.MD.TLib.Switch.BI.BI1.BI0.Values
     open Vals
 
 (** ** Extracting information about global variables from their atom *)

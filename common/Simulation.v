@@ -18,13 +18,13 @@ Module ProgEquiv (Ptr1: Pointer) (Pol1: Policy) (Reg1: Region)
                  (A2: Memory Ptr2 Pol2 Reg2) (Sem2: Semantics Ptr2 Pol2 Reg2 A2).
 
   Module CS1 := Sem1.Csyntax.
-  Module TLib1 := A1.MD.TLib.
+  Module TLib1 := A1.Genv.MD.TLib.
   Import TLib1.
   Module Val1 := TLib1.Switch.BI.BI1.BI0.Values.
   Import Val1.
   
   Module CS2 := Sem2.Csyntax.
-  Module TLib2 := A2.MD.TLib.
+  Module TLib2 := A2.Genv.MD.TLib.
   Module Val2 := TLib2.Switch.BI.BI1.BI0.Values.
   Import Val2.
   
@@ -212,10 +212,10 @@ Module SIM (Ptr1: Pointer) (Pol1: Policy) (Reg1: Region)
   Import PE.
   Module S1 := Sem1.Smallstep.
   Module E1 := S1.Events.
-  Module GV1 := E1.Genv.
+  Module GV1 := A1.Genv.
   Module S2 := Sem2.Smallstep.
   Module E2 := S2.Events.
-  Module GV2 := E2.Genv.
+  Module GV2 := A2.Genv.
   
   Inductive eventval_match: E1.eventval -> E2.eventval -> Prop :=
   | MEVint: forall i,

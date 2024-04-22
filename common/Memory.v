@@ -38,7 +38,7 @@ Require Import Integers.
 Require Import Floats.
 Require Import Values.
 Require Import Tags.
-Require Import Memdata.
+Require Import Globalenvs.
 Require Import Builtins.
 Require Import Encoding.
 Require Import ExtLib.Structures.Monads. Import MonadNotation.
@@ -70,9 +70,10 @@ End UnitRegion.
 Module Type Memory (Ptr: Pointer) (Pol: Policy) (Reg: Region).
   Module BI := Builtins Ptr.
   Export BI.
-  Module MD := Memdata Ptr Pol.
+  Module Genv := Genv Ptr Pol.
+  Export Genv.
   Export MD.
-  Import TLib.
+  Export TLib.
   Export Ptr.
   Export Reg.
 
@@ -172,9 +173,10 @@ End Memory.
 Module Type Submem (Ptr: Pointer) (Pol: Policy).
   Module BI := Builtins Ptr.
   Export BI.
-  Module MD := Memdata Ptr Pol.
+  Module Genv := Genv Ptr Pol.
+  Export Genv.
   Export MD.
-  Import TLib.
+  Export TLib.
   Export Ptr.
 
   Parameter submem : Type.
@@ -204,9 +206,10 @@ End Submem.
 Module ConcMem (Ptr: Pointer) (Pol: Policy) <: Submem Ptr Pol.
   Module BI := Builtins Ptr.
   Export BI.
-  Module MD := Memdata Ptr Pol.
+  Module Genv := Genv Ptr Pol.
+  Export Genv.
   Export MD.
-  Import TLib.
+  Export TLib.
   Export Ptr.
 
   Inductive permission : Type := Live | Dead | MostlyDead.
@@ -475,7 +478,8 @@ Module MultiMem (Pol: Policy) : Submem SemiconcretePointer Pol.
   Export CM.
   Module BI := BI.
   Export BI.
-  Module MD := MD.
+  Module Genv := Genv.
+  Export Genv.
   Export MD.
   Export TLib.
   Export SemiconcretePointer.

@@ -47,7 +47,6 @@ Module Cexec (Pol: Policy).
   Export InterpreterEvents.
 
   Import A.
-  Import TLib.
   Import ConcretePointer.
  
   (* Policy-agnostic Tactics *)

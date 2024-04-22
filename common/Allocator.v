@@ -38,11 +38,12 @@ Module MemWithAlloc (Ptr: Pointer) (Pol: Policy) (M: Submem Ptr Pol) (A: Allocat
   Import A.
   Import M.
   Module BI := BI.
-  Module MD := MD.
+  Module Genv := Genv.
   Export BI.
-  Export MD.
+  Export Genv.
   Import Pol.
   Import Ptr.
+  Import MD.
   Export TLib.
   Export UnitRegion.
  
