@@ -138,10 +138,18 @@ Module ConcMemAllocators (Pol : Policy).
         (set_perm_range m next_aligned (sz-1) Live, PTree.set id next tree)
     end.
   
-  Definition globalalloc (m : submem * allocstate) (gs : list (ident*Z)) : (submem * allocstate * PTree.t ptr) :=
+  Definition globalalloc (m : submem * allocstate) (gs : list (ident*Z)) :
+    (submem * allocstate * (ident -> ptr)) :=
     let (m, sp) := m in
     let (m', tree) := globals m gs (Int64.repr 8) in
-    ((m',sp), tree).
+    let gmap :=
+      fun id =>
+        match PTree.get id tree with
+        | Some p => p
+        | _ => nullptr
+        end in
+    ((m',sp), gmap).
+
   End FLAllocator.
 
   Module ConcreteAllocator : ConcAllocatorImpl.
@@ -317,10 +325,17 @@ Module ConcMemAllocators (Pol : Policy).
         (set_perm_range m next_aligned (sz-1) Live, PTree.set id next tree)
     end.
   
-  Definition globalalloc (m : submem * allocstate) (gs : list (ident*Z)) : (submem * allocstate * PTree.t ptr) :=
+   Definition globalalloc (m : submem * allocstate) (gs : list (ident*Z)) :
+    (submem * allocstate * (ident -> ptr)) :=
     let (m, sp) := m in
     let (m', tree) := globals m gs (Int64.repr 8) in
-    ((m',sp), tree).
+    let gmap :=
+      fun id =>
+        match PTree.get id tree with
+        | Some p => p
+        | _ => nullptr
+        end in
+    ((m',sp), gmap).
 
   End ConcreteAllocator.
 

@@ -71,5 +71,5 @@ Module Type AllocatorImpl (Ptr: Pointer) (Pol: Policy) (S: Submem Ptr Pol).
 
   Parameter globalalloc : (submem * allocstate)
                        -> list (ident*Z)
-                       -> ((submem * allocstate) * PTree.t ptr).
+                       -> ((submem * allocstate) * (ident -> ptr)).
 End AllocatorImpl.

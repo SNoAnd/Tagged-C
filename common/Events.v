@@ -33,12 +33,13 @@ Require Import ExtLib.Structures.Monads. Import MonadNotation.
 Require Import List. Import ListNotations.
 
 Module Events (Ptr: Pointer) (Pol: Policy) (Reg: Region) (A: Memory Ptr Pol Reg).
-  Module Genv := Genv Ptr Pol Reg A.
+  Module Genv := Genv Ptr Pol.
   Export Genv.
   Import A.
   Import Ptr.
   Import TLib.
   Import Pol.
+  Import Reg.
   
 (** * Events and traces *)
 
