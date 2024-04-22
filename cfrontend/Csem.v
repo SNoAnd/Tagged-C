@@ -72,11 +72,6 @@ Module TaggedCsem (Pol: Policy) (A: Memory ConcretePointer Pol UnitRegion) <:
 
     Definition genv : Type := Genv.t fundef type.
     
-    Definition globalenv (p: program) : PolicyResult (Genv.t fundef type * composite_env * mem) :=
-      let ce := p.(prog_comp_env) in
-      '(ge,m) <- Genv.globalenv ce p;;
-      ret (ge, ce, m).
-
     Inductive var_entry : Type :=
     | PRIV (ty: type)
     | PUB (base: ptr) (pt:val_tag) (ty:type)
@@ -1433,6 +1428,65 @@ Inductive sstep: state -> trace -> state -> Prop :=
   estep S t S' \/ sstep S t S'.
   
 End SEM.
+  
+  Definition store_init_data (ge: genv) (m: mem) (p: ptr) (id: init_data) (vt: val_tag) (lt: loc_tag) :
+    PolicyResult mem :=
+    match id with
+    | Init_int8 n => store Mint8unsigned m p (Vint n, vt) [lt]
+    | Init_int16 n => store Mint16unsigned m p (Vint n, vt) [lt;lt]
+    | Init_int32 n => store Mint32 m p (Vint n, vt) [lt;lt;lt;lt]
+    | Init_int64 n => store Mint64 m p (Vlong n, vt) [lt;lt;lt;lt;lt;lt;lt;lt]
+    | Init_float32 n => store Mfloat32 m p (Vsingle n, vt) [lt;lt;lt;lt]
+    | Init_float64 n => store Mfloat64 m p (Vfloat n, vt) [lt;lt;lt;lt;lt;lt;lt;lt]
+    | Init_addrof symb ofs =>
+        match find_symbol ge symb with
+        | None => raise (OtherFailure "Symbol not found")
+        | Some (SymGlob base bound pt gv) =>
+            store Mptr m p (Vptr base, vt) [lt;lt;lt;lt;lt;lt;lt;lt]
+        | Some (SymIFun _ b pt) => 
+            store Mptr m p (Vfptr b, vt) [lt;lt;lt;lt;lt;lt;lt;lt]
+        | Some (SymEFun _ ef tyargs tyres cc pt) =>
+            store Mptr m p (Vefptr ef tyargs tyres cc, pt) [lt;lt;lt;lt;lt;lt;lt;lt]
+        end
+    | Init_space n => ret m
+    end.
+
+  Fixpoint store_init_data_list (ge: genv) (m: mem) (p: ptr) (idl: list init_data)
+            (vt: val_tag) (lt: loc_tag)
+            {struct idl}: PolicyResult mem :=
+    match idl with
+    | [] => ret m
+    | id :: idl' =>
+        m' <- store_init_data ge m p id vt lt;;
+        store_init_data_list ge m' (off p (Int64.repr (init_data_size id))) idl' vt lt
+    end.
+
+  Fixpoint init_globals (ge: genv) (m: mem) (idls: list (ident * list init_data)):
+    PolicyResult mem :=
+    match idls with
+    | [] => ret m
+    | (id, idl)::idls' =>
+      match find_symbol ge id with
+      | None => raise (OtherFailure "Symbol not found")
+      | Some (SymGlob base _ _ _) =>
+        match PTree.get id ge.(genv_glob_tags) with
+        | Some (vt,lt) =>
+          m' <- store_init_data_list ge m base idl vt lt;;
+          init_globals ge m' idls'
+        | None =>
+          raise (OtherFailure "Initial tags not found")
+        end
+      | _ => init_globals ge m idls'
+      end
+    end.
+
+  Definition globalenv (p: program) : PolicyResult (genv * composite_env * mem):=
+    let ce := p.(prog_comp_env) in
+    let (sizes, inits) := (filter_vars p.(AST.prog_defs)) in 
+    let (m,gmap) := globalalloc A.empty sizes in
+    let ge := Genv.globalenv ce p.(prog_public) p.(prog_defs) gmap in
+    m' <- init_globals ge m inits;;
+    ret (ge, ce, m').
 
   (** * Whole-program semantics *)
 
@@ -1440,14 +1494,13 @@ End SEM.
       from an initial state to a final state.  An initial state is a [Callstate]
       corresponding to the invocation of the ``main'' function of the program
       without arguments and with an empty continuation. *)
-
   Inductive initial_state' (p: program): state -> Prop :=
-  | initial_state_intro: forall b pt f ge ce m0,
-      globalenv p = ret (ge,ce,m0) ->
+  | initial_state_intro: forall b pt f ge ce m ps,
+      globalenv p (init_state,[]) = (Success (ge,ce,m), ps) ->
       Genv.find_symbol ge p.(prog_main) = Some (SymIFun _ b pt) ->
       Genv.find_funct_ptr ge b = Some f ->
       type_of_fundef f = Tfunction Tnil type_int32s cc_default ->
-      initial_state' p (Callstate f Cabs.no_loc (init_state,[]) InitPCT def_tag nil Kstop m0).
+      initial_state' p (Callstate f Cabs.no_loc ps InitPCT def_tag nil Kstop m).
 
   Definition initial_state := initial_state'.
 

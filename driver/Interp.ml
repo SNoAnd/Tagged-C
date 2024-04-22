@@ -844,25 +844,13 @@ let execute prog =
   match fixup_main prog with
   | None -> exit 126
   | Some prog1 ->
-     (let wprog = world_program prog1 in
-      let wprog' = program_of_program wprog in
-      let ce = prog1.prog_comp_env in
-      match Genv.globalenv ce wprog' (Pol.init_state,[]) with
-      | (Success (wge,wm),ps) ->
-      (*match Genv.init_mem wprog' with
-      | Mem.MemoryFail(msg) ->
-          fprintf p "ERROR: World memory state undefined@."; exit 126
-      | Mem.MemorySuccess(wm) -> *)
-       (match Cexec.do_initial_state prog1 with
+     (let ce = prog1.prog_comp_env in
+      (match Cexec.do_initial_state prog1 with
         | Some (ge, s) ->
-           (*(match !mode with
-            | First | Random ->*)
-                explore_one p prog1 ge ce 0 s (world wge wm)
-           (*| All ->
-                explore_all p prog1 ge ce 0 [(1, s, world wge wm)])*)
-        | _ -> fprintf p "ERROR: Initial state undefined@."; exit 126)
-      | _ ->
-        fprintf p "ERROR: Initial state undefined@."; exit 126)
-
+          (match s with
+          | Csem.Callstate (_, _, _, _, _, _, _, m) ->
+            (explore_one p prog1 ge ce 0 s (world ge m))
+          | _ -> fprintf p "ERROR: Initial state not a call@."; exit 126)
+        | _ -> fprintf p "ERROR: Initial state undefined@."; exit 126))
   end  
 end

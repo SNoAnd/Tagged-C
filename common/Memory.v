@@ -129,7 +129,7 @@ Module Type Memory (Ptr: Pointer) (Pol: Policy) (Reg: Region).
 
   Parameter globalalloc : mem
                        -> list (ident*Z)
-                       -> (mem * PTree.t ptr).
+                       -> (mem * (ident -> ptr)).
   (** Memory reads. *)
   
   Parameter direct_read : mem -> addr -> memval * loc_tag.
