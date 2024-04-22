@@ -37,7 +37,7 @@
 Require Import Recdef.
 Require Import Zwf.
 Require Import Axioms Coqlib Errors Maps AST Linking.
-Require Import Integers Floats Values Memory Allocator.
+Require Import Integers Floats Values Memdata.
 Require Import List. Import ListNotations.
 Require Import Ctypes.
 Require Import Tags.
@@ -62,7 +62,8 @@ Parameter ext : ident -> option (external_function * typelist * rettype * callin
 Module Genv (Ptr: Pointer) (Pol: Policy).
   Import Ptr.
   Import Pol.
-  Module TLib := TagLib Ptr Pol.
+  Module MD := Memdata Ptr Pol.
+  Import MD.
   Import TLib.
   
   (** * Global environments *)

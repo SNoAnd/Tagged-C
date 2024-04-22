@@ -37,6 +37,7 @@ Set Implicit Arguments.
 Module Smallstep (Ptr: Pointer) (Pol: Policy) (Reg: Region) (A:Memory Ptr Pol Reg).
   Module Events := Events Ptr Pol Reg A.
   Export Events.
+  Import A.
   
   (** * Closures of transitions relations *)
 
@@ -269,7 +270,7 @@ Module Smallstep (Ptr: Pointer) (Pol: Policy) (Reg: Region) (A:Memory Ptr Pol Re
                                             P s0 (t0 ** t) s2).
       induction 1; intros.
       rewrite E0_right. apply BASE; auto.
-      eapply IND. eauto. econstructor; eauto. subst t0. eapply IHstar; eauto. auto.
+      eapply IND. eauto. econstructor; eauto. subst. eapply IHstar; eauto. auto.
       
       intros. inv H0. eauto.
     Qed.
@@ -318,7 +319,7 @@ Module Smallstep (Ptr: Pointer) (Pol: Policy) (Reg: Region) (A:Memory Ptr Pol Re
                                    forever ge ce s1 (t *** T).
     Proof.
       induction 1; intros. simpl. auto.
-      subst t0. rewrite Eappinf_assoc.
+      subst. rewrite Eappinf_assoc.
       econstructor; eauto.
     Qed.
 

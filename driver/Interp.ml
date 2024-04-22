@@ -47,10 +47,11 @@ module InterpP (Pol: Policy) = struct
     module Csem = Ctyping.Csem
     module Csyntax = Csem.Csyntax
     module Events = Csyntax.Cop.Smallstep.Events
-    module Genv = Events.Genv
-    module M = Genv.M
-    module Val = Printing.Val
-    open Val
+    module M = Cexec.A
+    module Genv = M.Genv
+    module MD = Genv.MD
+    module Vals = Printing.Vals
+    open Vals
 
 (* Printing events *)
 
@@ -159,10 +160,10 @@ let print_mem p m =
      (fprintf p " %ld " (Int32.of_int i);
       let (mv,t) = M.direct_read m (coqint_of_camlint (Int32.of_int i)) in
       match mv with
-      | M.MD.Byte (b,vt) ->
+      | MD.Byte (b,vt) ->
                       fprintf p " %lu '@' %s '@' %s|" (camlint_of_coqint b) (print_vt vt) (print_lt t);
                       print_at (i+1) max
-      | M.MD.Fragment ((v,vt), q, n, b) -> fprintf p "| %a '@' %s '@' %s |" print_val v (print_vt vt) (print_lt t);
+      | MD.Fragment ((v,vt), q, n, b) -> fprintf p "| %a '@' %s '@' %s |" print_val v (print_vt vt) (print_lt t);
          print_at (i+(camlint_of_coqnat (Encoding.size_quantity_nat q))) max)
     else () in
   print_at 1000 1015;
@@ -360,7 +361,7 @@ let extract_string m ofs =
   let b = Buffer.create 80 in
   let rec extract ofs =
     match M.direct_read m ofs with
-    | (M.MD.Byte (n,_), _) ->
+    | (MD.Byte (n,_), _) ->
       let c = Char.chr (Z.to_int n) in
       if c = '\000' then begin
         Some(Buffer.contents b)
