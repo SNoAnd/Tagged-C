@@ -13,6 +13,7 @@ defaulttimeout = 1000 # default # of steps to allow to run
 doublefree = "dfree"
 PVI = "pvi"
 dfreeXpvi = "dfxpvi"
+heapproblem = "heapproblem"
 passmsg = "\t\ttest passed"
 failmsg = "\t\ttest FAILED!"
 # after adding locations, these no longer have the same error
@@ -199,10 +200,20 @@ if __name__ == '__main__':
                        #b"ConcreteAllocator| parse_header | Header is undefined")
                        b"DoubleFree||FreeT detects corrupted alloc header| source location double_free_basic_nonsensefree.c:18")
     print("=======\nHeap Problems Tests\n=======")
-    print("\tTODO")
-    print("=======\nTests expected to get incorrect output but we'd like to know if that changes unexpectedly\n=======")
-    # Currently None
-    print("\tNone Present")
-
+    # basic allocation. smallest possible tests padding, single tests multiple, basic gives the heap exercise
+    runACFileWithoutInput("allocator_smallestpossible.c", heapproblem,
+                          nofault_cleanexit)
+    runACFileWithoutInput("allocator_single.c", heapproblem,
+                          nofault_cleanexit)
+    runACFileWithoutInput("allocator_basic.c", heapproblem,
+                          nofault_cleanexit)
+    # heaproblem not responsible for making sure you dont OOM your heap. 
+    #      users still need to check for 0 :p 
+    runACFileWithoutInput("allocator_single_OOM.c", heapproblem,
+                          nofault_cleanexit)
+    runACFileWithoutInput("heapproblem_overread_basic_nopad.c", heapproblem,
+                          b"TODO decide on final errmsg, rmeove log statements")    
+    runACFileWithoutInput("heapproblem_overread_basic_pad.c", heapproblem,
+                          b"TODO decide on final errmsg, remove log statements")    
     # end
     print(f"\n=======\ntest suit ending.\n\ttotal tests run: {testsrun}\n\ttotal failed: {testsfailed}\n\ttotal passed: {testsrun - testsfailed}")

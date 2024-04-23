@@ -286,6 +286,7 @@ Module HeapProblem <: Policy.
   (* Helper function for LoadT. To be applied to each lt *)
   Definition CheckforColorMatchOnLoad (ptr_color: Z) (ptr_l load_l:loc) (lt : loc_tag) :
   PolicyResult loc_tag :=
+    log ("Check for Color match tags onLoad= " ++ (print_lt lt));;
     match lt with 
     | NotHeap => raise (PolicyFailure (inj_loc "HeapProblem|| Pointer corruption|LoadT tried to read nonheap memory at source location " load_l))
     | UnallocatedHeap => raise (PolicyFailure (inj_loc "HeapProblem|| Pointer corruption|LoadT tried to read unallocated heap memory at source location " load_l))
@@ -303,9 +304,14 @@ Module HeapProblem <: Policy.
         else raise (PolicyFailure (rw_err_msg "HeapProblem|| Pointer corruption|LoadT tried to read memory allocated to " alloc_l load_l))
     end.
 
-    (* Non heap pointer write nonheap things, but anything in the stack is off limits *)
+    (* Non heap pointer can write nonheap things, but anything in the stack is off limits *)
+    (* 
+      op_l: the location of the Load operation 
+      lt: the location tag to be checked for N
+    *)
     Definition CheckforNlocTagsonLoad (op_l :loc) (lt : loc_tag) :
     PolicyResult loc_tag :=
+      log ("Check for N tags onLoad= " ++ (print_lt lt));;
       match lt with
       | NotHeap => ret lt
       | UnallocatedHeap =>
@@ -321,6 +327,7 @@ Module HeapProblem <: Policy.
   (* Loads through N are ok to touch nonHeap*)
   Definition LoadT (l:loc) (pct : control_tag) (pt vt: val_tag) (lts : list loc_tag) 
   : PolicyResult val_tag := 
+    log ("LoadT called pt= " ++ (print_vt pt) ++ "vt= " ++ (print_vt vt));;
     match pt with 
     (* location the ptr was assigned memory (l) != location of this load (ptr_l) *)
     | PointerWithColor ptr_l ptr_color =>
@@ -595,7 +602,7 @@ Module HeapProblem <: Policy.
   *)
   Definition MallocT (l:loc) (pct: control_tag) (fpt: val_tag) :
     PolicyResult (control_tag * val_tag * val_tag * loc_tag  * loc_tag * loc_tag) :=
-    log "MallocT called";;
+    (*log "MallocT called";;*)
     match pct with
     | PC_Extra currcolor =>
       (* ret (pct', pt, vtb, vht', lt, ltpadding) *)
@@ -641,7 +648,7 @@ Module HeapProblem <: Policy.
       nothing resets the pointer tag pt itself. it has to act to be changed *)
  Definition FreeT (l:loc) (pct: control_tag) (pt : val_tag) (ht: list loc_tag ) :
  PolicyResult (control_tag * loc_tag ) :=
- log "FreeT called";;
+ (*log "FreeT called";;*)
   if (ltop.(alleq) ht)
   then (
     match pt, (List.hd_error ht) with 
@@ -667,7 +674,7 @@ Module HeapProblem <: Policy.
 
   (* ClearT is for the tags on lts, the location tags. Works tag by tag *)
   Definition ClearT (l:loc) (pct: control_tag) (pt: val_tag) (currlt: loc_tag) : PolicyResult (loc_tag) :=
-    log ("ClearT called on " ++ (print_lt currlt));;
+    (*log ("ClearT called on " ++ (print_lt currlt));;*)
     match pt, currlt with 
     | PointerWithColor ptr_l ptr_c, Allocated m_l m_c => 
       (* header color/loc, pointer color/loc, and lts color/loc should match *)
