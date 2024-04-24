@@ -218,7 +218,7 @@ Module HeapProblem <: Policy.
   Local Open Scope string_scope.
 
   (* starting values of various things *)
-  Definition def_tag := N.
+  Definition def_tag := N. (* value *)
   Definition InitPCT : control_tag := PC_Extra 0. (* dynamic colors start at 0 *)
   Definition DefLT   : loc_tag := NotHeap. (* stack et al. is NotHeap at start and should remain that way*)
   Definition DefHT   : loc_tag := UnallocatedHeap. (* the whole heap is unallocated at start. *)
@@ -286,7 +286,7 @@ Module HeapProblem <: Policy.
   (* Helper function for LoadT. To be applied to each lt *)
   Definition CheckforColorMatchOnLoad (ptr_color: Z) (ptr_l load_l:loc) (lt : loc_tag) :
   PolicyResult loc_tag :=
-    log ("Check for Color match tags onLoad= " ++ (print_lt lt));;
+    (*log ("Check for Color match tags onLoad= " ++ (print_lt lt));;*)
     match lt with 
     | NotHeap => raise (PolicyFailure (inj_loc "HeapProblem|| Pointer corruption|LoadT tried to read nonheap memory at source location " load_l))
     | UnallocatedHeap => raise (PolicyFailure (inj_loc "HeapProblem|| Pointer corruption|LoadT tried to read unallocated heap memory at source location " load_l))
@@ -311,7 +311,7 @@ Module HeapProblem <: Policy.
     *)
     Definition CheckforNlocTagsonLoad (op_l :loc) (lt : loc_tag) :
     PolicyResult loc_tag :=
-      log ("Check for N tags onLoad= " ++ (print_lt lt));;
+      (*log ("Check for N tags onLoad= " ++ (print_lt lt));;*)
       match lt with
       | NotHeap => ret lt
       | UnallocatedHeap =>
