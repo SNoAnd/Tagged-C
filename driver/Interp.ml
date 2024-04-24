@@ -552,7 +552,14 @@ let do_external_function id sg ge w args pct fpt m =
       convert_external_arg ge (fst p) (proj_rettype sg.sig_res) >>= fun eres -> 
       let res = fun ps -> (Success((p, pct), m'),ps) in
       Some((w,[Events.Event_syscall(id, eargs, eres)]),res)
+  | "getchar", args' ->
+      let c = input_char stdin in
+      let v = (Vint (Z.of_uint (Char.code c)),Pol.def_tag) in
+      convert_external_arg ge (fst v) (proj_rettype sg.sig_res) >>= fun eres -> 
+      let res = fun ps -> (Success((v,pct),m),ps) in 
+      Some ((w,[Events.Event_syscall(id,[],eres)]),res)
   | _ ->
+
       None
 
 let do_inline_assembly txt sg ge w args m = None
