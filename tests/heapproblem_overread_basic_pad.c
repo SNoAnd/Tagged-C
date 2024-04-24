@@ -36,13 +36,13 @@ int main() {
     char* input = (char*) malloc(BUF_SIZE * sizeof(char));
     for (int i = 0; i < BUF_SIZE; i++)
     {
-        // exercise the allocatedcolor 
+        // check that we can write to it, we should
         input[i] = 'A';
     }
-
-    char oob;
-    // this hits padding. need blocks of 8, an alloc of 20 will be 20+padding
-    //oob = input[BUF_SIZE + 1];
+    input[BUF_SIZE -1] = '\0';
+    // check that you can safely copy from the buffer
+    char oob = input[0];
+    //Out Of Bound read hits padding. need blocks of 8, an alloc of 20 will be 20+padding
     oob = input[BUF_SIZE + 1];
 
     free(input);
