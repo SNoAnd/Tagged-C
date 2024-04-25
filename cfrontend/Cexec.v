@@ -2656,10 +2656,12 @@ Definition do_step (w: world) (s: Csem.state) : list transition :=
       catch "step_internal_function_fail3";
       ret "step_internal_function" (State f ps' pct''' f.(fn_body) k e' (empty_tenv) m'')
   | Callstate (External ef targs tres cc) lc ps pct fpt vargs k m =>
-      let! (w',tr,res) <- do_external ge do_external_function ef lc w vargs pct fpt m;
-      try (v,pct',m'),ps' <- res ps;
+      try pct',ps' <- ExtCallT lc ef pct fpt (map snd vargs) ps;
       catch "step_external_function_fail_0";
-      [TR "step_external_function" tr (Returnstate (External ef targs tres cc) lc ps' pct' v k m')]
+      let! (w',tr,res) <- do_external ge do_external_function ef lc w vargs pct fpt m;
+      try (v,pct',m'),ps'' <- res ps';
+      catch "step_external_function_fail_0";
+      [TR "step_external_function" tr (Returnstate (External ef targs tres cc) lc ps'' pct' v k m')]
       
   | Returnstate fd lc ps pct (v,vt) (Kcall f e te oldloc oldpct C ty k) m =>
       try (pct', vt'), ps' <- RetT lc pct oldpct vt ps;
