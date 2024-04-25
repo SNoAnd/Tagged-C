@@ -2,6 +2,8 @@
 
 \usepackage{geometry}
 \usepackage{verbatim}
+\usepackage[table]{xcolor}
+\usepackage{subcaption}
 
 \begin{document}
 
@@ -15,92 +17,265 @@ its security requirements.
 
 Although static analyses can detect and mitigate many insecurities, an important line of
 defense against undetected or unfixable vulnerabilities is runtime enforcement of
-{\em security policies} using a reference monitor~\cite{Anderson72:PlanningStudy}. In particular, 
-many useful policies can be specified in terms of flow constraints on 
-\emph{metadata tags}, which augment the underlying data with information like type, provenance,
-ownership, or security classification.
+{\em security policies} using a reference monitor~\cite{Anderson72:PlanningStudy}.
+A security policy restricts the behavior of the system, typically by interrupting
+a badly-behaved process, termed ``failstop behavior.'' Policies of note include:
 
-Tag-based policies are well-suited for efficient hardware enforcement, using 
-processor extensions such as ARM MTE~\cite{arm-mte},
-STAR~\cite{Gollapudi:23}, and
-PIPE.  PIPE\footnote{ Variants of PIPE have
-been called PUMP~\cite{Dhawan+15} or %Dhawan+14},
-SDMP~\cite{RoesslerD18}% ,Dover16}},
-and marketed commercially under the names Dover CoreGuard and Draper Inherently Secure Processor.}
-(Processor Interlocks for Policy Enforcement)~\cite{Azevedo+16,Azevedo+15},%Dhawan+15,
-the specific motivator for this work, is a programmable hardware mechanism that supports monitoring 
-at the granularity of individual instructions. A customizable set of rules updates the metadata tags
-at key points during execution, maintaining a relationship between the tags and the security-relevant
-behavior of the system as a whole. If the tags would enter a configuration corresponding to insecure
-or undesirable behavior, the program \emph{failstops}. PIPE is highly flexible: it supports
-arbitrary software-defined tag rules over large (word-sized) tags with arbitrary structure,
-which enables fine-grained policies and composition of multiple policies.
+\begin{itemize}
+\item {\em Memory safety}, which restricts programs in memory unsafe languages to obey
+  the spatial and/or temporal constraints of the language, turning unchecked errors into
+  checked ones
+\item {\em Information flow control} (IFC), in which data identified as being in some way secret
+  or sensitive is preventing from leaking on an externally visible
+\item {\em Compartmentalization}, in which programs are divided into components (compartments)
+  with restricted access to data and other resources
+\item {\em Mandatory access control}, which identifies ``subjects'' (possibly compartments,
+  but also non-code entities such as users) and explicitly restricts their access to resources
+\item {\em Sealing}, in which a piece of data is protected from access until some future
+  point in execution
+\end{itemize}
 
-This dissertation centers around the definition, specification, and verification of
-PIPE-style policies. These problems are closely related, and their difficulty is a result 
-of the extreme flexibility offered by tag policies, as well as the fact that such policies
-are typically defined at the assembly level.
+The policies can be specified in terms of flow constraints on \emph{metadata tags},
+which augment the underlying data with information like type, provenance, ownership, or
+security classification. The broad class of tag-based policies are well-suited for efficient
+hardware enforcement. This dissertation focuses on an exemplar of hardware tagging, the
+PIPE\footnote{ Variants of PIPE have
+been called PUMP~\cite{Dhawan+15} or SDMP~\cite{RoesslerD18} and marketed commercially
+under the names Dover CoreGuard and Draper Inherently Secure Processor.}
+(Processor Interlocks for Policy Enforcement) ISA extension \cite{Azevedo+16,Azevedo+15}.
 
-\paragraph{The Definition Problem}
+PIPE is a programmable hardware mechanism that associates large (word-sized) metadata tags
+with every word of memory and register. At each step of execution, while the ALU processes
+the operands of the current instruction, the tags associated with those operands are processed
+by a module called the ``tag management unit'' (TMU).
+The TMU consults a set of software-defined rules to (1) determine whether the operation should
+proceed, sending an interrupt if not, and (2) compute updated tags to associate with the
+outputs of the operation. These rules collectively define a state machine operating on the
+tags in the system, which is termed a ``micro-policy,'' a concrete instantiation of the
+sorts of policies mentioned above.
 
-Tag policies are difficult to write:
-each policy consists of a collection of rules, each associated with a family of opcodes,
-that taken in aggregate determine its behavior. Almost all policies will need to distinguish
-individual special instructions, since many opcodes can play different roles that need to be
+Because PIPE tags are so large, they can encode complex data structures, giving PIPE a high
+degree of flexibility in the policies that it can enforce. It is even feasible to layer
+multiple policies on top of one another by taking the Cartesian product of their tags.
+And because tags are inaccessible to normal execution, PIPE policies are protected from
+subversion by application code.
+
+However, the complexity of PIPE's style of tagging leads to challenges in the definition,
+specification, and verification of policies, described in detail below. This dissertation
+addresses those challenges.
+
+\paragraph{Defining Policies}
+
+Tag policies are difficult to write.
+A policy consists of a collection of rules, each associated with a family of opcodes.
+Almost all policies will need to distinguish
+individual special instructions via tags on their values in memory, since many opcodes can
+play different roles that need to be
 treated differently in the policy. Defining a policy requires knowledge of both the assembly
-language of the host ISA, and the behavior of the compiler, so that the policy designer can
-indentify which instructions serve special purposes. Some policies even require the binary
+language of the host ISA and the behavior of the compiler, so that the policy designer can
+identify which instructions serve special purposes. Many policies require the binary
 to be rewritten with additional instructions whose primary purpose is moving and manipulating
 tags.
 
-\paragraph{The Specification Problem}
+For example, Figure \ref{ex:call} shows how a single function header must be updated to
+support a (simplified) spatial stack safety policy. The policy is conceptually simple:
+each location in a stack frame is identified by the depth of the frame, and the stack pointer
+is tagged with the depth of the current function activation.  Loads and stores of stack
+addresses must use a pointer that matches that of the location, i.e. the current stack pointer
+or a pointer derived from it.
 
-Because tag policies are so complex, it is important to either prove or
-at least thoroughly test the correctness of a given policy. But in many cases, there is no
-standard specification for the kind of security that the policy hopes to enforce.
-Even in cases where there is an existing formal specification, such as memory safety \cite{Azevedo+16},
-trade-offs between performance and protection may result in a policy that does not precisely match it.
-Instead, the policy designer must determine what degree of security their policy is meant to enforce,
-and characterize that with a security property.
+Figure \ref{ex:call1} shows a typical header sequence for a function. It merely stores
+the return address to the stack pointer, then decreases the stack pointer by \(size\)
+(the size of the function frame in bytes). Figure \ref{ex:call2} gives a sense of how
+this code might be instrumented with tags, and Figure \ref{ex:call3} describes some of
+the rules that act on these tags. The header sequence is given special tags to enforce
+that it runs from beginning to end and only following a call, and instructions are added
+to initialize tags on the stack frame.
 
-Many policies aim to enforce security concepts that do not exist at the assembly level. Memory safety
-is an example again: assembly code has no notion of a heap. Specifying such a policy at the assembly
+A significant portion of the policy's rules is dedicated to bookkeeping, in this case
+mostly for purposes of ensuring that the header sequence executes in order (red).
+Only the lines in blue deal with the main focus of the policy:
+tagging the frame and the stack pointer with the current depth of the call stack, and enforcing
+that a stack address can only be written through the stack pointer at the same depth.
+
+\begin{figure}
+  \begin{subfigure}{0.4\textwidth}
+    \begin{tabular}{l l}
+      0 & store \(ra\) \\
+      8 & subtract \(size\) from \(sp\) \\
+      16 & [function body] \\
+    \end{tabular}
+    \caption{Initial generated code}
+    \label{ex:call1}
+  \end{subfigure}
+  \begin{subfigure}{0.5\textwidth}
+    \begin{tabular}{l l}
+      0 @ {\sc Head}\((0)\) & store \(ra\) through \(sp\) \\
+      8 @ {\sc Head}\((1)\) & subtract \(size\) from \(sp\) \\
+      16 @ {\sc Head}\((2)\) & store \(0\) through \(sp-(size*8)\) \\
+      \(\dots\) \\
+      n @ {\sc Head}\((x)\) & store \(0\) through \(sp-8\) \\
+      n+8 @ {\sc Entry} & nop \\
+      n+16 @ {\sc Normal} & [function body] \\
+    \end{tabular}
+    \caption{Code tagged and expanded for policy}
+    \label{ex:call2}
+  \end{subfigure}
+
+  \vspace{\belowdisplayskip}
+  
+  \begin{subfigure}{\textwidth}
+    \begin{tabular}{|l|}
+      \hline
+      When executing {\tt store r1 r2}@{\sc Head}\((0)\): \\
+      \hline
+      \rowcolor{red!20}
+      \(\cdot\) Preceding instruction must have tag {\sc Call} \\
+      \rowcolor{red!20}
+      \(\cdot\) Set tag at {\tt r2}'s target to {\sc RetPtr} \\
+      \hline
+    \end{tabular}
+    %
+    \begin{tabular}{|l|}
+      \hline
+      When executing {\tt sub imm r}@{\sc Head}\((1)\): \\
+      \hline
+      \rowcolor{red!20}
+      \(\cdot\) Preceding instruction must have tag {\sc Head}\((0)\) \\
+      \rowcolor{blue!30}
+      \(\cdot\) Tag on {\tt r} must be {\sc Depth}\((n)\) for some \(n\) \\
+      \rowcolor{blue!30}
+      \(\cdot\) Set tag on {\tt r} to {\sc Depth}\((n+1)\) \\
+      \hline
+    \end{tabular}
+
+    \begin{tabular}{|l|}
+      \hline
+      When executing {\tt store imm (r+x)}@{\sc Head}\((n)\): \\
+      \hline
+      \rowcolor{red!20}
+      \(\cdot\) Preceding instruction must have tag {\sc Head}\((n-1)\) \\
+      \rowcolor{blue!30}
+      \(\cdot\) Tag on {\tt r} must be {\sc Depth}\((m)\) \\
+      \rowcolor{blue!30}
+      \(\cdot\) Set tag at {\tt r}'s target to {\sc Depth}\((m)\) \\
+      \hline
+    \end{tabular}
+    %
+    \begin{tabular}{|l|}
+      \hline
+      When executing \(\underline{~~}\)@{\sc Entry} \\
+      \hline
+      \rowcolor{red!20}
+      \(\cdot\) Preceding instruction must have tag \\
+      \rowcolor{red!20} {\sc Head}\((size / 8)\) \\
+      \hline
+    \end{tabular}
+    
+    \begin{tabular}{|l|}
+      \hline
+      When executing {\tt load \_ (r+x)}@{\sc Normal} \\
+      \hline
+      \rowcolor{blue!30}
+      \(\cdot\) If tag on {\tt r}'s target is {\sc Depth}\((m)\), then
+      tag on {\tt r} must be tagged {\sc Depth}\((m)\) \\
+      \hline
+    \end{tabular}
+    
+    \begin{tabular}{|l|}
+      \hline
+      When executing {\tt store \_ (r+x)}@{\sc Normal} \\
+      \hline
+      \rowcolor{blue!30}
+      \(\cdot\) If tag on {\tt r}'s target is {\sc Depth}\((m)\), then
+      tag on {\tt r} must be tagged {\sc Depth}\((m)\) \\
+      \hline
+    \end{tabular}
+    \caption{Associated policy rules}
+    \label{ex:call3}
+  \end{subfigure}
+
+  \caption{Example: Adding Stack Safety policy at call}
+  \label{ex:call}
+\end{figure}
+
+These modifications can be automated, given relevant annotations from the compiler, but the process
+is both complex and repetitive. It would be better if most of the bookkeeping could be handled
+within a compiler, leaving the policy developer free to focus on the rules that are relevant to
+the specific policy (i.e., the ones in blue.)
+
+\paragraph{Validating Policies}
+
+Once defined, a policy needs to be validated, either by testing or formal verification. Verification is
+preferable, as it rules out the possibility of bugs too subtle to show up in testing.
+But it is hard to prove properties of assembly code; high-level language features like
+structured control flow are easier to reason about. Proofs about assembly programs are
+also non-portable across architectures and compilers.
+Besides these limitations, both verification and adequate testing require a specification before
+they can even begin.
+
+\paragraph{Specifying Policies}
+
+In many cases, there is no standard specification for the kind of security that a policy hopes
+to enforce. Even in cases where there is an existing formal specification, such as
+memory safety \cite{Azevedo+16}, trade-offs between performance and protection may result in a
+policy that does not precisely match it. When this happens, it could mean that the policy
+has compromised its protection to an unacceptable degree---or that the existing specification
+is too conservative. Whatever the reason, a new security property is valuable in its own right,
+and even more valuable if it comes paired with a policy that provably enforces it.
+
+Many policies aim to enforce security concepts that do not exist at the assembly level. Assembly
+code has no notion of a heap, for instance. Specifying such a policy at the assembly
 level typically requires one to explicitly account for how the compiler implements that source-level
-construct.
+construct. In the context of heap safety, for instance, that means that significant effort goes
+toward defining a notion of pointer provenance that would just be present implicitly in a
+source program.
 
-\paragraph{The Verification Problem}
+\section{Overview}
 
-Ideally, verifying a tag policy would mean proving that it can be applied to any (well-formed)
-program and maintain the relevant security property. It is much harder to prove a property over all
-programs is much than a property of one program, especially assembly programs. The point above applies:
-for source-level constructs, proving them at the assembly level requires a detailed accounting of 
-how the compiler implemented them. A prover can similarly not depend on any source-level constructs,
-like structured control flow, in their proof.
+This dissertation is divided into three main parts. The first proposes a new formal characterization
+of stack safety using concepts from language-based security. Stack safety exemplifies the challenges
+of specifying a policy: ``the stack'' is not a clearly defined language concept, but a loosely
+defined component of a system's ABI that is relied on by many different higher-level abstractions.
+Performance tradeoffs are relevant as well: the ``lazy'' stack safety policies studied by
+Roessler and DeHon~\cite{RoesslerD18} permit functions to write into one another's
+frames, intuitively a violation, but taint the written locations so that their owner cannot
+access them later. No prior characterization of stack safety captures this style of safety.
 
-\paragraph{Addressing the problems}
+The second part presents Tagged C, a \emph{source-level} specification framework that allows
+engineers to describe policies in terms of familiar C-level concepts.
+Tagged C takes the form of a variant C language whose semantics is parameterized by tags
+attached to its data and rules that triggered during execution at a set of predefined
+\emph{control points}. Control points correspond to significant execution events, such as
+function calls, expression evaluation, and pointer-based memory accesses.
 
-This dissertation is divided into three main parts. The first proposes a new formal characterization of
-stack safety using concepts from language-based security. Though not specific to a tag-based
-implementation, this formulation is motivated by a particular class of tag-based enforcement
-mechanisms, the ``lazy'' stack safety policies studied by Roessler and DeHon~\cite{RoesslerD18},
-which permit functions to write into one another's frames but taint the changed locations so that the
-frame's owner cannot access them. No prior characterization of stack safety captures this style of
-safety.
+Tagged C addresses the challenges in definition, validation, and specification that relate to
+assembly-level programs. It allows policies to be defined at the source level via a fixed interface
+that never requires rewriting code. Where assembly instructions can serve different roles and must
+be distinguished for tag purposes, each Tagged C control point serves one clear role. The policy
+designer needs little knowledge of how the control points might be compiled, and need not
+deal with portions of a policy that would be colored red in Figure \ref{ex:call}.
 
-Next, it presents Tagged C, a \emph{source-level} specification framework that allows engineers to
-describe policies in terms of familiar C-level concepts. Tagged C takes the form of a variant C language
-whose semantics are parameterized by tags attached to C functions, variables and data values, and rules
-triggered at \emph{control points} that correspond to significant execution events, such as function calls,
-expression evaluation, and pointer-based memory accesses. The control points give structure to the task of
-policy definition, and the Tagged-C semantics gives a formal definition of what each control point does,
-enabling source-level proofs.
+The current iteration of Tagged C is implemented as an interpreter, based on that of
+CompCert C \cite{Leroy09:CompCert}. This is sufficient to test small programs. Ultimately
+Tagged C will be compiled to a PIPE target by injecting the source policy's tag rules
+as a payload into a predefined assembly-level policy that handles the bookkeeping.
+
+The Tagged-C semantics (also based on CompCert C) gives a formal definition of what each
+control point does. This means that properties of a policy may be proven in terms of how
+source programs behave when run under it. Just as it is far preferable to prove properties
+of a program with regard to its source semantics, this is a major step forward for policy
+verification.
 
 The final third of this dissertation makes use of Tagged C to perform a source-level specification and
 verification of a novel compartmentalization property. The specification takes the form of
 an abstract compartmentalized semantics. I define a Tagged C policy that enforces it,
-and prove in Coq that the policy satisfies its specification.
+and prove in Coq that the policy satisfies its specification. The policy definition, its
+specification, and its proof are all concrete contributions on their own, and together they
+serve to demonstrate that Tagged C is a suitable setting in which to attack all three
+challenges.
 
-\section{Contributions and Organization}
+\subsection{Contributions and Organization}
 
 Chapter \ref{ch:background} introduces the concept of tag-based reference monitors
 and brings the reader up to date on the state-of-the-art in that and related areas.
@@ -109,13 +284,7 @@ The contributions in this dissertation are divided across its three main topics.
 \paragraph{Stack Safety}
 
 Chapter \ref{ch:stacksafety} gives a novel formalization of stack safety in the
-form of a collection of trace properties. Stack Safety exemplifies the specification problem:
-"the stack" is not a clearly defined language concept, but a loosely defined component of
-a system's ABI that is relied on by many different higher-level abstractions.
-Our trace properties describe the behavior that those abstractions
-should be able to expect from a well-behaved stack, even when enforced with the
-optimized "lazy" tagging approach of Roessler and DeHon \cite{RoesslerD18}.
-Our contributions are:
+form of a collection of trace properties. Our contributions are:
 
 \begin{itemize}
   \item A novel characterization of stack safety as a conjunction
@@ -142,12 +311,7 @@ joint work with Roberto Blanco, Leonidas Lampropoulos, Benjamin Pierce, and Andr
 
 In Chapter \ref{ch:taggedc}, we attack the definition problem by lifting tagged enforcement
 to the level of C source code. We introduce Tagged C, a C variant whose semantics are parameterized
-by an arbitrary tag-based policy. The Tagged C semantics and interpreter are based on those of
-CompCert C \cite{Leroy09:CompCert}. Tagged C addresses the definition problem by allowing policies
-to be defined at the source level and by presenting a fixed interface for the definition of
-policies. Where assembly instructions can serve different roles and must be distinguished for
-tag purposes, each Tagged C control point serves one clear role. The policy designer needs little
-knowledge of how the control points might be compiled.
+by an arbitrary tag-based policy. Our contributions are:
 
 \begin{itemize}
 \item The design of a comprehensive set of {\em control points} at which the C language interfaces
@@ -165,7 +329,7 @@ knowledge of how the control points might be compiled.
 The core of this chapter was first published at the International Conference on Runtime Verification,
 October 2023 as ``Flexible Runtime Security Enforcement with Tagged C,'' a joint work
 with Andrew Tolmach and Allison Naaktgeboren \cite{Anderson23:TaggedC}. Some technical
-details are also published in Chaak et al. \cite{}, a joint work with CHR Chaak and Andrew Tolmach.
+details are also published in Chhak et al. \cite{}, a joint work with CHR Chhak and Andrew Tolmach.
 The original content has been updated to reflect further development, and the chapter has been
 extended with a detailed discussion of the design decisions that inform the current development.
 
