@@ -995,6 +995,16 @@ let rec convertExpr env e =
       let rargs = convertExprList env [arg1; arg2] in
       Csyntax.Ecall(Csyntax.Evalof(r1,Tfunction(targs,tres,AST.cc_default)), rargs, tres)
 
+  | C.ECall({edesc = C.EVar {name = "getchar"}}, [])
+    when !Clflags.option_interp ->
+      let targs = convertTypArgs env [] []
+      and tres = convertTyp env e.etyp in
+      let sg = signature_of_type targs tres AST.cc_default in
+      let r1 = Csyntax.Ebuiltin(AST.EF_external(coqstring_of_camlstring "getchar", sg),
+                targs, AST.cc_default, Tfunction(targs,tres,AST.cc_default)) in
+      let rargs = convertExprList env [] in 
+      Csyntax.Ecall(Csyntax.Evalof(r1,Tfunction(targs,tres,AST.cc_default)), rargs, tres)
+
   | C.ECall(fn, args) ->
       begin match projFunType env fn.etyp with
       | None ->

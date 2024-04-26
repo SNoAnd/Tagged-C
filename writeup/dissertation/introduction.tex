@@ -19,6 +19,7 @@ Although static analyses can detect and mitigate many insecurities, an important
 defense against undetected or unfixable vulnerabilities is runtime enforcement of
 {\em security policies} using a reference monitor~\cite{Anderson72:PlanningStudy}.
 A security policy restricts the behavior of the system, typically by interrupting
+<<<<<<< HEAD
 a badly-behaved process, termed ``failstop behavior.'' At the most general, a policy could be
 any kind of runtime check, from simple assertions (``at line X, variable Y has value Z'') to
 sophisticated temporal logic formulae.
@@ -71,6 +72,55 @@ addresses those challenges.
 
 \paragraph{Defining Policies}
 
+=======
+a badly-behaved process, termed ``failstop behavior.'' Policies of note include:
+
+\begin{itemize}
+\item {\em Memory safety}, which restricts programs in memory unsafe languages to obey
+  the spatial and/or temporal constraints of the language, turning unchecked errors into
+  checked ones
+\item {\em Information flow control} (IFC), in which data identified as being in some way secret
+  or sensitive is preventing from leaking on an externally visible
+\item {\em Compartmentalization}, in which programs are divided into components (compartments)
+  with restricted access to data and other resources
+\item {\em Mandatory access control}, which identifies ``subjects'' (possibly compartments,
+  but also non-code entities such as users) and explicitly restricts their access to resources
+\item {\em Sealing}, in which a piece of data is protected from access until some future
+  point in execution
+\end{itemize}
+
+The policies can be specified in terms of flow constraints on \emph{metadata tags},
+which augment the underlying data with information like type, provenance, ownership, or
+security classification. The broad class of tag-based policies are well-suited for efficient
+hardware enforcement. This dissertation focuses on an exemplar of hardware tagging, the
+PIPE\footnote{ Variants of PIPE have
+been called PUMP~\cite{Dhawan+15} or SDMP~\cite{RoesslerD18} and marketed commercially
+under the names Dover CoreGuard and Draper Inherently Secure Processor.}
+(Processor Interlocks for Policy Enforcement) ISA extension \cite{Azevedo+16,Azevedo+15}.
+
+PIPE is a programmable hardware mechanism that associates large (word-sized) metadata tags
+with every word of memory and register. At each step of execution, while the ALU processes
+the operands of the current instruction, the tags associated with those operands are processed
+by a module called the ``tag management unit'' (TMU).
+The TMU consults a set of software-defined rules to (1) determine whether the operation should
+proceed, sending an interrupt if not, and (2) compute updated tags to associate with the
+outputs of the operation. These rules collectively define a state machine operating on the
+tags in the system, which is termed a ``micro-policy,'' a concrete instantiation of the
+sorts of policies mentioned above.
+
+Because PIPE tags are so large, they can encode complex data structures, giving PIPE a high
+degree of flexibility in the policies that it can enforce. It is even feasible to layer
+multiple policies on top of one another by taking the Cartesian product of their tags.
+And because tags are inaccessible to normal execution, PIPE policies are protected from
+subversion by application code.
+
+However, the complexity of PIPE's style of tagging leads to challenges in the definition,
+specification, and verification of policies, described in detail below. This dissertation
+addresses those challenges.
+
+\paragraph{Defining Policies}
+
+>>>>>>> origin/heapproblems
 Tag policies are difficult to write.
 A policy consists of a collection of rules, each associated with a family of opcodes.
 Almost all policies will need to distinguish
@@ -83,12 +133,20 @@ to be rewritten with additional instructions whose primary purpose is moving and
 tags.
 
 For example, Figure \ref{ex:call} shows how a single function header must be updated to
+<<<<<<< HEAD
 support a (simplified) spatial stack safety policy. % say in words what the point of the policy is
 The policy is conceptually simple:
 each location in a stack frame is identified by the depth of the frame, and the stack pointer
 is tagged with the depth of the current function activation.  Loads and stores of stack
 addresses must use a pointer that matches that of the location, i.e. the current stack pointer
 or a pointer derived from it. % say that it doesn't enforce the full temporal safety
+=======
+support a (simplified) spatial stack safety policy. The policy is conceptually simple:
+each location in a stack frame is identified by the depth of the frame, and the stack pointer
+is tagged with the depth of the current function activation.  Loads and stores of stack
+addresses must use a pointer that matches that of the location, i.e. the current stack pointer
+or a pointer derived from it.
+>>>>>>> origin/heapproblems
 
 Figure \ref{ex:call1} shows a typical header sequence for a function. It merely stores
 the return address to the stack pointer, then decreases the stack pointer by \(size\)
@@ -105,6 +163,7 @@ tagging the frame and the stack pointer with the current depth of the call stack
 that a stack address can only be written through the stack pointer at the same depth.
 
 \begin{figure}
+<<<<<<< HEAD
   \begin{subfigure}[t]{0.55\textwidth}
     \vspace{0em}
     \begin{tabular}{l l}
@@ -114,10 +173,18 @@ that a stack address can only be written through the stack pointer at the same d
       32: {\tt store 42 (sp+8)} & Store to stack in body \\
       \dots \\
       64: {\tt load r0 (sp+8)} & Load from stack in body \\
+=======
+  \begin{subfigure}{0.4\textwidth}
+    \begin{tabular}{l l}
+      0 & store \(ra\) \\
+      8 & subtract \(size\) from \(sp\) \\
+      16 & [function body] \\
+>>>>>>> origin/heapproblems
     \end{tabular}
     \caption{Initial generated code}
     \label{ex:call1}
   \end{subfigure}
+<<<<<<< HEAD
   \begin{subfigure}[t]{0.45\textwidth}
     \vspace{0em}
     \begin{tabular}{l l}
@@ -129,6 +196,17 @@ that a stack address can only be written through the stack pointer at the same d
       48: {\tt store 42 (sp+8)} & @ {\sc Normal} \\
       \dots \\
       80: {\tt load r0 (sp+8)} & @ {\sc Normal} \\
+=======
+  \begin{subfigure}{0.5\textwidth}
+    \begin{tabular}{l l}
+      0 @ {\sc Head}\((0)\) & store \(ra\) through \(sp\) \\
+      8 @ {\sc Head}\((1)\) & subtract \(size\) from \(sp\) \\
+      16 @ {\sc Head}\((2)\) & store \(0\) through \(sp-(size*8)\) \\
+      \(\dots\) \\
+      n @ {\sc Head}\((x)\) & store \(0\) through \(sp-8\) \\
+      n+8 @ {\sc Entry} & nop \\
+      n+16 @ {\sc Normal} & [function body] \\
+>>>>>>> origin/heapproblems
     \end{tabular}
     \caption{Code tagged and expanded for policy}
     \label{ex:call2}
@@ -139,16 +217,35 @@ that a stack address can only be written through the stack pointer at the same d
   \begin{subfigure}{\textwidth}
     \begin{tabular}{|l|}
       \hline
+<<<<<<< HEAD
       When executing {\tt sub imm r}@{\sc Head}\((0)\): \\
       \hline
       \rowcolor{red!20}
       \(\cdot\) Preceding instruction must have tag {\sc Call} \\
+=======
+      When executing {\tt store r1 r2}@{\sc Head}\((0)\): \\
+      \hline
+      \rowcolor{red!20}
+      \(\cdot\) Preceding instruction must have tag {\sc Call} \\
+      \rowcolor{red!20}
+      \(\cdot\) Set tag at {\tt r2}'s target to {\sc RetPtr} \\
+      \hline
+    \end{tabular}
+    %
+    \begin{tabular}{|l|}
+      \hline
+      When executing {\tt sub imm r}@{\sc Head}\((1)\): \\
+      \hline
+      \rowcolor{red!20}
+      \(\cdot\) Preceding instruction must have tag {\sc Head}\((0)\) \\
+>>>>>>> origin/heapproblems
       \rowcolor{blue!30}
       \(\cdot\) Tag on {\tt r} must be {\sc Depth}\((n)\) for some \(n\) \\
       \rowcolor{blue!30}
       \(\cdot\) Set tag on {\tt r} to {\sc Depth}\((n+1)\) \\
       \hline
     \end{tabular}
+<<<<<<< HEAD
     %
    \begin{tabular}{|l|}
       \hline
@@ -161,6 +258,9 @@ that a stack address can only be written through the stack pointer at the same d
       \hline
     \end{tabular}
     
+=======
+
+>>>>>>> origin/heapproblems
     \begin{tabular}{|l|}
       \hline
       When executing {\tt store imm (r+x)}@{\sc Head}\((n)\): \\
@@ -216,6 +316,7 @@ is both complex and repetitive. It would be better if most of the bookkeeping co
 within a compiler, leaving the policy developer free to focus on the rules that are relevant to
 the specific policy (i.e., the ones in blue.)
 
+<<<<<<< HEAD
 \begin{figure}
   \begin{subfigure}[t]{0.18\textwidth}
     \vspace{0em}
@@ -334,6 +435,8 @@ the specific policy (i.e., the ones in blue.)
 
 % specification before validation
 
+=======
+>>>>>>> origin/heapproblems
 \paragraph{Validating Policies}
 
 Once defined, a policy needs to be validated, either by testing or formal verification. Verification is
@@ -353,7 +456,10 @@ policy that does not precisely match it. When this happens, it could mean that t
 has compromised its protection to an unacceptable degree---or that the existing specification
 is too conservative. Whatever the reason, a new security property is valuable in its own right,
 and even more valuable if it comes paired with a policy that provably enforces it.
+<<<<<<< HEAD
 % more concreteness around the tradeoffs
+=======
+>>>>>>> origin/heapproblems
 
 Many policies aim to enforce security concepts that do not exist at the assembly level. Assembly
 code has no notion of a heap, for instance. Specifying such a policy at the assembly
@@ -362,8 +468,11 @@ construct. In the context of heap safety, for instance, that means that signific
 toward defining a notion of pointer provenance that would just be present implicitly in a
 source program.
 
+<<<<<<< HEAD
 % refer back to examples in specification and validation
 
+=======
+>>>>>>> origin/heapproblems
 \section{Overview}
 
 This dissertation is divided into three main parts. The first proposes a new formal characterization
@@ -382,7 +491,10 @@ attached to its data and rules that triggered during execution at a set of prede
 \emph{control points}. Control points correspond to significant execution events, such as
 function calls, expression evaluation, and pointer-based memory accesses.
 
+<<<<<<< HEAD
 % Make this the second sentence in the previous paragraph (what it's for precedes what it is)
+=======
+>>>>>>> origin/heapproblems
 Tagged C addresses the challenges in definition, validation, and specification that relate to
 assembly-level programs. It allows policies to be defined at the source level via a fixed interface
 that never requires rewriting code. Where assembly instructions can serve different roles and must
@@ -403,8 +515,12 @@ verification.
 
 The final third of this dissertation makes use of Tagged C to perform a source-level specification and
 verification of a novel compartmentalization property. The specification takes the form of
+<<<<<<< HEAD
 an abstract compartmentalized semantics. % emphasize correct by construction
 I define a Tagged C policy that enforces it,
+=======
+an abstract compartmentalized semantics. I define a Tagged C policy that enforces it,
+>>>>>>> origin/heapproblems
 and prove in Coq that the policy satisfies its specification. The policy definition, its
 specification, and its proof are all concrete contributions on their own, and together they
 serve to demonstrate that Tagged C is a suitable setting in which to attack all three
