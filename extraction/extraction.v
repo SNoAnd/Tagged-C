@@ -32,6 +32,13 @@ Require Import Values Tags Memory Allocator AllocatorImpl Csem Initializers
   Require Import ExtrOcamlBasic.
   Require Import ExtrOcamlString.
 
+  Module Allocators (Pol: Policy).
+    Module CMA := ConcMemAllocators Pol.
+    Module Init := CMA.Init.
+    Module FL := CMA.FLAllocator.
+    Module CA := CMA.ConcreteAllocator.
+  End Allocators.
+
   (* Coqlib *)
   Extract Inlined Constant Coqlib.proj_sumbool => "(fun x -> x)".
 

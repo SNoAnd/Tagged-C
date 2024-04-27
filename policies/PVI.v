@@ -109,10 +109,10 @@ Module PVI <: Policy.
     ret (pct, N, N).
 
   Definition MallocT (l:loc) (pct: control_tag) (fpt: val_tag) :
-    PolicyResult (control_tag * val_tag * val_tag * loc_tag * loc_tag) :=
+    PolicyResult (control_tag * val_tag * val_tag * loc_tag * loc_tag * loc_tag) :=
     log ("Malloc call at " ++ print_loc l ++ " associated with color " ++ print_ct pct);;
     let c := pct in
-    ret (S c, Dyn c, N, Dyn c, Dyn c).
+    ret (S c, Dyn c, N, Dyn c, Dyn c, N).
 
   Definition FreeT (l:loc) (pct: control_tag) (pt: val_tag) (lts: list loc_tag) :
     PolicyResult (control_tag * loc_tag) :=

@@ -32,6 +32,49 @@ Require Import List. Import ListNotations.
 Local Unset Elimination Schemes.
 Local Unset Case Analysis Schemes.
 
+Module Type AllocatorImpl (Ptr: Pointer) (Pol: Policy) (S: Submem Ptr Pol).
+  Import S.
+  Import Ptr.
+  Import Pol.
+
+  Parameter allocstate : Type.
+
+  Parameter init : submem -> (submem * allocstate).
+
+  Parameter stkalloc : (submem * allocstate)
+                       -> Z (* align *)
+                       -> Z (* size *)
+                       -> PolicyResult (
+                           (submem * allocstate)
+                           * ptr (* base *)).
+
+  Parameter stkfree : (submem * allocstate)
+                      -> Z (* align *)
+                      -> Z (* size *)
+                      -> PolicyResult (submem * allocstate).
+
+  Parameter heapalloc : (submem * allocstate)
+                        -> Z (* size *)
+                        -> loc_tag
+                        -> PolicyResult
+                             ((submem * allocstate)
+                              * ptr (* base *)).
+  
+  Parameter heapfree : Cabs.loc
+                        -> control_tag     (* pct *)
+                        -> (submem * allocstate)
+                        -> ptr
+                        -> val_tag         (* pointer tag *)
+                        -> PolicyResult
+                            (Z             (* size of block *)
+                             * control_tag
+                             * (submem * allocstate)).
+
+  Parameter globalalloc : (submem * allocstate)
+                       -> list (ident*Z)
+                       -> ((submem * allocstate) * (ident -> ptr)).
+End AllocatorImpl.
+
 Module MemWithAlloc (Ptr: Pointer) (Pol: Policy) (M: Submem Ptr Pol) (A: AllocatorImpl Ptr Pol M) <:
   Memory Ptr Pol UnitRegion.
 

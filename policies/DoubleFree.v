@@ -115,10 +115,12 @@ Definition log := log policy_state.
     - header - loc tag on the allocated header. no one but allocator should use it 
     - new loc tags on block - loc tag on bytes in new block
 
+    NB: note we are not really using padding to differeniate 
+
   *)
   Definition MallocT (l:loc) (pct: control_tag) (fpt: val_tag) :
-    PolicyResult (control_tag * val_tag * val_tag * loc_tag  * loc_tag) :=
-    ret (pct, tt, tt, AllocatedHeader, AllocatedMem).
+    PolicyResult (control_tag * val_tag * val_tag * loc_tag  * loc_tag * loc_tag) :=
+    ret (pct, tt, tt, AllocatedHeader, AllocatedMem, Unallocated).
 
  (* 
   FreeT colors the header tag with the current Freecolor from the pct. If there is already 
