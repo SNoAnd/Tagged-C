@@ -28,8 +28,6 @@ Require Import NullPolicy.
 Inductive kind : Type := LV | RV.
 
 Module Type Semantics (Ptr: Pointer) (Pol: Policy) (Reg: Region) (A: Memory Ptr Pol Reg).
-  Module Smallstep := Smallstep Ptr Pol Reg A.
-  Export Smallstep.
   Module Csyntax := Csyntax Ptr Pol Reg A.
   Export Csyntax.
   Import A.
@@ -61,8 +59,6 @@ End Semantics.
 
 Module TaggedCsem (Pol: Policy) (A: Memory ConcretePointer Pol UnitRegion) <:
     Semantics ConcretePointer Pol UnitRegion A.
-    Module Smallstep := Smallstep ConcretePointer Pol UnitRegion A.
-    Export Smallstep.
     Module Csyntax := Csyntax ConcretePointer Pol UnitRegion A.
     Export Csyntax.
     Import A.

@@ -51,22 +51,22 @@ Module Type AllocatorAxioms (Ptr: Pointer) (Pol: Policy) (S: Submem Ptr Pol).
   Parameter heapfree : (submem * allocstate) -> ptr -> option (Z*(submem * allocstate)).
 
   Parameter globalalloc : (submem * allocstate) -> list (ident*Z) ->
-    ((submem * allocstate) * PTree.t ptr).
+    ((submem * allocstate) * (ident -> ptr)).
 
 End AllocatorAxioms.
 
-Module MemRegionAgnostic (Pol: Policy) (Reg: Region) (M: Submem SemiconcretePointer Pol)
-  (A: AllocatorAxioms SemiconcretePointer Pol M) : Memory SemiconcretePointer Pol Reg.
+Module MemRegionAgnostic (Ptr: Pointer) (Pol: Policy) (Reg: Region) (M: Submem Ptr Pol)
+  (A: AllocatorAxioms Ptr Pol M) : Memory Ptr Pol Reg.
 
   Import A.
   Import M.
   Module BI := BI.
-  Module MD := MD.
+  Module Genv := Genv.
   Export BI.
-  Export MD.
+  Export Genv.
   Import Pol.
   Import Reg.
-  Import SemiconcretePointer.
+  Import Ptr.
   Export TLib.
  
   Definition addr := addr.
@@ -171,12 +171,10 @@ End CompReg.
 
 Module CompartmentCsem (A: AllocatorAxioms SemiconcretePointer NullPolicy M).
 
-  Module MA := MemRegionAgnostic NullPolicy CompReg M A.
+  Module MA := MemRegionAgnostic SemiconcretePointer NullPolicy CompReg M A.
 
-  Module Inner : Semantics SemiconcretePointer NullPolicy CompReg MA.
+  Module Inner <: Semantics SemiconcretePointer NullPolicy CompReg MA.
 
-  Module Smallstep := Smallstep SemiconcretePointer NullPolicy CompReg MA.
-  Export Smallstep.
   Module Csyntax := Csyntax SemiconcretePointer NullPolicy CompReg MA.
   Export Csyntax.
   Import MA.
@@ -202,11 +200,6 @@ Module CompartmentCsem (A: AllocatorAxioms SemiconcretePointer NullPolicy M).
 
   Variable init_comp : Comp.
   
-  Definition globalenv (p: program) : PolicyResult (Genv.t fundef type * composite_env * mem) :=
-      let ce := p.(prog_comp_env) in
-      '(ge,m) <- Genv.globalenv ce p;;
-      ret (ge, ce, m).
-
   Inductive var_entry : Type :=
   | PRIV (ty: type)
   | PUB (base:ptr) (pt:val_tag) (ty:type)
@@ -1037,10 +1030,10 @@ Inductive state': Type :=
     (m: mem) : state'
 | Returnstate                         (**r returning from a function *)
     (fd: fundef)                      (* callee that is now returning *)
+    (l: Cabs.loc)
     (ps: pstate)
     (C: Comp)
     (bg: block_generator)
-    (l: Cabs.loc)
     (res: atom)
     (k: cont)
     (m: mem) : state'
@@ -1231,7 +1224,7 @@ Inductive sstep: state -> trace -> state -> Prop :=
 | step_return_none: forall f ps CMP bg l k e te m m',
     do_free_variables l CMP tt m (variables_of_env e) = ret (tt, m') ->
     sstep (State f ps CMP bg (Sreturn None l) k e te m)
-          E0 (Returnstate (Internal f) ps CMP bg l (Vundef, def_tag) (call_cont k) m')
+          E0 (Returnstate (Internal f) l ps CMP bg (Vundef, def_tag) (call_cont k) m')
 | step_return_none_fail0: forall f ps CMP bg l k e te m failure,
     do_free_variables l CMP tt m (variables_of_env e) = raise failure ->
     sstep (State f ps CMP bg (Sreturn None l) k e te m)
@@ -1243,7 +1236,7 @@ Inductive sstep: state -> trace -> state -> Prop :=
     sem_cast v ty f.(fn_return) m = Some v' ->
     do_free_variables l CMP tt m (variables_of_env e) = ret (tt, m') ->
     sstep (ExprState f l ps CMP bg (Eval (v,vt) ty) (Kreturn k) e te m)
-          E0 (Returnstate (Internal f) ps CMP bg l (v',vt) (call_cont k) m')
+          E0 (Returnstate (Internal f) l ps CMP bg (v',vt) (call_cont k) m')
 | step_return_fail0:  forall f ps CMP bg pct l v vt ty k e te m v' failure,
     sem_cast v ty f.(fn_return) m = Some v' ->
     do_free_variables l CMP pct m (variables_of_env e) = raise failure ->
@@ -1301,7 +1294,7 @@ Inductive sstep: state -> trace -> state -> Prop :=
 | step_external_function: forall l ef ps CMP bg pct vft pct' targs tres cc vargs k m vres t m',
     external_call l ef (Lcl CMP) ge vargs pct vft m t (ret (vres, pct', m')) ->
     sstep (Callstate (External ef targs tres cc) l ps CMP bg vargs k m)
-          t (Returnstate (External ef targs tres cc) ps CMP bg l vres k m')
+          t (Returnstate (External ef targs tres cc) l ps CMP bg vres k m')
 | step_external_function_fail0: forall l ef ps CMP bg pct vft targs tres cc vargs k m t failure,
     external_call l ef (Lcl CMP) ge vargs pct vft m t (raise failure) ->
     sstep (Callstate (External ef targs tres cc) l ps CMP bg vargs k m)
@@ -1312,7 +1305,7 @@ Inductive sstep: state -> trace -> state -> Prop :=
           t (Failstop failure (snd ps))
 
 | step_returnstate: forall l v vt vt' f fd ps CMP bg oldloc oldpct  C ty k e te m,
-    sstep (Returnstate fd ps CMP bg l (v,vt) (Kcall f e te oldloc oldpct C ty k) m)
+    sstep (Returnstate fd l ps CMP bg (v,vt) (Kcall f e te oldloc oldpct C ty k) m)
           E0 (ExprState f oldloc ps CMP bg (C (Eval (v,vt') ty)) k e te m)
 .
 
@@ -1320,21 +1313,87 @@ Definition step (S: state) (t: trace) (S': state) : Prop :=
   estep S t S' \/ sstep S t S'.
   
 End SEM.
+ 
+  Definition store_init_data (ge: genv) (m: mem) (p: ptr) (id: init_data) (vt: val_tag) (lt: loc_tag) :
+    PolicyResult mem :=
+    match id with
+    | Init_int8 n => store Mint8unsigned m p (Vint n, vt) [lt]
+    | Init_int16 n => store Mint16unsigned m p (Vint n, vt) [lt;lt]
+    | Init_int32 n => store Mint32 m p (Vint n, vt) [lt;lt;lt;lt]
+    | Init_int64 n => store Mint64 m p (Vlong n, vt) [lt;lt;lt;lt;lt;lt;lt;lt]
+    | Init_float32 n => store Mfloat32 m p (Vsingle n, vt) [lt;lt;lt;lt]
+    | Init_float64 n => store Mfloat64 m p (Vfloat n, vt) [lt;lt;lt;lt;lt;lt;lt;lt]
+    | Init_addrof symb ofs =>
+        match find_symbol ge symb with
+        | None => raise (OtherFailure "Symbol not found")
+        | Some (SymGlob base bound pt gv) =>
+            store Mptr m p (Vptr base, vt) [lt;lt;lt;lt;lt;lt;lt;lt]
+        | Some (SymIFun _ b pt) => 
+            store Mptr m p (Vfptr b, vt) [lt;lt;lt;lt;lt;lt;lt;lt]
+        | Some (SymEFun _ ef tyargs tyres cc pt) =>
+            store Mptr m p (Vefptr ef tyargs tyres cc, pt) [lt;lt;lt;lt;lt;lt;lt;lt]
+        end
+    | Init_space n => ret m
+    end.
 
+  Fixpoint store_init_data_list (ge: genv) (m: mem) (p: ptr) (idl: list init_data)
+            (vt: val_tag) (lt: loc_tag)
+            {struct idl}: PolicyResult mem :=
+    match idl with
+    | [] => ret m
+    | id :: idl' =>
+        m' <- store_init_data ge m p id vt lt;;
+        store_init_data_list ge m' (off p (Int64.repr (init_data_size id))) idl' vt lt
+    end.
+
+  Fixpoint init_globals (ge: genv) (m: mem) (idls: list (ident * list init_data)):
+    PolicyResult mem :=
+    match idls with
+    | [] => ret m
+    | (id, idl)::idls' =>
+      match find_symbol ge id with
+      | None => raise (OtherFailure "Symbol not found")
+      | Some (SymGlob base _ _ _) =>
+        match PTree.get id ge.(genv_glob_tags) with
+        | Some (vt,lt) =>
+          m' <- store_init_data_list ge m base idl vt lt;;
+          init_globals ge m' idls'
+        | None =>
+          raise (OtherFailure "Initial tags not found")
+        end
+      | _ => init_globals ge m idls'
+      end
+    end.
+
+  Definition globalenv (p: program) : PolicyResult (genv * composite_env * mem):=
+    let ce := p.(prog_comp_env) in
+    let (sizes, inits) := (filter_vars p.(AST.prog_defs)) in 
+    let (m,gmap) := globalalloc MA.empty sizes in
+    let ge := Genv.globalenv ce p.(prog_public) p.(prog_defs) gmap in
+    m' <- init_globals ge m inits;;
+    ret (ge, ce, m').
+
+  (** * Whole-program semantics *)
+
+  (** Execution of whole programs are described as sequences of transitions
+      from an initial state to a final state.  An initial state is a [Callstate]
+      corresponding to the invocation of the ``main'' function of the program
+      without arguments and with an empty continuation. *)
   Inductive initial_state' (p: program): state -> Prop :=
-  | initial_state_intro: forall b pt f ge ce m0,
-      globalenv p = ret (ge,ce,m0) ->
+  | initial_state_intro: forall b pt f ge ce m ps,
+      globalenv p (init_state,[]) = (Success (ge,ce,m), ps) ->
       Genv.find_symbol ge p.(prog_main) = Some (SymIFun _ b pt) ->
       Genv.find_funct_ptr ge b = Some f ->
       type_of_fundef f = Tfunction Tnil type_int32s cc_default ->
-      initial_state' p (Callstate f Cabs.no_loc (init_state,[]) init_comp init_bg
-                                  nil Kstop m0).
+      initial_state' p (Callstate f Cabs.no_loc ps init_comp init_bg nil Kstop m).
 
   Definition initial_state := initial_state'.
 
+  (** A final state is a [Returnstate] with an empty continuation. *)
+
   Inductive final_state': state -> int -> Prop :=
-  | final_state_intro: forall fd l CMP bg pct r m t,
-      final_state' (Returnstate fd l CMP bg pct (Vint r, t) Kstop m) r.
+  | final_state_intro: forall fd l ps CMP bg r m t,
+      final_state' (Returnstate fd l ps CMP bg (Vint r, t) Kstop m) r.
 
   Definition final_state := final_state'.
   

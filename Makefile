@@ -108,8 +108,6 @@ COMMON=Errors.v AST.v Linking.v Encoding.v \
   AllocatorImpl.v ConcreteAllocator.v \
   Values.v Tags.v Smallstep.v Switch.v Unityping.v \
   Builtins0.v Builtins1.v Builtins.v Determinism.v \
-  Simulation.v
-  # Behaviors.v
 
 # C front-end modules (in cfrontend/)
 
@@ -119,6 +117,8 @@ CFRONTEND=Ctypes.v Cop.v Csyntax.v Csem.v Ctyping.v Cexec.v \
 # Policy definitions (in policies/) Add new policy files here
 # NB Product.v is the (Cartisian) product of multiple policies
 POLICIES=NullPolicy.v PVI.v DoubleFree.v HeapProblem.v Product.v Omnilog.v
+
+PROOFS=Simulation.v CompartmentSem.v SemanticsProofs.v
 
 PARSER=Cabs.v Parser.v
 
@@ -138,7 +138,7 @@ DRIVER=Compopts.v
 
 # All source files
 
-FILES=$(VLIB) $(COMMON) $(CFRONTEND) $(POLICIES) $(DRIVER) $(FLOCQ) \
+FILES=$(VLIB) $(COMMON) $(CFRONTEND) $(POLICIES) $(PROOFS) $(DRIVER) $(FLOCQ) \
   $(MENHIRLIB) $(PARSER) $(EXPORTLIB)
 
 all:

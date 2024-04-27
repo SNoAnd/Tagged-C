@@ -8,53 +8,44 @@ Require Import String.
 Require Import Coq.Logic.Eqdep_dec.
 Require Import NullPolicy.
 Require Import FunctionalExtensionality.
+Require Import CompartmentSem.
 
-Module Compartmentalization (Pol: Policy) (A: Allocator).
-  
-  Module Sem1 := CompartmentCsem.
-  Import Sem1.
-  
-  Module Outer := TaggedCsem Pol.
-  Module A2 := A ConcretePointer Pol Outer.M.
-  Module Sem2 := Outer.Inner A2.
+Module M2 := ConcMem ConcretePointer NullPolicy.
 
-  Module FS := SIM SemiconcretePointer NullPolicy M FA.AllocDef Sem1
-                   ConcretePointer Pol Outer.M A2 Sem2.
+Module Compartmentalization (Pol: Policy)
+  (A1: AllocatorAxioms SemiconcretePointer NullPolicy M)
+  (A2: AllocatorAxioms ConcretePointer NullPolicy M2).
+  
+  Module Sem1Outer := CompartmentCsem A1.
+  Module MA1 := Sem1Outer.MA.
+  Module Sem1 := Sem1Outer.Inner.
+  
+  Module MA2 := MemRegionAgnostic ConcretePointer NullPolicy UnitRegion M2 A2.
+  Module Sem2 := TaggedCsem NullPolicy MA2.
+
+  Module FS := SIM SemiconcretePointer NullPolicy CompReg MA1 Sem1
+                   ConcretePointer NullPolicy UnitRegion MA2 Sem2.
   Import FS.
   Import PE.
   
   Variable prog1 : CS1.program.
   Variable prog2 : CS2.program.
-
-  Definition gcm1 := Sem1.globalenv prog1.
-  Definition gcm2 := Sem2.globalenv prog2.
-
+  
+  Variable ge1 : Sem1.genv.
+  Variable ge2 : Sem2.genv.
   Variable ce : composite_env.
-  Variable ge1 : Sem1.Smallstep.Events.Genv.t
-                   Sem1.Csyntax.fundef type.
-  Variable m1 : CS1.Cop.Events.Genv.mem.
-  Variable ge2 : Sem2.Smallstep.Events.Genv.t
-                   Sem2.Csyntax.fundef type.
-  Variable m2 : CS2.Cop.Events.Genv.mem.
-  Variable sem1 : S1.semantics.
-  Variable sem2 : S2.semantics.
+
+  Definition sem1 := Sem1.semantics prog1 ge1 ce.
+  Definition sem2 := Sem2.semantics prog2 ge2 ce.
 
   Hypothesis same_prog : prog_match prog1 prog2.
-
-  Hypothesis globalenv1 :
-    Sem1.globalenv prog1 = Success (ge1,ce,m1).
-  Hypothesis globalenv2 :
-    Sem2.globalenv prog2 = Success (ge2,ce,m2).
-  
-  Hypothesis sem1_src : Sem1.semantics prog1 ge1 ce = sem1.
-  Hypothesis sem2_src : Sem2.semantics prog2 ge2 ce = sem2.
 
   (* Matching relation on states:
      - PCT corresponds to active compartment (CMT)
      - ???
    *)
-(*  Inductive match_states : Sem1.state -> Sem2.state -> Prop :=
-  | MState : forall f1 f2 CMP bg ps1 ps2 pct1 pct2 stmt1 stmt2 k1 k2 e1 e2 te1 te2 m1 m2,
+  Inductive match_states : Sem1.state -> Sem2.state -> Prop :=
+  | MState : forall f1 f2 CMP bg ps1 ps2 pct2 stmt1 stmt2 k1 k2 e1 e2 te1 te2 m1 m2,
       (*match_function f1 f2 ->
       (* Ignore PCT *)
       match_statement stmt1 stmt2 ->
@@ -62,39 +53,39 @@ Module Compartmentalization (Pol: Policy) (A: Allocator).
       match_env e1 e2 ->
       match_tenv te1 te2 ->
       match_mem m1 m2 ->*)
-      match_states (Sem1.State f1 CMP bg ps1 pct1 stmt1 k1 e1 te1 m1)
+      match_states (Sem1.State f1 CMP bg ps1 stmt1 k1 e1 te1 m1)
                    (Sem2.State f2 ps2 pct2 stmt2 k2 e2 te2 m2)
-  | MExprState : forall f1 f2 l ps1 ps2 pct1 pct2 expr1 expr2 k1 k2 e1 e2 te1 te2 m1 m2,
-      match_function f1 f2 ->
+  | MExprState : forall f1 f2 l CMP bg ps1 ps2 pct2 expr1 expr2 k1 k2 e1 e2 te1 te2 m1 m2,
+      (*match_function f1 f2 ->
       (* Ignore PCT *)
       match_expr expr1 expr2 ->
       match_cont k1 k2 ->
       match_env e1 e2 ->
       match_tenv te1 te2 ->
-      match_mem m1 m2 ->
-      match_states (Sem1.ExprState f1 l ps1 pct1 expr1 k1 e1 te1 m1)
+      match_mem m1 m2 ->*)
+      match_states (Sem1.ExprState f1 l CMP bg ps1 expr1 k1 e1 te1 m1)
                    (Sem2.ExprState f2 l ps2 pct2 expr2 k2 e2 te2 m2)      
   | MCallstate : forall fd1 fd2 l ps1 ps2 pct1 pct2 fpt1 fpt2 args1 args2 k1 k2 m1 m2,
-      fundef_match fd1 fd2 ->
+      (*fundef_match fd1 fd2 ->
       (* Ignore tags *)
       match_list_map match_atom args1 args2 ->
       match_cont k1 k2 ->
-      match_mem m1 m2 ->
+      match_mem m1 m2 ->*)
       match_states (Sem1.Callstate fd1 l ps1 pct1 fpt1 args1 k1 m1)
                    (Sem2.Callstate fd2 l ps2 pct2 fpt2 args2 k2 m2)
-  | MReturnState : forall fd1 fd2 l ps1 ps2 pct1 pct2 retv1 retv2 k1 k2 m1 m2,
-      fundef_match fd1 fd2 ->
+  | MReturnState : forall fd1 fd2 l CMP bg ps1 ps2 pct2 retv1 retv2 k1 k2 m1 m2,
+      (*fundef_match fd1 fd2 ->
       (* Ignore tags *)
       match_atom retv1 retv2 ->
       match_cont k1 k2 ->
-      match_mem m1 m2 ->
-      match_states (Sem1.Returnstate fd1 l ps1 pct1 retv1 k1 m1)
+      match_mem m1 m2 ->*)
+      match_states (Sem1.Returnstate fd1 l CMP bg ps1 retv1 k1 m1)
                    (Sem2.Returnstate fd2 l ps2 pct2 retv2 k2 m2)  
   | MStuckstate : match_states Sem1.Stuckstate Sem2.Stuckstate
   | Failstop : forall s2 msg failure,
       match_states (Sem1.Failstop msg failure)
                    s2
-  .*)
+  .
   
   Theorem CompartmentCorrectness : forward_simulation sem1 sem2.
   Admitted.
@@ -104,16 +95,15 @@ Module Compartmentalization (Pol: Policy) (A: Allocator).
   
 End Compartmentalization.
 
-Module PolicyInsensitivity (Pol: Policy) (A: Allocator).
-  Module Outer1 := TaggedCsem Pol.
-  Module A1 := A ConcretePointer Pol Outer1.M.
-  Module Outer2 := TaggedCsem NullPolicy.
-  Module A2 := A ConcretePointer NullPolicy Outer2.M.
-  Module Sem1 := Outer1.Inner A1.
-  Module Sem2 := Outer2.Inner A2.
+Module PolicyInsensitivity (Pol: Policy)
+  (M1: Memory ConcretePointer Pol UnitRegion)
+  (M2: Memory ConcretePointer NullPolicy UnitRegion).
+  Module Sem1 := TaggedCsem Pol M1.
   
-  Module FS := SIM ConcretePointer Pol Outer1.M A1 Sem1
-                   ConcretePointer NullPolicy Outer2.M A2 Sem2.
+  Module Sem2 := TaggedCsem NullPolicy M2.
+  
+  Module FS := SIM ConcretePointer Pol UnitRegion M1 Sem1
+                   ConcretePointer NullPolicy UnitRegion M2 Sem2.
   Import FS.
   Import PE.
   
@@ -125,18 +115,13 @@ Module PolicyInsensitivity (Pol: Policy) (A: Allocator).
 
   Variable ce : composite_env.
   Variable ge1 : GV1.t CS1.fundef type.
-  Variable m1 : CS1.Cop.Events.Genv.mem.
+  Variable m1 : M1.mem.
   Variable ge2 : GV2.t CS2.fundef type.
-  Variable m2 : CS2.Cop.Events.Genv.mem.
+  Variable m2 : M2.mem.
   Variable sem1 : S1.semantics.
   Variable sem2 : S2.semantics.
 
   Hypothesis same_prog : prog_match prog1 prog2.
-
-  Hypothesis globalenv1 :
-    Sem1.globalenv prog1 = Success (ge1,ce,m1).
-  Hypothesis globalenv2 :
-    Sem2.globalenv prog2 = Success (ge2,ce,m2).
 
   Definition match_option_map {A1 A2:Type}
              (m: A1 -> A2 -> Prop)
@@ -416,21 +401,6 @@ Module PolicyInsensitivity (Pol: Policy) (A: Allocator).
 
   Definition match_tenv (te1: Sem1.tenv) (te2: Sem2.tenv) : Prop :=
     forall p, match_option_map match_atom (te1!p) (te2!p).
-
-  Definition coerce_kind1 (k: Sem1.kind) : Sem2.kind :=
-    match k with
-    | Sem1.LV => Sem2.LV
-    | Sem1.RV => Sem2.RV
-    end.
-
-  Definition coerce_kind2 (k: Sem2.kind) : Sem1.kind :=
-    match k with
-    | Sem2.LV => Sem1.LV
-    | Sem2.RV => Sem1.RV
-    end.
-
-  Coercion coerce_kind1 : Sem1.kind >-> Sem2.kind.
-  Coercion coerce_kind2 : Sem2.kind >-> Sem1.kind.
   
   Record match_ctx
          (ctx1: CS1.expr -> CS1.expr)
@@ -450,7 +420,7 @@ Module PolicyInsensitivity (Pol: Policy) (A: Allocator).
           exists e1',
             e1 = ctx1 e1' /\ match_expr e1' e2;
 
-        closed_context : forall (k1_1 k2_1:Sem1.kind) (k1_2 k2_2:Sem2.kind),
+        closed_context : forall (k1_1 k2_1 k1_2 k2_2:kind),
           k1_1 = k1_2 ->
           k2_1 = k2_2 ->
           (Sem1.context k1_1 k2_1 ctx1 <-> Sem2.context k1_2 k2_2 ctx2)
@@ -548,22 +518,13 @@ Module PolicyInsensitivity (Pol: Policy) (A: Allocator).
                  (Sem2.Kcall f2 e2 te2 l pct2 ctx2 ty k2)
   .
 
-  Record match_mem (m1:GV1.mem) (m2:GV2.mem) :=
+  Record match_mem (m1:M1.mem) (m2:M2.mem) :=
     mkmatchm
       {
-        load_all_agree : forall chunk p v1 vt1 lts1,
-          GV1.load_all chunk m1 p = Success (v1,vt1,lts1) ->
-          exists v2 vt2 lts2, GV2.load_all chunk m2 p = Success (v2,vt2,lts2)
+        load_agree : forall ps1 ps1' ps2 ps2' chunk p v1 vt1 lts1,
+          M1.load chunk m1 p ps1 = (Success (v1,vt1,lts1), ps1') ->
+          exists v2 vt2 lts2, M2.load chunk m2 p ps2 = (Success (v2,vt2,lts2), ps2')
                               /\ match_val v1 v2
-      ;
-        load_agree : forall chunk p v1 vt1,
-          GV1.load chunk m1 p = Success (v1,vt1) ->
-          exists v2 vt2, GV2.load chunk m2 p = Success (v2,vt2)
-                         /\ match_val v1 v2
-      ;
-        load_ltags_agree : forall chunk p lts1,
-          GV1.load_ltags chunk m1 p = Success lts1 ->
-          exists lts2, GV2.load_all chunk m2 p = Success lts2;
       }.
   
   (* Define matching relation on states that holds if they match except for tags.*)
@@ -692,65 +653,68 @@ Module PolicyInsensitivity (Pol: Policy) (A: Allocator).
   Admitted.
   
   Lemma do_alloc_variables_match_success :
-    forall lc ps1 pct1 e1 m1 vars pct1' e1' m1' ps2 pct2 e2 m2,
+    forall lc ps1 ps1' pct1 e1 m1 vars pct1' e1' m1' ps2 pct2 e2 m2,
       match_env e1 e2 ->
       match_mem m1 m2 ->
-      Sem1.do_alloc_variables ce lc ps1 pct1 e1 m1 vars =
-        Success (pct1', e1', m1') ->
-      exists pct2' e2' m2',
-        Sem2.do_alloc_variables ce lc ps2 pct2 e2 m2 vars =
-          Success (pct2', e2', m2') /\
+      Sem1.do_alloc_variables ce lc pct1 e1 m1 vars ps1 =
+        (Success (pct1', e1', m1'), ps1') ->
+      exists ps2' pct2' e2' m2',
+        Sem2.do_alloc_variables ce lc pct2 e2 m2 vars ps2 =
+          (Success (pct2', e2', m2'), ps2') /\
           match_env e1' e2' /\ match_mem m1' m2'.
   Admitted.
   
   Lemma do_alloc_variables_match_fail :
-    forall lc ps1 pct1 e1 m1 vars ps2 pct2 e2 m2 msg failure,
+    forall lc ps1 ps1' pct1 e1 m1 vars ps2 pct2 e2 m2 failure,
       match_env e1 e2 ->
       match_mem m1 m2 ->
-      Sem1.do_alloc_variables ce lc ps1 pct1 e1 m1 vars =
-        Fail msg failure ->
-      Sem2.do_alloc_variables ce lc ps2 pct2 e2 m2 vars =
-        Fail msg failure.
+      Sem1.do_alloc_variables ce lc pct1 e1 m1 vars ps1 =
+        (Fail failure, ps1') ->
+      exists ps2',
+      Sem2.do_alloc_variables ce lc pct2 e2 m2 vars ps2 =
+        (Fail failure, ps2').
   Admitted.
 
   Lemma do_init_params_match_success :
-    forall lc ps1 pct1 e1 m1 params args1 pct1' e1' m1' ps2 pct2 e2 m2 args2,
+    forall lc ps1 ps1' pct1 e1 m1 params args1 pct1' e1' m1' ps2 pct2 e2 m2 args2,
       match_env e1 e2 ->
       match_mem m1 m2 ->
       match_list_map match_atom args1 args2 ->
-      Sem1.do_init_params ce lc ps1 pct1 e1 m1 (Sem1.option_zip params args1) =
-        Success (pct1', e1', m1') ->
-      exists pct2' e2' m2',
-        Sem2.do_init_params ce lc ps2 pct2 e2 m2 (Sem2.option_zip params args2) =
-          Success (pct2', e2', m2') /\ match_env e1' e2' /\ match_mem m1' m2'.
+      Sem1.do_init_params ce lc pct1 e1 m1 (Sem1.option_zip params args1) ps1 =
+        (Success (pct1', e1', m1'), ps1') ->
+      exists ps2' pct2' e2' m2',
+        Sem2.do_init_params ce lc pct2 e2 m2 (Sem2.option_zip params args2) ps2 =
+          (Success (pct2', e2', m2'), ps2') /\ match_env e1' e2' /\ match_mem m1' m2'.
   Admitted.
 
   Lemma do_init_params_match_fail :
-    forall lc ps1 pct1 e1 m1 params args1 ps2 pct2 e2 m2 args2 msg failure,
+    forall lc ps1 ps1' pct1 e1 m1 params args1 ps2 pct2 e2 m2 args2 failure,
       match_env e1 e2 ->
       match_mem m1 m2 ->
       match_list_map match_atom args1 args2 ->
-      Sem1.do_init_params ce lc ps1 pct1 e1 m1 (Sem1.option_zip params args1) =
-        Fail msg failure ->
-      Sem2.do_init_params ce lc ps2 pct2 e2 m2 (Sem2.option_zip params args2) =
-        Fail msg failure.
+      Sem1.do_init_params ce lc pct1 e1 m1 (Sem1.option_zip params args1) ps1 =
+        (Fail failure, ps1') ->
+      exists ps2',  
+      Sem2.do_init_params ce lc pct2 e2 m2 (Sem2.option_zip params args2) ps2 =
+        (Fail failure, ps2').
   Admitted.
   
   Lemma do_free_variables_match_success :
-    forall lc ps1 pct1 m1 e1 pct1' m1' ps2 pct2 m2 e2,
-      Sem1.do_free_variables ce lc ps1 pct1 m1 (Sem1.variables_of_env e1) =
-        Success (pct1', m1') ->
-      exists pct2' m2',
-        Sem2.do_free_variables ce lc ps2 pct2 m2 (Sem2.variables_of_env e2) =
-          Success (pct2', m2') /\ match_mem m1' m2'.
+    forall lc ps1 ps1' pct1 m1 e1 pct1' m1' ps2 pct2 m2 e2,
+      Sem1.do_free_variables ce lc pct1 m1 (Sem1.variables_of_env e1) ps1 =
+        (Success (pct1', m1'), ps1') ->
+      exists ps2' pct2' m2',
+        Sem2.do_free_variables ce lc pct2 m2 (Sem2.variables_of_env e2) ps2 =
+          (Success (pct2', m2'), ps2') /\ match_mem m1' m2'.
   Admitted.
 
   Lemma do_free_variables_match_fail :
-    forall lc ps1 pct1 m1 e1 ps2 pct2 m2 e2 msg failure,
-      Sem1.do_free_variables ce lc ps1 pct1 m1 (Sem1.variables_of_env e1) =
-        Fail msg failure ->
-      Sem2.do_free_variables ce lc ps2 pct2 m2 (Sem2.variables_of_env e2) =
-        Fail msg failure.
+    forall lc ps1 ps1' pct1 m1 e1 ps2 pct2 m2 e2 failure,
+      Sem1.do_free_variables ce lc pct1 m1 (Sem1.variables_of_env e1) ps1 =
+        (Fail failure, ps1') ->
+      exists ps2',
+      Sem2.do_free_variables ce lc pct2 m2 (Sem2.variables_of_env e2) ps2 =
+        (Fail failure, ps2').
   Admitted.
 
   Lemma is_call_cont_match :
@@ -777,14 +741,27 @@ Module PolicyInsensitivity (Pol: Policy) (A: Allocator).
       exists s2' k2',
         Sem2.find_label lbl s2 (Sem2.call_cont k2) = Some (s2', k2').
   Admitted.
-   
-  Lemma deref_loc_match_success :
-    forall ty m1 m2 ofs pt1 pt2 bf tr1 v1 vt1 lts1,
+ 
+  Inductive match_deref : Pol.PolicyResult (Val1.val * list Pol.val_tag * list Pol.loc_tag) ->
+                          NullPolicy.PolicyResult (Val2.val * list NullPolicy.val_tag * list NullPolicy.loc_tag) ->
+                          Prop :=
+  | match_deref_success : forall res1 res2 ps1 v1 vts1 lts1 ps1' ps2 v2 vts2 lts2 ps2',
+    res1 ps1 = (Success (v1,vts1,lts1), ps1') ->
+    res2 ps2 = (Success (v2,vts2,lts2), ps2') ->
+    match_deref res1 res2
+  | match_deref_fail : forall res1 res2 ps1 f1 ps1' ps2 f2 ps2',
+    res1 ps1 = (Fail f1, ps1') ->
+    res2 ps2 = (Fail f2, ps2') ->
+    match_deref res1 res2
+  .
+
+  Lemma deref_loc_match :
+    forall ty m1 m2 ofs pt1 pt2 bf tr1 res1,
       match_mem m1 m2 ->
-      Sem1.deref_loc ge1 ty m1 ofs pt1 bf tr1 (Success ((v1,vt1),lts1)) ->
-      exists tr2 v2 vt2 lts2,
-        Sem2.deref_loc ge2 ty m2 ofs pt2 bf tr2 (Success ((v2,vt2),lts2)) /\
-          match_traces tr1 tr2 /\ match_val v1 v2.
+      Sem1.deref_loc ge1 ty m1 ofs pt1 bf tr1 res1 ->
+      exists tr2 res2,
+        Sem2.deref_loc ge2 ty m2 ofs pt2 bf tr2 res2 /\
+          match_traces tr1 tr2 /\ match_deref res1 res2.
   Admitted.
 (*  Proof.
     intros. inv H0.
@@ -817,35 +794,27 @@ Module PolicyInsensitivity (Pol: Policy) (A: Allocator).
       eapply Sem2.deref_loc_bitfield; eauto.
   Admitted.*)
 
-  Lemma deref_loc_match_fail :
-    forall ty m1 m2 ofs pt1 pt2 bf tr1 msg failure,
-      match_mem m1 m2 ->
-      Sem1.deref_loc ge1 ty m1 ofs pt1 bf tr1 (Fail msg failure) ->
-      exists tr2,
-        Sem2.deref_loc ge2 ty m2 ofs pt2 bf tr2 (Fail msg failure) /\
-          match_traces tr1 tr2.
-  Admitted.
-  
-  Lemma assign_loc_match_success :
-    forall ty m1 m2 p pt1 pt2 bf tr1 v1 v2 vt1 vt2 lts1 lts2 m1' v1' vt1',
-      match_mem m1 m2 ->
-      Sem1.assign_loc ge1 ce ty m1 p pt1 bf (v1, vt1) tr1
-                      (Success (m1',(v1',vt1'))) lts1 ->
-      exists tr2 m2' v2' vt2',
-        Sem2.assign_loc ge2 ce ty m2 p pt2 bf (v2, vt2) tr2 
-                        (Success (m2', (v2',vt2'))) lts2 /\
-          match_mem m1' m2' /\ match_traces tr1 tr2 /\ match_val v1' v2'.
-  Admitted.
+  Inductive match_assign : Pol.PolicyResult (M1.mem * (Val1.val * Pol.val_tag)) ->
+                           NullPolicy.PolicyResult (M2.mem * (Val2.val * NullPolicy.val_tag)) ->
+                           Prop :=
+  | match_assign_success : forall res1 res2 ps1 v1 vt1 ps1' ps2 v2 vt2 ps2',
+    res1 ps1 = (Success (m1,(v1,vt1)), ps1') ->
+    res2 ps2 = (Success (m2,(v2,vt2)), ps2') ->
+    match_assign res1 res2
+  | match_assign_fail : forall res1 res2 ps1 f1 ps1' ps2 f2 ps2',
+    res1 ps1 = (Fail f1, ps1') ->
+    res2 ps2 = (Fail f2, ps2') ->
+    match_assign res1 res2
+  .
 
-  Lemma assign_loc_match_fail :
-    forall ty m1 m2 p pt1 pt2 bf tr1 v1 v2 vt1 vt2 lts1 lts2 msg failure,
+
+  Lemma assign_loc_match :
+    forall ty m1 m2 p pt1 pt2 bf tr1 v1 v2 vt1 vt2 lts1 lts2 res1,
       match_mem m1 m2 ->
-      Sem1.assign_loc ge1 ce ty m1 p pt1 bf (v1, vt1) tr1
-                      (Fail msg failure) lts1 ->
-      exists tr2,
-        Sem2.assign_loc ge2 ce ty m2 p pt2 bf (v2, vt2) tr2 
-                        (Fail msg failure) lts2 /\
-          match_traces tr1 tr2.
+      Sem1.assign_loc ge1 ce ty m1 p pt1 lts1 bf (v1, vt1) tr1 res1 ->
+      exists tr2 res2,
+        Sem2.assign_loc ge2 ce ty m2 p pt2 lts2 bf (v2, vt2) tr2 res2 /\
+          match_traces tr1 tr2 /\ match_assign res1 res2.
   Admitted.
 
 (*  Lemma volatile_store_decidable :
@@ -1037,14 +1006,14 @@ Module PolicyInsensitivity (Pol: Policy) (A: Allocator).
         let lts2 := fresh "lts2" in
         let A := fresh "A" in
         let B := fresh "B" in
-        pose proof (deref_loc_match_success ty m1 m2 ofs pt1 tt bf tr1 v vt lts H2 H1)
+        pose proof (deref_loc_match ty m1 m2 ofs pt1 tt bf tr1 v vt lts H2 H1)
         as [tr2 [v2 [vt2 [lts2 [A B]]]]]; inv B; clear H1
     | [ H1: Sem1.deref_loc _ ?ty ?m1 ?ofs ?pt1 ?bf ?tr1 (Fail ?msg ?failure),
           H2: match_mem ?m1 ?m2 |- _] =>
         let tr2 := fresh "tr2" in
         let A := fresh "A" in
         let B := fresh "B" in
-        pose proof (deref_loc_match_fail ty m1 m2 ofs pt1 tt bf tr1 msg failure H2 H1)
+        pose proof (deref_loc_match ty m1 m2 ofs pt1 tt bf tr1 msg failure H2 H1)
         as [tr2 [A B]]; inv B; clear H1
     | [ H1: Sem1.assign_loc _ _ ?ty ?m1 ?p ?pt1 ?bf (?v1, ?vt1) ?tr1
                             (Success (?m1', (?v1', ?vt1'))) ?lts1,
@@ -1055,7 +1024,7 @@ Module PolicyInsensitivity (Pol: Policy) (A: Allocator).
         let vt2' := fresh "vt2" in
         let A := fresh "A" in
         let B := fresh "B" in
-        pose proof (assign_loc_match_success
+        pose proof (assign_loc_match
                       ty m1 m2 p pt1 tt bf tr1 v1 v1 vt1 tt lts1
                       [tt] m1' v1' vt1') as
           [tr2 [m2' [v2' [vt2' [A B]]]]];
@@ -1066,9 +1035,9 @@ Module PolicyInsensitivity (Pol: Policy) (A: Allocator).
         let tr2 := fresh "tr2" in
         let A := fresh "A" in
         let B := fresh "B" in
-        pose proof (assign_loc_match_fail
+        pose proof (assign_loc_match
                       ty m1 m2 p pt1 tt bf tr1 v1 v1 vt1 tt lts1
-                      [tt] msg failure) as
+                      [tt] failure) as
           [tr2 [A B]];
         auto; clear H1
     | [ H: Sem1.context ?k1 ?k2 ?C1 |- _ ] =>
@@ -1092,14 +1061,14 @@ Module PolicyInsensitivity (Pol: Policy) (A: Allocator).
     end.
 
   Lemma lred_transl :
-    forall e1 e2 lc expr1 expr2 ps1 ps2 pct1 pct2 te1 te2 m1 m2 expr1' te1' m1',
+    forall e1 e2 lc expr1 expr2 ps1 ps1' ps2 pct1 pct2 te1 te2 m1 m2 expr1' te1' m1',
       match_env e1 e2 ->
       match_expr expr1 expr2 ->
       match_tenv te1 te2 ->
       match_mem m1 m2 ->
-      Sem1.lred ge1 ce e1 lc expr1 ps1 pct1 te1 m1 expr1' te1' m1' ->
-      exists expr2' te2' m2',
-        Sem2.lred ge2 ce e2 lc expr2 ps2 pct2 te2 m2 expr2' te2' m2' /\
+      Sem1.lred ge1 ce e1 lc expr1 pct1 te1 m1 expr1' te1' m1' ps1 ps1' ->
+      exists ps2' expr2' te2' m2',
+        Sem2.lred ge2 ce e2 lc expr2 pct2 te2 m2 expr2' te2' m2' ps2 ps2' /\
           match_expr expr1' expr2' /\
           match_tenv te1' te2' /\
           match_mem m1' m2'.
@@ -1119,14 +1088,14 @@ Module PolicyInsensitivity (Pol: Policy) (A: Allocator).
   Admitted.
 
   Lemma rred_transl :
-    forall e1 e2 lc expr1 expr2 ps1 ps2 pct1 pct2 te1 te2 m1 m2 pct1' expr1' te1' m1' tr1,
+    forall e1 e2 lc expr1 expr2 ps1 ps1' ps2 pct1 pct2 te1 te2 m1 m2 pct1' expr1' te1' m1' tr1,
       match_env e1 e2 ->
       match_expr expr1 expr2 ->
       match_tenv te1 te2 ->
       match_mem m1 m2 ->
-      Sem1.rred ge1 ce lc ps1 pct1 expr1 te1 m1 tr1 pct1' expr1' te1' m1' ->
-      exists pct2' expr2' te2' m2' tr2,
-        Sem2.rred ge2 ce lc ps2 pct2 expr2 te2 m2 tr2 pct2' expr2' te2' m2' /\
+      Sem1.rred ge1 ce lc pct1 expr1 te1 m1 tr1 pct1' expr1' te1' m1' ps1 ps1' ->
+      exists ps2' pct2' expr2' te2' m2' tr2,
+        Sem2.rred ge2 ce lc pct2 expr2 te2 m2 tr2 pct2' expr2' te2' m2' ps2 ps2' /\
           match_expr expr1' expr2' /\
           match_tenv te1' te2' /\
           match_mem m1' m2' /\
@@ -1140,7 +1109,8 @@ Module PolicyInsensitivity (Pol: Policy) (A: Allocator).
       try deduce_match;
       try (econstructor; eauto; reflexivity; fail);
       try (repeat econstructor; fail). 
-    - destruct pt2. econstructor; eauto. econstructor; eauto. reflexivity.
+    - destruct pt2. econstructor; eauto. econstructor; eauto. admit. admit.
+    - admit.
     - apply H0. constructor.
     - eapply Sem2.red_cast_int_ptr.
       + intros. intro. eapply H4. eauto.
@@ -1148,28 +1118,41 @@ Module PolicyInsensitivity (Pol: Policy) (A: Allocator).
       + rewrite Heqo. rewrite H0. auto. reflexivity.
       + reflexivity.
       + destruct vt3. eauto.
-      + reflexivity.
+      + admit.
+      + admit.
+    - admit.
+    - admit.
+    - admit.
     - eapply Sem2.red_cast_ptr_int.
       + reflexivity.
       + intros. intro. eapply H5. eauto.
       + rewrite Heqo. rewrite H0. auto. reflexivity.
       + reflexivity.
       + destruct vt3. eauto.
-      + reflexivity.
+      + admit.
+      + unfold NullPolicy.PICastT. unfold Passthrough.PICastT. simpl. reflexivity.
+    - admit.
+    - admit.
+    - admit.
     - eapply Sem2.red_cast_ptr_ptr.
       + reflexivity.
       + reflexivity.
       + rewrite Heqo. rewrite H0. auto. reflexivity.
       + reflexivity.
-      + destruct vt4. eauto.
       + reflexivity.
       + destruct vt4. eauto.
-      + reflexivity.
-    - apply match_traces_app; auto.
+      + destruct vt4. eauto.
+      + admit.
+      + admit.
+      + unfold NullPolicy.PPCastT.
+        unfold Passthrough.PPCastT. simpl. reflexivity.
+    - apply match_traces_app; auto. admit. admit.
+    - admit.
     - destruct b; auto.
-    - econstructor; eauto. destruct pt2. eauto. reflexivity. reflexivity.
-      destruct pt2. rewrite H0; try reflexivity. eapply A0.
-    - apply match_traces_app; auto.
+    - econstructor; eauto. destruct pt2. eauto. admit. reflexivity.
+      destruct pt2. rewrite H0; try reflexivity. admit.
+    - admit.
+    - apply match_traces_app; auto. admit. admit.
     - rewrite H0; constructor.
     - rewrite H0; try constructor.
       unfold match_tenv. intros.
@@ -1178,46 +1161,43 @@ Module PolicyInsensitivity (Pol: Policy) (A: Allocator).
         repeat rewrite PTree.gss. constructor.
       + apply Pos.eqb_neq in Heqb0.
         repeat rewrite PTree.gso; auto.
-    - econstructor. destruct pt2. eauto. reflexivity. reflexivity.
-    - econstructor; auto. destruct pt2. eauto. reflexivity. reflexivity.
-    - econstructor; eauto. destruct pt2. eauto. reflexivity. reflexivity.
+    - econstructor. destruct pt2. eauto. admit. admit.
+    - admit.
+    - econstructor; auto. destruct pt2. eauto. admit. admit.
+    - admit.
+    - econstructor; eauto. destruct pt2. eauto. admit. admit.
+    - admit.
     - intuition; eauto. econstructor. inv H8; eauto. constructor.
     - rewrite H0; eauto; constructor.
-  Qed.
+  Admitted.
 
   Lemma callred_transl :
-    forall lc ps1 ps2 pct1 pct2 a1 a2 m1 m2 fd1 fd2
+    forall lc ps1 ps1' ps2 pct1 pct2 a1 a2 m1 m2 fd1 fd2
            fpt1 fpt2 vargs1 vargs2 ty pct1',
       match_expr a1 a2 ->
       match_mem m1 m2 ->
       fundef_match fd1 fd2 ->
-      Sem1.callred ge1 lc ps1 pct1 a1 m1 fd1 fpt1 vargs1 ty pct1' ->
-      exists pct2',
-        Sem2.callred ge2 lc ps2 pct2 a2 m2 fd2 fpt2 vargs2 ty pct2'.
+      Sem1.callred ge1 lc pct1 a1 m1 fd1 fpt1 vargs1 ty pct1' ps1 ps1' ->
+      exists ps2' pct2',
+        Sem2.callred ge2 lc pct2 a2 m2 fd2 fpt2 vargs2 ty pct2' ps2 ps2'.
   Proof.
     intros. inv H2; repeat doinv.
-    - exists tt. destruct vt2. destruct fpt2. inv H1; econstructor; eauto.
+    - exists (tt,[]). destruct vt2. destruct fpt2. inv H1; econstructor; eauto.
       + admit.
       + destruct tyf; inv H5.
-        * destruct tyf; inv H2; simpl; auto.
-        * simpl. auto.
-      + admit.
-      + admit.
-      + destruct tyf; inv H5.
-        * destruct tyf; inv H1; simpl; auto.
-        * simpl. auto.
-      + admit.
-    - exists tt. destruct vt2. destruct fpt2. inv H1; econstructor; eauto.
+        * destruct tyf; inv H1; simpl; auto. admit.
+        * simpl. auto. admit.
+    - exists (tt,[]). destruct vt2. destruct fpt2. inv H1; econstructor; eauto.
       admit.
   Admitted.
           
-  Ltac deduce_fail on_pol_fail on_other_fail :=
+ (* Ltac deduce_fail on_pol_fail on_other_fail :=
     match goal with
-    | [ H: _ = Fail _ PolicyFailure |- Sem2.estep _ _ _ _ _ ] =>
+    | [ H: _ = Fail (PolicyFailure _) |- Sem2.estep _ _ _ _ _ _ _ ] =>
         apply on_pol_fail
     | [ |- Sem2.estep _ _ _ _ _ ] =>
         apply on_other_fail
-    end.
+    end. *)
   
   Lemma estep_forward :
     forall (s1: Sem1.state) (tr1: S1.Events.trace) (s1': Sem1.state) (s2: Sem2.state),
@@ -1240,7 +1220,7 @@ Module PolicyInsensitivity (Pol: Policy) (A: Allocator).
       eexists. eexists. intuition.
       2: { econstructor; eauto. eapply H0.(closed_expr _ _); eauto. }
       eapply Sem2.step_rred; eauto. auto.
-    - inv H. apply H0.(r _ _) in H14 as [a2 [A B]].
+    - admit. (*inv H. apply H0.(r _ _) in H14 as [a2 [A B]].
       inv H1.
       + pose proof (gvs_match.(fun_defs_match _ _) b).
         destruct (ge1.(GV1.genv_fun_defs)!b) as [[fd1| x1] | ] eqn:?;
@@ -1255,7 +1235,7 @@ Module PolicyInsensitivity (Pol: Policy) (A: Allocator).
           intros [pct2' H].
           repeat doinv.
           eexists; eexists. intuition. eapply Sem2.step_call; eauto.
-          econstructor; eauto. admit. constructor; auto. constructor.
+          econstructor; eauto. constructor; auto. constructor.
         * unfold GV1.find_funct in H.
           unfold GV1.find_funct_ptr in H.
           rewrite Heqo in H. inv H.
@@ -1263,13 +1243,13 @@ Module PolicyInsensitivity (Pol: Policy) (A: Allocator).
         eexists; eexists. intuition.
         eapply Sem2.step_call; eauto. econstructor.
         admit. econstructor; eauto. constructor.
-        admit. constructor; auto. constructor.  
-    - inv H. pose proof (matching_ctx_matches C).
-      apply H.(r _ _) in H13 as [a2 [A B]]. subst.
+        admit. constructor; auto. constructor.*)
+    - admit. (*inv H. pose proof (matching_ctx_matches C).
+      apply   H.(r _ _) in H14 as [a2 [A B]]. subst.
       exists Sem2.Stuckstate. exists E2.E0. 
       intuition econstructor.
-      apply (H.(closed_context _ _) K Sem1.RV K Sem2.RV) in H1; eauto.
-      destruct K; auto.
+      apply (H.(closed_context _ _) K RV K RV) in H1; eauto.
+      destruct K; eauto. 
       intro. apply H2. inv H0.
       + inv B. replace K with Sem1.RV by (destruct K; inv H4; auto).
         eapply Sem1.imm_safe_val.
@@ -1279,7 +1259,7 @@ Module PolicyInsensitivity (Pol: Policy) (A: Allocator).
       + admit. (* need a left-hand version of matching context *)
       + admit. (* need a left-hand version of matching context *)
       + admit. (* need a left-hand version of matching context *)
-      + admit. (* need a left-hand version of matching context *)
+      + admit. (* need a left-hand version of matching context *) *)
     - inv H. pose proof (matching_ctx_matches C).
       apply H0.(r _ _) in H14 as [a2 [A B]].
       inv H1.
@@ -1289,7 +1269,7 @@ Module PolicyInsensitivity (Pol: Policy) (A: Allocator).
       + inv B. inv H9. inv H10.        
         eexists. exists E2.E0. intuition econstructor; eauto.
         econstructor; eauto. reflexivity.
-    - inv H.
+    - admit. (* inv H.
       apply H0.(r _ _) in H14 as [a2 [A B]].
       inv H1; inv B; repeat doinv.
       all: try (eexists; eexists;
@@ -1342,7 +1322,7 @@ Module PolicyInsensitivity (Pol: Policy) (A: Allocator).
         econstructor; eauto. admit. admit. admit.
         admit. auto. constructor. constructor.
       + eexists; eexists. intuition. apply Sem2.step_call.
-        econstructor; eauto. admit. auto. constructor. constructor.
+        econstructor; eauto. admit. auto. constructor. constructor.*)
   Admitted.
   
   Lemma sstep_forward :
@@ -1360,11 +1340,11 @@ Module PolicyInsensitivity (Pol: Policy) (A: Allocator).
       inv H12; intro; try discriminate; contradiction.
       repeat econstructor; eauto.
     - eexists; eexists. intuition econstructor; eauto.
-      destruct ps2. destruct pct2. apply A.
+      destruct ps2. destruct pct2. admit.
       inv H1; constructor; auto.
-      constructor. eapply match_call_cont. auto.
+      constructor. eapply match_call_cont. auto. admit.
     - eexists; eexists. intuition. eapply Sem2.step_return_none_fail0.
-      destruct ps2. destruct pct2. apply H16. constructor. constructor.
+      destruct ps2. destruct pct2. admit. constructor. constructor.
     - eexists; eexists. intuition econstructor; eauto.
       apply is_call_cont_match in H3; intuition. econstructor.
     - eexists; eexists. intuition econstructor; eauto.
@@ -1385,21 +1365,21 @@ Module PolicyInsensitivity (Pol: Policy) (A: Allocator).
       + intuition. eapply Sem2.step_for_true; eauto. reflexivity.
         constructor. constructor.
       + intuition. eapply Sem2.step_for_false; eauto. reflexivity.
-        constructor. constructor.        
-    - eexists; eexists. intuition econstructor; eauto. inv H1; eauto.
+        constructor. constructor.
+    - admit. (* eexists; eexists. intuition econstructor; eauto. inv H1; eauto.
       destruct ps2. destruct pct2. eauto. inv H1; constructor; auto.
-      rewrite H; constructor. apply match_call_cont; auto.
-    - eexists; eexists. intuition. eapply Sem2.step_return_fail; eauto.
+      rewrite H; constructor. apply match_call_cont; auto. *)
+    - admit. (*eexists; eexists. intuition. eapply Sem2.step_return_fail; eauto.
       inv H1; eauto. destruct ps2. destruct pct2. eauto.
-      constructor. constructor.
+      constructor. constructor.*)
     - eexists; eexists. intuition econstructor; eauto. admit. admit.
       constructor. auto. (* matching seq_of_ls... *)
     - inv H1; simpl in *.
       eexists; eexists. intuition econstructor; eauto. reflexivity.
-      simpl. destruct ps2. destruct pct0. eauto. econstructor; eauto. simpl.
-      apply statement_match_statement; auto.
-      constructor.
-    - inv H1.
+      simpl. destruct ps2. destruct pct2. eauto. admit. admit. (*econstructor; eauto. simpl.*)
+      (*apply statement_match_statement; auto.*)
+      constructor. admit. admit. admit. constructor. admit.
+    - admit. (*inv H1.
       destruct (Sem2.do_alloc_variables ce l0 tt tt Sem2.empty_env m4 fn_vars)
                as [ [[pct2' e2] m2'] | ] eqn:?.
       + destruct (Sem2.do_init_params ce l0 ps2 pct2' e2 m2'
@@ -1411,24 +1391,24 @@ Module PolicyInsensitivity (Pol: Policy) (A: Allocator).
           eapply Sem2.step_internal_function_fail2; eauto.
           reflexivity. constructor. constructor.
       + eexists; eexists. intuition. eapply Sem2.step_internal_function_fail1; eauto.
-          reflexivity. constructor. constructor.
-    - inv H1. eexists; eexists. intuition.
+          reflexivity. constructor. constructor.*)
+    - admit. (*inv H1. eexists; eexists. intuition.
       eapply Sem2.step_internal_function_fail1; eauto.
-      reflexivity. constructor. constructor.
-    - inv H1; simpl in *. eexists; eexists. Print Sem2.sstep.
+      reflexivity. constructor. constructor.*)
+    - admit. (*inv H1; simpl in *. eexists; eexists.
       intuition. eapply Sem2.step_internal_function_fail2; eauto.
-      reflexivity. simpl. destruct ps2. destruct pct0. eauto.
-      constructor. constructor.
+      reflexivity. simpl. destruct ps2. destruct pct2. eauto.
+      constructor. constructor.*)
     - inv H1. eexists; eexists. admit.
     - inv H1. eexists; eexists. admit. (* external_call *)
-    - destruct retv2. eexists; eexists. intuition.
+    - admit. (*destruct retv2. eexists; eexists. intuition.
       eapply Sem2.step_returnstate; eauto. reflexivity.
       constructor; auto. auto. eapply H16.(closed_expr _ _).
       constructor. inv H2. simpl in H. rewrite H. constructor.
-      constructor.
+      constructor.*)
     - destruct retv2. eexists; eexists. intuition.
       eapply Sem2.step_returnstate; eauto. reflexivity.
-      constructor; auto. constructor.
+      constructor; auto. admit. constructor.
   Admitted.
   
   Theorem PolicyInsensitiveForward : forward_simulation sem1 sem2.

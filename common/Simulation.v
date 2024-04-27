@@ -11,7 +11,7 @@ Require Import Values.
 Require Import Csem.
 Require Import Csyntax.
 Require Import AST Ctypes.
-
+  
 Module ProgEquiv (Ptr1: Pointer) (Pol1: Policy) (Reg1: Region)
                  (A1: Memory Ptr1 Pol1 Reg1) (Sem1: Semantics Ptr1 Pol1 Reg1 A1)
                  (Ptr2: Pointer) (Pol2: Policy) (Reg2: Region)
@@ -210,10 +210,10 @@ Module SIM (Ptr1: Pointer) (Pol1: Policy) (Reg1: Region)
   Module PE := ProgEquiv Ptr1 Pol1 Reg1 A1 Sem1
                          Ptr2 Pol2 Reg2 A2 Sem2.
   Import PE.
-  Module S1 := Sem1.Smallstep.
+  Module S1 := Sem1.Csyntax.Cop.Smallstep.
   Module E1 := S1.Events.
   Module GV1 := A1.Genv.
-  Module S2 := Sem2.Smallstep.
+  Module S2 := Sem2.Csyntax.Cop.Smallstep.
   Module E2 := S2.Events.
   Module GV2 := A2.Genv.
   
@@ -617,7 +617,7 @@ Module SIM (Ptr1: Pointer) (Pol1: Policy) (Reg1: Region)
             S2.Step L2 s2 t2 s2' ->
             forall s1, match_states s1 s2 -> safe L1 s1 ->
                        exists s1' t1, S1.Plus L1 s1 t1 s1' /\ match_states s1' s2'.
-
+        
         Lemma backward_simulation_plus: backward_simulation L1 L2.
         Proof.
           apply Backward_simulation with
