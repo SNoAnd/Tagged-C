@@ -135,7 +135,7 @@ Module ConcMemAllocators (Pol : Policy).
     | (id,sz)::gs' =>
         let next_aligned := Int64.repr (align (Int64.unsigned next) 8) in
         let (m',tree) := globals m gs' (off next_aligned (Int64.repr sz)) in
-        (set_perm_range m next_aligned (sz-1) Live, PTree.set id next tree)
+        (set_perm_range m next_aligned (sz-1) Live, PTree.set id next_aligned tree)
     end.
   
   Definition globalalloc (m : submem * allocstate) (gs : list (ident*Z)) :
@@ -322,7 +322,7 @@ Module ConcMemAllocators (Pol : Policy).
     | (id,sz)::gs' =>
         let next_aligned := Int64.repr (align (Int64.unsigned next) 8) in
         let (m',tree) := globals m gs' (off next_aligned (Int64.repr sz)) in
-        (set_perm_range m next_aligned (sz-1) Live, PTree.set id next tree)
+        (set_perm_range m next_aligned (sz-1) Live, PTree.set id next_aligned tree)
     end.
   
    Definition globalalloc (m : submem * allocstate) (gs : list (ident*Z)) :
