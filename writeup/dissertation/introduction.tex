@@ -4,6 +4,7 @@
 \usepackage{verbatim}
 \usepackage[table]{xcolor}
 \usepackage{subcaption}
+\usepackage{graphicx}
 
 \begin{document}
 
@@ -317,6 +318,38 @@ instruction is not guaranteed to reach any future instruction the way the {\tt i
 assembly-level proof that uses this fact would need to first prove this fact about the generated
 assembly code, and in the presence of more complex control-flow this is a non-trivial task.
 Proofs about assembly programs are also non-portable across architectures and compilers.
+
+\paragraph{Towards Source-level Tags}
+
+Much of the complexity of hardware tagging lies in ad hoc, non-portable assembly modifications,
+bookkeeping, specification and validation. The natural solution is to, whereever possible, lift
+tags to the level of a source language. In this dissertation that language is C. Figure \ref{fig:language}
+sketches a model of such a system: a source language (blue) has semantics that are parameterized
+by a policy definition, and compiles to assembly code (red). The compiler should be proven to not only
+produce correct code, but to preserve the behavior of any source policy. To assist that preservation
+proof it will also need to enforce a "baseline policy" that ensures that the abstactions of the
+source language. Other assembly-level policies might be attached as well: not all policies make sense
+to apply at the source level, e.g. stack safety, and such policies might also be applied to
+arbitrary assembly programs that do not come from the tag-aware compiler.
+
+Green boxes represent important technical components of this system. A verified compiler is a massive
+investment; for testing and demonstration purposes a verified interpreter is a suitable substitute.
+Any given policy needs both a specification and to be validated against that specification. At the
+source level the ideal validation is proof using the language semantics.
+
+Specification and validation of assembly-level policies is important as well. The ultimate goal
+is to execute the entire system on real tagged hardware.
+
+Tagged C instantiates the semantics and interpreter part of this model for the C language.
+This dissertation also contains the specification for a family of assembly-level policies,
+stack safety, and the specification and verification of a source-level compartmentalization
+policy. The Tagged C compiler is out of scope, as is any work with real hardware.
+
+\begin{figure}
+  \includegraphics[width=\textwidth]{Structure.png}
+  \caption{Tagging with Source Language}
+  \label{fig:language}
+\end{figure}
 
 \section{Overview}
 
