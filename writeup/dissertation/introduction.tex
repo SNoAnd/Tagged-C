@@ -66,10 +66,10 @@ And because tags are inaccessible to normal execution, PIPE policies are protect
 subversion by application code.
 
 However, the complexity of PIPE's style of tagging leads to challenges in the definition,
-specification, and verification of policies, described in detail below. This dissertation
-addresses those challenges.
+specification, and verification of policies, demonstrated via several examples.
+This dissertation addresses those challenges.
 
-\paragraph{Defining Policies}
+\paragraph{Example: Spatial Stack Safety}
 
 Tag policies are difficult to write.
 A policy consists of a collection of rules, each associated with a family of opcodes.
@@ -107,6 +107,26 @@ mostly for purposes of ensuring that the header sequence executes in order (red)
 Only the lines in blue deal with the main focus of the policy:
 tagging the frame and the stack pointer with the current depth of the call stack, and enforcing
 that a stack address can only be written through the stack pointer at the same depth.
+
+Security policies are challenging to write, and subtle errors can enable them to be compromised.
+It is therefore vital that they be validated. But first they must be specified. What does the
+policy actually set out to do? What protection does it offer? In the interest of simplicity,
+this example only offered spatial, not temporal, safety. If it were meant to be more than
+an illustrative example, spatial stack safety should be formally defined so that the policy can be
+shown to enforce it. Then it will be up to the user whether that level of security is sufficient.
+
+This is a common problem for more realistic policies, as well.
+In many cases, there is no standard specification for the kind of security that a policy hopes
+to enforce. Even in cases where there is an existing formal specification, such as
+memory safety \cite{Azevedo+16}, trade-offs between performance and protection may result in a
+policy that does not precisely match it. In these cases, the policy needs to be specified so
+that its purpose is clear.
+
+Once defined and specified, a policy needs to be validated, either by testing or formal verification.
+Verification is preferable, as proofs rule out the possibility of bugs too subtle to show up in testing.
+But randomized property-based testing can increase confidence in a policy when proof is infeasible.
+Regardless of which validation method, it is valuable to define, specify, and validate a policy,
+adding one more tool to the developer's security kit.
 
 \begin{figure}
   \begin{subfigure}[t]{0.55\textwidth}
@@ -215,6 +235,8 @@ that a stack address can only be written through the stack pointer at the same d
   \label{ex:call}
 \end{figure}
 
+\paragraph{IFC}
+
 The example in Figure \ref{ex:if} illustrates another scenario that requires the assembly to be
 rewritten. An important class of ``information flow control'' (IFC) policies needs to keep track
 of when execution is in a state that depends on a secret value. In the source snippet in \ref{ex:if0},
@@ -228,10 +250,10 @@ the subtraction instruction at 16 saves a zero tagged with the program counter's
 Then, at the join point at 40, the jump instruction has no effect except that it enables the policy
 to restore the tag on {\tt r2} to the program counter.
 
-These modifications can be automated, given relevant annotations from the compiler, but the process
-is both complex and repetitive. It would be better if most of the bookkeeping could be handled
-within a compiler, leaving the policy developer free to focus on the rules that are relevant to
-the specific policy.
+These modifications can be automated at the assembly level, given relevant annotations from
+the compiler, but the process amounts to an ad hoc compiler pass. It would be better to do it within
+the compiler! Then the compiler can handle most of the bookkeeping, leaving the policy developer free
+to focus on the rules that are relevant to the policy at hand.
 
 \begin{figure}
   \begin{subfigure}[t]{0.22\textwidth}
@@ -280,45 +302,21 @@ the specific policy.
   \label{ex:if}
 \end{figure}
 
-\paragraph{Specifying Policies}
+Moving the task of policy definition to the source level has benefits to specification and validation of
+policies, as well. While stack safety (seen above) must be specified in terms of assembly code,
+many policies are the reverse. They aim to enforce security concepts that are the do not exist at the
+assembly level. Assembly code has no notion of a heap, for instance, so in a specification
+of memory safety significant effort goes toward defining a notion of pointer provenance that
+would just be present implicitly in a source program.
 
-Security policies are challenging to write, and subtle errors can enable them to be compromised.
-It is therefore vital that they be validated. But first they must be specified. What does the
-policy actually set out to do? What protection does it offer?
-
-In many cases, there is no standard specification for the kind of security that a policy hopes
-to enforce. Even in cases where there is an existing formal specification, such as
-memory safety \cite{Azevedo+16}, trade-offs between performance and protection may result in a
-policy that does not precisely match it. The Figure \ref{ex:call} stack safety policy offered
-only spatial safety, not temporal, in order to be simpler to present. If it were meant to be more than
-an illustrative example, spatial stack safety should be formally defined so that the policy can be
-shown to enforce it. Then it will be up to the user whether that level of security is sufficient.
-
-Many policies aim to enforce security concepts that do not exist at the assembly level. Assembly
-code has no notion of a heap, for instance. Specifying such a policy at the assembly
-level typically requires one to explicitly account for how the compiler implements that source-level
-construct. In the context of heap safety, for instance, that means that significant effort goes
-toward defining a notion of pointer provenance that would just be present implicitly in a
-source program.
-
-\paragraph{Validating Policies}
-
-Once defined and specified, a policy needs to be validated, either by testing or formal verification.
-Verification is preferable, as proofs rule out the possibility of bugs too subtle to show up in testing.
-But it is hard to prove properties of assembly code; high-level language features like
-structured control flow are easier to reason about. Proofs about assembly programs are
-also non-portable across architectures and compilers.
-
+As for validation, it is hard to prove properties of assembly code.
 Just as some policies cannot be easily specified at the source level, some policies cannot be easily
 proven correct at that level. In the case of the Figure \ref{ex:if} example, it matters that the code
 in question is a compiled {\tt if} statement rather than a hand-written assembly branch. A {\tt bne}
 instruction is not guaranteed to reach any future instruction the way the {\tt if} statment is. An
 assembly-level proof that uses this fact would need to first prove this fact about the generated
 assembly code, and in the presence of more complex control-flow this is a non-trivial task.
-
-A new policy definition, a specification for an existing policy, or a proof of correctness for
-an existing specification are each valuable contributions in their own right. The ideal is for
-every policy to have both a specification and a proof. 
+Proofs about assembly programs are also non-portable across architectures and compilers.
 
 \section{Overview}
 
