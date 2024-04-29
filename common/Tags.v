@@ -182,7 +182,9 @@ Module Type Policy.
   Parameter RetT : loc                      (* Inputs: *)
                    -> control_tag           (* PC tag at return time *)
                    -> control_tag           (* Prior PC tag from before call *)
+                   -> val_tag               (* Function pointer tag from call *)
                    -> val_tag               (* Tag on return value *)
+                   -> type                  (* Return type *)
 
                    -> PolicyResult          (* Outputs: *)
                         (control_tag        (* New PC tag *)
@@ -510,7 +512,7 @@ Module Passthrough.
     Definition ArgT (l:loc) (pct:control_tag) (fpt vt: val_tag) (idx:nat) (ty: type) :
       PolicyResult (control_tag * val_tag) := ret (pct,vt).
 
-    Definition RetT (l:loc) (pct oldpct: control_tag) (vt: val_tag) :
+    Definition RetT (l:loc) (pct oldpct: control_tag) (fpt vt: val_tag) (ty: type) :
       PolicyResult (control_tag * val_tag) := ret (pct,vt).
 
     Definition AccessT (l:loc) (pct: control_tag) (vt: val_tag) :

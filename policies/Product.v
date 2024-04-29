@@ -82,10 +82,10 @@ Module PolProduct (P1:Policy) (P2: Policy) <: Policy.
                 (P2.ArgT l (snd pct) (snd fpt) (snd vt) idx ty)
                 (fun '(pct1,vt1) '(pct2,vt2) => ((pct1,pct2),(vt1,vt2))).
 
-  Definition RetT (l: loc) (pct_clr pct_cle: control_tag) (vt: val_tag) :
+  Definition RetT (l: loc) (pct oldpct: control_tag) (fpt vt: val_tag) (ty: type) :
     PolicyResult (control_tag * val_tag) := 
-    double_bind (P1.RetT l (fst pct_clr) (fst pct_cle) (fst vt))
-                (P2.RetT l (snd pct_clr) (snd pct_cle) (snd vt))
+    double_bind (P1.RetT l (fst pct) (fst oldpct) (fst fpt) (fst vt) ty)
+                (P2.RetT l (snd pct) (snd oldpct) (snd fpt) (snd vt) ty)
                 (fun '(pct1, vt1) '(pct2, vt2) => ((pct1, pct2), (vt1, vt2))).
 
   Definition LoadT (l: loc) (pct: control_tag) (pt vt: val_tag) (lts: list loc_tag) :

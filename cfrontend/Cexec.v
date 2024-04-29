@@ -2495,7 +2495,8 @@ Definition expr_final_state (f: function) (k: cont) (lc: Cabs.loc)
   match snd C_rd with
   | Lred rule a te m ps' => TR rule E0 (ExprState f lc ps pct (fst C_rd a) k e te m)
   | Rred rule pct' a te m t ps' => TR rule t (ExprState f lc ps pct' (fst C_rd a) k e te m)
-  | Callred rule fd fpt vargs ty te m pct' ps' => TR rule E0 (Callstate fd lc ps pct' fpt vargs (Kcall f e te lc pct (fst C_rd) ty k) m)
+  | Callred rule fd fpt vargs ty te m pct' ps' =>
+    TR rule E0 (Callstate fd lc ps pct' fpt vargs (Kcall f e te lc pct fpt (fst C_rd) ty k) m)
   | Stuckred => TR "step_stuck" E0 Stuckstate
   | Failstopred rule failure tr ps' => TR rule tr (Failstop failure (snd ps'))
   end.
@@ -2626,7 +2627,7 @@ Definition do_step (w: world) (s: Csem.state) : list transition :=
         
   | State f ps pct (Sreturn (Some x) lc) k e te m =>
       ret "step_return_1" (ExprState f lc ps pct x (Kreturn k) e te m)
-  | State f ps pct Sskip ((Kstop|Kcall _ _ _ _ _ _ _ _) as k) e te m =>
+  | State f ps pct Sskip ((Kstop|Kcall _ _ _ _ _ _ _ _ _) as k) e te m =>
       ret "step_skip_call" (State f ps pct (Sreturn None Cabs.no_loc) k e te m)
   | State f ps pct (Sswitch x sl lc) k e te m =>
       ret "step_switch" (ExprState f lc ps pct x (Kswitch1 sl k) e te m)
@@ -2663,8 +2664,8 @@ Definition do_step (w: world) (s: Csem.state) : list transition :=
       catch "step_external_function_fail_0";
       [TR "step_external_function" tr (Returnstate (External ef targs tres cc) lc ps'' pct' v k m')]
       
-  | Returnstate fd lc ps pct (v,vt) (Kcall f e te oldloc oldpct C ty k) m =>
-      try (pct', vt'), ps' <- RetT lc pct oldpct vt ps;
+  | Returnstate fd lc ps pct (v,vt) (Kcall f e te oldloc oldpct fpt C ty k) m =>
+      try (pct', vt'), ps' <- RetT lc pct oldpct fpt vt ty ps;
       catch "step_returnstate_fail";
       ret "step_returnstate" (ExprState f oldloc ps' pct' (C (Eval (v,vt') ty)) k e te m)
 

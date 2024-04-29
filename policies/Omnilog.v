@@ -63,10 +63,11 @@ Module Log (P:Policy) <: Policy.
     ", " ++ show idx ++ " ) = (" ++ print_ct pct' ++ "," ++ print_vt vt' ++ ")");;
     ret (pct', vt').
 
-  Definition RetT (l: loc) (pct_clr pct_cle: control_tag) (vt: val_tag) :
+  Definition RetT (l: loc) (pct oldpct: control_tag) (fpt vt: val_tag) (ty: type):
     PolicyResult (control_tag * val_tag) := 
-    '(pct', vt') <- P.RetT l pct_clr pct_cle vt;;
-    log _ ("RetT(" ++ print_ct pct_clr ++ "," ++ print_ct pct_cle ++ "," ++ print_vt vt ++
+    '(pct', vt') <- P.RetT l pct oldpct fpt vt ty;;
+    log _ ("RetT(" ++ print_ct pct ++ "," ++ print_ct oldpct ++ ","
+    ++ print_vt fpt ++ "," ++ print_vt vt ++
     ") = (" ++ print_ct pct' ++ "," ++ print_vt vt' ++ ")");;
     ret (pct', vt').
 

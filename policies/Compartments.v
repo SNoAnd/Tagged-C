@@ -23,16 +23,20 @@ Module Compartments <: Policy.
 
 
   Variable init_comp : Comp.
-  
+  Variable comp_of : ident -> Comp.
+  Variable public : ident -> bool.
+  Variable shared : ident -> bool.
+
   Inductive myVT :=
-  | LPtr (id:ident)
-  | SPtr (c:nat)
+  | LPtr (C:Comp)
+  | SPtr (clr:nat)
+  | FPtr (C:Comp) (pub:bool)
   | N
   .
 
   Inductive myLT :=
-  | LMem (id:ident)
-  | SMem (c:nat)
+  | LMem (C:Comp)
+  | SMem (clr:nat)
   | Free
   .
   
@@ -56,7 +60,10 @@ Module Compartments <: Policy.
   Definition print_vt (t : val_tag) : string :=
     match t with
     | LPtr C => "Local " ++ show C
-    | SPtr c => "Shared " ++ show c
+    | SPtr clr => "Shared " ++ show clr
+    | FPtr C pub =>
+      if pub then "Public function in " ++ show C
+             else "Internal function in " ++ show C
     | N => "N"
     end.
 
@@ -78,78 +85,113 @@ Module Compartments <: Policy.
 
   Definition log := log policy_state.
   
-  Definition color_eq (pt: val_tag) (lt: loc_tag) : bool :=
-    match pt, lt with
-    | Glob id1, Glob id2 => (id1 =? id2)%positive
-    | Dyn c1, Dyn c2 => (c1 =? c2)%nat
-    | _, _ => false
+  Definition valid_access (pct: control_tag) (pt: val_tag) (lt: loc_tag) : bool :=
+    match pct, pt, lt with
+    | (C1,_), LPtr C2, LMem C3 => ((C1 =? C2) &&  (C1 =? C3))%positive
+    | _, SPtr c1, SMem c2 => (c1 =? c2)%nat
+    | _, _, _ => false
     end.
     
   Definition inj_loc (s:string) (l:loc) : string :=
     s ++ " at " ++ (print_loc l).
 
   Local Open Scope monad_scope.
-  
-  Definition CallT (l:loc) (pct: control_tag) (fpt: val_tag) : PolicyResult control_tag :=
 
+  Definition CallT (l:loc) (pct: control_tag) (fpt: val_tag) : PolicyResult control_tag :=
+    match pct, fpt with
+    | (_, clr), FPtr C true => ret (C, clr)
+    | (C1, clr), FPtr C2 false =>
+      if (C1 =? C2)%positive then ret (C1, clr)
+      else raise (PolicyFailure
+        (inj_loc "Comp || CallT, calling internal function outside compartment" l))
+    | _, _ => raise (PolicyFailure (inj_loc "Comp || CallT, not a function pointer" l))
+    end.
+
+  Definition ArgT (l:loc) (pct: control_tag) (fpt: val_tag) (vt: val_tag) (index: nat) (ty: type) :=
+    match vt, ty, fpt with
+    | LPtr C, Tpointer _ _, FPtr _ true =>
+      raise (PolicyFailure (inj_loc "Comp || ArgT, passing LPtr as pointer" l))
+    | LPtr _, _, FPtr _ true => log "Demoting a local pointer to integer";; ret (pct, N)
+    | _, _, _ => ret (pct, vt)
+    end.
+  
+  Definition RetT (l:loc) (pct: control_tag) (oldpct: control_tag) (fpt: val_tag)
+    (vt: val_tag) (ty: type) : PolicyResult (control_tag * val_tag) :=
+    match vt, ty, fpt with
+    | LPtr C, Tpointer _ _, FPtr _ true =>
+      raise (PolicyFailure (inj_loc "Comp || ArgT, passing LPtr as pointer" l))
+    | LPtr _, _, FPtr _ true => log "Demoting a local pointer to integer";; ret (pct, N)
+    | _, _, _ => ret (pct, vt)
+    end.
 
   Definition LoadT (l:loc) (pct: control_tag) (pt vt: val_tag) (lts : list loc_tag) : PolicyResult val_tag :=
     match pt with
-    | N => raise (PolicyFailure (inj_loc "PVI || LoadT X Failure" l))
-    | _ => if ltop.(forallb) (color_eq pt) lts then ret vt 
-           else raise (PolicyFailure (inj_loc "PVI || LoadT tag_eq_dec Failure" l))
+    | N => raise (PolicyFailure (inj_loc "Comp || LoadT, not a pointer" l))
+    | _ => if ltop.(forallb) (valid_access pct pt) lts then ret vt 
+           else raise (PolicyFailure (inj_loc "Comp || LoadT, wrong pointer" l))
     end.
 
   Definition StoreT (l:loc) (pct: control_tag) (pt vt: val_tag)
     (lts : list loc_tag) : PolicyResult (control_tag * val_tag * list loc_tag) :=
     match pt with
-    | N => raise (PolicyFailure (inj_loc "PVI || StoreT X Failure" l))
-    | _ => if ltop.(forallb) (color_eq pt) lts then ret (pct,vt,lts) 
-           else raise (PolicyFailure (inj_loc "PVI || StoreT tag_eq_dec Failure" l))
+    | N => raise (PolicyFailure (inj_loc "Comp || StoreT, not a pointer" l))
+    | SPtr _ =>
+      if ltop.(forallb) (valid_access pct pt) lts
+      then match vt with
+           | LPtr _ =>
+             raise (PolicyFailure (inj_loc "Comp || StoreT, local pointer escape" l))
+           | FPtr _ false =>
+             raise (PolicyFailure (inj_loc "Comp || StoreT, internal pointer escape" l))
+           | _ => ret (pct,vt,lts)
+           end
+      else raise (PolicyFailure (inj_loc "Comp || StoreT, wrong pointer" l))
+    | _ =>
+      if ltop.(forallb) (valid_access pct pt) lts
+      then ret (pct,vt,lts) 
+      else raise (PolicyFailure (inj_loc "Comp || StoreT, wrong pointer" l))
     end.
   
   Definition BinopT (l:loc) (op : binary_operation) (pct: control_tag) (vt1 vt2 : val_tag) :
     PolicyResult (control_tag * val_tag) :=
     match vt1, vt2 with
-    | Dyn n, X =>  ret (pct, vt1)
-    | Glob id, X => ret (pct, vt1)
-    | _, _ => ret (pct, vt2)
+    | FPtr _ _, _ | _, FPtr _ _ =>
+      raise (PolicyFailure (inj_loc "Comp || BinopT, function pointer" l))
+    | N, N => ret (pct, N)
+    | vt, N | N, vt => ret (pct, vt)
+    | _, _ => raise (PolicyFailure (inj_loc "Comp || BinopT, combining pointers" l))
     end.
 
   Definition ConstT (l:loc) (pct : control_tag) : PolicyResult val_tag := ret N.
 
-  Definition GlobalT (ce : composite_env) (id : ident) (ty : type) : val_tag * val_tag * loc_tag :=
-    (Glob id, N, Glob id).
+  Definition GlobalT (ce : composite_env) (id : ident) (ty : type) :
+    val_tag * val_tag * loc_tag :=
+    (LPtr (comp_of id), N, (LMem id)).
 
-  Definition FunT (ce: composite_env) (id : ident) (ty : type) : val_tag := N.
+  Definition FunT (ce: composite_env) (id : ident) (ty : type) : val_tag :=
+    (FPtr (comp_of id) (public id)).
   
   Definition LocalT (ce: composite_env) (l:loc) (pct : control_tag) (ty : type) :
     PolicyResult (control_tag * val_tag * list loc_tag)%type :=
-    let c := pct in
-    ret (S c, Dyn c, ltop.(const) (Z.to_nat (sizeof ce ty)) (Dyn c)).
+    let (C,c) := pct in
+    ret (pct, LPtr C, ltop.(const) (Z.to_nat (sizeof ce ty)) (LMem C)).
   
   Definition DeallocT (l:loc) (ce : composite_env) (pct : control_tag) (ty : type) :
     PolicyResult (control_tag * val_tag * loc_tag) :=
-    ret (pct, N, N).
+    ret (pct, N, Free).
 
   Definition MallocT (l:loc) (pct: control_tag) (fpt: val_tag) :
-    PolicyResult (control_tag * val_tag * val_tag * loc_tag * loc_tag) :=
+    PolicyResult (control_tag * val_tag * val_tag * loc_tag * loc_tag * loc_tag) :=
     log ("Malloc call at " ++ print_loc l ++ " associated with color " ++ print_ct pct);;
-    let c := pct in
-    ret (S c, Dyn c, N, Dyn c, Dyn c).
+    let (C, c) := pct in
+    ret (pct, LPtr C, N, LMem C, LMem C, Free).
 
   Definition FreeT (l:loc) (pct: control_tag) (pt: val_tag) (lts: list loc_tag) :
-    PolicyResult (control_tag * loc_tag) :=
-    ret (pct, N).
+    PolicyResult (control_tag * loc_tag) := ret (pct, Free).
 
   Definition ClearT (l:loc) (pct: control_tag) (pt: val_tag) (lt: loc_tag) :
-    PolicyResult loc_tag :=
-    ret N.
+    PolicyResult loc_tag := ret Free.
   
   (* Passthrough rules *)  
-  Definition CallT      := Passthrough.CallT policy_state val_tag control_tag.  
-  Definition ArgT       := Passthrough.ArgT policy_state val_tag control_tag.
-  Definition RetT       := Passthrough.RetT policy_state val_tag control_tag.
   Definition AccessT    := Passthrough.AccessT policy_state val_tag control_tag.
   Definition AssignT    := Passthrough.AssignT policy_state val_tag control_tag.
   Definition CoalesceT  := Passthrough.CoalesceT policy_state val_tag vt_eq_dec.
@@ -165,4 +207,4 @@ Module Compartments <: Policy.
   Definition IPCastT    := Passthrough.IPCastT policy_state val_tag control_tag loc_tag.
   Definition PPCastT    := Passthrough.PPCastT policy_state val_tag control_tag loc_tag.
   Definition IICastT    := Passthrough.IICastT policy_state val_tag control_tag.
-End PVI.
+End Compartments.

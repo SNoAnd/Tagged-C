@@ -508,14 +508,14 @@ Module PolicyInsensitivity (Pol: Policy)
   | MKreturn: forall k1 k2,
       match_cont k1 k2 ->
       match_cont (Sem1.Kreturn k1) (Sem2.Kreturn k2)
-  | MKcall: forall f1 f2 e1 e2 te1 te2 l pct1 pct2 ctx1 ctx2 ty k1 k2,
+  | MKcall: forall f1 f2 e1 e2 te1 te2 l pct1 pct2 fpt1 fpt2 ctx1 ctx2 ty k1 k2,
       match_function f1 f2 ->
       match_env e1 e2 ->
       match_tenv te1 te2 ->
       match_ctx ctx1 ctx2 ->
       match_cont k1 k2 ->
-      match_cont (Sem1.Kcall f1 e1 te1 l pct1 ctx1 ty k1)
-                 (Sem2.Kcall f2 e2 te2 l pct2 ctx2 ty k2)
+      match_cont (Sem1.Kcall f1 e1 te1 l pct1 fpt1 ctx1 ty k1)
+                 (Sem2.Kcall f2 e2 te2 l pct2 fpt2 ctx2 ty k2)
   .
 
   Record match_mem (m1:M1.mem) (m2:M2.mem) :=

@@ -1015,7 +1015,8 @@ Inductive cont: Type :=
          env ->                (**r local env of calling function *)
          tenv ->               (**r temp env of calling function *)
          Cabs.loc ->           (**r location before call *)
-         control_tag ->                (**r PC tag before call *)
+         control_tag ->        (**r PC tag before call *)
+         val_tag ->            (**r Tag on function pointer that was called *)
          (expr -> expr) ->     (**r context of the call *)
          type ->               (**r type of call expression *)
          cont -> cont.
@@ -1036,13 +1037,13 @@ Fixpoint call_cont (k: cont) : cont :=
   | Kswitch1 ls k => call_cont k
   | Kswitch2 k => call_cont k
   | Kreturn k => call_cont k
-  | Kcall _ _ _ _ _ _ _ _ => k
+  | Kcall _ _ _ _ _ _ _ _ _ => k
   end.
 
 Definition is_call_cont (k: cont) : Prop :=
   match k with
   | Kstop => True
-  | Kcall _ _ _ _ _ _ _ _ => True
+  | Kcall _ _ _ _ _ _ _ _ _ => True
   | _ => False
   end.
 
@@ -1160,7 +1161,7 @@ Inductive estep: state -> trace -> state -> Prop :=
     callred l pct a m fd fpt vargs ty pct' s s' ->
     context RV RV C ->
     estep (ExprState f l s pct (C a) k e te m)
-          E0 (Callstate fd l s pct' fpt vargs (Kcall f e te l pct C ty k) m)
+          E0 (Callstate fd l s pct' fpt vargs (Kcall f e te l pct fpt C ty k) m)
 | step_stuck: forall C f l pct a k e te m K s,
     context K RV C -> ~(imm_safe e l K a pct te m) ->
     estep (ExprState f l s pct (C a) k e te m)
@@ -1175,8 +1176,6 @@ Inductive estep: state -> trace -> state -> Prop :=
     context RV RV C ->
     estep (ExprState f l (ps,lg) pct (C a) k e te m)
           tr (Failstop failure lg).
-
-
 
 Fixpoint option_zip {A:Type} {B:Type} (l1 : list A) (l2 : list B) : list (A*option B) :=
   match l1, l2 with
@@ -1410,13 +1409,13 @@ Inductive sstep: state -> trace -> state -> Prop :=
     sstep (Callstate (External ef targs tres cc) l ps pct vft vargs k m)
           t (Failstop failure (snd ps''))
 
-| step_returnstate: forall l v vt vt' f fd ps ps' pct oldloc oldpct pct' e C ty k te m,
-    RetT l pct oldpct vt ps = (Success (pct', vt'), ps') ->
-    sstep (Returnstate fd l ps pct (v,vt) (Kcall f e te oldloc oldpct C ty k) m)
+| step_returnstate: forall l v vt vt' f fd ps ps' pct oldloc oldpct fpt pct' e C ty k te m,
+    RetT l pct oldpct fpt vt ty ps = (Success (pct', vt'), ps') ->
+    sstep (Returnstate fd l ps pct (v,vt) (Kcall f e te oldloc oldpct fpt C ty k) m)
           E0 (ExprState f oldloc ps' pct' (C (Eval (v,vt') ty)) k e te m)
-| step_returnstate_fail: forall l v vt f fd ps ps' lg pct oldloc oldpct e C ty k te m failure,
-    RetT l pct oldpct vt ps = (Fail failure, (ps',lg)) ->
-    sstep (Returnstate fd l ps pct (v,vt) (Kcall f e te oldloc oldpct C ty k) m)
+| step_returnstate_fail: forall l v vt f fd ps ps' lg pct oldloc oldpct fpt e C ty k te m failure,
+    RetT l pct oldpct fpt vt ty ps = (Fail failure, (ps',lg)) ->
+    sstep (Returnstate fd l ps pct (v,vt) (Kcall f e te oldloc oldpct fpt C ty k) m)
           E0 (Failstop failure lg)
 .
 
