@@ -135,21 +135,16 @@ Module Cexec (Pol: Policy).
         let H2 := fresh "H" in
         eapply possible_trace_app_inv in H;
         destruct H as [w [H1 H2]]
-    | [ H: ?e1 = _
-        |- match ?e1 with
-           | Some _ => _
-           | _ => _
-           end = _ ] => rewrite H
-    | [ H: ?e1 = Success _
-        |- match ?e1 with
-           | Success _ => _
-           | Fail _ => _
-           end = _ ] => rewrite H
-    | [ H: ?e1 = Fail _
-        |- match ?e1 with
-           | Success _ => _
-           | Fail _ => _
-           end = _ ] => rewrite H
+    | [ H: ?e1 = None
+        |- context[?e1]] => rewrite H
+    | [ H: ?e1 = Some _
+        |- context[?e1]] => rewrite H
+    | [ H: ?e ! ?b = Some _ |- context [?e ! ?b]] => rewrite H
+    | [ H: ?e ! ?b = None |- context [?e ! ?b]] => rewrite H
+    | [ H: ?e1 = (Success _, _) |- context[?e1] ] =>
+      rewrite H; simpl
+    | [ H: ?e1 = (Fail _, _) |- context[?e1] ] =>
+      rewrite H; simpl
     | [ H: ?e = true |- (if ?e then _ else _) = _ ] => rewrite H
     | [ H: ?e = false |- (if ?e then _ else _) = _ ] => rewrite H
     | [ H: ?v = Vptr ?v' |- match ?v with
@@ -398,7 +393,6 @@ Module Cexec (Pol: Policy).
       match goal with
       | [ H: _ <- ?e ;; _ = Some _ |- _ ] => destruct e eqn:?; [simpl in H| inv H]
       | [ H: let _ := ?e in _ |- _ ] => destruct e eqn:?
-      | [ H: bind_prop_success_rel _ _ _ _ |- _ ] => destruct H
       | [ H: is_val ?e = _ |- context[?e] ] => rewrite (is_val_inv _ _ _ H)
       | [ H1: is_val ?e = _, H2: context[?e] |- _ ] => rewrite (is_val_inv _ _ _ H1) in H2
       | [ H: is_loc ?e = _ |- context[?e] ] => rewrite (is_loc_inv _ _ _ H)
@@ -409,6 +403,11 @@ Module Cexec (Pol: Policy).
       | [ H: _ /\ _ |- _ ] => destruct H
       | [ H: _ \/ _ |- _ ] => destruct H
       | [ H: exists _, _ |- _ ] => destruct H
+      | [H: bind_prop_success_rel ?e _ _ _ |- _ ] =>
+        let res := fresh "res" in
+        let H' := fresh "H" in
+        let RES := fresh "RES" in
+        inversion H as [res [H' RES]]; clear H
       | _ => idtac
       end.
 
@@ -698,8 +697,16 @@ Section EXPRS.
             | Tpointer _ _, Tpointer _ _ =>
                 top <<=
                 let! v <- sem_cast v1 ty1 ty m;
-                let! ofs1 <- match v1 with Vptr ofs1 => Some ofs1 | _ => None end;
-                let! ofs <- match v with Vptr ofs => Some ofs | _ => None end;
+                let! ofs1 <- match v1 with
+                             | Vptr ofs1 => Some ofs1
+                             | Vint ofs1 => Some (cast_int_long Unsigned ofs1)
+                             | Vlong ofs1 => Some ofs1
+                             | _ => None end;
+                let! ofs <- match v with
+                            | Vptr ofs => Some ofs
+                            | Vint ofs => Some (cast_int_long Unsigned ofs)
+                            | Vlong ofs => Some ofs
+                            | _ => None end;
                 if Int64.eq ofs nullptr || Int64.eq ofs1 nullptr
                 then try pt', ps' <- PPCastT lc pct vt1 None None ty ps;
                      catch "failred_cast_ptr_ptr", E0;
@@ -741,7 +748,7 @@ Section EXPRS.
                   then try pt', ps' <- IPCastT lc pct vt1 None ty ps;
                        catch "failred_cast_int_ptr", E0;
                        Rred "red_cast_int_ptr" pct (Eval (v,pt') ty) te m E0 ps'
-                  else let! (w', tr, res) <- do_deref_loc w ty1 m ofs vt1 Full;
+                  else let! (w', tr, res) <- do_deref_loc w ty m ofs vt1 Full;
                        match res ps with
                       | (Success (_, lts), ps') =>
                         try pt', ps'' <- IPCastT lc pct vt1 (Some lts) ty ps';
@@ -811,17 +818,17 @@ Section EXPRS.
                 check type_eq ty1 ty;
                 let! v <- sem_cast v2 ty2 ty1 m;
                 let! (w', tr, res) <- do_deref_loc w ty1 m ofs pt1 bf;
-                try (_,vts,lts), ps' <- res ps;
+                try (_,vts,lts), ps1 <- res ps;
                 catch "failred_assign_mem0", tr;
                 let res' :=
                   '(pct',vt') <- AssignT lc pct (EffectiveT lc vts) vt2;;
                   StoreT lc pct' pt1 vt' lts in
-                try (pct'',vt'',lts'), ps''' <- res' ps';
+                try (pct'',vt'',lts'), ps2 <- res' ps1;
                 catch "failred_assign_mem1", tr;
                 let! (w'', tr', res') <- do_assign_loc w' ty1 m ofs pt1 bf (v,vt'') lts';
-                try (m', (v,vt''')), ps'''' <- res' ps''';
+                try (m', (v,vt''')), ps3 <- res' ps2;
                 catch "failred_assign_mem3", (tr ++ tr');
-                Rred "red_assign_mem" pct'' (Eval (v,vt''') ty) te m' (tr ++ tr') ps'''
+                Rred "red_assign_mem" pct'' (Eval (v,vt''') ty) te m' (tr ++ tr') ps3
         | Some (Ltmp b, ty1), Some (v2, vt2, ty2) =>
             top <<=
                 check type_eq ty1 ty;
@@ -954,7 +961,7 @@ Section EXPRS.
                 let! v <- sem_cast v1 ty1 tycast m;
                 try (pct',vt'), ps' <- ExprJoinT lc pct vt1 ps;
                 catch "failred_paren", E0;
-                Rred "red_paren" pct' (Eval (v,vt') ty) te m E0 ps
+                Rred "red_paren" pct' (Eval (v,vt') ty) te m E0 ps'
         | None =>
             incontext (fun x => Eparen x tycast ty) (step_expr RV lc ps pct r1 te m)
         end
@@ -1568,73 +1575,6 @@ Proof.
   rewrite (is_val_inv _ _ _ Heqo). eauto.
 Qed.
 
-(*Ltac tagdestr :=
-  match goal with
-  | [ |- context [at ?rule trule _ <- FieldT ?ge ?pct ?pt ?ty ?id; _]] =>
-      let E := fresh "E" in
-      let pt' := fresh "pt" in
-      destruct (FieldT ge pct pt ty id) as [pt'|msg failure] eqn:E
-  | [ |- context [at ?rule trule _ <- ConstT ?pct; _]] =>
-      let E := fresh "E" in
-      let vt' := fresh "vt" in
-      destruct (ConstT pct) as [vt'|msg failure] eqn:E
-  | [ |- context [at ?rule truletr _, _ <- LoadT ?pct ?pt ?vt ?lts; _]] =>
-      let E := fresh "E" in
-      let vt' := fresh "vt" in
-      destruct (LoadT pct pt vt lts) as [vt'|msg failure] eqn:E     
-  | [ |- context [at ?rule truletr _, _ <- AccessT ?pct ?vt; _]] =>
-      let E := fresh "E" in
-      let vt' := fresh "vt" in
-      destruct (AccessT pct vt) as [vt'|msg failure] eqn:E
-  | [ |- context [at ?rule trule _ <- UnopT ?op ?pct ?vt; _]] =>
-      let E := fresh "E" in
-      let pct' := fresh "pct" in
-      let vt' := fresh "vt" in
-      destruct (UnopT op pct vt) as [[pct' vt']|msg failure] eqn:E
-  | [ |- context [at ?rule trule _ <- BinopT ?op ?pct ?vt1 ?vt2; _]] =>
-      let E := fresh "E" in
-      let pct' := fresh "pct" in
-      let vt' := fresh "vt" in
-      destruct (BinopT op pct vt1 vt2) as [[pct' vt']|msg failure] eqn:E
-  | [ |- context [at ?rule trule _ <- ExprSplitT ?pct ?vt; _]] =>
-      let E := fresh "E" in
-      let pct' := fresh "pct" in
-      destruct (ExprSplitT pct) as [pct'|msg failure] eqn:E
-  | [ |- context [at ?rule truletr _, _ <- AssignT ?pct ?vt ?vt'; _]] =>
-      let E := fresh "E" in
-      let pct' := fresh "pct" in
-      let vt'' := fresh "vt" in
-      destruct (AssignT pct vt vt') as [[pct' vt'']|msg failure] eqn:E  
-  | [ |- context [at ?rule truletr _, _ <- StoreT ?pct ?pt ?vt ?lts; _]] =>
-      let E := fresh "E" in
-      let pct' := fresh "pct" in
-      let vt' := fresh "vt" in
-      let lts' := fresh "lts" in
-      destruct (StoreT pct pt vt lts) as [[[pct' vt'] lts']|msg failure] eqn:E
-  | [ |- context [at ?rule trule _ <- CallT ?pct ?pt; _]] =>
-      let E := fresh "E" in
-      let pct' := fresh "pct" in
-      destruct (CallT pct pt) as [pct'|msg failure] eqn:E
-  | [ |- context [at ?rule trule _ <- ExprJoinT ?pct ?vt; _]] =>
-      let E := fresh "E" in
-      let pct' := fresh "pct" in
-      let vt' := fresh "vt" in
-      destruct (ExprJoinT pct vt) as [[pct' vt']|msg failure] eqn:E
-  | [ |- context [at ?rule trule _ <- IICastT ?pct ?vt ?ty; _]] =>
-      let vt' := fresh "vt" in
-      destruct (IICastT pct vt ty) as [vt'|msg failure] eqn:?
-  | [ |- context [at ?rule truletr _, _ <- PICastT ?pct ?pt ?lts ?ty; _]] =>
-      let vt' := fresh "vt" in
-      destruct (PICastT pct pt lts ty) as [vt'|msg failure] eqn:?
-  | [ |- context [at ?rule truletr _, _ <- IPCastT ?pct ?vt ?lts (Tpointer ?ty ?a); _]] =>
-      let pt' := fresh "pt" in
-      destruct (IPCastT pct vt lts (Tpointer ty a)) as [pt'|msg failure] eqn:?
-  | [ |- context [at ?rule truletr _, _ <- PPCastT ?pct ?pt ?lts1 ?lts2 ?ty; _]] =>
-      let pt' := fresh "pt" in
-      destruct (PPCastT pct pt lts1 lts2 ty) as [pt'|msg failure] eqn:?
-  | _ => idtac
-  end.*)
-
 Definition is_pointer (ty : type) : option (type * attr) :=
   match ty with
   | Tpointer ty' attr => Some (ty', attr)
@@ -2075,8 +2015,7 @@ Lemma lred_topred:
   forall lc ps pct l1 te m l2 te' m' ps',
     lred ge ce e lc l1 pct te m l2 te' m' ps ps' ->
     exists rule, step_expr LV lc ps pct l1 te m = topred (Lred rule l2 te' m' ps').
-Admitted.
-(*Proof.
+Proof.
   induction 1; simpl.
   (* var tmp *)
   - rewrite H. rewrite dec_eq_true. econstructor; eauto.
@@ -2090,15 +2029,13 @@ Admitted.
   - rewrite H; rewrite H0. econstructor; eauto.
   (* builtin *)
   - econstructor; eauto.
-  (* deref (short) *)
-  - econstructor; eauto.
-  (* deref (long) *)
+  (* deref *)
   - econstructor; eauto.
   (* field struct *)
-  - rewrite H, H0, H1; econstructor; eauto.
+  - rewrite H, H0, H1. simpl. eauto.
   (* field union *)
-  - rewrite H, H0, H1; econstructor; eauto.
-Qed.*)
+  - rewrite H, H0, H1. simpl. eauto.
+Qed.
 
 Lemma lfailred_topred:
   forall lc ps pct l1 tr failure te m ps',
@@ -2114,65 +2051,51 @@ Lemma rred_topred:
   forall lc w' ps pct1 r1 te1 m1 t pct2 r2 te2 m2 ps',
     rred ge ce lc pct1 r1 te1 m1 t pct2 r2 te2 m2 ps ps' -> possible_trace w t w' ->
     exists rule, step_expr RV lc ps pct1 r1 te1 m1 = topred (Rred rule pct2 r2 te2 m2 t ps').
-Admitted.
-(*Proof.
-  induction 1; simpl; intros; eexists; unfold Events.TLib.atom in *;
-    repeat cronch; try constructor; auto.
-  - eapply do_deref_loc_complete in H; eauto. rewrite H.
-    repeat cronch. reflexivity.
-  - admit.
+Proof.
+  induction 1; simpl; intros; eexists; unfold atom in *;
+  repeat doinv; repeat cronch; try constructor; auto.
+  - eapply do_deref_loc_complete in H2; eauto. rewrite H2.
+    rewrite RES. simpl. simpl in H0. rewrite H0.
+    reflexivity.
   - destruct ty1; destruct ty; repeat cronch; eauto; congruence.
-  - subst. destruct ty1.
-    + repeat cronch. eapply do_deref_loc_complete in H3; eauto.
-      rewrite H3. repeat cronch; eauto.
-    + repeat cronch. eapply do_deref_loc_complete in H3; eauto.
-      rewrite H3. repeat cronch; eauto.
-    + repeat cronch. eapply do_deref_loc_complete in H3; eauto.
-      rewrite H3. repeat cronch; eauto.
-    + repeat cronch. eapply do_deref_loc_complete in H3; eauto.
-      rewrite H3. repeat cronch; eauto.
-    + exfalso. eapply H. reflexivity.
-    + repeat cronch. eapply do_deref_loc_complete in H3; eauto.
-      rewrite H3. repeat cronch; eauto.
-    + repeat cronch. eapply do_deref_loc_complete in H3; eauto.
-      rewrite H3. repeat cronch; eauto.
-    + repeat cronch. eapply do_deref_loc_complete in H3; eauto.
-      rewrite H3. repeat cronch; eauto.
-    + repeat cronch. eapply do_deref_loc_complete in H3; eauto.
-      rewrite H3. repeat cronch; eauto.
-  - subst. destruct ty.
-    + repeat cronch. eapply do_deref_loc_complete in H3; eauto.
-      rewrite H3. repeat cronch; eauto.
-    + repeat cronch. eapply do_deref_loc_complete in H3; eauto.
-      rewrite H3. repeat cronch; eauto.
-    + repeat cronch. eapply do_deref_loc_complete in H3; eauto.
-      rewrite H3. repeat cronch; eauto.
-    + repeat cronch. eapply do_deref_loc_complete in H3; eauto.
-      rewrite H3. repeat cronch; eauto.
-    + exfalso. eapply H0. reflexivity.
-    + repeat cronch. eapply do_deref_loc_complete in H3; eauto.
-      rewrite H3. repeat cronch; eauto.
-    + repeat cronch. eapply do_deref_loc_complete in H3; eauto.
-      rewrite H3. repeat cronch; eauto.
-    + repeat cronch. eapply do_deref_loc_complete in H3; eauto.
-      rewrite H3. repeat cronch; eauto.
-    + repeat cronch. eapply do_deref_loc_complete in H3; eauto.
-      rewrite H3. repeat cronch; eauto.
+  - subst. assert (Int64.eq p nullptr = false) by (destruct (Int64.eq p nullptr) eqn:?; auto;
+      apply Int64.same_if_eq in Heqb; contradiction); rewrite H0.
+    eapply do_deref_loc_complete in H7; eauto.
+    destruct ty1; repeat cronch; eauto.
+    exfalso. eapply H. reflexivity.
+  - subst. destruct ty1; repeat cronch; simpl; rewrite (Int64.eq_true nullptr); eauto.
+    exfalso. eapply H. reflexivity.
+  - subst. assert (Int64.eq p nullptr = false) by (destruct (Int64.eq p nullptr) eqn:?; auto;
+      apply Int64.same_if_eq in Heqb; contradiction); rewrite H.
+    eapply do_deref_loc_complete in H7; eauto.
+    destruct ty; repeat cronch; eauto.
+    exfalso. eapply H0. reflexivity.
+  - subst. destruct ty; repeat cronch; simpl; rewrite (Int64.eq_true nullptr); eauto.
+    exfalso. eapply H0. reflexivity.
   - subst; repeat cronch; eauto.
-    eapply do_deref_loc_complete in H3; eauto.
-    eapply do_deref_loc_complete in H5; eauto.
+    eapply do_deref_loc_complete in H7; eauto.
+    eapply do_deref_loc_complete in H10; eauto.
     repeat cronch; eauto.
+    assert (Int64.eq p nullptr || Int64.eq p1 nullptr = false).
+    {
+      destruct (Int64.eq p nullptr) eqn:Heqb;
+        try (apply Int64.same_if_eq in Heqb; contradiction).
+      destruct (Int64.eq p1 nullptr) eqn:Heqb0;
+        try (apply Int64.same_if_eq in Heqb0; contradiction).
+      simpl. auto.
+    } rewrite H. eauto.
+  - simpl. inv H1. simpl. rewrite (Int64.eq_true nullptr). simpl. eauto.
+  - simpl. destruct v1; inv H1; rewrite (Int64.eq_true nullptr); simpl; eauto.
   - eapply do_deref_loc_complete in H0; eauto.
-    eapply do_assign_loc_complete in H3; eauto.
-    repeat cronch; eauto.
-  - admit.
-  - eapply do_deref_loc_complete in H; eauto.
-    repeat cronch; eauto.
-  - admit.
-  - eapply do_deref_loc_complete in H; eauto.
-    repeat cronch; eauto.
-    destruct id; subst; reflexivity.
-Admitted. *)
+    eapply do_assign_loc_complete in H4; eauto.
+    repeat doinv; repeat cronch; eauto. simpl in H1. rewrite H1. simpl.
+    repeat cronch. eauto.
+  - eapply do_deref_loc_complete in H2; eauto.
+    repeat doinv; repeat cronch; eauto. simpl in H0. rewrite H0. simpl. eauto.
+  - eapply do_deref_loc_complete in H3; eauto.
+    repeat cronch.
+    simpl in H1. rewrite H1. simpl. rewrite H0. eauto.
+Qed.
     
 Lemma rfailred_topred:
   forall lc w' ps pct r1 tr failure te m ps',
@@ -2219,16 +2142,14 @@ Lemma callred_topred:
   forall lc ps pct pct' a fd fpt args ty te m ps',
     callred ge lc pct a m fd fpt args ty pct' ps ps' ->
     exists rule, step_expr RV lc ps pct a te m = topred (Callred rule fd fpt args ty te m pct' ps').
-Admitted.
-(*Proof.
+Proof.
   induction 1; simpl.
-  - exploit sem_cast_arguments_complete; eauto. intros [vtl [A B]].
+  - inv H2. destruct H3 as [CAST RES]. exploit sem_cast_arguments_complete; eauto. intros [vtl [A B]].
     unfold find_funct in H.
-    rewrite A; rewrite H; rewrite H1; rewrite H0; rewrite dec_eq_true; rewrite B.
-    econstructor; eauto.
-  - exploit sem_cast_arguments_complete; eauto. intros [vtl [A B]].
-    rewrite A; rewrite B. econstructor; eauto.  
-Qed. *)
+    rewrite A; rewrite H; rewrite H1; rewrite H0; rewrite dec_eq_true; rewrite B; rewrite RES. simpl. eauto.
+  - inv H. destruct H0 as [CAST RES]. exploit sem_cast_arguments_complete; eauto. intros [vtl [A B]].
+    rewrite A; rewrite B; rewrite RES. simpl. eauto.  
+Qed.
 
 Definition reducts_incl {A B: Type} (C: A -> B) (res1: reducts A) (res2: reducts B) : Prop :=
   forall C1 rd, In (C1, rd) res1 -> In ((fun x => C(C1 x)), rd) res2.
