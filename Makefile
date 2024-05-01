@@ -139,19 +139,21 @@ DRIVER=Compopts.v
 
 # All source files
 
-FILES=$(VLIB) $(COMMON) $(CFRONTEND) $(POLICIES) $(PROOFS) $(DRIVER) $(FLOCQ) \
+FILES=$(VLIB) $(COMMON) $(CFRONTEND) $(POLICIES) $(DRIVER) $(FLOCQ) \
   $(MENHIRLIB) $(PARSER) $(EXPORTLIB)
 
 all:
 	@test -f .depend || $(MAKE) depend
-	$(MAKE) proof
+	$(MAKE) files
 	$(MAKE) extraction
 	$(MAKE) ccomp
 ifeq ($(INSTALL_COQDEV),true)
 	$(MAKE) compcert.config
 endif
 
-proof: $(FILES:.v=.vo)
+files: $(FILES:.v=.vo)
+
+proof: files $(PROOFS:.v=.vo)
 
 # Turn off some warnings for compiling Flocq
 flocq/%.vo: COQCOPTS+=-w -compatibility-notation
@@ -258,7 +260,7 @@ cparser/Parser.v: cparser/Parser.vy
 
 depend: $(GENERATED) depend1
 
-depend1: $(FILES)
+depend1: $(FILES) $(PROOFS)
 	@echo "Analyzing Coq dependencies"
 	@$(COQDEP) $^ > .depend
 
