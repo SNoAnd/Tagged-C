@@ -1404,18 +1404,29 @@ Proof.
 Qed.
 
 Lemma sem_cast_arguments_sound:
-  forall lc pct fpt m rargs vtl tyargs res,
+  forall lc pct fpt m rargs vtl tyargs res pct' vl ps ps',
     is_val_list rargs = Some vtl ->
     sem_cast_arguments lc pct fpt vtl tyargs m = Some res ->
-    cast_arguments lc pct fpt m rargs tyargs res.
-Admitted.
-(*Proof.
+    res ps = (Success vl, ps') ->
+    cast_arguments lc pct ps fpt m rargs tyargs ps' (Success vl).
+Proof.
   intros until rargs. generalize dependent pct.
   induction rargs; simpl; intros.
-  - inv H. destruct tyargs; simpl in H0; inv H0. constructor.
+  - inv H. destruct tyargs; simpl in H0; inv H0. eexists. split; constructor.
   - monadInv. inv H. simpl in H0. destruct p as [[v1 t1] ty1].
     destruct tyargs; try congruence.
-    destruct (ArgT lc pct fpt t1 (Datatypes.length l) t0) as [[pct' vt']|failure] eqn:?.
+    destruct (sem_cast_arguments lc pct fpt l tyargs m) eqn:?; try discriminate.
+    destruct (sem_cast v1 ty1 t0 m) eqn:?; try discriminate.
+    
+    injection H0; intros. eapply equal_f in H.
+    eexists. split.
+    2: { extensionality ps.
+         
+
+    }
+    
+    
+    as [[pct' vt']|failure] eqn:?.
     + monadInv. destruct p.
       * destruct res0. inv H0. rewrite (is_val_inv _ _ _ Heqo).
         econstructor. rewrite (is_val_list_preserves_len _ _ Heqo0). eauto. auto.

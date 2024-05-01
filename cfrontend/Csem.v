@@ -243,42 +243,42 @@ Module TaggedCsem (Pol: Policy) (A: Memory ConcretePointer Pol UnitRegion) <:
     | Enil => O
     | Econs _ el' => S (exprlist_len el')
     end.
-  
+ 
+
     (** Extract the values from a list of function arguments *)
-  Inductive cast_arguments (l:Cabs.loc) (pct: control_tag) (fpt: val_tag) (m: mem):
-    exprlist -> typelist -> PolicyResult (control_tag * list atom) -> Prop :=
+  Inductive cast_arguments (l:Cabs.loc) (pct: control_tag) (ps: pstate) (fpt: val_tag) (m: mem):
+    exprlist -> typelist -> pstate -> Result (control_tag * list atom) -> Prop :=
   | cast_args_nil:
-    cast_arguments l pct fpt m Enil Tnil (ret (pct, []))
-  | cast_args_cons: forall pct' pct'' v vt vt' ty el targ1 targs v1 vl,
-      ArgT l pct fpt vt (exprlist_len el) targ1 = ret (pct', vt') ->
+    cast_arguments l pct ps fpt m Enil Tnil ps (Success (pct, []))
+  | cast_args_cons: forall pct' pct'' v vt vt' ty el targ1 targs v1 vl ps' ps'',
+      ArgT l pct fpt vt (exprlist_len el) targ1 ps = (Success (pct', vt'), ps') ->
       sem_cast v ty targ1 m = Some v1 ->
-      cast_arguments l pct' fpt m el targs (ret (pct'',vl)) ->
-      cast_arguments l pct fpt m (Econs (Eval (v,vt) ty) el) (Tcons targ1 targs)
-                     (ret (pct'',(v1, vt') :: vl))
-  | cast_args_fail_now: forall v v1 vt ty el targ1 targs failure,
-      ArgT l pct fpt vt (exprlist_len el) targ1 = raise failure ->
+      cast_arguments l pct' ps' fpt m el targs ps'' (Success (pct'',vl)) ->
+      cast_arguments l pct ps fpt m (Econs (Eval (v,vt) ty) el) (Tcons targ1 targs) ps''
+                     (Success (pct'',(v1, vt') :: vl))
+  | cast_args_fail_now: forall v v1 vt ty el targ1 targs failure ps',
+      ArgT l pct fpt vt (exprlist_len el) targ1 ps = (Fail failure, ps') ->
       sem_cast v ty targ1 m = Some v1 ->
-      cast_arguments l pct fpt m (Econs (Eval (v,vt) ty) el) (Tcons targ1 targs)
-                     (raise failure)
-  | cast_args_fail_later: forall pct' v vt vt' ty el targ1 targs v1 failure,
-      ArgT l pct fpt vt (exprlist_len el) targ1 = ret (pct', vt') ->
+      cast_arguments l pct ps fpt m (Econs (Eval (v,vt) ty) el) (Tcons targ1 targs) ps'
+                     (Fail failure)
+  | cast_args_fail_later: forall pct' v vt vt' ty el targ1 targs v1 failure ps' ps'',
+      ArgT l pct fpt vt (exprlist_len el) targ1 ps = (Success (pct', vt'), ps') ->
       sem_cast v ty targ1 m = Some v1 ->
-      cast_arguments l pct' fpt m el targs (raise failure) ->
-      cast_arguments l pct fpt m (Econs (Eval (v,vt) ty) el) (Tcons targ1 targs)
-                     (raise failure)
+      cast_arguments l pct' ps' fpt m el targs ps'' (Fail failure) ->
+      cast_arguments l pct ps fpt m (Econs (Eval (v,vt) ty) el) (Tcons targ1 targs) ps''
+                     (Fail failure)
   .
-
-    Definition bind_prop_success_rel {A: Type}
-               (P: PolicyResult A -> Prop)
-               (a: Result A) (ps ps': pstate) : Prop :=
-      exists r,
-        P r /\
-          r ps = (a,ps').
-    
-    Notation "P << PS1 >> A << PS2 >>" :=
-      (bind_prop_success_rel P A PS1 PS2)
-        (at level 62, right associativity, A pattern).
-
+ 
+  Definition bind_prop_success_rel {A: Type}
+             (P: PolicyResult A -> Prop)
+             (a: Result A) (ps ps': pstate) : Prop :=
+    exists r,
+      P r /\
+        r ps = (a,ps').
+  
+  Notation "P << PS1 >> A << PS2 >>" :=
+    (bind_prop_success_rel P A PS1 PS2)
+      (at level 62, right associativity, A pattern).
  
   Section EXPR.
 
@@ -764,10 +764,10 @@ Module TaggedCsem (Pol: Policy) (A: Memory ConcretePointer Pol UnitRegion) <:
         Genv.find_funct ge (Vfptr b) = Some fd ->
         type_of_fundef fd = Tfunction tyargs tyres cconv ->
         classify_fun tyf = fun_case_f tyargs tyres cconv ->
-        cast_arguments l pct vft m el tyargs <<ps0>> (Fail failure) <<ps1>> ->
+        cast_arguments l pct ps0 vft m el tyargs ps1 (Fail failure) ->
         rfailred pct (Ecall (Eval (Vfptr b,vft) tyf) el ty) te m E0 failure ps0 ps1
     | red_call_external_fail: forall vft tyf te m tyargs tyres cconv el ty ef failure ps0 ps1,
-        cast_arguments l pct vft m el tyargs <<ps0>> (Fail failure) <<ps1>> ->
+        cast_arguments l pct ps0 vft m el tyargs ps1 (Fail failure) ->
         rfailred pct (Ecall (Eval (Vefptr ef tyargs tyres cconv,vft) tyf) el ty) te m E0
                  failure ps0 ps1
     .
@@ -779,11 +779,11 @@ Module TaggedCsem (Pol: Policy) (A: Memory ConcretePointer Pol UnitRegion) <:
         Genv.find_funct ge (Vfptr b) = Some fd ->
         type_of_fundef fd = Tfunction tyargs tyres cconv ->
         classify_fun tyf = fun_case_f tyargs tyres cconv ->
-        cast_arguments l pct vft m el tyargs <<ps0>> (Success (pct',vargs)) <<ps1>> ->
+        cast_arguments l pct ps0 vft m el tyargs ps1 (Success (pct',vargs)) ->
         callred pct (Ecall (Eval (Vfptr b,vft) tyf) el ty) m
                 fd vft vargs ty pct' ps0 ps1
     | red_call_external: forall pct pct' vft tyf m tyargs tyres cconv el ty ef vargs ps0 ps1,
-        cast_arguments l pct vft m el tyargs <<ps0>> (Success (pct',vargs)) <<ps1>> ->
+        cast_arguments l pct ps0 vft m el tyargs ps1 (Success (pct',vargs)) ->
         callred pct (Ecall (Eval (Vefptr ef tyargs tyres cconv,vft) tyf) el ty)
                 m (External ef tyargs ty cconv) vft vargs ty pct' ps0 ps1.
    
