@@ -43,7 +43,7 @@ Notable policies that can be implemented in this way include:
 \end{itemize}
 
 Tag-based policies include a number of important security concepts, and are well-suited to
-efficient hardware enforcement. As an exemplar of hardware tag monitors, take the 
+efficient hardware enforcement. As an exemplar of hardware tag monitors, we take the 
 PIPE\footnote{ Variants of PIPE have
 been called PUMP~\cite{Dhawan+15} or SDMP~\cite{RoesslerD18} and marketed commercially
 under the names Dover CoreGuard and Draper Inherently Secure Processor.}
@@ -53,11 +53,11 @@ PIPE is a programmable hardware mechanism that associates large (word-sized) met
 with every word of memory and register. At each step of execution, while the ALU processes
 the operands of the current instruction, the tags associated with those operands are processed
 by a module called the ``tag management unit'' (TMU).
-The TMU, instantiated as a cache or lookup table into a set of software-defined rules,
+The TMU, implemented in hardware as a cache or lookup table into a set of software-defined rules,
 consults those rules to (1) determine whether the operation should
 proceed, sending an interrupt if not, and (2) compute updated tags to associate with the
 outputs of the operation. These rules collectively define a state machine operating on the
-tags in the system, which is termed a ``micro-policy,'' a concrete instantiation of the
+tags in the system, which is termed a ``micro-policy,'' \cite{} a concrete instantiation of the
 sorts of policies mentioned above.
 
 Because PIPE tags are so large, they can encode complex data structures, giving PIPE a high
@@ -69,6 +69,7 @@ subversion by application code.
 However, the complexity of PIPE's style of tagging leads to challenges in the definition,
 specification, and verification of policies, demonstrated via several examples.
 This dissertation addresses those challenges.
+% Introduce examples better
 
 \paragraph{Example: Spatial Stack Safety}
 
@@ -103,7 +104,7 @@ the rules that act on these tags. The header sequence is given special tags to e
 that it runs from beginning to end and only following a call, and instructions are added
 to initialize tags on the stack frame.
 
-A significant portion of the policy's rules is dedicated to bookkeeping, in this case
+A significant subset of the policy's rules are dedicated to bookkeeping, in this case
 mostly for purposes of ensuring that the header sequence executes in order (red).
 Only the lines in blue deal with the main focus of the policy:
 tagging the frame and the stack pointer with the current depth of the call stack, and enforcing
@@ -112,16 +113,16 @@ that a stack address can only be written through the stack pointer at the same d
 Security policies are challenging to write, and subtle errors can enable them to be compromised.
 It is therefore vital that they be validated. But first they must be specified. What does the
 policy actually set out to do? What protection does it offer? In the interest of simplicity,
-this example only offered spatial, not temporal, safety. If it were meant to be more than
+this example only offered spatial, not temporal, safety. [Elaborate] If it were meant to be more than
 an illustrative example, spatial stack safety should be formally defined so that the policy can be
 shown to enforce it. Then it will be up to the user whether that level of security is sufficient.
 
 This is a common problem for more realistic policies, as well.
 In many cases, there is no standard specification for the kind of security that a policy hopes
-to enforce. Even in cases where there is an existing formal specification, such as
+to enforce. Even in cases where there is a proposed formal specification, such as
 memory safety \cite{Azevedo+16}, trade-offs between performance and protection may result in a
 policy that does not precisely match it. In these cases, the policy needs to be specified so
-that its purpose is clear.
+that its purpose is clear. % It's even hard to agree on what such a specification should look like
 
 Once defined and specified, a policy needs to be validated, either by testing or formal verification.
 Verification is preferable, as proofs rule out the possibility of bugs too subtle to show up in testing.
@@ -293,7 +294,7 @@ to focus on the rules that are relevant to the policy at hand.
       16: {\tt sub pc pc r2} & @ {\sc SaveTag} \\
       24: {\tt bne r0 r1 16} & @ {\sc Split} \\
       32: {\tt store 0 (sp+16)} & @ {\sc Normal} \\
-      40: {\tt jmp r2} & @ {\sc Join} \\
+      40: {\tt jmp r2} & @ {\sc Join} \\ % make this a mov or whatever
     \end{tabular}
     \caption{Code tagged and expanded for policy}
     \label{ex:if2}
@@ -305,10 +306,16 @@ to focus on the rules that are relevant to the policy at hand.
 
 Moving the task of policy definition to the source level has benefits to specification and validation of
 policies, as well. While stack safety (seen above) must be specified in terms of assembly code,
-many policies are the reverse. They aim to enforce security concepts that are the do not exist at the
+many policies are the reverse. % Unclear
+They aim to enforce security concepts that are the do not exist at the
 assembly level. Assembly code has no notion of a heap, for instance, so in a specification
-of memory safety significant effort goes toward defining a notion of pointer provenance that
+of memory safety significant effort goes toward defining
+a notion of pointer provenance that % Provenance is likely confusing
 would just be present implicitly in a source program.
+
+% Enumerate source-level things that are lost at assembly level
+
+% Put these things forward, be more excited about it!
 
 As for validation, it is hard to prove properties of assembly code.
 Just as some policies cannot be easily specified at the source level, some policies cannot be easily
@@ -331,11 +338,14 @@ proof it will also need to enforce a "baseline policy" that ensures that the abs
 source language. Other assembly-level policies might be attached as well: not all policies make sense
 to apply at the source level, e.g. stack safety, and such policies might also be applied to
 arbitrary assembly programs that do not come from the tag-aware compiler.
+% Talk about control points early on
 
 Green boxes represent important technical components of this system. A verified compiler is a massive
 investment; for testing and demonstration purposes a verified interpreter is a suitable substitute.
 Any given policy needs both a specification and to be validated against that specification. At the
 source level the ideal validation is proof using the language semantics.
+% Don't sell this short; go back to the top and distance from PIPE, which
+% helps the interpreter for portability reasons
 
 Specification and validation of assembly-level policies is important as well. The ultimate goal
 is to execute the entire system on real tagged hardware.
@@ -384,8 +394,8 @@ as a payload into a predefined assembly-level policy that handles the bookkeepin
 The Tagged-C semantics (also based on CompCert C) gives a formal definition of what each
 control point does. This means that properties of a policy may be proven in terms of how
 source programs behave when run under it. Just as it is far preferable to prove properties
-of a program with regard to its source semantics, this is a major step forward for policy
-verification.
+of a program with respect to its source semantics, this is a major step forward for policy
+verification. % Unclear
 
 The final third of this dissertation makes use of Tagged C to perform a source-level specification and
 verification of a novel compartmentalization property. The specification takes the form of
