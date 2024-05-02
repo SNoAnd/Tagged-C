@@ -2098,47 +2098,58 @@ Proof.
     repeat cronch.
     simpl in H1. rewrite H1. simpl. rewrite H0. eauto.
 Qed.
-    
+
+Ltac do_complete :=
+  match goal with
+  | [H: deref_loc _ _ _ _ _ _ _ _ |- _ ] =>
+      eapply do_deref_loc_complete in H; [rewrite H|eauto]
+  | [H: assign_loc _ _ _ _ _ _ _ _ _ _ _ |- _ ] =>
+      eapply do_assign_loc_complete in H; [rewrite H|eauto]
+  end.
+
 Lemma rfailred_topred:
   forall lc w' ps pct r1 tr failure te m ps',
     rfailred ge ce lc pct r1 te m tr failure ps ps' -> possible_trace w tr w' ->
     exists rule, step_expr RV lc ps pct r1 te m = topred (Failstopred rule failure tr ps').
-Admitted.
-(*Proof.
-  induction 1; simpl; intros; eexists; unfold atom in *; repeat cronch; try constructor; eauto.
-  - eapply do_deref_loc_complete in H; eauto. repeat cronch. constructor.
-  - eapply do_deref_loc_complete in H; eauto. repeat cronch. constructor.
-  - eapply do_deref_loc_complete in H; eauto. repeat cronch. constructor.
-  - admit. (*unfold Events.TLib.atom. repeat cronch. econstructor.*)
-  - eapply do_deref_loc_complete in H0; eauto. repeat cronch. constructor.
-  - eapply do_deref_loc_complete in H0; eauto. repeat cronch. constructor.
-  - admit. (*eapply do_deref_loc_complete in H0; eauto. repeat cronch. constructor.*)
-  - eapply do_deref_loc_complete in H0; eauto.
-    eapply do_assign_loc_complete in H3; eauto.
-    repeat cronch. constructor.
-  - unfold Events.TLib.atom. repeat cronch. constructor.
-  - eapply do_deref_loc_complete in H; eauto. repeat cronch. constructor.
-  - eapply do_deref_loc_complete in H; eauto. repeat cronch. constructor.
-  - eapply do_deref_loc_complete in H; eauto. repeat cronch. constructor.
-  - unfold Events.TLib.atom. repeat cronch. constructor.
-  - eapply do_deref_loc_complete in H; eauto. repeat cronch. constructor.
-  - eapply do_deref_loc_complete in H; eauto. repeat cronch. constructor.
-  - eapply do_deref_loc_complete in H; eauto. repeat cronch. constructor.
-  - unfold Events.TLib.atom. repeat cronch. constructor.    
+Proof.
+  induction 1; simpl; intros; eexists; unfold atom in *;
+  repeat doinv; repeat cronch; try constructor; eauto.
+  - do_complete. repeat cronch. constructor.
+  - do_complete. inv H0. repeat cronch. constructor.
+  - do_complete. repeat cronch. constructor.
+  - do_complete. inv H1. repeat cronch. constructor.
+  - do_complete. inv H1. repeat cronch. do_complete. repeat cronch. constructor.
+  - do_complete. repeat cronch. constructor.
+  - do_complete. inv H0. repeat cronch. constructor.
+  - do_complete. repeat cronch. constructor.
+  - do_complete. inv H0. repeat cronch. constructor.
   - destruct ty1; destruct ty; try congruence; repeat cronch; constructor.
-  - subst. eapply do_deref_loc_complete in H3; eauto.
-    destruct ty1; try congruence; repeat cronch; constructor.
-  - subst. eapply do_deref_loc_complete in H3; eauto.
-    destruct ty; try congruence; repeat cronch; constructor.
-  - eapply do_deref_loc_complete in H3; eauto.
-    eapply do_deref_loc_complete in H5; eauto.
-    subst; repeat cronch. constructor.
-  - eapply sem_cast_arguments_complete in H2. repeat doinv.
-    unfold find_funct in H. repeat cronch. rewrite H1.
-    rewrite H0. repeat cronch. eauto.
-  - eapply sem_cast_arguments_complete in H. repeat doinv.
-    unfold find_funct in H. repeat cronch. eauto.
-Qed.*)
+  - subst. assert (Int64.eq p nullptr = false) by (destruct (Int64.eq p nullptr) eqn:?; auto;
+      apply Int64.same_if_eq in Heqb; contradiction). rewrite H0.
+    destruct ty1; try congruence; repeat cronch; simpl; do_complete; repeat cronch; eauto.
+  - subst. assert (Int64.eq p nullptr = false) by (destruct (Int64.eq p nullptr) eqn:?; auto;
+      apply Int64.same_if_eq in Heqb; contradiction). rewrite H.
+    destruct ty; try congruence; repeat cronch; simpl; do_complete; repeat cronch; eauto.
+  - admit. (*subst.
+    assert (Int64.eq p nullptr || Int64.eq p1 nullptr = false).
+    {
+      destruct (Int64.eq p nullptr) eqn:Heqb;
+        try (apply Int64.same_if_eq in Heqb; contradiction).
+      destruct (Int64.eq p1 nullptr) eqn:Heqb0;
+        try (apply Int64.same_if_eq in Heqb0; contradiction).
+      simpl. auto.
+    } rewrite H. do_complete. repeat cronch. do_complete. repeat cronch. eauto.*)
+  - destruct ty1; try congruence; repeat cronch; simpl; rewrite (Int64.eq_true nullptr); eauto.
+  - destruct ty; try congruence; repeat cronch; simpl; rewrite (Int64.eq_true nullptr); eauto.
+  - admit.
+  - admit.
+  - destruct (is_val_list el) eqn:?.
+    + unfold Genv.find_funct in H. rewrite H. rewrite H1. rewrite H0. cronch.
+      eapply sem_cast_arguments_complete in H2. destruct H2 as [vtl [res [A [B C]]]].
+      admit.
+    + admit.
+  - admit.
+  Admitted.
 
 Lemma callred_topred:
   forall lc ps pct pct' a fd fpt args ty te m ps',
