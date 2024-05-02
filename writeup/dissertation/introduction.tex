@@ -57,7 +57,7 @@ The TMU, implemented in hardware as a cache or lookup table into a set of softwa
 consults those rules to (1) determine whether the operation should
 proceed, sending an interrupt if not, and (2) compute updated tags to associate with the
 outputs of the operation. These rules collectively define a state machine operating on the
-tags in the system, which is termed a ``micro-policy,'' \cite{} a concrete instantiation of the
+tags in the system, which is termed a ``micro-policy'' \cite{Azevedo+15}, a concrete instantiation of the
 sorts of policies mentioned above.
 
 Because PIPE tags are so large, they can encode complex data structures, giving PIPE a high
@@ -67,22 +67,27 @@ And because tags are inaccessible to normal execution, PIPE policies are protect
 subversion by application code.
 
 However, the complexity of PIPE's style of tagging leads to challenges in the definition,
-specification, and verification of policies, demonstrated via several examples.
-This dissertation addresses those challenges.
-% Introduce examples better
+specification, and verification of policies. This dissertation addresses those challenges.
+In the next section we will walk through two example policies to understand how they
+are written, why doing so is challenging, and what might be done about it.
 
-\paragraph{Example: Spatial Stack Safety}
+\section{Tag Policies By Example}
 
-Tag policies are difficult to write.
-A policy consists of a collection of rules, each associated with a family of opcodes.
-Almost all policies will need to distinguish
-individual special instructions via tags on their values in memory, since many opcodes can
-play different roles that need to be
+This section is comprised of two example policies: a simplified ``spatial'' stack safety
+policy, and an information flow control policy. The goal is not to introduce these policies
+on a deep techical level, but to give an intuition for how they might be attached to an assembly
+program and why this is a complex process.
+
+In brief, a policy consists of a collection of rules, each associated with a family of opcodes.
+Almost all policies will need to distinguish individual special instructions via tags on their values
+in memory, since many opcodes can play different roles that need to be
 treated differently in the policy. Defining a policy requires knowledge of both the assembly
 language of the host ISA and the behavior of the compiler, so that the policy designer can
 identify which instructions serve special purposes. Many policies require the binary
 to be rewritten with additional instructions whose primary purpose is moving and manipulating
 tags.
+
+\paragraph{Example: Spatial Stack Safety}
 
 For example, Figure \ref{ex:call} shows how a single function header must be updated to
 support a (simplified) spatial stack safety policy. The purpose of this policy is to prevent
@@ -112,17 +117,16 @@ that a stack address can only be written through the stack pointer at the same d
 
 Security policies are challenging to write, and subtle errors can enable them to be compromised.
 It is therefore vital that they be validated. But first they must be specified. What does the
-policy actually set out to do? What protection does it offer? In the interest of simplicity,
-this example only offered spatial, not temporal, safety. [Elaborate] If it were meant to be more than
-an illustrative example, spatial stack safety should be formally defined so that the policy can be
-shown to enforce it. Then it will be up to the user whether that level of security is sufficient.
+policy actually set out to do? What protection does it offer?
 
-This is a common problem for more realistic policies, as well.
 In many cases, there is no standard specification for the kind of security that a policy hopes
 to enforce. Even in cases where there is a proposed formal specification, such as
-memory safety \cite{Azevedo+16}, trade-offs between performance and protection may result in a
-policy that does not precisely match it. In these cases, the policy needs to be specified so
-that its purpose is clear. % It's even hard to agree on what such a specification should look like
+memory safety \cite{Azevedo+16}, a given policy may not precisely match it. In the interest of simplicity,
+this example only offered spatial safety, while stack safety is more commonly thought of as having
+a temporal dimension. If it were meant to be more than an illustrative example, spatial stack safety
+should be formally defined so that the policy can be shown to enforce it. Then it will be up to the user
+whether that level of security is sufficient. In a more realistic setting the policies would not
+sacrifice protection for simplicity, but might due to performance constraints.
 
 Once defined and specified, a policy needs to be validated, either by testing or formal verification.
 Verification is preferable, as proofs rule out the possibility of bugs too subtle to show up in testing.
@@ -237,7 +241,7 @@ adding one more tool to the developer's security kit.
   \label{ex:call}
 \end{figure}
 
-\paragraph{IFC}
+\paragraph{Example: IFC}
 
 The example in Figure \ref{ex:if} illustrates another scenario that requires the assembly to be
 rewritten. An important class of ``information flow control'' (IFC) policies needs to keep track
