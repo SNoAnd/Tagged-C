@@ -217,6 +217,28 @@ Module Cexec (Pol: Policy).
     destruct s; (left; congruence) || (right; congruence).
   Defined.
 
+  Ltac doinv :=
+    match goal with
+    | [ H: _ <- ?e ;; _ = Some _ |- _ ] => destruct e eqn:?; [simpl in H| inv H]
+    | [ H: let _ := ?e in _ |- _ ] => destruct e eqn:?
+    | [ H: is_val ?e = _ |- context[?e] ] => rewrite (is_val_inv _ _ _ H)
+    | [ H1: is_val ?e = _, H2: context[?e] |- _ ] => rewrite (is_val_inv _ _ _ H1) in H2
+    | [ H: is_loc ?e = _ |- context[?e] ] => rewrite (is_loc_inv _ _ _ H)
+    | [ H1: is_loc ?e = _, H2: context[?e] |- _ ] => rewrite (is_loc_inv _ _ _ H1) in H2
+    | [ p : _ * _ |- _ ] => destruct p
+    | [ a: atom |- _ ] => destruct a eqn:?; subst a
+    | [ H: False |- _ ] => destruct H
+    | [ H: _ /\ _ |- _ ] => destruct H
+    | [ H: _ \/ _ |- _ ] => destruct H
+    | [ H: exists _, _ |- _ ] => destruct H
+    | [H: bind_prop_success_rel ?e _ _ _ |- _ ] =>
+      let res := fresh "res" in
+      let H' := fresh "H" in
+      let RES := fresh "RES" in
+      inversion H as [res [H' RES]]; clear H
+    | _ => idtac
+    end.
+
   (** * Events, volatile memory accesses, and external functions. *)
 
   Section EXEC.
@@ -241,6 +263,7 @@ Module Cexec (Pol: Policy).
 
     Local Open Scope memory_monad_scope.
     (** Accessing locations *)
+    Section DEREF_ASSIGN.
 
     Definition do_deref_loc (w: world) (ty: type) (m: mem) (p:ptr) (pt:val_tag) (bf: bitfield)
       : option (world * trace * PolicyResult (val * list val_tag * list loc_tag)) :=
@@ -388,35 +411,13 @@ Module Cexec (Pol: Policy).
       - inv H0. inv H1.
         unfold proj_sumbool; rewrite ! dec_eq_true, ! zle_true, ! zlt_true by lia. cbn. auto.
     Qed.
- 
-    Ltac doinv :=
-      match goal with
-      | [ H: _ <- ?e ;; _ = Some _ |- _ ] => destruct e eqn:?; [simpl in H| inv H]
-      | [ H: let _ := ?e in _ |- _ ] => destruct e eqn:?
-      | [ H: is_val ?e = _ |- context[?e] ] => rewrite (is_val_inv _ _ _ H)
-      | [ H1: is_val ?e = _, H2: context[?e] |- _ ] => rewrite (is_val_inv _ _ _ H1) in H2
-      | [ H: is_loc ?e = _ |- context[?e] ] => rewrite (is_loc_inv _ _ _ H)
-      | [ H1: is_loc ?e = _, H2: context[?e] |- _ ] => rewrite (is_loc_inv _ _ _ H1) in H2
-      | [ p : _ * _ |- _ ] => destruct p
-      | [ a: atom |- _ ] => destruct a eqn:?; subst a
-      | [ H: False |- _ ] => destruct H
-      | [ H: _ /\ _ |- _ ] => destruct H
-      | [ H: _ \/ _ |- _ ] => destruct H
-      | [ H: exists _, _ |- _ ] => destruct H
-      | [H: bind_prop_success_rel ?e _ _ _ |- _ ] =>
-        let res := fresh "res" in
-        let H' := fresh "H" in
-        let RES := fresh "RES" in
-        inversion H as [res [H' RES]]; clear H
-      | _ => idtac
-      end.
 
     Lemma do_assign_loc_sound:
       forall w ty m ofs pt bf v vt w' t lts res,
         do_assign_loc w ty m ofs pt bf (v,vt) lts = Some (w', t, res) ->
         assign_loc ge ce ty m ofs pt lts bf (v,vt) t res /\ possible_trace w t w'.
     Proof.
-      Opaque ret.
+      Local Opaque ret.
       unfold do_assign_loc; intros until res.
       destruct bf.
       - destruct (access_mode ty) eqn:?; mydestr; try congruence.
@@ -436,20 +437,22 @@ Module Cexec (Pol: Policy).
           econstructor; eauto. rewrite Heqs. auto. constructor.
     Qed.
     
-Lemma do_assign_loc_complete:
-  forall w ty m ofs pt bf v vt w' t res lts,
-    assign_loc ge ce ty m ofs pt lts bf (v,vt) t res -> possible_trace w t w' ->
-    do_assign_loc w ty m ofs pt bf (v,vt) lts = Some (w', t, res).
-Proof.
-  unfold do_assign_loc; intros. inv H; repeat cronch; auto.
-  - eapply do_volatile_store_complete in H3; eauto.
-    rewrite H3. auto.
-  - repeat dodestr; auto.
-    elim n. red; tauto.
-  - inv H1.
-    + unfold proj_sumbool; rewrite ! zle_true, ! zlt_true by lia.
-      rewrite ! dec_eq_true. cbn. repeat cronch. auto.
-Qed.
+  Lemma do_assign_loc_complete:
+    forall w ty m ofs pt bf v vt w' t res lts,
+      assign_loc ge ce ty m ofs pt lts bf (v,vt) t res -> possible_trace w t w' ->
+      do_assign_loc w ty m ofs pt bf (v,vt) lts = Some (w', t, res).
+  Proof.
+    unfold do_assign_loc; intros. inv H; repeat cronch; auto.
+    - eapply do_volatile_store_complete in H3; eauto.
+      rewrite H3. auto.
+    - repeat dodestr; auto.
+      elim n. red; tauto.
+    - inv H1.
+      + unfold proj_sumbool; rewrite ! zle_true, ! zlt_true by lia.
+        rewrite ! dec_eq_true. cbn. repeat cronch. auto.
+  Qed.
+
+End DEREF_ASSIGN.
 
 (** * Reduction of expressions *)
 
@@ -1167,15 +1170,15 @@ Definition invert_expr_prop (lc:Cabs.loc) (a: expr) (ps: pstate) (pct: control_t
         Genv.find_funct ge (Vfptr b) = Some fd /\
           classify_fun tyf = fun_case_f tyargs tyres cconv /\
           type_of_fundef fd = Tfunction tyargs tyres cconv /\
-          cast_arguments lc pct vft m rargs tyargs res /\
-          ((exists pct' vl, res ps = (Success (pct', vl), ps')) \/
-             (exists failure, res ps = (Fail failure, ps')))
+          cast_arguments lc pct ps vft m rargs tyargs ps' res /\
+          ((exists pct' vl, res = Success (pct', vl)) \/
+             (exists failure, res = Fail failure))
   | Ecall (Eval (Vefptr ef tyargs tyres cc,vft) tyf) rargs ty =>
       exprlist_all_values rargs ->
       exists res ps',
-        cast_arguments lc pct vft m rargs tyargs res /\
-          ((exists pct' vl, res ps = (Success (pct', vl), ps')) \/
-             (exists failure, res ps = (Fail failure, ps')))
+        cast_arguments lc pct ps vft m rargs tyargs ps' res /\
+          ((exists pct' vl, res = Success (pct', vl)) \/
+             (exists failure, res = Fail failure))
   | Ecall (Eval (_,_) _) rargs ty =>
       ~ exprlist_all_values rargs
   | _ => True
@@ -1267,10 +1270,9 @@ Lemma callred_invert:
 Proof.
   intros. inv H; simpl.
   - unfold find_funct in H0. inv H0. intros.
-    destruct H3.
-    exists tyargs, tyres, cconv, fd, x, ps'. intuition.
+    exists tyargs, tyres, cconv, fd, (Success (pct', args)), ps'. intuition.
     left. exists pct', args; intuition congruence.
-  - intros. destruct H0. exists x, ps'. intuition. left. exists pct', args. intuition congruence.
+  - intros. exists (Success (pct', args)), ps'. intuition. left. exists pct', args. intuition congruence.
 Qed.
 
 Scheme context_ind2 := Minimality for context Sort Prop
@@ -1404,47 +1406,36 @@ Proof.
 Qed.
 
 Lemma sem_cast_arguments_sound:
-  forall lc pct fpt m rargs vtl tyargs res pct' vl ps ps',
+  forall lc pct fpt m rargs vtl tyargs res r ps ps',
     is_val_list rargs = Some vtl ->
     sem_cast_arguments lc pct fpt vtl tyargs m = Some res ->
-    res ps = (Success vl, ps') ->
-    cast_arguments lc pct ps fpt m rargs tyargs ps' (Success vl).
+    res ps = (r, ps') ->
+    cast_arguments lc pct ps fpt m rargs tyargs ps' r.
 Proof.
   intros until rargs. generalize dependent pct.
   induction rargs; simpl; intros.
-  - inv H. destruct tyargs; simpl in H0; inv H0. eexists. split; constructor.
+  - inv H. destruct tyargs; simpl in H0; inv H0. inv H1. constructor. 
   - monadInv. inv H. simpl in H0. destruct p as [[v1 t1] ty1].
+    rewrite <- (is_val_list_preserves_len _ _ Heqo0) in *; eauto.
+    rewrite (is_val_inv _ _ _ Heqo). 
     destruct tyargs; try congruence.
     destruct (sem_cast_arguments lc pct fpt l tyargs m) eqn:?; try discriminate.
     destruct (sem_cast v1 ty1 t0 m) eqn:?; try discriminate.
-    
-    injection H0; intros. eapply equal_f in H.
-    eexists. split.
-    2: { extensionality ps.
-         
-
-    }
-    
-    
-    as [[pct' vt']|failure] eqn:?.
-    + monadInv. destruct p.
-      * destruct res0. inv H0. rewrite (is_val_inv _ _ _ Heqo).
-        econstructor. rewrite (is_val_list_preserves_len _ _ Heqo0). eauto. auto.
-        specialize IHrargs with pct' l tyargs (Success (c,l0)).
-        auto.
-      * inv H0. rewrite (is_val_inv _ _ _ Heqo).
-        eapply cast_args_fail_later. rewrite (is_val_list_preserves_len _ _ Heqo0). eauto. eauto.
-        specialize IHrargs with pct' l tyargs (Fail failure).
-        auto.
-    + inv H0. rewrite (is_val_inv _ _ _ Heqo).
-      destruct (sem_cast v1 ty1 t0 m) eqn:?; try discriminate. inv H1.
-      eapply cast_args_fail_now. rewrite (is_val_list_preserves_len _ _ Heqo0). eauto. eauto.
-Qed.*)
+    inv H0.
+    unfold bind_res in H1. destruct (p ps) eqn:?. destruct r0.
+    + destruct res. destruct (ArgT lc c fpt t1 (exprlist_len rargs) t0 p0) as
+      [[[pct' vt']|failure] p1] eqn:?.
+      * inv H1. econstructor; eauto.
+      * inv H1. econstructor; eauto.
+    + inv H1. eapply cast_args_fail_later; eauto.
+Qed.
 
 Lemma sem_cast_arguments_complete:
-  forall m al tyl res lc pct fpt,
-    cast_arguments lc pct fpt m al tyl res ->
-    exists vtl, is_val_list al = Some vtl /\ sem_cast_arguments lc pct fpt vtl tyl m = Some res.
+  forall m al tyl r lc pct ps fpt ps',
+    cast_arguments lc pct ps fpt m al tyl ps' r ->
+    exists vtl res, is_val_list al = Some vtl /\
+      sem_cast_arguments lc pct fpt vtl tyl m = Some res /\
+      res ps = (r, ps').
 Admitted.
 
 (*Proof.
@@ -2155,10 +2146,11 @@ Lemma callred_topred:
     exists rule, step_expr RV lc ps pct a te m = topred (Callred rule fd fpt args ty te m pct' ps').
 Proof.
   induction 1; simpl.
-  - inv H2. destruct H3 as [CAST RES]. exploit sem_cast_arguments_complete; eauto. intros [vtl [A B]].
+  - exploit sem_cast_arguments_complete; eauto. intros [vtl [res [A [B RES]]]].
     unfold find_funct in H.
-    rewrite A; rewrite H; rewrite H1; rewrite H0; rewrite dec_eq_true; rewrite B; rewrite RES. simpl. eauto.
-  - inv H. destruct H0 as [CAST RES]. exploit sem_cast_arguments_complete; eauto. intros [vtl [A B]].
+    rewrite A; rewrite H; rewrite H1; rewrite H0; rewrite dec_eq_true; rewrite B; rewrite RES.
+    simpl. eauto.
+  - exploit sem_cast_arguments_complete; eauto. intros [vtl [res [A [B RES]]]].
     rewrite A; rewrite B; rewrite RES. simpl. eauto.  
 Qed.
 

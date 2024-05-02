@@ -251,21 +251,21 @@ Module TaggedCsem (Pol: Policy) (A: Memory ConcretePointer Pol UnitRegion) <:
   | cast_args_nil:
     cast_arguments l pct ps fpt m Enil Tnil ps (Success (pct, []))
   | cast_args_cons: forall pct' pct'' v vt vt' ty el targ1 targs v1 vl ps' ps'',
-      ArgT l pct fpt vt (exprlist_len el) targ1 ps = (Success (pct', vt'), ps') ->
+      cast_arguments l pct ps fpt m el targs ps' (Success (pct',vl)) ->
       sem_cast v ty targ1 m = Some v1 ->
-      cast_arguments l pct' ps' fpt m el targs ps'' (Success (pct'',vl)) ->
+      ArgT l pct' fpt vt (exprlist_len el) targ1 ps' = (Success (pct'', vt'), ps'') ->
       cast_arguments l pct ps fpt m (Econs (Eval (v,vt) ty) el) (Tcons targ1 targs) ps''
                      (Success (pct'',(v1, vt') :: vl))
-  | cast_args_fail_now: forall v v1 vt ty el targ1 targs failure ps',
-      ArgT l pct fpt vt (exprlist_len el) targ1 ps = (Fail failure, ps') ->
+  | cast_args_fail_now: forall pct' v v1 vt ty el targ1 targs vl failure ps' ps'',
+      cast_arguments l pct ps fpt m el targs ps' (Success (pct',vl)) ->
+      sem_cast v ty targ1 m = Some v1 ->
+      ArgT l pct' fpt vt (exprlist_len el) targ1 ps' = (Fail failure, ps'') ->
+      cast_arguments l pct ps fpt m (Econs (Eval (v,vt) ty) el) (Tcons targ1 targs) ps''
+                     (Fail failure)
+  | cast_args_fail_later: forall v v1 vt ty el targ1 targs failure ps',
+      cast_arguments l pct ps fpt m el targs ps' (Fail failure) ->
       sem_cast v ty targ1 m = Some v1 ->
       cast_arguments l pct ps fpt m (Econs (Eval (v,vt) ty) el) (Tcons targ1 targs) ps'
-                     (Fail failure)
-  | cast_args_fail_later: forall pct' v vt vt' ty el targ1 targs v1 failure ps' ps'',
-      ArgT l pct fpt vt (exprlist_len el) targ1 ps = (Success (pct', vt'), ps') ->
-      sem_cast v ty targ1 m = Some v1 ->
-      cast_arguments l pct' ps' fpt m el targs ps'' (Fail failure) ->
-      cast_arguments l pct ps fpt m (Econs (Eval (v,vt) ty) el) (Tcons targ1 targs) ps''
                      (Fail failure)
   .
  
