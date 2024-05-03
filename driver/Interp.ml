@@ -354,23 +354,36 @@ let compare_state s1 s2 =
 
 let (>>=) opt f = match opt with None -> None | Some arg -> f arg
 
-(* Extract a string from a global pointer *)
+(* Extract a string from a global pointer with possibility of tag failure *)
 
-let extract_string m ofs =
-  let b = Buffer.create 80 in
+let extract_string m ofs pct pt =
   let rec extract ofs =
     match M.direct_read m ofs with
-    | (MD.Byte (n,_), _) ->
+    | (MD.Byte (n,vt), lt) ->
       let c = Char.chr (Z.to_int n) in
-      if c = '\000' then begin
-        Some(Buffer.contents b)
-      end else begin
-        Buffer.add_char b c;
-        extract (Z.succ ofs)
-      end
+      if c = '\000' then
+        let res = fun ps ->
+          match (Pol.coq_LoadT Cabs.no_loc pct pt vt [lt] ps) with
+          | (Success vt',ps') -> (Success [c], ps')
+          | (Fail f, ps') -> (Fail f, ps')
+        in (res, 0)
+      else
+        let (res, i) = extract (Z.succ ofs) in
+        let res' = fun ps ->
+          (match (Pol.coq_LoadT Cabs.no_loc pct pt vt [lt] ps) with
+          | (Success vt',ps') ->
+            (match res ps' with
+              | (Success cs, ps'') -> (Success (c::cs), ps'')
+              | (Fail f', ps'') -> (Fail f', ps'')
+            )
+          | (Fail f, ps') -> (Fail f, ps')
+          )
+        in (res', i+1)
     | _ ->
-        None in
-  extract ofs
+      let res = fun ps ->
+        (Fail (OtherFailure ['N';'o';'t';' ';'a';' ';'b';'y';'t';'e']), ps) in
+      (res, 0)
+  in extract ofs
 
 (* Emulation of printf *)
 
@@ -389,40 +402,55 @@ external format_int32: string -> int32 -> string
 external format_int64: string -> int64 -> string
   = "caml_int64_format"
 
-let format_value m flags length conv arg =
+let ret x = (fun ps -> (Success x, ps))
+
+let mmap f x = (fun ps -> match x ps with
+                          | (Success y, ps') -> (Success (f y), ps')
+                          | (Fail failure, ps') -> (Fail failure, ps'))
+
+let format_value m flags length conv arg pct pt =
   match conv.[0], length, arg with
   | ('d'|'i'|'u'|'o'|'x'|'X'|'c'), (""|"h"|"hh"|"l"|"z"|"t"), Vint i ->
-      format_int32 (flags ^ conv) (camlint_of_coqint i)
+      let s = format_int32 (flags ^ conv) (camlint_of_coqint i) in
+      (ret s, String.length s)
   | ('d'|'i'|'u'|'o'|'x'|'X'|'c'), (""|"h"|"hh"|"l"|"z"|"t"), _ ->
-      "<int argument expected>"
+      let s = "<int argument expected>" in
+      (ret s, String.length s)
   | ('d'|'i'|'u'|'o'|'x'|'X'), ("ll"|"j"), Vlong i ->
-      format_int64 (flags ^ conv) (camlint64_of_coqint i)
+      let s = format_int64 (flags ^ conv) (camlint64_of_coqint i) in
+      (ret s, String.length s)
   | ('d'|'i'|'u'|'o'|'x'|'X'), ("ll"|"j"), _ ->
-      "<long long argument expected"
+      let s = "<long long argument expected" in
+      (ret s, String.length s)
   | ('f'|'e'|'E'|'g'|'G'|'a'), (""|"l"), Vfloat f ->
-      format_float (flags ^ conv) (camlfloat_of_coqfloat f)
+      let s = format_float (flags ^ conv) (camlfloat_of_coqfloat f) in
+      (ret s, String.length s)
   | ('f'|'e'|'E'|'g'|'G'|'a'), "", _ ->
-      "<float argument expected"
+      let s = "<float argument expected>" in
+      (ret s, String.length s)
   | 's', "", Vptr ofs ->
-      begin match extract_string m ofs with
-      | Some s -> s
-      | None -> "<bad string>"
-      end
+      let (cs, i) = extract_string m ofs pct pt in
+      (mmap camlstring_of_coqstring cs, i)
   | 's', "", _ ->
-      "<pointer argument expected>"
+      let s = "<pointer argument expected>" in
+      (ret s, String.length s)
   | 'p', "", Vptr ofs ->
-      Printf.sprintf "<%ld>" (camlint_of_coqint ofs)
+      let s = Printf.sprintf "<%ld>" (camlint_of_coqint ofs) in
+      (ret s, String.length s)
   | 'p', "", Vint i ->
-      format_int32 (flags ^ "x") (camlint_of_coqint i)
+      let s = format_int32 (flags ^ "x") (camlint_of_coqint i) in
+      (ret s, String.length s)
   | 'p', "", Vlong l ->
-      format_int64 (flags ^ "x") (camlint64_of_coqint l)
-
+      let s = format_int64 (flags ^ "x") (camlint64_of_coqint l) in
+      (ret s, String.length s)
   | 'p', "", _ ->
-      "<int or pointer argument expected>"
+      let s = "<int or pointer argument expected>" in
+      (ret s, String.length s)
   | _, _, _ ->
-      "<unrecognized format>"
+      let s = "<unrecognized format>" in
+      (ret s, String.length s)
 
-let do_printf m fmt args =
+let do_printf m fmt args pct pt ps =
 
   let b = Buffer.create 80 in
   let len = String.length fmt in
@@ -431,11 +459,12 @@ let do_printf m fmt args =
     try Some(Str.search_forward re_conversion fmt pos)
     with Not_found -> None in
 
-  let rec scan pos args =
+  let rec scan pos args (ps: Pol.policy_state * Tags.logs) =
     if pos < len then begin
     match opt_search_forward pos with
     | None ->
-        Buffer.add_substring b fmt pos (len - pos)
+        Buffer.add_substring b fmt pos (len - pos);
+        ps
     | Some pos1 ->
         Buffer.add_substring b fmt pos (pos1 - pos);
         let flags = Str.matched_group 1 fmt
@@ -444,18 +473,23 @@ let do_printf m fmt args =
         and pos' = Str.match_end() in
         if conv = "%" then begin
           Buffer.add_char b '%';
-          scan pos' args
+          scan pos' args ps
         end else begin
           match args with
           | [] ->
               Buffer.add_string b "<missing argument>";
-              scan pos' []
+              scan pos' [] ps
           | arg :: args' ->
-              Buffer.add_string b (format_value m flags length conv arg);
-              scan pos' args'
+              let (res, i) = (format_value m flags length conv arg pct pt) in
+              match res ps with
+              | (Success s, ps') ->
+                Buffer.add_string b s;
+                scan pos' args' ps'
+              | (Fail f, ps') ->
+                ps'
         end
-    end
-  in scan 0 args; Buffer.contents b
+    end else ps
+  in let ps' = scan 0 args ps in (Buffer.contents b, ps')
 
 
 (* Emulation of fgets, with assumed stream = stdin. *)
@@ -533,14 +567,20 @@ let rec convert_external_args ge vl tl =
 let do_external_function id sg ge w args pct fpt m =
   match camlstring_of_coqstring id, args with
   | "printf", (Vptr ofs,pt) :: args' ->
-      extract_string m ofs >>= fun fmt ->
-      let fmt' = do_printf m fmt (List.map fst args') in
-      let len = coqint_of_camlint (Int32.of_int (String.length fmt')) in
-      Format.print_string fmt';
-      flush stdout;
-      convert_external_args ge args sg.sig_args >>= fun eargs ->
-      let res = fun ps -> (Success(((Vint len, Pol.def_tag), pct), m),ps) in
-      Some((w,[Events.Event_syscall(id, eargs, Events.EVint len)]), res)
+    convert_external_args ge args sg.sig_args >>= fun eargs ->
+    let (res, len) = extract_string m ofs pct pt in
+      let res' = fun ps ->
+        match res ps with
+        | (Success s, ps') ->
+          let fmt = camlstring_of_coqstring s in
+          let (fmt',ps'') = do_printf m fmt (List.map fst args') pct pt ps' in
+          Format.print_string fmt';
+          flush stdout;
+          (Success(((Vint (Z.of_uint len), Pol.def_tag), pct), m), ps'')
+        | (Fail f, ps') -> (Fail f, ps')
+      in
+    let tr = [Events.Event_syscall(id, eargs, Events.EVint (Z.of_uint len))] in
+    Some((w, tr), res')
   | "fgets", (Vptr ofs,pt) :: (Vint siz,vt) :: args' ->
       do_fgets m ofs pt siz >>= fun (p,m') ->
       convert_external_args ge args sg.sig_args >>= fun eargs ->
@@ -554,7 +594,6 @@ let do_external_function id sg ge w args pct fpt m =
       let res = fun ps -> (Success((v,pct),m),ps) in 
       Some ((w,[Events.Event_syscall(id,[],eres)]),res)
   | _ ->
-
       None
 
 let do_inline_assembly txt sg ge w args m = None
