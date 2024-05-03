@@ -6,8 +6,11 @@ import subprocess
 
 # track total failures
 global testsfailed 
+global testspassed
+global testsrun
 testsfailed = 0
 testsrun = 0
+testspassed = 0
 defaulttimeout = 1000 # default # of steps to allow to run
 # strings to reuse
 doublefree = "dfree"
@@ -33,14 +36,16 @@ def runACFileWithoutInput (filename, policy, expectedoutput):
 
     # this is not fancy, but it should keep me from checking in dumb mistakes
     if (expectedoutput in completed_run.stdout or expectedoutput in completed_run.stderr):
-        print(f"{passmsg}")
+        #print(f"{passmsg}")
+        global testspassed
+        testspassed +=1
     else:
         print(f"{failmsg}\n\t\tret code:{completed_run.returncode}\n\t\tstdoutput:\n\t\t{completed_run.stdout}\n\t\tstderr:\n{completed_run.stderr}\n\t\texpected:\n\t\t{expectedoutput}\n")
         global testsfailed
         testsfailed+=1
 
 def runACFileWithInput (filename, policy, testinput, expectedoutput):
-    print(f"\n\ttesting {filename} with {policy} policy on input {testinput}")
+    print(f"\ttesting {filename} with {policy} policy on input {testinput}")
     with subprocess.Popen(["bash", "-c", f"../ccomp -interp -timeout {defaulttimeout} -p {policy} {filename}"],
                           stdout=subprocess.PIPE,
                           stdin=subprocess.PIPE,
@@ -57,36 +62,52 @@ def runACFileWithInput (filename, policy, testinput, expectedoutput):
 
         #print(stdout.decode("utf-8"))
         if ( expectedoutput in stdout or expectedoutput in stderr):
-            print(passmsg)
+            #print(passmsg)
+            global testspassed
+            testspassed +=1
         else:
             print(f"{failmsg}\n\t\tret code:{process.returncode}\n\t\toutput:\n\t\t{stdout}\n\t\tstderr:\n\t\t{stderr}\n\t\texpected:\n\t\t{expectedoutput}\n")
             global testsfailed
             testsfailed+=1
 
+# these tests should always pass, regardless of policy: IO, infra 
+def runSanityTests (policy):
+    runACFileWithoutInput("printf_test.c", policy,
+                          b'Hello World!\n')
+    runACFileWithInput("rw.c", policy, "f", b'1 f')
+
+    runACFileWithInput("test_getchar_basic.c", policy, "Hello",
+                          b'You entered H. Hope it doesn\'t have a problem!')   
+    runACFileWithInput("test_getchar_loop.c", policy, "Hello", 
+                          b'You entered: Hello')
+
+def runConcreteAllocChecks(policy):
+    runACFileWithoutInput("allocator_smallestpossible.c", policy,
+                          nofault_cleanexit)
+    runACFileWithoutInput("allocator_single.c", policy,
+                          nofault_cleanexit)
+    runACFileWithoutInput("allocator_basic.c", policy,
+                          nofault_cleanexit)
+    runACFileWithoutInput("allocator_single_OOM.c", policy,
+                          nofault_cleanexit)
+
 if __name__ == '__main__':
 
-    print("beginning /tests/\n=======")
-    print("\n=======\nSanity Tests, Infrastructure Tests (without input)\n=======")
+    print("\n=======\nSanity Tests, Infrastructure (IO, Alloc) Tests\n=======")
+    # run on every policy supported 
+    # poked SNA. I dont think PVI is supposed to blow up here
+    #runSanityTests(PVI)
+    runSanityTests(doublefree)
+    runSanityTests(heapproblem)
+    # restore once PVI is fixed/sorted
+    #runSanityTests(dfreeXpvi)
 
-    runACFileWithoutInput("printf_test.c", doublefree,
-                          b'Hello World!\n'
-                          )
-    runACFileWithoutInput("printf_test.c", doublefree,
-                          b'Hello World!\n'
-                          )
-    # test the concrete allocator
-    # dfree is the least complicated policy using the concrete allocator
-    print("\n\t=======\nTesting Concrete Allocator\n\t=======")
-    runACFileWithoutInput("allocator_smallestpossible.c", doublefree,
-                          nofault_cleanexit)
-    runACFileWithoutInput("allocator_single.c", doublefree,
-                          nofault_cleanexit)
-    runACFileWithoutInput("allocator_basic.c", doublefree,
-                          nofault_cleanexit)
-    runACFileWithoutInput("allocator_single_OOM.c", doublefree,
-                          nofault_cleanexit)
+    # test the concrete allocator on policies that use it
+    runConcreteAllocChecks(doublefree)
+    runConcreteAllocChecks(heapproblem)
+    runConcreteAllocChecks(dfreeXpvi) # a slight lie. PVI is meant for FLAlloc
 
-    print("\n\t=======\nTesting FLAllocator\n\t=======\n")
+    # So far theres only one that uses FLAlloc
     runACFileWithoutInput("allocator_smallestpossible.c", PVI,
                           nofault_cleanexit)
     runACFileWithoutInput("allocator_single.c", PVI,
@@ -95,20 +116,6 @@ if __name__ == '__main__':
                           nofault_cleanexit)
     runACFileWithoutInput("allocator_single_OOM.c", PVI,
                           nofault_cleanexit)
-    
-    print("\n=======\npvi tests (without input)\n=======")
-
-    runACFileWithoutInput("printf_test.c", PVI,
-                          b'Hello World!\n'
-                          )
-    runACFileWithoutInput("heap_load_store_ib.c", PVI,
-                          nofault_cleanexit)
-
-    runACFileWithoutInput("stack_load_store_ib.c", PVI,
-                          nofault_cleanexit)
-
-    runACFileWithoutInput("stack_load_store_ob.c", PVI,
-                          b'PVI || StoreT')
 
     print("\n=======\nMultipolicy (Product.v) without input\n=======")
     # fail  left
@@ -123,6 +130,21 @@ if __name__ == '__main__':
     runACFileWithoutInput("heap_load_store_ib.c", dfreeXpvi,
                           nofault_cleanexit)
 
+    print("\n=======\n Policy Specific\n=======")
+    print("\n=======\npvi tests\n=======")
+
+    runACFileWithoutInput("printf_test.c", PVI,
+                          b'Hello World!\n'
+                          )
+    runACFileWithoutInput("heap_load_store_ib.c", PVI,
+                          nofault_cleanexit)
+
+    runACFileWithoutInput("stack_load_store_ib.c", PVI,
+                          nofault_cleanexit)
+
+    runACFileWithoutInput("stack_load_store_ob.c", PVI,
+                          b'PVI || StoreT')
+
     
     print("=======\ndfree tests \n=======")
     
@@ -136,14 +158,10 @@ if __name__ == '__main__':
     #       3rd in array is 1st free (from the header we just tried to free)
     runACFileWithInput("test_fgets_basic.c", doublefree, 
                        "AAAA", b"Hope it doesn't have a problem!")
-
-    runACFileWithInput("rw.c", doublefree,
-                       "f", b'1 f')
     
     runACFileWithInput("double_free_basic_input.c",
                        doublefree, "ABCD",
                        b'DoubleFree||FreeT detects two frees| source location double_free_basic_input.c:14, location double_free_basic_input.c:15')
-    
 
     # should failstop
     runACFileWithInput("double_free_confused_cleanup_1.c",
@@ -199,21 +217,13 @@ if __name__ == '__main__':
                        # version where the parseheader happens before freeT does 
                        #b"ConcreteAllocator| parse_header | Header is undefined")
                        b"DoubleFree||FreeT detects corrupted alloc header| source location double_free_basic_nonsensefree.c:18")
+    
     print("=======\nHeap Problems Tests\n=======")
-    # basic allocation. smallest possible tests padding, single tests multiple, basic gives the heap exercise
-    runACFileWithoutInput("allocator_smallestpossible.c", heapproblem,
-                          nofault_cleanexit)
-    runACFileWithoutInput("allocator_single.c", heapproblem,
-                          nofault_cleanexit)
-    runACFileWithoutInput("allocator_basic.c", heapproblem,
-                          nofault_cleanexit)
     # heaproblem not responsible for making sure you dont OOM your heap. 
     #      users still need to check for 0 :p 
-    runACFileWithoutInput("allocator_single_OOM.c", heapproblem,
-                          nofault_cleanexit)
     runACFileWithoutInput("heapproblem_overread_basic_nopad.c", heapproblem,
                           b"TODO decide on final errmsg, rmeove log statements")    
     runACFileWithoutInput("heapproblem_overread_basic_pad.c", heapproblem,
                           b"TODO decide on final errmsg, remove log statements")    
     # end
-    print(f"\n=======\ntest suit ending.\n\ttotal tests run: {testsrun}\n\ttotal failed: {testsfailed}\n\ttotal passed: {testsrun - testsfailed}")
+    print(f"\n=======\ntest suit ending.\n\ttotal tests run: {testsrun}\n\ttotal failed: {testsfailed}\n\ttotal passed: {testspassed}")

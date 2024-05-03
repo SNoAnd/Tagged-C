@@ -1,5 +1,5 @@
 /**
- * @todo write test
+ * @todo write test to have 3 different overread faults
  * @file heapleak_overwrite_3_fault.c
  * @brief Demonstrate three different conditional heap overwrite faults
  * @note
@@ -22,6 +22,20 @@
 #include <stdlib.h> 
 #include <stdio.h>
 #define MAX_SIZE 80
+
+void faux_fgets(char* s, int n, FILE* stream) {
+    int read = 0;
+    char c;
+    do { 
+        c = getchar();
+        //printf("#%d char: %c\n", read, c);
+        s[read] = c;
+        //printf("#%d news: %s\n", read, s);
+        read++; 
+    } while (c != '\n' && c != EOF && (read < n-1));
+    s[read+1] = '\0';
+    //printf("final s: %s\n", s);
+}
 
 int main() {
     char* input = (char*) malloc(MAX_SIZE * sizeof(char));

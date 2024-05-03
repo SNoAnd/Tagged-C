@@ -22,10 +22,11 @@
 
 #include <stdlib.h> 
 #include <stdio.h>
-#define MAX_SIZE 40 //size to read
-#define BUF_SIZE 20 //size of smaller buff to get overeads
+#define MAX_SIZE 10 //size to read
+#define BUF_SIZE 5 //size of smaller buff to get overeads
 /**
  * TaggedC does not have strlen. 
+ * NB: strlen does not include the \0 terminator
 */
 int strlen(char *p) {
   int c = 0;
@@ -40,19 +41,19 @@ int strlen(char *p) {
  * fgets is mangling tags, but we think getchar will preserve that 
  *  fgets adds the \0 at n-1 th spot 
  * NB: fgets returns an s techically, though most users never check it 
+ * NB: taggedc only supports stdin, not all streams
 */
 void faux_fgets(char* s, int n, FILE* stream) {
-    printf("did we get to here?");
     int read = 0;
     char c;
     do { 
         c = getchar();
-        read++; 
-        printf("#%d char: %c\n", read, c);
         s[read] = c;
-    } while (c != '\n' && c != EOF && (read < n-1));
-    s[read+1] = '\0';
-    printf("final s: %s\n", s);
+        read++; 
+    } while (c != '\n' && c != EOF && (read < n));
+    //write over newline from io if shorter than buffer
+    if (read < n) { s[read-1] = '\0'; } 
+    else          { s[n-1] = '\0'; }
 }
 
 /**
@@ -70,47 +71,40 @@ char* strcpy(char* destination, const char* source) {
 
 int main() {
     char* input = (char*) malloc(MAX_SIZE * sizeof(char));
-    printf("enter some input:");
-    // FILE *fp; instead of stdin if needed. taggedC only supports stdin rn
-    // stdin's fp is known by stdlib  
+    
+    // fill the buffer so overwriting \0 does the right thing
+    for(int i=0; i < MAX_SIZE; i++ ) {input[i] ='B';}
+
+    printf("Even cases are safe.\nEnter some input:");
     faux_fgets(input, MAX_SIZE, stdin);
 
+    // Poo to trigger case
     if ((char) input[0] == 'P') {
-        // I think this won't do what i want 
-        printf("You entered %.80s.\nHope it doesn't have a problem!", input);
+        // carefully write over the null terminator, but not beyond so
+        //  as not to trigger the overwrite protection but still 
+        //  lead to overread
+        int input_len = strlen(input); // does not inlcude the \0
+        input[input_len] = 'A';
+        // print should run until a null...
+        printf("1:You entered %s.\nHope it doesn't have a problem!", input);
     }
     else {
-        printf("You entered %s.\nHope it doesn't have a problem!", input);
+        printf("2:You entered %s.\n", input);
     }
 
-    // if input is > 20 chars, this should over write...and then over read?
-    //      hum, I just want the over read...
+    // PIE exercises both
+    // III exercises just this one 
+    // can trigger here if input is too short  
     if ((char) input[1] == 'I') {
-
+        // buf_size is half the size of max
         char inputcpy[BUF_SIZE];
         char * inputcpy_ptr = strcpy(inputcpy, input);
 
-        printf("You entered %s.\nHope it doesn't have a problem!", inputcpy_ptr);
+        printf("3:You entered %s.\nHope it doesn't have a problem!", inputcpy_ptr);
     }
     else {
-        printf("You entered %s.\nHope it doesn't have a problem!", input);
+        printf("4:You entered %s.\n", input);
     }
-
-    if ((char) input[2] == 'P') {
-        // carefully write over the null terminators, but not beyond so
-        //      as not to trigger the overwrite protection
-        int input_len = strlen(input);
-        for (int i = 0; i < input_len; i++) {
-            if (input[i] == '\0') {
-                input[i] = 'A';
-            }
-        }
-        printf("You entered %s.\nHope it doesn't have a problem!", input);
-    }
-    else {
-        printf("You entered %s.\nHope it doesn't have a problem!", input);
-    }
-
 
     free(input);
 	return EXIT_SUCCESS;
