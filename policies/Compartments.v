@@ -9,23 +9,25 @@ Require Import String.
 Require Import Tags.
 Require Import Show.
 Require Import ExtLib.Structures.Monads. Import MonadNotation.
+ 
+Import SemiconcretePointer.
 
-Module Compartments <: Policy.
-  Import Passthrough.
+Definition show_comp (C: Comp) : string :=
+  show (Zpos C).
 
-  Definition Comp : Type := ident.
-
-  Definition show_comp (C: Comp) : string :=
-    show (Zpos C).
-
-  Global Instance Show_comp : Show Comp :=
+Global Instance Show_comp : Show Comp :=
   {| show := show_comp |}.
 
+Module Type CompScheme.
+  Parameter init_comp : Comp.
+  Parameter comp_of : ident -> Comp.
+  Parameter public : ident -> bool.
+  Parameter shared : ident -> bool.
+End CompScheme.
 
-  Variable init_comp : Comp.
-  Variable comp_of : ident -> Comp.
-  Variable public : ident -> bool.
-  Variable shared : ident -> bool.
+Module Compartments (Scheme: CompScheme) <: Policy.
+  Import Scheme.
+  Import Passthrough.
 
   Inductive myVT :=
   | LPtr (C:Comp)

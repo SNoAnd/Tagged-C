@@ -328,7 +328,7 @@ Module HeapProblem <: Policy.
   (* Loads through N are ok to touch nonHeap*)
   Definition LoadT (l:loc) (pct : control_tag) (pt vt: val_tag) (lts : list loc_tag) 
   : PolicyResult val_tag := 
-    log ("LoadT called pt= " ++ (print_vt pt) ++ "vt= " ++ (print_vt vt));;
+    log ("LoadT called pt= " ++ (print_vt pt) ++ " vt= " ++ (print_vt vt));;
     match pt with 
     (* location the ptr was assigned memory (l) != location of this load (ptr_l) *)
     | PointerWithColor ptr_l ptr_color =>

@@ -8,6 +8,7 @@ Require Import String.
 Require Import ExtLib.Structures.Monads. Import MonadNotation.
 Require Import NullPolicy.
 Require Import Csem.
+Require Import Compartments.
 
 Module M := MultiMem NullPolicy.
 
@@ -169,7 +170,7 @@ Module CompReg <: Region.
   
 End CompReg.
 
-Module CompartmentCsem (A: AllocatorAxioms SemiconcretePointer NullPolicy M).
+Module CompartmentCsem (Scheme: CompScheme) (A: AllocatorAxioms SemiconcretePointer NullPolicy M).
 
   Module MA := MemRegionAgnostic SemiconcretePointer NullPolicy CompReg M A.
 
@@ -180,6 +181,7 @@ Module CompartmentCsem (A: AllocatorAxioms SemiconcretePointer NullPolicy M).
   Import MA.
   Import TLib.
   Import CompReg.
+  Import Scheme.
 
   (** * Operational semantics *)
 
