@@ -76,8 +76,10 @@ def runSanityTests (policy):
                           b'Hello World!\n')
     runACFileWithInput("rw.c", policy, "f", b'1 f')
 
+    # there is a slight testing artifact here. You don't see the \0
+    #     when you run the test manually, but the test harness does see it
     runACFileWithInput("test_getchar_basic.c", policy, "Hello",
-                          b'You entered H. Hope it doesn\'t have a problem!')   
+                          b'You entered H\x00. Hope it doesn\'t have a problem!')   
     runACFileWithInput("test_getchar_loop.c", policy, "Hello", 
                           b'You entered: Hello')
 
@@ -222,8 +224,8 @@ if __name__ == '__main__':
     # heaproblem not responsible for making sure you dont OOM your heap. 
     #      users still need to check for 0 :p 
     runACFileWithoutInput("heapproblem_overread_basic_nopad.c", heapproblem,
-                          b"TODO decide on final errmsg, rmeove log statements")    
+                          b"HeapProblem|| Heap Overread| LoadT tried to read unallocated heap memory at   src location heapproblem_overread_basic_nopad.c:32")    
     runACFileWithoutInput("heapproblem_overread_basic_pad.c", heapproblem,
-                          b"TODO decide on final errmsg, remove log statements")    
+                          b"HeapProblem|| Heap Overread| LoadT read past the end into padding belonging to  heapproblem_overread_basic_pad.c:36 at heapproblem_overread_basic_pad.c:46")    
     # end
     print(f"\n=======\ntest suit ending.\n\ttotal tests run: {testsrun}\n\ttotal failed: {testsfailed}\n\ttotal passed: {testspassed}")

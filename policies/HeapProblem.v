@@ -228,7 +228,7 @@ Module HeapProblem <: Policy.
 
   (* This is a helper to print locations for human & fuzzer ingestion *)
   Definition inj_loc (s:string) (l:loc) : string :=
-  s ++ " " ++ (print_loc l).
+  s ++ " src location " ++ (print_loc l).
 
   Definition rw_err_msg(s: string) (belongstoloc failloc: loc) :=
     s ++ " " ++ (print_loc belongstoloc) ++ " at " ++ (print_loc failloc).
@@ -290,13 +290,13 @@ Module HeapProblem <: Policy.
     (*log ("Check for Color match tags onLoad= " ++ (print_lt lt));;*)
     match lt with 
     | NotHeap => raise (PolicyFailure (inj_loc "HeapProblem|| Pointer corruption|LoadT tried to read nonheap memory at source location " load_l))
-    | UnallocatedHeap => raise (PolicyFailure (inj_loc "HeapProblem|| Pointer corruption|LoadT tried to read unallocated heap memory at source location " load_l))
+    | UnallocatedHeap => raise (PolicyFailure (inj_loc "HeapProblem|| Heap Overread| LoadT tried to read unallocated heap memory at " load_l))
     | AllocatedHeader owner_l _ => raise (PolicyFailure (rw_err_msg "HeapProblem|| Pointer corruption| LoadT found block header in middle " owner_l load_l))
     (* @TODO when we have "log with success" it will go here. 
         We also need to be able to write out the contents of memory to that log
         For now, we fail *)
-    | AllocatedPadding owner_l _ => raise (PolicyFailure (rw_err_msg "HeapProblem|| Pointer corruption| LoadT found heap padding in middle " owner_l load_l))
-    | AllocatedDirty alloc_l c2 => raise (PolicyFailure (rw_err_msg "HeapProblem|| potential secret disclosure| Allocated memory not yet written to is read at " alloc_l load_l))
+    | AllocatedPadding owner_l _ => raise (PolicyFailure (rw_err_msg "HeapProblem|| Heap Overread| LoadT read past the end into padding belonging to " owner_l load_l))
+    | AllocatedDirty alloc_l c2 => raise (PolicyFailure (rw_err_msg "HeapProblem|| Potential secret disclosure| Allocated memory not yet written to is read at " alloc_l load_l))
     | Allocated alloc_l alloc_c  =>
         (* if the color & the locations match, recurse on tail (called t)*)
         if (Z.eqb ptr_color alloc_c) && (Cabs.loc_eqb alloc_l ptr_l)
