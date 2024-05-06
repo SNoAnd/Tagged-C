@@ -74,9 +74,17 @@ int main() {
     
     // fill the buffer so overwriting \0 does the right thing
     for(int i=0; i < MAX_SIZE; i++ ) {input[i] ='B';}
+    // doing this here triggers secret disclosure failstop
+    // read c to see if the loadT tags are what we expect before printf
+    //char c;
+    //for(int i=0; i < MAX_SIZE; i++ ) { c = input[i];}
 
     printf("Even cases are safe.\nEnter some input:");
     faux_fgets(input, MAX_SIZE, stdin);
+    printf(input);
+    // read c to see if the loadT tags are what we expect before printf
+    //char c;
+    //for(int i=0; i < MAX_SIZE; i++ ) { c = input[i];}
 
     // Poo to trigger case
     if ((char) input[0] == 'P') {
@@ -86,7 +94,8 @@ int main() {
         int input_len = strlen(input); // does not inlcude the \0
         input[input_len] = 'A';
         // print should run until a null...
-        printf("1:You entered %s.\nHope it doesn't have a problem!", input);
+        //printf("1:You entered %s.\nHope it doesn't have a problem!", input);
+        printf(input);
     }
     else {
         printf("2:You entered %s.\n", input);

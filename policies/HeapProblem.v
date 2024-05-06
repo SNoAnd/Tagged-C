@@ -235,7 +235,7 @@ Module HeapProblem <: Policy.
 
   Definition print_vt (t : val_tag) : string :=
     match t with
-    | N => "Not heap related value (N)"
+    | N => "Not heap metadata val"
     | PointerWithColor l color => (inj_loc "Pointer to heap, malloc'ed at source location" l)    
     end.
     
@@ -398,6 +398,7 @@ Module HeapProblem <: Policy.
   
   Definition StoreT (l:loc) (pct : control_tag) (pt vt : val_tag) (lts : list loc_tag)
   : PolicyResult (control_tag * val_tag * list loc_tag) := 
+  log ("StoreT called pt= " ++ (print_vt pt) ++ " vt= " ++ (print_vt vt));;
     match pt with 
     (* we need to know the pointer's location and the store operations location if something goes wrong *)
     | PointerWithColor ptr_l ptr_color =>
@@ -419,6 +420,7 @@ Module HeapProblem <: Policy.
   (* @TODO cleanup. condense cases *)
   Definition UnopT (l:loc) (op : unary_operation) (pct: control_tag) (vt : val_tag)
   : PolicyResult (control_tag * val_tag) := 
+    log ("UnOpt called vt= " ++ (print_vt vt));;
     match op with
       | Onotbool (* boolean negation ([!] in C) *)
           (* used sometimes to convert pointer into a bool 
@@ -465,6 +467,7 @@ Module HeapProblem <: Policy.
     *)
   Definition BinopT (l:loc) (op : binary_operation) (pct: control_tag) (vt1 vt2 : val_tag) :
   PolicyResult (control_tag * val_tag) := 
+  log ("BinOpt called vt1= " ++ (print_vt vt1) ++ " vt2= " ++ (print_vt vt2));;
     match op with
     (* classic arthimetic ops *)
     | Oadd (* addition (binary [+]) *)
@@ -603,7 +606,7 @@ Module HeapProblem <: Policy.
   *)
   Definition MallocT (l:loc) (pct: control_tag) (fpt: val_tag) :
     PolicyResult (control_tag * val_tag * val_tag * loc_tag  * loc_tag * loc_tag) :=
-    (*log "MallocT called";;*)
+    log "MallocT called";;
     match pct with
     | PC_Extra currcolor =>
       (* ret (pct', pt, vtb, vht', lt, ltpadding) *)
@@ -649,7 +652,7 @@ Module HeapProblem <: Policy.
       nothing resets the pointer tag pt itself. it has to act to be changed *)
  Definition FreeT (l:loc) (pct: control_tag) (pt : val_tag) (ht: list loc_tag ) :
  PolicyResult (control_tag * loc_tag ) :=
- (*log "FreeT called";;*)
+ log "FreeT called";;
   if (ltop.(alleq) ht)
   then (
     match pt, (List.hd_error ht) with 
