@@ -356,14 +356,14 @@ let (>>=) opt f = match opt with None -> None | Some arg -> f arg
 
 (* Extract a string from a global pointer with possibility of tag failure *)
 
-let extract_string m ofs pct pt =
+let extract_string lc m ofs pct pt =
   let rec extract ofs =
     match M.direct_read m ofs with
     | (MD.Byte (n,vt), lt) ->
       let c = Char.chr (Z.to_int n) in
       if c = '\000' then
         let res = fun ps ->
-          match (Pol.coq_LoadT Cabs.no_loc pct pt vt [lt] ps) with
+          match (Pol.coq_LoadT lc pct pt vt [lt] ps) with
           | (Success vt',ps') -> (Success [c], ps')
           | (Fail f, ps') -> (Fail f, ps')
         in (res, 0)
@@ -408,7 +408,7 @@ let mmap f x = (fun ps -> match x ps with
                           | (Success y, ps') -> (Success (f y), ps')
                           | (Fail failure, ps') -> (Fail failure, ps'))
 
-let format_value m flags length conv arg pct pt =
+let format_value lc m flags length conv arg pct pt =
   match conv.[0], length, arg with
   | ('d'|'i'|'u'|'o'|'x'|'X'|'c'), (""|"h"|"hh"|"l"|"z"|"t"), Vint i ->
       let s = format_int32 (flags ^ conv) (camlint_of_coqint i) in
@@ -429,7 +429,7 @@ let format_value m flags length conv arg pct pt =
       let s = "<float argument expected>" in
       (ret s, String.length s)
   | 's', "", Vptr ofs ->
-      let (cs, i) = extract_string m ofs pct pt in
+      let (cs, i) = extract_string lc m ofs pct pt in
       (mmap camlstring_of_coqstring cs, i)
   | 's', "", _ ->
       let s = "<pointer argument expected>" in
@@ -450,7 +450,7 @@ let format_value m flags length conv arg pct pt =
       let s = "<unrecognized format>" in
       (ret s, String.length s)
 
-let do_printf m fmt args pct pt ps =
+let do_printf lc m fmt args pct pt ps =
 
   let b = Buffer.create 80 in
   let len = String.length fmt in
@@ -480,7 +480,7 @@ let do_printf m fmt args pct pt ps =
               Buffer.add_string b "<missing argument>";
               scan pos' []
           | (arg,pt) :: args' ->
-              let (res, i) = (format_value m flags length conv arg pct pt) in
+              let (res, i) = (format_value lc m flags length conv arg pct pt) in
               fun ps ->
               match res ps with
               | (Success s, ps') ->
@@ -567,16 +567,16 @@ let rec convert_external_args ge vl tl =
       convert_external_args ge vl tyl >>= fun el -> Some (e1 :: el)
   | _, _ -> None
 
-let do_external_function id sg ge w args pct fpt m =
+let do_external_function lc id sg ge w args pct fpt m =
   match camlstring_of_coqstring id, args with
   | "printf", (Vptr ofs,pt) :: args' ->
     convert_external_args ge args sg.sig_args >>= fun eargs ->
-    let (res, len) = extract_string m ofs pct pt in
+    let (res, len) = extract_string lc m ofs pct pt in
       let res' = fun ps ->
         match res ps with
         | (Success s, ps') ->
           let fmt = camlstring_of_coqstring s in
-          (match do_printf m fmt args' pct pt ps' with
+          (match do_printf lc m fmt args' pct pt ps' with
           | (Success fmt',ps'') ->
             Format.print_string fmt';
             flush stdout;

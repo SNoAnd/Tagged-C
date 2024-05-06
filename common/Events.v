@@ -725,7 +725,7 @@ Inductive known_builtin_sem (bf: builtin_function) (r: region) (ge: Genv.t F V) 
   are not described in [Builtins].
 *)
 
-Parameter external_functions_sem: String.string -> signature -> extcall_sem.
+Parameter external_functions_sem: Cabs.loc -> String.string -> signature -> extcall_sem.
 
 (*Axiom external_functions_properties:
   forall id sg, extcall_properties (external_functions_sem id sg) sg.*)
@@ -739,10 +739,10 @@ Parameter inline_assembly_sem: String.string -> signature -> extcall_sem.
 
 (** ** Combined semantics of external calls *)
 
-Definition builtin_or_external_sem name sg :=
+Definition builtin_or_external_sem lc name sg :=
   match lookup_builtin_function name sg with
   | Some bf => known_builtin_sem bf
-  | None => external_functions_sem name sg
+  | None => external_functions_sem lc name sg
   end.
 
 (*Lemma builtin_or_external_sem_ok: forall name sg,
@@ -768,7 +768,7 @@ This predicate is used in the semantics of all CompCert languages. *)
 
 Definition external_call (l:Cabs.loc) (ef: external_function) : extcall_sem :=
   match ef with
-  | EF_external name sg  => external_functions_sem name sg
+  | EF_external name sg  => external_functions_sem l name sg
 (*  | EF_builtin name sg   => builtin_or_external_sem name sg
   | EF_vload chunk       => volatile_load_sem chunk
   | EF_vstore chunk      => volatile_store_sem chunk*)

@@ -337,18 +337,18 @@ Module InterpreterEvents (Pol: Policy) (A: Memory ConcretePointer Pol UnitRegion
 
     (** External calls *)
     Variable do_external_function:
-      string -> signature -> Genv.t fundef type -> world -> list atom -> control_tag -> val_tag -> mem -> option (world * trace * (PolicyResult (atom * control_tag * mem))).
+      Cabs.loc -> string -> signature -> Genv.t fundef type -> world -> list atom -> control_tag -> val_tag -> mem -> option (world * trace * (PolicyResult (atom * control_tag * mem))).
 
     Hypothesis do_external_function_sound:
-      forall id sg ge vargs pct fpt m t res w w',
-        do_external_function id sg ge w vargs pct fpt m = Some(w', t, res) ->
-        external_functions_sem id sg tt ge vargs pct fpt m t res /\ possible_trace w t w'.
+      forall lc id sg ge vargs pct fpt m t res w w',
+        do_external_function lc id sg ge w vargs pct fpt m = Some(w', t, res) ->
+        external_functions_sem lc id sg tt ge vargs pct fpt m t res /\ possible_trace w t w'.
 
     Hypothesis do_external_function_complete:
-      forall id sg ge vargs pct fpt m t res w w',
-        external_functions_sem id sg tt ge vargs pct fpt m t res ->
+      forall lc id sg ge vargs pct fpt m t res w w',
+        external_functions_sem lc id sg tt ge vargs pct fpt m t res ->
         possible_trace w t w' ->
-        do_external_function id sg ge w vargs pct fpt m = Some(w', t, res).
+        do_external_function lc id sg ge w vargs pct fpt m = Some(w', t, res).
 
 (*    Definition do_ef_volatile_load (chunk: memory_chunk) (w: world) (vargs: list val) (m: mem) :
       option (world * trace * MemoryResult (atom * mem)) :=
@@ -479,17 +479,17 @@ Module InterpreterEvents (Pol: Policy) (A: Memory ConcretePointer Pol UnitRegion
           rewrite H in Heqb; rewrite Int64.eq_true in Heqb; discriminate.
     Qed.*)
 
-    Definition do_external (ef: external_function) (l: Cabs.loc) :
+    Definition do_external (ef: external_function) (lc: Cabs.loc) :
       world -> list atom -> control_tag -> val_tag -> mem -> option (world * trace * (PolicyResult (atom * control_tag * mem))) :=
       match ef with
       | EF_external name sg =>
           fun w vargs pct fpt m =>
-            do_external_function name sg ge w vargs pct fpt m
+            do_external_function lc name sg ge w vargs pct fpt m
   (*| EF_builtin name sg => do_builtin_or_external name sg
     | EF_vload chunk => do_ef_volatile_load chunk
     | EF_vstore chunk => do_ef_volatile_store chunk*)
-      | EF_malloc => do_ef_malloc l
-      | EF_free => do_ef_free l
+      | EF_malloc => do_ef_malloc lc
+      | EF_free => do_ef_free lc
       end.
 
     Lemma do_ef_external_sound:

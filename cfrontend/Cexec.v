@@ -256,20 +256,20 @@ Module Cexec (Pol: Policy).
     Variable ce: composite_env.
 
     Variable do_external_function:
-      string -> signature -> Genv.t fundef type -> world -> list atom ->
+      Cabs.loc -> string -> signature -> Genv.t fundef type -> world -> list atom ->
       control_tag -> val_tag -> mem ->
       option (world * trace * (PolicyResult (atom * control_tag * mem))).
-
+    
     Hypothesis do_external_function_sound:
-      forall id sg ge vargs pct fpt m t res w w',
-        do_external_function id sg ge w vargs pct fpt m = Some(w', t, res) ->
-        external_functions_sem id sg tt ge vargs pct fpt m t res /\ possible_trace w t w'.
+      forall lc id sg ge vargs pct fpt m t res w w',
+        do_external_function lc id sg ge w vargs pct fpt m = Some(w', t, res) ->
+        external_functions_sem lc id sg tt ge vargs pct fpt m t res /\ possible_trace w t w'.
     
     Hypothesis do_external_function_complete:
-      forall id sg ge vargs pct fpt m t res w w',
-        external_functions_sem id sg tt ge vargs pct fpt m t res ->
+      forall lc id sg ge vargs pct fpt m t res w w',
+        external_functions_sem lc id sg tt ge vargs pct fpt m t res ->
         possible_trace w t w' ->
-        do_external_function id sg ge w vargs pct fpt m = Some(w', t, res).
+        do_external_function lc id sg ge w vargs pct fpt m = Some(w', t, res).
 
     Local Open Scope memory_monad_scope.
     (** Accessing locations *)
@@ -1191,20 +1191,20 @@ Module ExecProof (Pol: Policy).
       Variable ce: composite_env.
     
       Variable do_external_function:
-        string -> signature -> Genv.t fundef type -> world -> list atom ->
+        Cabs.loc -> string -> signature -> Genv.t fundef type -> world -> list atom ->
         control_tag -> val_tag -> mem ->
         option (world * trace * (PolicyResult (atom * control_tag * mem))).
 
       Hypothesis do_external_function_sound:
-        forall id sg ge vargs pct fpt m t res w w',
-          do_external_function id sg ge w vargs pct fpt m = Some(w', t, res) ->
-          external_functions_sem id sg tt ge vargs pct fpt m t res /\ possible_trace w t w'.
+        forall lc id sg ge vargs pct fpt m t res w w',
+          do_external_function lc id sg ge w vargs pct fpt m = Some(w', t, res) ->
+          external_functions_sem lc id sg tt ge vargs pct fpt m t res /\ possible_trace w t w'.
     
       Hypothesis do_external_function_complete:
-        forall id sg ge vargs pct fpt m t res w w',
-          external_functions_sem id sg tt ge vargs pct fpt m t res ->
+        forall lc id sg ge vargs pct fpt m t res w w',
+          external_functions_sem lc id sg tt ge vargs pct fpt m t res ->
           possible_trace w t w' ->
-          do_external_function id sg ge w vargs pct fpt m = Some(w', t, res).
+          do_external_function lc id sg ge w vargs pct fpt m = Some(w', t, res).
 
       Lemma do_deref_loc_sound:
         forall w ty m ofs pt bf w' t res,
