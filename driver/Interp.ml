@@ -459,12 +459,12 @@ let do_printf m fmt args pct pt ps =
     try Some(Str.search_forward re_conversion fmt pos)
     with Not_found -> None in
 
-  let rec scan pos args (ps: Pol.policy_state * Tags.logs) =
+  let rec scan pos args =
     if pos < len then begin
     match opt_search_forward pos with
     | None ->
         Buffer.add_substring b fmt pos (len - pos);
-        ps
+        ret ()
     | Some pos1 ->
         Buffer.add_substring b fmt pos (pos1 - pos);
         let flags = Str.matched_group 1 fmt
@@ -473,23 +473,26 @@ let do_printf m fmt args pct pt ps =
         and pos' = Str.match_end() in
         if conv = "%" then begin
           Buffer.add_char b '%';
-          scan pos' args ps
+          scan pos' args
         end else begin
           match args with
           | [] ->
               Buffer.add_string b "<missing argument>";
-              scan pos' [] ps
-          | arg :: args' ->
+              scan pos' []
+          | (arg,pt) :: args' ->
               let (res, i) = (format_value m flags length conv arg pct pt) in
+              fun ps ->
               match res ps with
               | (Success s, ps') ->
                 Buffer.add_string b s;
                 scan pos' args' ps'
               | (Fail f, ps') ->
-                ps'
+                (Fail f, ps')
         end
-    end else ps
-  in let ps' = scan 0 args ps in (Buffer.contents b, ps')
+    end else ret ()
+  in match scan 0 args ps with
+     | (Success (), ps') -> (Success (Buffer.contents b), ps')
+     | (Fail f, ps') -> (Fail f, ps')
 
 
 (* Emulation of fgets, with assumed stream = stdin. *)
@@ -573,10 +576,13 @@ let do_external_function id sg ge w args pct fpt m =
         match res ps with
         | (Success s, ps') ->
           let fmt = camlstring_of_coqstring s in
-          let (fmt',ps'') = do_printf m fmt (List.map fst args') pct pt ps' in
-          Format.print_string fmt';
-          flush stdout;
-          (Success(((Vint (Z.of_uint len), Pol.def_tag), pct), m), ps'')
+          (match do_printf m fmt args' pct pt ps' with
+          | (Success fmt',ps'') ->
+            Format.print_string fmt';
+            flush stdout;
+            (Success(((Vint (Z.of_uint len), Pol.def_tag), pct), m), ps'')
+          | (Fail f, ps'') -> (Fail f, ps'')
+          )
         | (Fail f, ps') -> (Fail f, ps')
       in
     let tr = [Events.Event_syscall(id, eargs, Events.EVint (Z.of_uint len))] in
