@@ -221,8 +221,8 @@ Module Log (P:Policy) <: Policy.
     ret vt'.
 
   Definition PPCastT (l: loc) (pct: control_tag) (vt: val_tag)
-    (lts1: option (list loc_tag)) (lts2: option (list loc_tag)) (ty: type) : PolicyResult val_tag :=
-    vt' <- P.PPCastT l pct vt lts1 lts2 ty;;
+    (lts: option (list loc_tag)) (ty: type) : PolicyResult val_tag :=
+    vt' <- P.PPCastT l pct vt lts ty;;
     log _ ("PPCastT(" ++ print_ct pct ++ "," ++ print_vt vt ++ ") = " ++ print_vt vt');;
     ret vt'.
 

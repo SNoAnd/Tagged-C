@@ -51,7 +51,7 @@ If [a] is a l-value, the returned value denotes:
 *)
 
 Definition do_cast (v: val) (t1 t2: type) : res val :=
-  match sem_cast v t1 t2 empty with
+  match sem_cast v t1 t2 tt with
   | Some v' => OK v'
   | None => Error(msg "undefined cast")
   end.
@@ -85,16 +85,16 @@ Fixpoint constval (ce: composite_env) (a: expr) : res val :=
   | Ebinop op r1 r2 ty =>
       do v1 <- constval ce r1;
       do v2 <- constval ce r2;
-      match sem_binary_operation ce op v1 (typeof r1) v2 (typeof r2) empty with
+      match sem_binary_operation ce op v1 (typeof r1) v2 (typeof r2) tt with
       | Some v => OK v
       | None => Error(msg "undefined binary operation")
       end
   | Ecast r ty =>
       do v1 <- constval ce r; do_cast v1 (typeof r) ty
   | Esizeof ty1 ty =>
-      OK (Vofptrsize (sizeof ce ty1))
+      OK (Vlong (Int64.repr (sizeof ce ty1)))
   | Ealignof ty1 ty =>
-      OK (Vofptrsize (alignof ce ty1))
+      OK (Vlong (Int64.repr (alignof ce ty1)))
   | Eseqand r1 r2 ty =>
       do v1 <- constval ce r1;
       do v2 <- constval ce r2;

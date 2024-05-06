@@ -32,8 +32,8 @@ Require Import List. Import ListNotations.
 Local Unset Elimination Schemes.
 Local Unset Case Analysis Schemes.
 
-Module MemWithAlloc (Ptr: Pointer) (Pol: Policy) (M: Submem Ptr Pol) (A: AllocatorImpl Ptr Pol M) <:
-  Memory Ptr Pol UnitRegion.
+Module MemWithAlloc (Ptr: Pointer) (Pol: Policy) (Reg: Region Ptr) (M: Submem Ptr Pol)
+  (A: AllocatorImpl Ptr Pol M) <: Memory Ptr Pol Reg.
 
   Import A.
   Import M.
@@ -45,7 +45,7 @@ Module MemWithAlloc (Ptr: Pointer) (Pol: Policy) (M: Submem Ptr Pol) (A: Allocat
   Import Ptr.
   Import MD.
   Export TLib.
-  Export UnitRegion.
+  Export Reg.
  
   Definition addr := addr.
   Definition of_ptr := of_ptr.

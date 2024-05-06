@@ -27,7 +27,7 @@ Require Import NullPolicy.
 
 Inductive kind : Type := LV | RV.
 
-Module Type Semantics (Ptr: Pointer) (Pol: Policy) (Reg: Region) (A: Memory Ptr Pol Reg).
+Module Type Semantics (Ptr: Pointer) (Pol: Policy) (Reg: Region Ptr) (A: Memory Ptr Pol Reg).
   Module Csyntax := Csyntax Ptr Pol Reg A.
   Export Csyntax.
   Import A.
@@ -58,14 +58,14 @@ Module Type Semantics (Ptr: Pointer) (Pol: Policy) (Reg: Region) (A: Memory Ptr 
 End Semantics.
 
 Module TaggedCsem (Pol: Policy) (A: Memory ConcretePointer Pol UnitRegion) <:
-    Semantics ConcretePointer Pol UnitRegion A.
+  Semantics ConcretePointer Pol UnitRegion A.
     Module Csyntax := Csyntax ConcretePointer Pol UnitRegion A.
     Export Csyntax.
     Import A.
     Import TLib.
     Import ConcretePointer.
     Import UnitRegion.
-
+    
     Definition genv : Type := Genv.t fundef type.
     
     Inductive var_entry : Type :=
@@ -80,7 +80,7 @@ Module TaggedCsem (Pol: Policy) (A: Memory ConcretePointer Pol UnitRegion) <:
     Definition empty_tenv: tenv := (PTree.empty atom).
  
     Definition pstate : Type := policy_state * logs.
-  
+    
   Section SEM.
 
     Variable ge: genv.
@@ -152,26 +152,25 @@ Module TaggedCsem (Pol: Policy) (A: Memory ConcretePointer Pol UnitRegion) <:
     end.
 
   (* Allocates local (public) variables *)
-  
-  Definition do_alloc_variable (l: Cabs.loc) (pct: control_tag) (e: env) (m: mem) (id: ident) (ty:type) :
-    PolicyResult (control_tag * env * mem) :=
+
+  Definition do_alloc_variable (l: Cabs.loc) (pct: control_tag) (e: env) (m: mem) (id: ident)
+    (ty:type) : PolicyResult (control_tag * env * mem) :=
     '(m',base) <- stkalloc m tt (alignof ce ty) (sizeof ce ty);;
     '(pct', pt', lts') <- LocalT ce l pct ty;;
     mvs <- loadbytes m' base (sizeof ce ty);;
     m'' <- storebytes m' base mvs lts';;
     ret (pct', PTree.set id (PUB base pt' ty) e, m'').
 
-  Definition do_alloc_variables (l: Cabs.loc) (pct: control_tag) (e: env) (m: mem) (vs: list (ident * type)) :
-    PolicyResult (control_tag * env * mem) :=
+  Definition do_alloc_variables (l: Cabs.loc) (pct: control_tag) (e: env) (m: mem)
+    (vs: list (ident * type)) : PolicyResult (control_tag * env * mem) :=
     fold_left (fun res '(id,ty) =>
                  '(pct',e',m') <- res;;
                  do_alloc_variable l pct' e' m' id ty)
               vs (ret (pct, e, m)).
-  
+
   (* Allocates local (public) arguments and initializes them with their corresponding values *)
   Definition do_init_param (l: Cabs.loc) (pct: control_tag) (e: env) (m: mem) (id: ident)
-             (ty: type) (init: option atom) :
-    PolicyResult (control_tag * env * mem) :=
+    (ty: type) (init: option atom) : PolicyResult (control_tag * env * mem) :=
     '(pct', e', m') <- do_alloc_variable l pct e m id ty;;
     match e'!id, init with
     | Some (PUB base _ _), Some init =>
@@ -181,8 +180,7 @@ Module TaggedCsem (Pol: Policy) (A: Memory ConcretePointer Pol UnitRegion) <:
     end.
 
   Definition do_init_params (l: Cabs.loc) (pct: control_tag) (e: env) (m: mem)
-             (ps: list (ident * type * option atom))
-    : PolicyResult (control_tag * env * mem) :=
+    (ps: list (ident * type * option atom)) : PolicyResult (control_tag * env * mem) :=
     fold_left (fun res '(id,ty,init) =>
                  '(pct',e',m') <- res;;
                  do_init_param l pct' e' m' id ty init)
@@ -245,26 +243,26 @@ Module TaggedCsem (Pol: Policy) (A: Memory ConcretePointer Pol UnitRegion) <:
     end.
 
     (** Extract the values from a list of function arguments *)
-  Inductive cast_arguments (l:Cabs.loc) (pct: control_tag) (ps: pstate) (fpt: val_tag) (m: mem):
+  Inductive cast_arguments (l:Cabs.loc) (pct: control_tag) (ps: pstate) (fpt: val_tag) (r: region):
     exprlist -> typelist -> pstate -> Result (control_tag * list atom) -> Prop :=
   | cast_args_nil:
-    cast_arguments l pct ps fpt m Enil Tnil ps (Success (pct, []))
+    cast_arguments l pct ps fpt r Enil Tnil ps (Success (pct, []))
   | cast_args_cons: forall pct' pct'' v vt vt' ty el targ1 targs v1 vl ps' ps'',
-      cast_arguments l pct ps fpt m el targs ps' (Success (pct',vl)) ->
-      sem_cast v ty targ1 m = Some v1 ->
+      cast_arguments l pct ps fpt r el targs ps' (Success (pct',vl)) ->
+      sem_cast v ty targ1 r = Some v1 ->
       ArgT l pct' fpt vt (exprlist_len el) targ1 ps' = (Success (pct'', vt'), ps'') ->
-      cast_arguments l pct ps fpt m (Econs (Eval (v,vt) ty) el) (Tcons targ1 targs) ps''
+      cast_arguments l pct ps fpt r (Econs (Eval (v,vt) ty) el) (Tcons targ1 targs) ps''
                      (Success (pct'',(v1, vt') :: vl))
   | cast_args_fail_now: forall pct' v v1 vt ty el targ1 targs vl failure ps' ps'',
-      cast_arguments l pct ps fpt m el targs ps' (Success (pct',vl)) ->
-      sem_cast v ty targ1 m = Some v1 ->
+      cast_arguments l pct ps fpt r el targs ps' (Success (pct',vl)) ->
+      sem_cast v ty targ1 r = Some v1 ->
       ArgT l pct' fpt vt (exprlist_len el) targ1 ps' = (Fail failure, ps'') ->
-      cast_arguments l pct ps fpt m (Econs (Eval (v,vt) ty) el) (Tcons targ1 targs) ps''
+      cast_arguments l pct ps fpt r (Econs (Eval (v,vt) ty) el) (Tcons targ1 targs) ps''
                      (Fail failure)
   | cast_args_fail_later: forall v v1 vt ty el targ1 targs failure ps',
-      cast_arguments l pct ps fpt m el targs ps' (Fail failure) ->
-      sem_cast v ty targ1 m = Some v1 ->
-      cast_arguments l pct ps fpt m (Econs (Eval (v,vt) ty) el) (Tcons targ1 targs) ps'
+      cast_arguments l pct ps fpt r el targs ps' (Fail failure) ->
+      sem_cast v ty targ1 r = Some v1 ->
+      cast_arguments l pct ps fpt r (Econs (Eval (v,vt) ty) el) (Tcons targ1 targs) ps'
                      (Fail failure)
   .
  
@@ -313,8 +311,9 @@ Module TaggedCsem (Pol: Policy) (A: Memory ConcretePointer Pol UnitRegion) <:
     | red_builtin: forall ef tyargs cc ty pct te m ps,
         lred (Ebuiltin ef tyargs cc ty) pct te m
              (Eloc (Lefun ef tyargs Tany64 cc def_tag) ty) te m ps ps
-    | red_deref: forall p vt ty1 ty pct te m ps,
-        lred (Ederef (Eval (Vptr p,vt) ty1) ty) pct te m
+    | red_deref: forall v p vt ty1 ty pct te m ps,
+        sem_cast v ty1 ty1 tt = Some (Vptr p) ->
+        lred (Ederef (Eval (v,vt) ty1) ty) pct te m
              (Eloc (Lmem p vt Full) ty) te m ps ps
     | red_field_struct: forall p pt pt' id co a f ty pct delta bf te m ps0 ps1,
         ce!id = Some co ->
@@ -331,18 +330,18 @@ Module TaggedCsem (Pol: Policy) (A: Memory ConcretePointer Pol UnitRegion) <:
 
     Inductive lfailred: expr ->  control_tag -> trace ->  FailureClass ->
                         pstate-> pstate -> Prop :=
-    | failred_field_struct: forall p pt id co a f ty pct delta bf msg ps0 ps1,
-    ce!id = Some co ->
+    | failred_field_struct: forall p pt id co a f ty pct delta bf failure ps0 ps1,
+        ce!id = Some co ->
         field_offset ce f (co_members co) = OK (delta, bf) ->
-        FieldT l ce pct pt ty id ps0 = (Fail (PolicyFailure msg), ps1) ->
+        FieldT l ce pct pt ty id ps0 = (Fail failure, ps1) ->
         lfailred (Efield (Eval (Vptr p, pt) (Tstruct id a)) f ty) pct E0
-                (PolicyFailure msg) ps0 ps1
-    | failred_field_union: forall p pt id co a f ty pct delta bf msg ps0 ps1,
-    ce!id = Some co ->
+                failure ps0 ps1
+    | failred_field_union: forall p pt id co a f ty pct delta bf failure ps0 ps1,
+        ce!id = Some co ->
         union_field_offset ce f (co_members co) = OK (delta, bf) ->
-        FieldT l ce pct pt ty id ps0 = (Fail (PolicyFailure msg), ps1) ->
+        FieldT l ce pct pt ty id ps0 = (Fail failure, ps1) ->
         lfailred (Efield (Eval (Vptr p, pt) (Tunion id a)) f ty) pct E0
-                (PolicyFailure msg) ps0 ps1
+                 failure ps0 ps1
     .
 
     (** Head reductions for r-values *)
@@ -385,73 +384,61 @@ Module TaggedCsem (Pol: Policy) (A: Memory ConcretePointer Pol UnitRegion) <:
         rred pct (Eunop op (Eval (v1,vt1) ty1) ty) te m E0
              pct' (Eval (v,vt) ty) te m ps0 ps1
     | red_binop: forall op v1 vt1 ty1 v2 vt2 ty2 ty te m v vt' pct' ps0 ps1,
-        sem_binary_operation ce op v1 ty1 v2 ty2 m = Some v ->
+        sem_binary_operation ce op v1 ty1 v2 ty2 tt = Some v ->
         BinopT l op pct vt1 vt2 ps0 = (Success (pct', vt'), ps1) ->
         rred pct (Ebinop op (Eval (v1,vt1) ty1) (Eval (v2,vt2) ty2) ty) te m E0
              pct' (Eval (v,vt') ty) te m ps0 ps1
     | red_cast_int_int: forall ty v1 vt1 ty1 te m v vt' ps0 ps1,
         (forall ty' attr, ty1 <> Tpointer ty' attr) ->
         (forall ty' attr, ty <> Tpointer ty' attr) ->
-        sem_cast v1 ty1 ty m = Some v ->
-        IICastT l pct vt1 ty ps0 = (Success vt',ps1) -> 
+        sem_cast v1 ty1 ty tt = Some v ->
+        IICastT l pct vt1 ty ps0 = (Success vt',ps1) ->
         rred pct (Ecast (Eval (v1,vt1) ty1) ty) te m E0
              pct (Eval (v,vt') ty) te m ps0 ps1
-    | red_cast_int_ptr: forall ty v1 vt1 ty1 te m v p tr v2 vt2 lts pt' ty' attr ps0 ps1 ps2,
+    | red_cast_int_ptr: forall ty v1 vt1 ty1 te m p tr v2 vt2 lts pt' ty' attr ps0 ps1 ps2,
         (forall ty' attr, ty1 <> Tpointer ty' attr) ->
         ty = Tpointer ty' attr ->
-        sem_cast v1 ty1 ty m = Some v ->
-        v = Vptr p -> p <> nullptr ->
+        sem_cast v1 ty1 ty tt = Some (Vptr p) ->
+        ~ Vnullptr (Vptr p) ->
         deref_loc ty m p vt1 Full tr <<ps0>> (Success ((v2,vt2), lts)) <<ps1>> ->
         IPCastT l pct vt1 (Some lts) ty ps1 = (Success pt', ps2) ->
         rred pct (Ecast (Eval (v1,vt1) ty1) ty) te m tr
-             pct (Eval (v,pt') ty) te m ps0 ps2
+             pct (Eval ((Vptr p),pt') ty) te m ps0 ps2
     (* null pointers are special, do not try to deref, but they can be cast for checks *)
-    | red_cast_int_nullptr: forall ty v1 vt1 ty1 te m v pt' ty' attr ps0 ps1,
+    | red_cast_int_nullptr: forall ty v1 vt1 ty1 te m p pt' ty' attr ps0 ps1,
         (forall ty' attr, ty1 <> Tpointer ty' attr) ->
         ty = Tpointer ty' attr ->
-        sem_cast v1 ty1 ty m = Some v ->
-        v = Vnullptr ->
+        sem_cast v1 ty1 ty tt = Some (Vptr p) ->
+        Vnullptr (Vptr p) ->
         IPCastT l pct vt1 None ty ps0 = (Success pt', ps1) ->
         rred pct (Ecast (Eval (v1,vt1) ty1) ty) te m E0
-            pct (Eval (v,pt') ty) te m ps0 ps1
-    | red_cast_ptr_int: forall ty v1 vt1 ty1 te m v p tr v2 vt2 lts vt' ty' attr ps0 ps1 ps2,
+            pct (Eval ((Vptr p),pt') ty) te m ps0 ps1
+    | red_cast_ptr_int: forall ty v1 vt1 ty1 te m v vt' ty' attr ps0 ps1,
         ty1 = Tpointer ty' attr ->
         (forall ty' attr, ty <> Tpointer ty' attr) ->
-        sem_cast v1 ty1 ty m = Some v ->
-        v1 = Vptr p -> p <> nullptr ->
-        deref_loc ty1 m p vt1 Full tr <<ps0>> (Success ((v2,vt2), lts)) <<ps1>> ->
-        PICastT l pct vt1 (Some lts) ty ps1 = (Success vt',ps2) ->
-        rred pct (Ecast (Eval (v1,vt1) ty1) ty) te m tr
-             pct (Eval (v,vt') ty) te m ps0 ps2
-    | red_cast_nullptr_int: forall ty v1 vt1 ty1 te m v vt' ty' attr ps0 ps1,
-        ty1 = Tpointer ty' attr ->
-        (forall ty' attr, ty <> Tpointer ty' attr) ->
-        sem_cast v1 ty1 ty m = Some v ->
-        v1 = Vnullptr ->
+        sem_cast v1 ty1 ty tt = Some v ->
         PICastT l pct vt1 None ty ps0 = (Success vt',ps1) ->
         rred pct (Ecast (Eval (v1,vt1) ty1) ty) te m E0
             pct (Eval (v,vt') ty) te m ps0 ps1
-    | red_cast_ptr_ptr: forall ty v1 vt1 ty1 te m v p p1 tr tr1
-                               v2 vt2 v3 vt3 lts lts1 ty1' attr1 ty' attr2 pt' ps0 ps1 ps2 ps3,
+    | red_cast_ptr_ptr: forall ty v1 vt1 ty1 te m p tr
+                               v2 vt2 lts ty1' attr1 ty' attr2 pt' ps0 ps1 ps2,
         ty1 = Tpointer ty1' attr1 ->
         ty = Tpointer ty' attr2 ->
-        sem_cast v1 ty1 ty m = Some v ->
-        v1 = Vptr p1 -> v = Vptr p ->
-        p1 <> nullptr -> p <> nullptr ->
-        deref_loc ty1 m p1 vt1 Full tr1 <<ps0>> (Success ((v2,vt2),  lts1)) <<ps1>> ->
-        deref_loc ty m p vt1 Full tr <<ps1>> (Success ((v3,vt3), lts)) <<ps2>> ->
-        PPCastT l pct vt1 (Some lts1) (Some lts) ty ps2 = (Success pt',ps3) ->
-        rred pct (Ecast (Eval (v1,vt1) ty1) ty) te m (tr1 ++ tr)
-             pct (Eval (v,pt') ty) te m ps0 ps3
-    | red_cast_ptr_nullptr: forall ty v1 vt1 ty1 te m v
+        sem_cast v1 ty1 ty tt = Some (Vptr p) ->
+        ~ Vnullptr (Vptr p) ->
+        deref_loc ty m p vt1 Full tr <<ps0>> (Success ((v2,vt2), lts)) <<ps1>> ->
+        PPCastT l pct vt1 (Some lts) ty ps1 = (Success pt',ps2) ->
+        rred pct (Ecast (Eval (v1,vt1) ty1) ty) te m tr
+             pct (Eval (Vptr p,pt') ty) te m ps0 ps2
+    | red_cast_ptr_nullptr: forall ty v1 vt1 ty1 te m p
           ty1' attr1 ty' attr2 pt' ps0 ps1,
         ty1 = Tpointer ty1' attr1 ->
         ty = Tpointer ty' attr2 ->
-        sem_cast v1 ty1 ty m = Some v ->
-        (v1 = Vnullptr \/ v = Vnullptr) ->
-        PPCastT l pct vt1 None None ty ps0 = (Success pt',ps1) ->
+        sem_cast v1 ty1 ty tt = Some (Vptr p) ->
+        Vnullptr (Vptr p) ->
+        PPCastT l pct vt1 None ty ps0 = (Success pt',ps1) ->
         rred pct (Ecast (Eval (v1,vt1) ty1) ty) te m E0
-        pct (Eval (v,pt') ty) te m ps0 ps1
+             pct (Eval (Vptr p,pt') ty) te m ps0 ps1
     | red_seqand_true: forall v1 vt1 ty1 r2 ty te m pct' ps0 ps1,
         bool_val v1 ty1 m = Some true ->
         ExprSplitT l pct vt1 ps0 = (Success pct',ps1) ->
@@ -487,7 +474,7 @@ Module TaggedCsem (Pol: Policy) (A: Memory ConcretePointer Pol UnitRegion) <:
         pct (Eval (Vlong (Int64.repr (alignof ce ty1)), vt') ty) te m ps0 ps1
     | red_assign_mem: forall ofs ty1 pt bf v1 vts v2 vt2 ty2 te m t1 t2 m' v'
                              pct'' vt'' v'' vt''' lts lts' ps0 ps1 ps2 ps3,
-        sem_cast v2 ty2 ty1 m = Some v' ->
+        sem_cast v2 ty2 ty1 tt = Some v' ->
         deref_loc ty1 m ofs pt bf t1 <<ps0>> (Success (v1, vts, lts)) <<ps1>> ->
         ('(pct',vt') <- AssignT l pct (EffectiveT l vts) vt2;;
         StoreT l pct' pt vt' lts) ps1 = (Success (pct'', vt'', lts'),ps2) ->
@@ -496,7 +483,7 @@ Module TaggedCsem (Pol: Policy) (A: Memory ConcretePointer Pol UnitRegion) <:
              pct'' (Eval (v'',vt''') ty1) te m' ps0 ps3
     | red_assign_tmp: forall b ty1 v1 vt1 v2 vt2 ty2 te m te' v pct' vt' ps0 ps1,
         te!b = Some (v1,vt1) ->
-        sem_cast v2 ty2 ty1 m = Some v ->
+        sem_cast v2 ty2 ty1 tt = Some v ->
         te' = PTree.set b (v,vt') te ->
         AssignT l pct vt1 vt2 ps0 = (Success (pct',vt'),ps1) ->
         rred pct (Eassign (Eloc (Ltmp b) ty1) (Eval (v2, vt2) ty2) ty1) te m E0
@@ -573,7 +560,7 @@ Module TaggedCsem (Pol: Policy) (A: Memory ConcretePointer Pol UnitRegion) <:
         rred pct (Ecomma (Eval v ty1) r2 ty) te m E0
              pct r2 te m ps ps
     | red_paren: forall v1 vt1 ty1 ty2 ty te m v pct' vt' ps0 ps1,
-        sem_cast v1 ty1 ty2 m = Some v ->
+        sem_cast v1 ty1 ty2 tt = Some v ->
         ExprJoinT l pct vt1 ps0 = (Success (pct', vt'),ps1) ->
         rred pct (Eparen (Eval (v1,vt1) ty1) ty2 ty) te m E0
              pct' (Eval (v,vt') ty) te m ps0 ps1.
@@ -608,7 +595,7 @@ Module TaggedCsem (Pol: Policy) (A: Memory ConcretePointer Pol UnitRegion) <:
         rfailred pct (Eunop op (Eval (v1,vt1) ty1) ty) te m E0 failure ps0 ps1
     | failred_binop:
       forall op v1 vt1 ty1 v2 vt2 ty2 ty te m v failure ps0 ps1,
-        sem_binary_operation ce op v1 ty1 v2 ty2 m = Some v ->
+        sem_binary_operation ce op v1 ty1 v2 ty2 tt = Some v ->
         BinopT l op pct vt1 vt2 ps0 = (Fail failure,ps1) ->
         rfailred pct (Ebinop op (Eval (v1,vt1) ty1) (Eval (v2,vt2) ty2) ty) te m E0 failure ps0 ps1
     | failred_seqand:
@@ -636,20 +623,20 @@ Module TaggedCsem (Pol: Policy) (A: Memory ConcretePointer Pol UnitRegion) <:
         rfailred pct (Ealignof ty1 ty) te m E0 failure ps0 ps1
     | failred_assign_mem0:
       forall ofs ty1 pt bf v2 vt2 ty2 te m t1 v' failure ps0 ps1,
-        sem_cast v2 ty2 ty1 m = Some v' ->
+        sem_cast v2 ty2 ty1 tt = Some v' ->
         deref_loc ty1 m ofs pt bf t1 <<ps0>> (Fail failure) <<ps1>> ->
         rfailred pct (Eassign (Eloc (Lmem ofs pt bf) ty1)
                               (Eval (v2, vt2) ty2) ty1) te m t1 failure ps0 ps1
     | failred_assign_mem1:
       forall ofs ty1 pt bf v1 vts v2 vt2 ty2 te m t1 v' lts failure ps0 ps1 ps2,
-        sem_cast v2 ty2 ty1 m = Some v' ->
+        sem_cast v2 ty2 ty1 tt = Some v' ->
         deref_loc ty1 m ofs pt bf t1 <<ps0>> (Success (v1, vts, lts)) <<ps1>> ->
         ('(pct',vt') <- AssignT l pct (EffectiveT l vts) vt2;;
          StoreT l pct' pt vt' lts) ps1 = (Fail failure,ps2) ->
         rfailred pct (Eassign (Eloc (Lmem ofs pt bf) ty1) (Eval (v2, vt2) ty2) ty1) te m t1 failure ps0 ps2
     | failred_assign_mem2:
       forall ofs ty1 pt bf v1 vts v2 vt2 ty2 te m t1 v' lts pct'' vt'' lts' t2 failure ps0 ps1 ps2 ps3,
-        sem_cast v2 ty2 ty1 m = Some v' ->
+        sem_cast v2 ty2 ty1 tt = Some v' ->
         deref_loc ty1 m ofs pt bf t1 <<ps0>> (Success (v1, vts, lts)) <<ps1>> ->
         ('(pct',vt') <- AssignT l pct (EffectiveT l vts) vt2;;
          StoreT l pct' pt vt' lts) ps1 = (Success (pct'',vt'',lts'),ps2) ->
@@ -658,7 +645,7 @@ Module TaggedCsem (Pol: Policy) (A: Memory ConcretePointer Pol UnitRegion) <:
     | failred_assign_tmp:
       forall b ty1 v1 vt1 v2 vt2 ty2 te m v failure ps0 ps1,
         te!b = Some (v1,vt1) ->
-        sem_cast v2 ty2 ty1 m = Some v ->
+        sem_cast v2 ty2 ty1 tt = Some v ->
         AssignT l pct vt1 vt2 ps0 = (Fail failure,ps1) ->
         rfailred pct (Eassign (Eloc (Ltmp b) ty1) (Eval (v2, vt2) ty2) ty1) te m E0 failure ps0 ps1
     | failred_assignop_mem0:
@@ -697,77 +684,64 @@ Module TaggedCsem (Pol: Policy) (A: Memory ConcretePointer Pol UnitRegion) <:
         rfailred pct (Epostincr id (Eloc (Ltmp b) ty) ty) te m E0 failure ps0 ps1
     | failred_paren:
       forall v1 vt1 ty1 ty2 ty te m v failure ps0 ps1,
-        sem_cast v1 ty1 ty2 m = Some v ->
+        sem_cast v1 ty1 ty2 tt = Some v ->
         ExprJoinT l pct vt1 ps0 = (Fail failure,ps1) ->
         rfailred pct (Eparen (Eval (v1,vt1) ty1) ty2 ty) te m E0 failure ps0 ps1
     | failred_cast_int_int:
       forall ty v1 vt1 ty1 te m v failure ps0 ps1,
         (forall ty' attr, ty1 <> Tpointer ty' attr) ->
         (forall ty' attr, ty <> Tpointer ty' attr) ->
-        sem_cast v1 ty1 ty m = Some v ->
+        sem_cast v1 ty1 ty tt = Some v ->
         IICastT l pct vt1 ty ps0 = (Fail failure,ps1) -> 
         rfailred pct (Ecast (Eval (v1,vt1) ty1) ty) te m E0 failure ps0 ps1
     | failred_cast_int_ptr:
-      forall ty v1 vt1 ty1 te m v p tr v2 vt2 lts ty' attr failure ps0 ps1 ps2,
+      forall ty v1 vt1 ty1 te m p tr v2 vt2 lts ty' attr failure ps0 ps1 ps2,
         (forall ty' attr, ty1 <> Tpointer ty' attr) ->
         ty = Tpointer ty' attr ->
-        sem_cast v1 ty1 ty m = Some v ->
-        v = Vptr p -> p <> nullptr ->
+        sem_cast v1 ty1 ty tt = Some (Vptr p) ->
+        ~ Vnullptr (Vptr p) ->
         deref_loc ty m p vt1 Full tr <<ps0>> (Success ((v2,vt2), lts)) <<ps1>> ->
         IPCastT l pct vt1 (Some lts) ty ps1 = (Fail failure,ps2) ->
         rfailred pct (Ecast (Eval (v1,vt1) ty1) ty) te m tr failure ps0 ps2
     | failred_cast_ptr_int:
-      forall ty v1 vt1 ty1 te m v p tr v2 vt2 lts ty' attr failure ps0 ps1 ps2,
+      forall ty v1 vt1 ty1 te m v ty' attr failure ps0 ps1,
         ty1 = Tpointer ty' attr ->
         (forall ty' attr, ty <> Tpointer ty' attr) ->
-        sem_cast v1 ty1 ty m = Some v ->
-        v1 = Vptr p -> p <> nullptr ->
-        deref_loc ty1 m p vt1 Full tr <<ps0>> (Success ((v2,vt2), lts)) <<ps1>> ->
-        PICastT l pct vt1 (Some lts) ty ps1 = (Fail failure, ps2) ->
-        rfailred pct (Ecast (Eval (v1,vt1) ty1) ty) te m tr failure ps0 ps2
+        sem_cast v1 ty1 ty tt = Some v ->
+        PICastT l pct vt1 None ty ps0 = (Fail failure, ps1) ->
+        rfailred pct (Ecast (Eval (v1,vt1) ty1) ty) te m E0 failure ps0 ps1
     | failred_cast_ptr_ptr:
-      forall ty v1 vt1 ty1 te m v p p1 tr tr1 v2 vt2 v3 vt3 lts lts1 ty1' attr1 ty' attr2 failure ps0 ps1 ps2 ps3,
+      forall ty v1 vt1 ty1 te m p tr v2 vt2 lts ty1' attr1 ty' attr2 failure ps0 ps1 ps2,
         ty1 = Tpointer ty1' attr1 ->
         ty = Tpointer ty' attr2 ->
-        sem_cast v1 ty1 ty m = Some v ->
-        v1 = Vptr p1 ->
-        v = Vptr p ->
-        (v <> Vnullptr /\ v1 <> Vnullptr) ->
-        deref_loc ty1 m p1 vt1 Full tr1 <<ps0>> (Success ((v2,vt2), lts1)) <<ps1>> ->
-        deref_loc ty m p vt1 Full tr <<ps1>> (Success ((v3,vt3), lts)) <<ps2>> ->
-        PPCastT l pct vt1 (Some lts1) (Some lts) ty ps2 = (Fail failure,ps3) ->
-        rfailred pct (Ecast (Eval (v1,vt1) ty1) ty) te m (tr1 ++ tr) failure ps0 ps3
-    | failred_cast_int_nullptr: forall ty v1 vt1 ty1 te m v failure ty' attr ps0 ps1,
+        sem_cast v1 ty1 ty tt = Some (Vptr p) ->
+        ~ Vnullptr (Vptr p) ->
+        deref_loc ty m p vt1 Full tr <<ps0>> (Success ((v2,vt2), lts)) <<ps1>> ->
+        PPCastT l pct vt1 (Some lts) ty ps1 = (Fail failure,ps2) ->
+        rfailred pct (Ecast (Eval (v1,vt1) ty1) ty) te m tr failure ps0 ps2
+    | failred_cast_int_nullptr: forall ty v1 vt1 ty1 te m p failure ty' attr ps0 ps1,
         (forall ty' attr, ty1 <> Tpointer ty' attr) ->
         ty = Tpointer ty' attr ->
-        sem_cast v1 ty1 ty m = Some v ->
-        v = Vnullptr ->
+        sem_cast v1 ty1 ty tt = Some (Vptr p) ->
+        Vnullptr (Vptr p) ->
         IPCastT l pct vt1 None ty ps0 = (Fail failure, ps1) ->
         rfailred pct (Ecast (Eval (v1,vt1) ty1) ty) te m E0 failure ps0 ps1 
-    | failred_cast_nullptr_int: forall ty v1 vt1 ty1 te m v failure ty' attr ps0 ps1,
-        ty1 = Tpointer ty' attr ->
-        (forall ty' attr, ty <> Tpointer ty' attr) ->
-        sem_cast v1 ty1 ty m = Some v ->
-        v1 = Vnullptr ->
-        PICastT l pct vt1 None ty ps0 = (Fail failure,ps1) ->
-        rfailred pct (Ecast (Eval (v1,vt1) ty1) ty) te m E0 failure ps0 ps1 
-    | failred_cast_ptr_nullptr: forall ty v1 vt1 ty1 te m v
-        ty1' attr1 ty' attr2 failure ps0 ps1,
+    | failred_cast_ptr_nullptr: forall ty v1 vt1 ty1 te m p ty1' attr1 ty' attr2 failure ps0 ps1,
       ty1 = Tpointer ty1' attr1 ->
       ty = Tpointer ty' attr2 ->
-      sem_cast v1 ty1 ty m = Some v ->
-      (v1 = Vnullptr \/ v = Vnullptr) ->
-      PPCastT l pct vt1 None None ty ps0 = (Fail failure,ps1) ->
+      sem_cast v1 ty1 ty tt = Some (Vptr p) ->
+      Vnullptr (Vptr p) ->
+      PPCastT l pct vt1 None ty ps0 = (Fail failure,ps1) ->
       rfailred pct (Ecast (Eval (v1,vt1) ty1) ty) te m E0 failure ps0 ps1 
 
     | red_call_internal_fail: forall ty te m b fd vft tyf tyargs tyres cconv el failure ps0 ps1,
         Genv.find_funct ge (Vfptr b) = Some fd ->
         type_of_fundef fd = Tfunction tyargs tyres cconv ->
         classify_fun tyf = fun_case_f tyargs tyres cconv ->
-        cast_arguments l pct ps0 vft m el tyargs ps1 (Fail failure) ->
+        cast_arguments l pct ps0 vft tt el tyargs ps1 (Fail failure) ->
         rfailred pct (Ecall (Eval (Vfptr b,vft) tyf) el ty) te m E0 failure ps0 ps1
     | red_call_external_fail: forall vft tyf te m tyargs tyres cconv el ty ef failure ps0 ps1,
-        cast_arguments l pct ps0 vft m el tyargs ps1 (Fail failure) ->
+        cast_arguments l pct ps0 vft tt el tyargs ps1 (Fail failure) ->
         rfailred pct (Ecall (Eval (Vefptr ef tyargs tyres cconv,vft) tyf) el ty) te m E0
                  failure ps0 ps1
     .
@@ -779,11 +753,11 @@ Module TaggedCsem (Pol: Policy) (A: Memory ConcretePointer Pol UnitRegion) <:
         Genv.find_funct ge (Vfptr b) = Some fd ->
         type_of_fundef fd = Tfunction tyargs tyres cconv ->
         classify_fun tyf = fun_case_f tyargs tyres cconv ->
-        cast_arguments l pct ps0 vft m el tyargs ps1 (Success (pct',vargs)) ->
+        cast_arguments l pct ps0 vft tt el tyargs ps1 (Success (pct',vargs)) ->
         callred pct (Ecall (Eval (Vfptr b,vft) tyf) el ty) m
                 fd vft vargs ty pct' ps0 ps1
     | red_call_external: forall pct pct' vft tyf m tyargs tyres cconv el ty ef vargs ps0 ps1,
-        cast_arguments l pct ps0 vft m el tyargs ps1 (Success (pct',vargs)) ->
+        cast_arguments l pct ps0 vft tt el tyargs ps1 (Success (pct',vargs)) ->
         callred pct (Ecall (Eval (Vefptr ef tyargs tyres cconv,vft) tyf) el ty)
                 m (External ef tyargs ty cconv) vft vargs ty pct' ps0 ps1.
    
@@ -868,7 +842,7 @@ Module TaggedCsem (Pol: Policy) (A: Memory ConcretePointer Pol UnitRegion) <:
         context k RV C -> e = C e' -> imm_safe k e' pct te m.
 
     (* Property that safe expressions must have the right kind*)
-        Definition expr_kind (a: expr) : kind :=
+    Definition expr_kind (a: expr) : kind :=
       match a with
       | Eloc _ _ => LV
       | Evar _ _ => LV
@@ -892,7 +866,7 @@ Module TaggedCsem (Pol: Policy) (A: Memory ConcretePointer Pol UnitRegion) <:
       expr_kind a = LV.
   Proof.
     induction 1; auto.
-Qed.
+  Qed.
 
   Lemma rred_kind:
     forall ps ps' PCT a m e t PCT' a' e' m',
@@ -939,60 +913,6 @@ Qed.
     eapply context_kind; eauto. eapply rfailred_kind; eauto.
     eapply context_kind; eauto. eapply callred_kind; eauto.
   Qed.
-
-
-(** ** Derived forms. *)
-
-(** The following are admissible reduction rules for some derived forms
-  of the CompCert C language.  They help showing that the derived forms
-  make sense. *)
-
-(*Lemma red_selection:
-  forall v1 ty1 v2 ty2 v3 ty3 ty m b v2' v3',
-  ty <> Tvoid ->
-  bool_val v1 ty1 m = Some b ->
-  sem_cast v2 ty2 ty m = Some v2' ->
-  sem_cast v3 ty3 ty m = Some v3' ->
-  rred (Eselection (Eval v1 ty1) (Eval v2 ty2) (Eval v3 ty3) ty) m
-    E0 (Eval (if b then v2' else v3') ty) m.
-Proof.
-  intros. unfold Eselection.
-  set (t := typ_of_type ty).
-  set (sg := mksignature (AST.Tint :: t :: t :: nil) t cc_default).
-  assert (LK: lookup_builtin_function "__builtin_sel"%string sg = Some (BI_standard (BI_select t))).
-  { unfold sg, t; destruct ty as   [ | ? ? ? | ? | [] ? | ? ? | ? ? ? | ? ? ? | ? ? | ? ? ];
-    simpl; unfold Tptr; destruct Archi.ptr64; reflexivity. }
-  set (v' := if b then v2' else v3').
-  assert (C: val_casted v' ty).
-  { unfold v'; destruct b; eapply cast_val_is_casted; eauto. }
-  assert (EQ: Val.normalize v' t = v').
-  { apply Val.normalize_idem. apply val_casted_has_type; auto. }
-  econstructor.
-- constructor. rewrite cast_bool_bool_val, H0. eauto.
-  constructor. eauto.
-  constructor. eauto.
-  constructor.
-- red. red. rewrite LK. constructor. simpl. rewrite <- EQ.
-  destruct b; auto.
-Qed.*)
-
-(*Lemma ctx_selection_1:
-  forall k C r2 r3 ty, context k RV C -> context k RV (fun x => Eselection (C x) r2 r3 ty).
-Proof.
-  intros. apply ctx_builtin. constructor; auto.
-Qed.*)
-
-(*Lemma ctx_selection_2:
-  forall k r1 C r3 ty, context k RV C -> context k RV (fun x => Eselection r1 (C x) r3 ty).
-Proof.
-  intros. apply ctx_builtin. constructor; constructor; auto.
-Qed.*)
-
-(*Lemma ctx_selection_3:
-  forall k r1 r2 C ty, context k RV C -> context k RV (fun x => Eselection r1 r2 (C x) ty).
-Proof.
-  intros. apply ctx_builtin. constructor; constructor; constructor; auto.
-Qed.*)
 
 End EXPR.
 
@@ -1323,12 +1243,12 @@ Inductive sstep: state -> trace -> state -> Prop :=
     sstep (State f ps pct (Sreturn (Some x) l) k e te m)
           E0 (ExprState f l ps pct x (Kreturn k) e te m)
 | step_return_2:  forall f ps ps' pct pct' l v vt ty k e te m v' m',
-    sem_cast v ty f.(fn_return) m = Some v' ->
+    sem_cast v ty f.(fn_return) tt = Some v' ->
     do_free_variables l pct m (variables_of_env e) ps = (Success (pct', m'), ps') ->
     sstep (ExprState f l ps pct (Eval (v,vt) ty) (Kreturn k) e te m)
           E0 (Returnstate (Internal f) l ps' pct' (v',vt) (call_cont k) m')
 | step_return_fail:  forall f ps ps' lg pct l v vt ty k e te m v' failure,
-    sem_cast v ty f.(fn_return) m = Some v' ->
+    sem_cast v ty f.(fn_return) tt = Some v' ->
     do_free_variables l pct m (variables_of_env e) ps = (Fail failure, (ps',lg)) ->
     sstep (ExprState f l ps pct (Eval (v,vt) ty) (Kreturn k) e te m)
           E0 (Failstop failure lg)

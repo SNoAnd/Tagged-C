@@ -234,9 +234,9 @@ Module PolProduct (P1:Policy) (P2: Policy) <: Policy.
                 (fun vt1 vt2 => (vt1, vt2)).
 
   Definition PPCastT (l: loc) (pct: control_tag) (vt: val_tag)
-    (lts1: option (list loc_tag)) (lts2: option (list loc_tag)) (ty: type) : PolicyResult val_tag :=
-    double_bind (P1.PPCastT l (fst pct) (fst vt) (option_map (map fst) lts1) (option_map (map fst) lts2) ty)
-                (P2.PPCastT l (snd pct) (snd vt) (option_map (map snd) lts1) (option_map (map snd) lts2) ty)
+    (lts: option (list loc_tag)) (ty: type) : PolicyResult val_tag :=
+    double_bind (P1.PPCastT l (fst pct) (fst vt) (option_map (map fst) lts) ty)
+                (P2.PPCastT l (snd pct) (snd vt) (option_map (map snd) lts) ty)
                 (fun vt1 vt2 => (vt1, vt2)).
 
   Definition IICastT (l: loc) (pct: control_tag) (vt: val_tag) (ty: type) :

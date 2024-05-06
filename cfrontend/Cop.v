@@ -30,7 +30,7 @@ Require Import Smallstep.
 Require Archi.
 Require Import ExtLib.Structures.Monads. Import MonadNotation.
 
-Module Cop (Ptr: Pointer) (Pol: Policy) (Reg: Region) (A: Memory Ptr Pol Reg).
+Module Cop (Ptr: Pointer) (Pol: Policy) (Reg: Region Ptr) (A: Memory Ptr Pol Reg).
   Module Smallstep := Smallstep Ptr Pol Reg A.
   Export Smallstep.
   Import A.
@@ -207,14 +207,13 @@ Definition cast_single_long (si : signedness) (f: float32) : option int64 :=
   | Unsigned => Float32.to_longu f
   end.
 
-Definition sem_cast (v: val) (t1 t2: type) (m: mem): option val :=
+Definition sem_cast (v: val) (t1 t2: type) (r: region): option val :=
   match classify_cast t1 t2 with
   | cast_case_pointer =>
       match v with
-      | Vfptr _ => Some v
-      | Vint i => if Int.eq i Int.zero then Some Vnullptr else Some v
-      | Vlong i => if Int64.eq i Int64.zero then Some Vnullptr else Some v
-      | Vptr _ => Some v
+      | Vfptr _ | Vptr _ => Some v
+      | Vint i => Some (Vptr (int_to_ptr (cast_int_long Unsigned i) r))
+      | Vlong i => Some (Vptr (int_to_ptr i r))
       | _ => None
       end
   | cast_case_i2i sz2 si2 =>
@@ -566,13 +565,13 @@ Definition sem_binarith
     (sem_long: signedness -> int64 -> int64 -> option val)
     (sem_float: float -> float -> option val)
     (sem_single: float32 -> float32 -> option val)
-    (v1: val) (t1: type) (v2: val) (t2: type) (m: mem): option val :=
+    (v1: val) (t1: type) (v2: val) (t2: type) (r: region): option val :=
   let c := classify_binarith t1 t2 in
   let t := binarith_type c in
-  match sem_cast v1 t1 t m with
+  match sem_cast v1 t1 t r with
   | None => None
   | Some v1' =>
-  match sem_cast v2 t2 t m with
+  match sem_cast v2 t2 t r with
   | None => None
   | Some v2' =>
   match c with
@@ -640,7 +639,7 @@ Definition sem_add_ptr_long (cenv: composite_env) (ty: type) (v1 v2: val): optio
   | _,  _ => None
   end.
 
-Definition sem_add (cenv: composite_env) (v1:val) (t1:type) (v2: val) (t2:type) (m: mem): option val :=
+Definition sem_add (cenv: composite_env) (v1:val) (t1:type) (v2: val) (t2:type) (r: region): option val :=
   match classify_add t1 t2 with
   | add_case_pi ty si =>             (**r pointer plus integer *)
       sem_add_ptr_int cenv ty si v1 v2
@@ -656,7 +655,7 @@ Definition sem_add (cenv: composite_env) (v1:val) (t1:type) (v2: val) (t2:type) 
         (fun sg n1 n2 => Some(Vlong(Int64.add n1 n2)))
         (fun n1 n2 => Some(Vfloat(Float.add n1 n2)))
         (fun n1 n2 => Some(Vsingle(Float32.add n1 n2)))
-        v1 t1 v2 t2 m
+        v1 t1 v2 t2 r
   end.
 
 (** *** Subtraction *)
@@ -675,7 +674,7 @@ Definition classify_sub (ty1: type) (ty2: type) :=
   | _, _ => sub_default
   end.
 
-Definition sem_sub (cenv: composite_env) (v1:val) (t1:type) (v2: val) (t2:type) (m:mem): option val :=
+Definition sem_sub (cenv: composite_env) (v1:val) (t1:type) (v2: val) (t2:type) (r:region): option val :=
   match classify_sub t1 t2 with
   | sub_case_pi ty si =>            (**r pointer minus integer *)
       match v1, v2 with
@@ -709,20 +708,20 @@ Definition sem_sub (cenv: composite_env) (v1:val) (t1:type) (v2: val) (t2:type) 
         (fun sg n1 n2 => Some(Vlong(Int64.sub n1 n2)))
         (fun n1 n2 => Some(Vfloat(Float.sub n1 n2)))
         (fun n1 n2 => Some(Vsingle(Float32.sub n1 n2)))
-        v1 t1 v2 t2 m
+        v1 t1 v2 t2 r
   end.
 
 (** *** Multiplication, division, modulus *)
 
-Definition sem_mul (v1:val) (t1:type) (v2: val) (t2:type) (m:mem) : option val :=
+Definition sem_mul (v1:val) (t1:type) (v2: val) (t2:type) (r:region) : option val :=
   sem_binarith
     (fun sg n1 n2 => Some(Vint(Int.mul n1 n2)))
     (fun sg n1 n2 => Some(Vlong(Int64.mul n1 n2)))
     (fun n1 n2 => Some(Vfloat(Float.mul n1 n2)))
     (fun n1 n2 => Some(Vsingle(Float32.mul n1 n2)))
-    v1 t1 v2 t2 m.
+    v1 t1 v2 t2 r.
 
-Definition sem_div (v1:val) (t1:type) (v2: val) (t2:type) (m:mem) : option val :=
+Definition sem_div (v1:val) (t1:type) (v2: val) (t2:type) (r:region) : option val :=
   sem_binarith
     (fun sg n1 n2 =>
       match sg with
@@ -746,9 +745,9 @@ Definition sem_div (v1:val) (t1:type) (v2: val) (t2:type) (m:mem) : option val :
       end)
     (fun n1 n2 => Some(Vfloat(Float.div n1 n2)))
     (fun n1 n2 => Some(Vsingle(Float32.div n1 n2)))
-    v1 t1 v2 t2 m.
+    v1 t1 v2 t2 r.
 
-Definition sem_mod (v1:val) (t1:type) (v2: val) (t2:type) (m:mem) : option val :=
+Definition sem_mod (v1:val) (t1:type) (v2: val) (t2:type) (r:region) : option val :=
   sem_binarith
     (fun sg n1 n2 =>
       match sg with
@@ -772,31 +771,31 @@ Definition sem_mod (v1:val) (t1:type) (v2: val) (t2:type) (m:mem) : option val :
       end)
     (fun n1 n2 => None)
     (fun n1 n2 => None)
-    v1 t1 v2 t2 m.
+    v1 t1 v2 t2 r.
 
-Definition sem_and (v1:val) (t1:type) (v2: val) (t2:type) (m:mem) : option val :=
+Definition sem_and (v1:val) (t1:type) (v2: val) (t2:type) (r:region) : option val :=
   sem_binarith
     (fun sg n1 n2 => Some(Vint(Int.and n1 n2)))
     (fun sg n1 n2 => Some(Vlong(Int64.and n1 n2)))
     (fun n1 n2 => None)
     (fun n1 n2 => None)
-    v1 t1 v2 t2 m.
+    v1 t1 v2 t2 r.
 
-Definition sem_or (v1:val) (t1:type) (v2: val) (t2:type) (m:mem) : option val :=
+Definition sem_or (v1:val) (t1:type) (v2: val) (t2:type) (r:region) : option val :=
   sem_binarith
     (fun sg n1 n2 => Some(Vint(Int.or n1 n2)))
     (fun sg n1 n2 => Some(Vlong(Int64.or n1 n2)))
     (fun n1 n2 => None)
     (fun n1 n2 => None)
-    v1 t1 v2 t2 m.
+    v1 t1 v2 t2 r.
 
-Definition sem_xor (v1:val) (t1:type) (v2: val) (t2:type) (m:mem) : option val :=
+Definition sem_xor (v1:val) (t1:type) (v2: val) (t2:type) (r:region) : option val :=
   sem_binarith
     (fun sg n1 n2 => Some(Vint(Int.xor n1 n2)))
     (fun sg n1 n2 => Some(Vlong(Int64.xor n1 n2)))
     (fun n1 n2 => None)
     (fun n1 n2 => None)
-    v1 t1 v2 t2 m.
+    v1 t1 v2 t2 r.
 
 (** *** Shifts *)
 
@@ -890,7 +889,7 @@ Definition classify_cmp (ty1: type) (ty2: type) :=
   | _, _ => cmp_default
   end.
 
-Definition cmp_ptr (m: mem) (c: comparison) (v1 v2: val): option val :=
+Definition cmp_ptr (r: region) (c: comparison) (v1 v2: val): option val :=
   match v1, v2 with
   | Vint _, Vint _ => option_map Values.of_bool (Values.cmpu_bool c v1 v2)
   | Vlong _, Vlong _ => option_map Values.of_bool (Values.cmplu_bool c v1 v2)
@@ -910,14 +909,14 @@ Definition cmp_ptr (m: mem) (c: comparison) (v1 v2: val): option val :=
 
 Definition sem_cmp (c:comparison)
                   (v1: val) (t1: type) (v2: val) (t2: type)
-                  (m: mem): option val :=
+                  (r: region): option val :=
   match classify_cmp t1 t2 with
   | cmp_case_pp 
   | cmp_case_pi _ 
   | cmp_case_ip _
   | cmp_case_pl 
   | cmp_case_lp =>
-      cmp_ptr m c v1 v2
+      cmp_ptr r c v1 v2
   | cmp_default =>
       sem_binarith
         (fun sg n1 n2 =>
@@ -928,7 +927,7 @@ Definition sem_cmp (c:comparison)
             Some(Values.of_bool(Float.cmp c n1 n2)))
         (fun n1 n2 =>
             Some(Values.of_bool(Float32.cmp c n1 n2)))
-        v1 t1 v2 t2 m
+        v1 t1 v2 t2 r
   end.
 
 (** ** Function applications *)
@@ -983,30 +982,30 @@ Definition sem_binary_operation
     (cenv: composite_env)
     (op: binary_operation)
     (v1: val) (t1: type) (v2: val) (t2:type)
-    (m: mem): option val :=
+    (r: region): option val :=
   match op with
-  | Oadd => sem_add cenv v1 t1 v2 t2 m
-  | Osub => sem_sub cenv v1 t1 v2 t2 m
-  | Omul => sem_mul v1 t1 v2 t2 m
-  | Omod => sem_mod v1 t1 v2 t2 m
-  | Odiv => sem_div v1 t1 v2 t2 m
-  | Oand => sem_and v1 t1 v2 t2 m
-  | Oor  => sem_or v1 t1 v2 t2 m
-  | Oxor  => sem_xor v1 t1 v2 t2 m
+  | Oadd => sem_add cenv v1 t1 v2 t2 r
+  | Osub => sem_sub cenv v1 t1 v2 t2 r
+  | Omul => sem_mul v1 t1 v2 t2 r
+  | Omod => sem_mod v1 t1 v2 t2 r
+  | Odiv => sem_div v1 t1 v2 t2 r
+  | Oand => sem_and v1 t1 v2 t2 r
+  | Oor  => sem_or v1 t1 v2 t2 r
+  | Oxor  => sem_xor v1 t1 v2 t2 r
   | Oshl => sem_shl v1 t1 v2 t2
   | Oshr  => sem_shr v1 t1 v2 t2
-  | Oeq => sem_cmp Ceq v1 t1 v2 t2 m
-  | One => sem_cmp Cne v1 t1 v2 t2 m
-  | Olt => sem_cmp Clt v1 t1 v2 t2 m
-  | Ogt => sem_cmp Cgt v1 t1 v2 t2 m
-  | Ole => sem_cmp Cle v1 t1 v2 t2 m
-  | Oge => sem_cmp Cge v1 t1 v2 t2 m
+  | Oeq => sem_cmp Ceq v1 t1 v2 t2 r
+  | One => sem_cmp Cne v1 t1 v2 t2 r
+  | Olt => sem_cmp Clt v1 t1 v2 t2 r
+  | Ogt => sem_cmp Cgt v1 t1 v2 t2 r
+  | Ole => sem_cmp Cle v1 t1 v2 t2 r
+  | Oge => sem_cmp Cge v1 t1 v2 t2 r
   end.
 
-Definition sem_incrdecr (cenv: composite_env) (id: incr_or_decr) (v: val) (ty: type) (m: mem) :=
+Definition sem_incrdecr (cenv: composite_env) (id: incr_or_decr) (v: val) (ty: type) (r: region) :=
   match id with
-  | Incr => sem_add cenv v ty (Vint Int.one) type_int32s m
-  | Decr => sem_sub cenv v ty (Vint Int.one) type_int32s m
+  | Incr => sem_add cenv v ty (Vint Int.one) type_int32s r
+  | Decr => sem_sub cenv v ty (Vint Int.one) type_int32s r
   end.
 
 Definition incrdecr_type (ty: type) :=

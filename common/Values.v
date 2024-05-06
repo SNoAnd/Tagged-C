@@ -187,8 +187,10 @@ Definition Vmone: val := Vint Int.mone.
 Definition Vtrue: val := Vint Int.one.
 Definition Vfalse: val := Vint Int.zero.
 
-Definition Vnullptr := Vptr nullptr.
-Definition Vofptrsize (z:Z) := Vlong (Int64.repr z).
+Inductive Vnullptr : val -> Prop :=
+| null_ptr : forall p, Int64.unsigned (concretize p) = 0 -> Vnullptr (Vptr p)
+| null_int : forall i, Int.unsigned i = 0 -> Vnullptr (Vint i)
+| null_long : forall i, Int64.unsigned i = 0 -> Vnullptr (Vlong i).
 
 (** * Operations over values *)
 

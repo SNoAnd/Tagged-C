@@ -32,7 +32,7 @@ Require Import Tags.
 Require Import ExtLib.Structures.Monads. Import MonadNotation.
 Require Import List. Import ListNotations.
 
-Module Events (Ptr: Pointer) (Pol: Policy) (Reg: Region) (A: Memory Ptr Pol Reg).
+Module Events (Ptr: Pointer) (Pol: Policy) (Reg: Region Ptr) (A: Memory Ptr Pol Reg).
   Import A.
   Import Ptr.
   Import TLib.

@@ -537,7 +537,7 @@ let do_fgets_aux size =
 let do_fgets m ofs pt size =
   match do_fgets_aux (Z.to_int size) with
     None ->
-      Some ((coq_Vnullptr,Pol.def_tag), m)
+      Some ((Vptr (Camlcoq.coqint_of_camlint64 0L),Pol.def_tag), m)
   | Some (buff,count) ->
       store_string m ofs buff count >>= fun m' ->
       Some ((Vptr ofs,pt), m')

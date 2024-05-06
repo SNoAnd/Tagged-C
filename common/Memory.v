@@ -52,22 +52,27 @@ Local Unset Case Analysis Schemes.
 
 Local Notation "a # b" := (PMap.get b a) (at level 1).
 
-Module Type Region.
+Module Type Region (Ptr: Pointer).
+  Import Ptr.
 
   (* The region type designates some subdivision of memory that may
      inform the allocator; we use it for compartmentalization, but it
      could be any arbitrary division. *)
 
   Parameter region : Type.
+  Parameter int_to_ptr : int64 -> region -> ptr.
+  
   (* Maybe later we can use this module type to map global variables into regions? *)
 
 End Region.
 
-Module UnitRegion <: Region.
+Module UnitRegion <: Region ConcretePointer.
+  Import ConcretePointer.
   Definition region : Type := unit.
+  Definition int_to_ptr (i: int64) (r: region) : ptr := i.  
 End UnitRegion.
 
-Module Type Memory (Ptr: Pointer) (Pol: Policy) (Reg: Region).
+Module Type Memory (Ptr: Pointer) (Pol: Policy) (Reg: Region Ptr).
   Module BI := Builtins Ptr.
   Export BI.
   Module Genv := Genv Ptr Pol.

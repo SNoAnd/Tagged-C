@@ -34,7 +34,7 @@ Require Import Ctypes.
 
 Set Implicit Arguments.
 
-Module Smallstep (Ptr: Pointer) (Pol: Policy) (Reg: Region) (A:Memory Ptr Pol Reg).
+Module Smallstep (Ptr: Pointer) (Pol: Policy) (Reg: Region Ptr) (A:Memory Ptr Pol Reg).
   Module Events := Events Ptr Pol Reg A.
   Export Events.
   Import A.

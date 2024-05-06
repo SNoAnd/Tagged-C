@@ -448,7 +448,6 @@ Module Type Policy.
                       -> control_tag         (* PC tag *)
                       -> val_tag             (* Tag on pointer value *)
                       -> option (list loc_tag) (* Tags on memory at pointer location *)
-                      -> option (list loc_tag) (* Tags on memory at pointer location *)
                       -> type                (* Type cast to *)
 
                       -> PolicyResult       (* Outputs: *)
@@ -573,7 +572,7 @@ Module Passthrough.
       (lts : option (list loc_tag)) (ty : type) : PolicyResult val_tag := ret vt.
 
     Definition PPCastT (l:loc) (pct: control_tag) (vt: val_tag)
-      (lts1: option (list loc_tag)) (lts2: option (list loc_tag)) (ty : type) : PolicyResult val_tag := ret vt.
+      (lts: option (list loc_tag)) (ty : type) : PolicyResult val_tag := ret vt.
 
     Definition IICastT (l:loc) (pct: control_tag) (vt: val_tag) (ty : type) :
       PolicyResult val_tag := ret vt.
