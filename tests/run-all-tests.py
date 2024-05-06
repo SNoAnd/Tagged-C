@@ -224,7 +224,7 @@ if __name__ == '__main__':
     # heaproblem not responsible for making sure you dont OOM your heap. 
     #      users still need to check for 0 :p 
     runACFileWithoutInput("heapproblem_overread_basic_nopad.c", heapproblem,
-                          b"HeapProblem|| Heap Overread| LoadT tried to read unallocated heap memory at   src location heapproblem_overread_basic_nopad.c:32")    
+                          b"HeapProblem|| Heap Overread| LoadT tried to read unallocated heap memory at  src location heapproblem_overread_basic_nopad.c:32")    
     runACFileWithoutInput("heapproblem_overread_basic_pad.c", heapproblem,
                           b"HeapProblem|| Heap Overread| LoadT read past the end into padding belonging to  heapproblem_overread_basic_pad.c:36 at heapproblem_overread_basic_pad.c:46")    
     # end
