@@ -2,8 +2,7 @@
  * @file heapleak_overead_getchar_1_fault.c
  * @brief Demonstrate a single conditional heap overread fault. w/o fgets
  * @note Overreads in a single program are usually tied to mis-use of strcpy or
- *      strcat. This presents two problems for us: we don't have the strlib, and
- *      the policy should notice the overwrite. 
+ *      strcat. This presents a problem for us: we don't have the strlib.
  * 
  * @note Heartbleed was a slightly different wrinkle. It trusted the (untrustable) 
  *      user input to say how long the message was. 
@@ -23,7 +22,7 @@
 #include <stdlib.h> 
 #include <stdio.h>
 #define MAX_SIZE 10 //size to read
-#define BUF_SIZE 5 //size of smaller buff to get overeads
+#define BUF_SIZE 5 //size of smaller buff to get overreads during strcpy
 /**
  * TaggedC does not have strlen. 
  * NB: strlen does not include the \0 terminator
@@ -62,10 +61,12 @@ void faux_fgets(char* s, int n, FILE* stream) {
 */
 char* strcpy(char* destination, const char* source) {
     int src_len = strlen(source);
-
+    printf("strcpy: src: %s, len: %d", source, src_len);
     for (int i = 0; i<src_len;i++ ) {
         destination[i] = source[i];
+        printf("%d: %s\n",i, destination);
     }
+
     return destination;
 }
 
@@ -74,7 +75,6 @@ int main() {
     
     // fill the buffer so overwriting \0 does the right thing
     for(int i=0; i < MAX_SIZE; i++ ) {input[i] ='B';}
-    // doing this here triggers secret disclosure failstop
     // read c to see if the loadT tags are what we expect before printf
     //char c;
     //for(int i=0; i < MAX_SIZE; i++ ) { c = input[i];}
@@ -93,27 +93,35 @@ int main() {
         //  lead to overread
         int input_len = strlen(input); // does not inlcude the \0
         input[input_len] = 'A';
-        // print should run until a null...
-        //printf("1:You entered %s.\nHope it doesn't have a problem!", input);
-        printf(input);
+        // print should run until a null...which we removed
+        printf("1:You entered %s.Hope it doesn't have a problem!", input);
+        // passing in input itself works now
+        //printf(input);
     }
     else {
         printf("2:You entered %s.\n", input);
     }
 
     // PIE exercises both
-    // III exercises just this one 
-    // can trigger here if input is too short  
+    // III exercises just this one. want to see the classic strcpy overread
+    //      (which would then turn into overwrite)
+    // can trigger here if input is too short since were missing a check 
+    //      less exploitable, more bad form   
     if ((char) input[1] == 'I') {
-        // buf_size is half the size of max
+        // buf_size is half the size of max, if max is filled, even if its
+        //      properly terminated, it should still raise overread
+        printf(input);
         char inputcpy[BUF_SIZE];
         char * inputcpy_ptr = strcpy(inputcpy, input);
-
-        printf("3:You entered %s.\nHope it doesn't have a problem!", inputcpy_ptr);
+        // should not get here
+        printf("3:You entered %s.Hope it doesn't have a problem!", inputcpy_ptr);
     }
     else {
         printf("4:You entered %s.\n", input);
     }
+    // give the fuzzer some more branches to poke at 
+    if ((char) input[2] == 'P') {printf("5: dummy case\n"); }
+    if ((char) input[3] == 'E') {printf("6: dummy case\n"); }
 
     free(input);
 	return EXIT_SUCCESS;

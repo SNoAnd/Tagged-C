@@ -291,7 +291,7 @@ Module HeapProblem <: Policy.
     match lt with 
     | NotHeap => raise (PolicyFailure (inj_loc "HeapProblem|| Pointer corruption|LoadT tried to read nonheap memory at source location " load_l))
     | UnallocatedHeap => raise (PolicyFailure (inj_loc "HeapProblem|| Heap Overread| LoadT tried to read unallocated heap memory at " load_l))
-    | AllocatedHeader owner_l _ => raise (PolicyFailure (rw_err_msg "HeapProblem|| Pointer corruption| LoadT found block header in middle " owner_l load_l))
+    | AllocatedHeader owner_l _ => raise (PolicyFailure (rw_err_msg "HeapProblem|| Heap Overread| LoadT tried to read allocator header belonging to " owner_l load_l))
     (* @TODO when we have "log with success" it will go here. 
         We also need to be able to write out the contents of memory to that log
         For now, we fail *)
@@ -316,7 +316,7 @@ Module HeapProblem <: Policy.
       match lt with
       | NotHeap => ret lt
       | UnallocatedHeap =>
-        raise (PolicyFailure (inj_loc "HeapProblem|| Heap Tampering|LoadT tried to read through nonheap ptr to unallocated heap memory at source location " op_l ))
+        raise (PolicyFailure (inj_loc "HeapProblem|| Heap Tampering|LoadT tried to read through nonheap ptr to unallocated heap memory at " op_l ))
       | (AllocatedDirty owner_l _) =>
         raise (PolicyFailure (rw_err_msg "HeapProblem||Heap Tampering|LoadT tried to read through nonheap ptr to allocated (dirty) heap belonging to " owner_l op_l))
       | (Allocated owner_l _)  =>
