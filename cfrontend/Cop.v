@@ -111,7 +111,7 @@ Definition classify_cast (tfrom tto: type) : classify_cast_cases :=
       cast_case_l2i sz2 si2
   (* To [long] *)
   | Tlong _ _, Tlong _ _ =>
-      cast_case_pointer
+      cast_case_l2l
   | Tlong _ _, Tint sz1 si1 _ => cast_case_i2l si1
   | Tlong si2 _, Tfloat F64 _ => cast_case_f2l si2
   | Tlong si2 _, Tfloat F32 _ => cast_case_s2l si2
