@@ -11,7 +11,8 @@ global testsrun
 testsfailed = 0
 testsrun = 0
 testspassed = 0
-defaulttimeout = 1000 # default # of steps to allow to run
+defaulttimeout = 3000 # default # of steps to allow to run
+    # getchar eatsa lot of steps 
 # strings to reuse
 doublefree = "dfree"
 PVI = "pvi"
@@ -227,5 +228,22 @@ if __name__ == '__main__':
                           b"HeapProblem|| Heap Overread| LoadT tried to read unallocated heap memory at  src location heapproblem_overread_basic_nopad.c:32")    
     runACFileWithoutInput("heapproblem_overread_basic_pad.c", heapproblem,
                           b"HeapProblem|| Heap Overread| LoadT read past the end into padding belonging to  heapproblem_overread_basic_pad.c:36 at heapproblem_overread_basic_pad.c:46")    
+    runACFileWithInput("heapproblem_overread_getchar_3_faults.c",
+                       heapproblem, "hellohihowareyou",
+                       nofault_cleanexit)
+    runACFileWithInput("heapproblem_overread_getchar_3_faults.c",
+                       heapproblem, "000E0000000",
+                       nofault_cleanexit)
+    runACFileWithInput("heapproblem_overread_getchar_3_faults.c",
+                       heapproblem, "P0000000000",
+                       b'HeapProblem|| Heap Overread| LoadT read past the end into padding belonging to  heapproblem_overread_getchar_3_faults.c:73 at heapproblem_overread_getchar_3_faults.c:92')
+    runACFileWithInput("heapproblem_overread_getchar_3_faults.c",
+                       heapproblem, "0I000000000",
+                       b'HeapProblem|| Heap Overread| LoadT read past the end into padding belonging to  heapproblem_overread_getchar_3_faults.c:73 at heapproblem_overread_getchar_3_faults.c:107')
+    runACFileWithInput("heapproblem_overread_getchar_3_faults.c",
+                       heapproblem, "00P00000000",
+                       b'HeapProblem|| Heap Overread| LoadT tried to read allocator header belonging to  heapproblem_overread_getchar_3_faults.c:73 at heapproblem_overread_getchar_3_faults.c:118')
+    
+    
     # end
     print(f"\n=======\ntest suit ending.\n\ttotal tests run: {testsrun}\n\ttotal failed: {testsfailed}\n\ttotal passed: {testspassed}")

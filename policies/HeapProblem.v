@@ -296,7 +296,7 @@ Module HeapProblem <: Policy.
         We also need to be able to write out the contents of memory to that log
         For now, we fail *)
     | AllocatedPadding owner_l _ => raise (PolicyFailure (rw_err_msg "HeapProblem|| Heap Overread| LoadT read past the end into padding belonging to " owner_l load_l))
-    | AllocatedDirty alloc_l c2 => raise (PolicyFailure (rw_err_msg "HeapProblem|| Potential secret disclosure| Allocated memory not yet written to is read at " alloc_l load_l))
+    | AllocatedDirty alloc_l c2 => raise (PolicyFailure (rw_err_msg "HeapProblem|| Potential secret disclosure| Allocated memory not yet written belonging to" alloc_l load_l))
     | Allocated alloc_l alloc_c  =>
         (* if the color & the locations match, recurse on tail (called t)*)
         if (Z.eqb ptr_color alloc_c) && (Cabs.loc_eqb alloc_l ptr_l)
@@ -328,7 +328,7 @@ Module HeapProblem <: Policy.
   (* Loads through N are ok to touch nonHeap*)
   Definition LoadT (l:loc) (pct : control_tag) (pt vt: val_tag) (lts : list loc_tag) 
   : PolicyResult val_tag := 
-    log ("LoadT called pt= " ++ (print_vt pt) ++ " vt= " ++ (print_vt vt));;
+    (*log ("LoadT called pt= " ++ (print_vt pt) ++ " vt= " ++ (print_vt vt));;*)
     match pt with 
     (* location the ptr was assigned memory (l) != location of this load (ptr_l) *)
     | PointerWithColor ptr_l ptr_color =>

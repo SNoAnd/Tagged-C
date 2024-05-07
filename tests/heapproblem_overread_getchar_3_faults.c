@@ -1,5 +1,5 @@
 /**
- * @file heapleak_overead_getchar_1_fault.c
+ * @file heapleak_overead_getchar_3_faults.c
  * @brief Demonstrate a single conditional heap overread fault. w/o fgets
  * @note Overreads in a single program are usually tied to mis-use of strcpy or
  *      strcat. This presents a problem for us: we don't have the strlib.
@@ -61,12 +61,11 @@ void faux_fgets(char* s, int n, FILE* stream) {
 */
 char* strcpy(char* destination, const char* source) {
     int src_len = strlen(source);
-    printf("strcpy: src: %s, len: %d", source, src_len);
+    //printf("strcpy: src: %s, len: %d", source, src_len);
     for (int i = 0; i<src_len;i++ ) {
         destination[i] = source[i];
-        printf("%d: %s\n",i, destination);
+        //printf("%d: %s\n",i, destination);
     }
-
     return destination;
 }
 
@@ -74,17 +73,13 @@ int main() {
     char* input = (char*) malloc(MAX_SIZE * sizeof(char));
     
     // fill the buffer so overwriting \0 does the right thing
+    // by default its full of 00s, not very realistic
     for(int i=0; i < MAX_SIZE; i++ ) {input[i] ='B';}
-    // read c to see if the loadT tags are what we expect before printf
-    //char c;
-    //for(int i=0; i < MAX_SIZE; i++ ) { c = input[i];}
 
     printf("Even cases are safe.\nEnter some input:");
     faux_fgets(input, MAX_SIZE, stdin);
-    printf(input);
-    // read c to see if the loadT tags are what we expect before printf
-    //char c;
-    //for(int i=0; i < MAX_SIZE; i++ ) { c = input[i];}
+    //printf(input);
+    int input_len = strlen(input); // does not inlcude the \0
 
     // Poo to trigger case
     if ((char) input[0] == 'P') {
@@ -95,8 +90,6 @@ int main() {
         input[input_len] = 'A';
         // print should run until a null...which we removed
         printf("1:You entered %s.Hope it doesn't have a problem!", input);
-        // passing in input itself works now
-        //printf(input);
     }
     else {
         printf("2:You entered %s.\n", input);
@@ -108,21 +101,39 @@ int main() {
     // can trigger here if input is too short since were missing a check 
     //      less exploitable, more bad form   
     if ((char) input[1] == 'I') {
-        // buf_size is half the size of max, if max is filled, even if its
-        //      properly terminated, it should still raise overread
-        printf(input);
-        char inputcpy[BUF_SIZE];
-        char * inputcpy_ptr = strcpy(inputcpy, input);
-        // should not get here
-        printf("3:You entered %s.Hope it doesn't have a problem!", inputcpy_ptr);
+        // off by one(ish) error counting up. the null term is at input[len]
+        //  and that is legally yours wrt the heap
+        for(int i = 0; i <= (input_len+1); i++) {
+            printf("%d:%c\n", i, input[i]);
+        }
+        printf("3:You entered %s.Hope it doesn't have a problem!", input);
     }
     else {
         printf("4:You entered %s.\n", input);
     }
-    // give the fuzzer some more branches to poke at 
-    if ((char) input[2] == 'P') {printf("5: dummy case\n"); }
-    if ((char) input[3] == 'E') {printf("6: dummy case\n"); }
-
+    //OOPS
+    if ((char) input[2] == 'P') {
+        // off by one error counting down
+        for(int i = input_len; i >= 0; i--) {
+            printf("%d:%c\n", i, input[i-1]);
+        }
+        printf("1:You entered %s.Hope it doesn't have a problem!", input);
+    }
+     else {
+        printf("6:You entered %s.\n", input);
+    }
+    // give the fuzzer a benign branch to poke at 
+    if ((char) input[3] == 'E') {printf("?: dummy conditional case\n"); }
+    /*
+    if ((char) input[4] == '!') {
+        // NB: heapproblem does not protect the stack, so this will cheerfully smash it
+        //  without failstoping
+        char inputcpy[BUF_SIZE];
+        // should blow up in the handcoded strcpy above 
+        char * inputcpy_ptr = strcpy(inputcpy, input);
+        printf("?:You entered %s.Hope it doesn't have a problem!", inputcpy_ptr);
+    }
+    */
     free(input);
 	return EXIT_SUCCESS;
 }
