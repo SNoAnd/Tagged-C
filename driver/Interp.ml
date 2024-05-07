@@ -370,7 +370,7 @@ let extract_string lc m ofs pct pt =
       else
         let (res, i) = extract (Z.succ ofs) in
         let res' = fun ps ->
-          (match (Pol.coq_LoadT Cabs.no_loc pct pt vt [lt] ps) with
+          (match (Pol.coq_LoadT lc pct pt vt [lt] ps) with
           | (Success vt',ps') ->
             (match res ps' with
               | (Success cs, ps'') -> (Success (c::cs), ps'')
