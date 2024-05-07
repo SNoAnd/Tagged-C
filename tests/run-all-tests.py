@@ -228,6 +228,12 @@ if __name__ == '__main__':
                           b"HeapProblem|| Heap Overread| LoadT tried to read unallocated heap memory at  src location heapproblem_overread_basic_nopad.c:32")    
     runACFileWithoutInput("heapproblem_overread_basic_pad.c", heapproblem,
                           b"HeapProblem|| Heap Overread| LoadT read past the end into padding belonging to  heapproblem_overread_basic_pad.c:36 at heapproblem_overread_basic_pad.c:46")    
+    runACFileWithInput("heapproblem_overread_getchar_1_fault.c",
+                       heapproblem, "hellohihowareyou",
+                       nofault_cleanexit)
+    runACFileWithInput("heapproblem_overread_getchar_1_fault.c",
+                       heapproblem, "PIPE0000000",
+                       b'eapProblem|| Heap Overread| LoadT tried to read unallocated heap memory at  src location heapproblem_overread_getchar_1_fault.c:63')
     runACFileWithInput("heapproblem_overread_getchar_3_faults.c",
                        heapproblem, "hellohihowareyou",
                        nofault_cleanexit)
