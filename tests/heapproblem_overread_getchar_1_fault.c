@@ -44,34 +44,30 @@ void faux_fgets(char* s, int n, FILE* stream) {
 }
 
 int main() {
-   char* input = (char*) malloc(MAX_SIZE * sizeof(char));
+  char* input = (char*) malloc(MAX_SIZE * sizeof(char));
     
-
-    printf("Enter some input:");
-    faux_fgets(input, MAX_SIZE, stdin);
-    //printf(input);
-    int input_len = strlen(input); // does not inlcude the \0
-
-    // PIPE
-    if((char) input[0] == 'P') {
-      if((char) input[1] == 'I') {
-        if((char)input[2] == 'P') {
-          if((char)input[3] == 'E') {
-            // fill the buffer so overwriting \0 does the right thing
-            // by default its full of 00s, aka \0
-            for(int i=0; i < MAX_SIZE; i++ ) {input[i] ='B';}
-            input[input_len] = 'A';
-            // print should run until a null...which we removed
-            printf("1:You entered %s.Hope it doesn't have a problem!", input);
-          } 
-        }
+  printf("Enter some input:");
+  faux_fgets(input, MAX_SIZE, stdin);
+  //printf(input);
+  int input_len = strlen(input); // does not inlcude the \0
+  // PIPE
+  if((char) input[0] == 'P') {
+    if((char) input[1] == 'I') {
+      if((char)input[2] == 'P') {
+        if((char)input[3] == 'E') {
+          // fill the buffer so overwriting \0 does the right thing
+          // by default its full of 00s, aka \0
+          for(int i=0; i < MAX_SIZE; i++ ) {input[i] ='B';}
+          input[input_len] = 'A';
+          // print should run until a null...which we removed
+          printf("1:You entered %s.Hope it doesn't have a problem!", input);
+        } 
       }
     }
-    else {
-        printf("You entered %s.\n", input);
-    }
-
-
-    free(input);
+  }
+  else {
+      printf("You entered %s.\n", input);
+  }
+  free(input);
 	return EXIT_SUCCESS;
 }
