@@ -68,14 +68,9 @@ char* strcpy(char* destination, const char* source) {
 
 int main() {
     char* input = (char*) malloc(MAX_SIZE * sizeof(char));
-    
-    // fill the buffer so overwriting \0 does the right thing
-    // by default its full of 00s, not very realistic
-    //for(int i=0; i < MAX_SIZE; i++ ) {input[i] ='B';}
-
     printf("Even prints are safe.\nEnter some input:");
     faux_fgets(input, MAX_SIZE, stdin);
-    //printf(input);
+
     int input_len = strlen(input); // does not inlcude the \0
 
     if (input_len < 4) {
