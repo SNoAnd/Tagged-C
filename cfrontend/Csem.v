@@ -811,35 +811,35 @@ Module TaggedCsem (Pol: Policy) (A: Memory ConcretePointer Pol UnitRegion) <:
     | ctx_list_tail: forall k C e1,
         contextlist k C -> contextlist k (fun x => Econs e1 (C x)).
 
-    Inductive imm_safe: kind -> expr -> control_tag -> tenv -> mem -> Prop :=
-  | imm_safe_val: forall v ty pct te m,
-      imm_safe RV (Eval v ty) pct te m
-  | imm_safe_loc: forall lk ty pct te m,
-      imm_safe LV (Eloc lk ty) pct te m
+    Inductive imm_safe: kind -> expr -> pstate -> control_tag -> tenv -> mem -> Prop :=
+  | imm_safe_val: forall v ty s pct te m,
+      imm_safe RV (Eval v ty) s pct te m
+  | imm_safe_loc: forall lk ty s pct te m,
+      imm_safe LV (Eloc lk ty) s pct te m
   | imm_safe_lred: forall pct to C e te m e' te' m' s s',
       lred e pct te m e' te' m' s s' ->
       context LV to C ->
-      imm_safe to (C e) pct te m
+      imm_safe to (C e) s pct te m
   | imm_safe_lfailred: forall pct to C e te m tr failure s s',
       lfailred e pct tr failure s s' ->
       context LV to C ->
-      imm_safe to (C e) pct te m                 
+      imm_safe to (C e) s pct te m                 
   | imm_safe_rred: forall pct pct' to C e te m t e' te' m' s s',
       rred pct e te m t pct' e' te' m' s s' ->
       context RV to C ->
-      imm_safe to (C e) pct te m
+      imm_safe to (C e) s pct te m
   | imm_safe_rfailred: forall pct to C e te m tr failure s s',
       rfailred pct e te m tr failure s s' ->
       context RV to C ->
-      imm_safe to (C e) pct te m
+      imm_safe to (C e) s pct te m
   | imm_safe_callred: forall pct to C e te m fd fpt args ty pct' s s',
       callred pct e m fd fpt args ty pct' s s' ->
       context RV to C ->
-      imm_safe to (C e) pct te m.
+      imm_safe to (C e) s pct te m.
 
     Definition not_stuck (e: expr) (te: tenv) (m: mem) : Prop :=
-      forall k C e' pct,
-        context k RV C -> e = C e' -> imm_safe k e' pct te m.
+      forall k C e' ps pct,
+        context k RV C -> e = C e' -> imm_safe k e' ps pct te m.
 
     (* Property that safe expressions must have the right kind*)
     Definition expr_kind (a: expr) : kind :=
@@ -900,8 +900,8 @@ Module TaggedCsem (Pol: Policy) (A: Memory ConcretePointer Pol UnitRegion) <:
   Qed.
 
   Lemma imm_safe_kind:
-    forall te k a PCT m,
-      imm_safe k a PCT te m ->
+    forall te k a ps pct m,
+      imm_safe k a ps pct te m ->
       expr_kind a = k.
   Proof.
     induction 1.
@@ -1081,9 +1081,9 @@ Inductive estep: state -> trace -> state -> Prop :=
     callred l pct a m fd fpt vargs ty pct' s s' ->
     context RV RV C ->
     estep (ExprState f l s pct (C a) k e te m)
-          E0 (Callstate fd l s pct' fpt vargs (Kcall f e te l pct fpt C ty k) m)
+          E0 (Callstate fd l s' pct' fpt vargs (Kcall f e te l pct fpt C ty k) m)
 | step_stuck: forall C f l pct a k e te m K s,
-    context K RV C -> ~(imm_safe e l K a pct te m) ->
+    context K RV C -> ~(imm_safe e l K a s pct te m) ->
     estep (ExprState f l s pct (C a) k e te m)
           E0 Stuckstate
 | step_lfail: forall C f l pct a k e te m tr failure s ps lg,
@@ -1094,7 +1094,7 @@ Inductive estep: state -> trace -> state -> Prop :=
 | step_rfail: forall C f l pct a k e te m tr failure s ps lg,
     rfailred l pct a te m tr failure s (ps,lg) ->
     context RV RV C ->
-    estep (ExprState f l (ps,lg) pct (C a) k e te m)
+    estep (ExprState f l s pct (C a) k e te m)
           tr (Failstop failure lg).
 
 Fixpoint option_zip {A:Type} {B:Type} (l1 : list A) (l2 : list B) : list (A*option B) :=
@@ -1288,30 +1288,31 @@ Inductive sstep: state -> trace -> state -> Prop :=
     sstep (State f ps pct (Sgoto lbl l) k e te m)
           E0 (State f ps pct s' k' e te m)
 
-| step_internal_function: forall f l ps ps' ps'' ps''' pct pct' pct'' pct''' vft vargs k m e m' e' m'',
+| step_internal_function: forall f l ps0 ps1 ps2 ps3 pct0 pct1 pct2 pct3 vft vargs k m e m' e' m'',
     list_norepet (var_names (fn_params f) ++ var_names (fn_vars f)) ->
-    CallT l pct vft ps = (Success pct',ps') ->
-    do_alloc_variables l pct' empty_env m f.(fn_vars) ps' = (Success (pct'', e, m'), ps'') ->
-    do_init_params l pct'' e m' (option_zip f.(fn_params) vargs) ps'' = (Success (pct''', e', m''), ps''') ->
-    sstep (Callstate (Internal f) l ps pct vft vargs k m)
-          E0 (State f ps''' pct''' f.(fn_body) k e' empty_tenv m'')
-| step_internal_function_fail0: forall f l ps ps' lg pct vft vargs k m failure,
+    CallT l pct0 vft ps0 = (Success pct1,ps1) ->
+    do_alloc_variables l pct1 empty_env m f.(fn_vars) ps1 = (Success (pct2, e, m'), ps2) ->
+    do_init_params l pct2 e m' (option_zip f.(fn_params) vargs) ps2 =
+      (Success (pct3, e', m''), ps3) ->
+    sstep (Callstate (Internal f) l ps0 pct0 vft vargs k m)
+          E0 (State f ps3 pct3 f.(fn_body) k e' empty_tenv m'')
+| step_internal_function_fail0: forall f l ps0 ps1 lg pct vft vargs k m failure,
     list_norepet (var_names (fn_params f) ++ var_names (fn_vars f)) ->
-    CallT l pct vft ps = (Fail failure, (ps',lg)) ->
-    sstep (Callstate (Internal f) l ps pct vft vargs k m)
+    CallT l pct vft ps0 = (Fail failure, (ps1,lg)) ->
+    sstep (Callstate (Internal f) l ps0 pct vft vargs k m)
           E0 (Failstop failure lg)
-| step_internal_function_fail1: forall f l ps ps' ps'' lg pct pct' vft vargs k m failure,
+| step_internal_function_fail1: forall f l ps0 ps1 ps2 lg pct0 pct1 vft vargs k m failure,
     list_norepet (var_names (fn_params f) ++ var_names (fn_vars f)) ->
-    CallT l pct vft ps = (Success pct', ps') ->
-    do_alloc_variables l pct' empty_env m f.(fn_vars) ps' = (Fail failure, (ps'',lg)) ->
-    sstep (Callstate (Internal f) l ps pct vft vargs k m)
+    CallT l pct0 vft ps0 = (Success pct1, ps1) ->
+    do_alloc_variables l pct1 empty_env m f.(fn_vars) ps1 = (Fail failure, (ps2,lg)) ->
+    sstep (Callstate (Internal f) l ps0 pct0 vft vargs k m)
           E0 (Failstop failure lg)
-| step_internal_function_fail2: forall f l ps ps' ps'' ps''' lg pct pct' pct'' vft vargs k m e m' failure,
+| step_internal_function_fail2: forall f l ps0 ps1 ps2 ps3 lg pct0 pct1 pct2 vft vargs k m e m' failure,
     list_norepet (var_names (fn_params f) ++ var_names (fn_vars f)) ->
-    CallT l pct vft ps = (Success pct', ps') ->
-    do_alloc_variables l pct' empty_env m f.(fn_vars) ps' = (Success (pct'', e, m'), ps'') ->
-    do_init_params l pct'' e m' (option_zip f.(fn_params) vargs) ps'' = (Fail failure, (ps''',lg)) ->
-    sstep (Callstate (Internal f) l ps pct vft vargs k m)
+    CallT l pct0 vft ps0 = (Success pct1, ps1) ->
+    do_alloc_variables l pct1 empty_env m f.(fn_vars) ps1 = (Success (pct2, e, m'), ps2) ->
+    do_init_params l pct2 e m' (option_zip f.(fn_params) vargs) ps2 = (Fail failure, (ps3,lg)) ->
+    sstep (Callstate (Internal f) l ps0 pct0 vft vargs k m)
           E0 (Failstop failure lg)
           
 | step_external_function: forall l ef ps ps' ps'' pct vft pct' pct'' targs tres cc vargs k m vres t m',
@@ -1319,13 +1320,13 @@ Inductive sstep: state -> trace -> state -> Prop :=
     external_call l ef tt ge vargs pct' vft m t <<ps'>> (Success (vres, pct'', m')) <<ps''>> ->
     sstep (Callstate (External ef targs tres cc) l ps pct vft vargs k m)
           t (Returnstate (External ef targs tres cc) l ps'' pct'' vres k m')
-| step_external_function_fail0: forall l ef ps pct vft targs tres cc vargs k m t failure ps',
+| step_external_function_fail0: forall l ef ps pct vft targs tres cc vargs k m failure ps',
     ExtCallT l ef pct vft (map snd vargs) ps = (Fail failure,ps') ->
     sstep (Callstate (External ef targs tres cc) l ps pct vft vargs k m)
-          t (Failstop failure (snd ps'))
+          E0 (Failstop failure (snd ps'))
 | step_external_function_fail1: forall l ef ps pct vft targs tres cc vargs k m t failure ps' ps'' pct',
     ExtCallT l ef pct vft (map snd vargs) ps = (Success pct',ps') ->
-    external_call l ef tt ge vargs pct vft m t <<ps'>> (Fail failure) <<ps''>> ->
+    external_call l ef tt ge vargs pct' vft m t <<ps'>> (Fail failure) <<ps''>> ->
     sstep (Callstate (External ef targs tres cc) l ps pct vft vargs k m)
           t (Failstop failure (snd ps''))
 

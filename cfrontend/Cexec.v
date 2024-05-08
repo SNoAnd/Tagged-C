@@ -28,13 +28,6 @@ Local Open Scope list_scope.
 
 (** Error monad with options or lists *)
 
-Notation " 'check' A ; B" := (if A then B else None)
-  (at level 200, A at level 100, B at level 200)
-  : option_monad_scope.
-
-Notation " 'check' A ; B" := (if A then B else nil)
-  (at level 200, A at level 100, B at level 200)
-  : list_monad_scope.
 
 Module Cexec (Pol: Policy).
   Module CM := ConcMem ConcretePointer Pol.
@@ -47,6 +40,14 @@ Module Cexec (Pol: Policy).
     Import A.
     Import ConcretePointer.
 
+    Notation " 'check' A ; B" := (if A then B else None)
+                                   (at level 200, A at level 100, B at level 200)
+        : option_monad_scope.
+    
+    Notation " 'check' A ; B" := (if A then B else nil)
+                                   (at level 200, A at level 100, B at level 200)
+        : list_monad_scope.
+    
   (* Policy-agnostic Tactics *)
   Ltac mydestr :=
     match goal with
@@ -61,106 +62,7 @@ Module Cexec (Pol: Policy).
     | [ |- (if ?x then _ else _) = _ -> _ ] => destruct x eqn:?; mydestr
     | [ |- (let (_, _) := ?x in _) = _ -> _ ] => destruct x eqn:?; mydestr
     | _ => idtac
-    end.
-  
-  Ltac dodestr :=
-  match goal with
-  | [ |- context [match ?e with
-                  | Some _ => _
-                  | _ => _
-                  end] ] =>
-      destruct e eqn:?
-  | [ |- context [if ?e then _ else _] ] =>
-      destruct e eqn:?
-  | [ |- context [match ?e with
-                  | Success _ => _
-                  | Fail _ => _
-                  end] ] =>
-      destruct e eqn:?
-  | [ |- context [match ?e with
-                  | inl _ => _
-                  | inr _ => _
-                  end] ] =>
-      destruct e eqn:?
-  | [ |- context [match ?e with
-                  | PRIV _ => _
-                  | PUB _ _ _ => _
-                  end] ] =>
-      destruct e eqn:?
-  | [ |- context [match ?ty with
-                  | Tstruct _ _ => _
-                  | _ => _
-                  end] ] =>
-      destruct ty eqn:?      
-  | [ |- context [match ?e with
-                  | OK _ => _
-                  | Error _ => _
-                  end] ] =>
-      destruct e eqn:?
-  | [ |- context [if ?e then _ else _] ] => destruct e
-  | [ |- context [match ?v with
-                  | Vptr _ => _
-                  | _ => _
-                  end] ] => destruct v
-  | [ |- context [match ?l with
-                  | Lmem _ _ _ => _
-                  | Ltmp _ => _
-                  | Lifun _ _ => _
-                  | Lefun _ _ _ _ _ => _
-                  end] ] => destruct l
-  | [ |- context [match ?e with
-                  | fun_case_f _ _ _ => _
-                  | fun_default => _
-                  end] ] => destruct e eqn:?
-  | [ |- context [let '(_, _) := ?e in _] ] =>
-      destruct e eqn:?
-  | [ |- context [sem_unary_operation ?op ?v ?ty ?m] ] =>
-      destruct (sem_unary_operation op v ty m) eqn:?
-  | [ |- context [sem_binary_operation ?ce ?op ?v ?ty1 ?v2 ?ty2 ?m] ] =>
-      destruct (sem_binary_operation ce op v ty1 v2 ty2 m) eqn:?
-  | [ |- context [sem_cast ?v ?ty1 ?ty2 ?m] ] =>
-      destruct (sem_cast v ty1 ty2 m) eqn:?
-  | [ |- context [bool_val ?v ?ty ?m] ] =>
-      destruct (bool_val v ty m) eqn:?
-  | _ => idtac
-  end.
-
-  Ltac cronch :=
-    match goal with
-    | [ H: possible_trace ?w (?tr1 ++ ?tr2) ?w' |- _ ] =>
-        let w := fresh "w" in
-        let H1 := fresh "H" in
-        let H2 := fresh "H" in
-        eapply possible_trace_app_inv in H;
-        destruct H as [w [H1 H2]]
-    | [ H: ?e1 = None
-        |- context[?e1]] => rewrite H
-    | [ H: ?e1 = Some _
-        |- context[?e1]] => rewrite H
-    | [ H: ?e ! ?b = Some _ |- context [?e ! ?b]] => rewrite H
-    | [ H: ?e ! ?b = None |- context [?e ! ?b]] => rewrite H
-    | [ H: ?e1 = (Success _, _) |- context[?e1] ] =>
-      rewrite H; simpl
-    | [ H: ?e1 = (Fail _, _) |- context[?e1] ] =>
-      rewrite H; simpl
-    | [ H: ?e = true |- (if ?e then _ else _) = _ ] => rewrite H
-    | [ H: ?e = false |- (if ?e then _ else _) = _ ] => rewrite H
-    | [ H: ?v = Vptr ?v' |- match ?v with
-                             | Vptr _ => _
-                             | _ => _
-                             end = _ ] =>
-        rewrite H
-    | [ H: access_mode ?ty = ?e |- context [match access_mode ?ty with
-                                            | By_value _ => _
-                                            | _ => _
-                                            end ]] =>
-        rewrite H
-    | [ |- context [type_eq ?ty ?ty] ] => rewrite dec_eq_true
-    | [ H: possible_trace ?w ?tr ?w' |- possible_trace ?w ?tr _ ] => apply H
-    | [ |- exists w' : world, possible_trace ?w E0 w' ] =>
-        exists w; constructor
-    | [ H: possible_trace ?w E0 ?w' |- _ ] => inv H
-    end.
+    end.  
   
   Notation "'do' X <- A ; B" := (match A with
                                  | Success X => B
@@ -221,33 +123,7 @@ Module Cexec (Pol: Policy).
     | _ => None
     end.
   
-  Ltac doinv :=
-    match goal with
-    | [ H: _ <- ?e ;; _ = Some _ |- _ ] => destruct e eqn:?; [simpl in H| inv H]
-    | [ H: let _ := ?e in _ |- _ ] => destruct e eqn:?
-    | [ H: is_val ?e = _ |- context[?e] ] => rewrite (is_val_inv _ _ _ H)
-    | [ H1: is_val ?e = _, H2: context[?e] |- _ ] => rewrite (is_val_inv _ _ _ H1) in H2
-    | [ H: is_loc ?e = _ |- context[?e] ] => rewrite (is_loc_inv _ _ _ H)
-    | [ H1: is_loc ?e = _, H2: context[?e] |- _ ] => rewrite (is_loc_inv _ _ _ H1) in H2
-    | [ p : _ * _ |- _ ] => destruct p
-    | [ a: atom |- _ ] => destruct a eqn:?; subst a
-    | [ H: False |- _ ] => destruct H
-    | [ H: _ /\ _ |- _ ] => destruct H
-    | [ H: _ \/ _ |- _ ] => destruct H
-    | [ H: exists _, _ |- _ ] => destruct H
-    | [H: bind_prop_success_rel ?e _ _ _ |- _ ] =>
-      let res := fresh "res" in
-      let H' := fresh "H" in
-      let RES := fresh "RES" in
-      inversion H as [res [H' RES]]; clear H
-    | [ H: Vptr _ = Vnullptr |- _ ] => inv H
-    | [H: is_ptr ?v = Some _ |- _] => destruct v; simpl in H; try discriminate
-    | [ H: Int64.eq _ _ = true |- _ ] => apply Int64.same_if_eq in H
-    | [ H: Int64.eq ?v1 ?v2 = false |- _] =>
-        assert (v1 <> v2) by (intro; subst; rewrite (Int64.eq_true v2) in H; discriminate);
-        clear H
-    | _ => idtac
-    end.
+
 
   (** * Events, volatile memory accesses, and external functions. *)
 
@@ -558,13 +434,13 @@ Section EXPRS.
                 let! (w', tr, res) <- do_deref_loc w ty m ofs pt bf;
                 try (v, vts, lts), ps' <- res ps;
                 catch "failred_rvalof_mem0", tr;
-                let res' :=
+                (let res' :=
                   vt <- CoalesceT lc vts;;
                   vt' <- LoadT lc pct pt vt lts;;
                   AccessT lc pct vt' in
-                try vt'',ps'' <- res' ps';
+                (try vt'',ps'' <- res' ps';
                 catch "failred_rvalof_mem1", tr;
-                Rred "red_rvalof_mem" pct (Eval (v,vt'') ty) te m tr ps''
+                Rred "red_rvalof_mem" pct (Eval (v,vt'') ty) te m tr ps''))
         | Some (Ltmp b, ty') =>
             top <<=
                 check type_eq ty ty';
@@ -737,7 +613,7 @@ Section EXPRS.
                 catch "failred_assign_mem1", tr;
                 let! (w'', tr', res') <- do_assign_loc w' ty1 m ofs pt1 bf (v,vt'') lts';
                 try (m', (v,vt''')), ps3 <- res' ps2;
-                catch "failred_assign_mem3", (tr ++ tr');
+                catch "failred_assign_mem2", (tr ++ tr');
                 Rred "red_assign_mem" pct'' (Eval (v,vt''') ty) te m' (tr ++ tr') ps3
         | Some (Ltmp b, ty1), Some (v2, vt2, ty2) =>
             top <<=
@@ -942,7 +818,7 @@ Section EXPRS.
       imm_safe_t to lc (C r) ps pct te m.
 
 Remark imm_safe_t_imm_safe:
-  forall lc k a ps pct te m, imm_safe_t k lc a ps pct te m -> imm_safe ge ce e lc k a pct te m.
+  forall lc k a ps pct te m, imm_safe_t k lc a ps pct te m -> imm_safe ge ce e lc k a ps pct te m.
 Proof.
   induction 1.
   constructor.
@@ -971,10 +847,10 @@ Definition expr_final_state (f: function) (k: cont) (lc: Cabs.loc)
            (ps: pstate) (pct: control_tag) (e: env)
            (C_rd: (expr -> expr) * reduction) : transition :=
   match snd C_rd with
-  | Lred rule a te m ps' => TR rule E0 (ExprState f lc ps pct (fst C_rd a) k e te m)
-  | Rred rule pct' a te m t ps' => TR rule t (ExprState f lc ps pct' (fst C_rd a) k e te m)
+  | Lred rule a te m ps' => TR rule E0 (ExprState f lc ps' pct (fst C_rd a) k e te m)
+  | Rred rule pct' a te m t ps' => TR rule t (ExprState f lc ps' pct' (fst C_rd a) k e te m)
   | Callred rule fd fpt vargs ty te m pct' ps' =>
-    TR rule E0 (Callstate fd lc ps pct' fpt vargs (Kcall f e te lc pct fpt (fst C_rd) ty k) m)
+    TR rule E0 (Callstate fd lc ps' pct' fpt vargs (Kcall f e te lc pct fpt (fst C_rd) ty k) m)
   | Stuckred => TR "step_stuck" E0 Stuckstate
   | Failstopred rule failure tr ps' => TR rule tr (Failstop failure (snd ps'))
   end.
@@ -984,15 +860,15 @@ Local Open Scope list_monad_scope.
 Notation "'let!'  X <- A ; B"
   := (match A with
       | Some X => B
-      | None => [TR "step_stuck" E0 Stuckstate]
+      | None => []
       end)
   (at level 200, X pattern, A at level 100, B at level 200)
   : tag_monad_scope.
 
-Notation "'try' X , PS <- A ; 'catch' S ; B"
+Notation "'try' X , PS <- A ; 'catch' S , T ; B"
   := (match A with
       | (Success X,PS) => B
-      | (Fail failure,PS) => [TR S E0 (Failstop failure (snd PS))]
+      | (Fail failure,PS) => [TR S T (Failstop failure (snd PS))]
       end)
   (at level 200, X pattern, PS name, A at level 100, B at level 200)
   : tag_monad_scope.
@@ -1030,22 +906,22 @@ Definition do_step (w: world) (s: Csem.state) : list transition :=
         | Kdowhile2 x s olbl loc k =>
             let! b <- bool_val v ty m;
             try pct',ps' <- SplitT lc pct vt olbl ps;
-            catch "step_dowhile_tfail";
+            catch "step_dowhile_tfail", E0;
             if b
             then ret "step_dowhile_true" (State f ps' pct' (Sdowhile x s olbl loc) k e te m)
             else ret "step_dowhile_false" (State f ps' pct' Sskip k e te m)
         | Kfor2 a2 a3 s olbl loc k =>
             let! b <- bool_val v ty m;
             try pct',ps' <- SplitT lc pct vt olbl ps;
-            catch "step_for_tfail"; 
+            catch "step_for_tfail", E0; 
             if b
             then ret "step_for_true" (State f ps' pct' s (Kfor3 a2 a3 s olbl loc k) e te m)
             else ret "step_for_false" (State f ps' pct' Sskip k e te m)
         | Kreturn k =>
             let! v' <- sem_cast v ty f.(fn_return) tt;
             try (pct', m'), ps' <- do_free_variables ce lc pct m (variables_of_env e) ps;
-            catch "step_return_fail1";
-            ret "step_return_2" (Returnstate (Internal f) lc ps pct' (v',vt) (call_cont k) m')
+            catch "step_return_fail1", E0;
+            ret "step_return_2" (Returnstate (Internal f) lc ps' pct' (v',vt) (call_cont k) m')
         | Kswitch1 sl k =>
             let! n <- sem_switch_arg v ty;
             ret "step_expr_switch" (State f ps pct (seq_of_labeled_statement (select_switch n sl)) (Kswitch2 k) e te m)
@@ -1116,7 +992,7 @@ Definition do_step (w: world) (s: Csem.state) : list transition :=
 
   | State f ps pct (Slabel lbl s) k e te m =>
       match LabelT (loc_of s) pct lbl ps with
-      | (Success pct', ps') => ret "step_label" (State f ps pct' s k e te m)
+      | (Success pct', ps') => ret "step_label" (State f ps' pct' s k e te m)
       | (Fail failure, (_, lg)) => ret "step_label_tfail" (Failstop failure lg)
       end
   | State f ps pct (Sgoto lbl loc) k e te m =>
@@ -1125,26 +1001,27 @@ Definition do_step (w: world) (s: Csem.state) : list transition :=
       | None => nil
       end
 
-  | Callstate (Internal f) lc ps pct fpt vargs k m =>
+  | Callstate (Internal f) lc ps0 pct0 fpt vargs k m =>
       check (list_norepet_dec ident_eq (var_names (fn_params f) ++ var_names (fn_vars f)));
-      try pct',ps' <- CallT lc pct fpt ps;
-      catch "step_internal_function_fail0";
-      try (pct'',e,m'),ps'' <- do_alloc_variables ce lc pct' empty_env m f.(fn_vars) ps';
-      catch "step_internal_function_fail1";
-      try (pct''',e',m''),ps''' <- do_init_params ce lc pct'' e m' (option_zip f.(fn_params) vargs) ps'';
-      catch "step_internal_function_fail3";
-      ret "step_internal_function" (State f ps' pct''' f.(fn_body) k e' (empty_tenv) m'')
-  | Callstate (External ef targs tres cc) lc ps pct fpt vargs k m =>
-      try pct',ps' <- ExtCallT lc ef pct fpt (map snd vargs) ps;
-      catch "step_external_function_fail_0";
-      let! (w',tr,res) <- do_external ge do_external_function ef lc w vargs pct fpt m;
-      try (v,pct',m'),ps'' <- res ps';
-      catch "step_external_function_fail_0";
-      [TR "step_external_function" tr (Returnstate (External ef targs tres cc) lc ps'' pct' v k m')]
+      try pct1,ps1 <- CallT lc pct0 fpt ps0;
+      catch "step_internal_function_fail0",E0;
+      try (pct2,e,m'),ps2 <- do_alloc_variables ce lc pct1 empty_env m f.(fn_vars) ps1;
+      catch "step_internal_function_fail1",E0;
+      try (pct3,e',m''),ps3 <- do_init_params ce lc pct2 e m'
+                                                  (option_zip f.(fn_params) vargs) ps2;
+      catch "step_internal_function_fail2",E0;
+      ret "step_internal_function" (State f ps3 pct3 f.(fn_body) k e' (empty_tenv) m'')
+  | Callstate (External ef targs tres cc) lc ps0 pct0 fpt vargs k m =>
+      try pct1,ps1 <- ExtCallT lc ef pct0 fpt (map snd vargs) ps0;
+      catch "step_external_function_fail0",E0;
+      let! (w',tr,res) <- do_external ge do_external_function ef lc w vargs pct1 fpt m;
+      try (v,pct2,m'),ps2 <- res ps1;
+      catch "step_external_function_fail1",tr;
+      [TR "step_external_function" tr (Returnstate (External ef targs tres cc) lc ps2 pct2 v k m')]
       
   | Returnstate fd lc ps pct (v,vt) (Kcall f e te oldloc oldpct fpt C ty k) m =>
       try (pct', vt'), ps' <- RetT lc pct oldpct fpt vt ty ps;
-      catch "step_returnstate_fail";
+      catch "step_returnstate_fail",E0;
       ret "step_returnstate" (ExprState f oldloc ps' pct' (C (Eval (v,vt') ty)) k e te m)
 
   | _ => nil
