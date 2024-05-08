@@ -1,16 +1,11 @@
 /**
- * @file heapleak_overread_getchar_1_fault.c
- * @brief Demonstrate a single conditional heap overread fault
- *    for fuzzing. Need "PIPE" at start to trigger 
-
+ * @file heapproblem_overwrite_1_fault.c
+ * @brief 1 conditional overwrite fault at PIPE00000000
+ * 
  */
-
 #include <stdlib.h> 
 #include <stdio.h>
-// the 3 test has allocator padding to 8 byte align.
-//  try with no padding here
-#define MAX_SIZE 16
-
+#define MAX_SIZE 10 //size to read
 /**
  * TaggedC does not have strlen. 
  * NB: strlen does not include the \0 terminator
@@ -45,7 +40,6 @@ void faux_fgets(char* s, int n, FILE* stream) {
 
 int main() {
   char* input = (char*) malloc(MAX_SIZE * sizeof(char));
-    
   printf("Enter some input:");
   faux_fgets(input, MAX_SIZE, stdin);
   //printf(input);
@@ -55,11 +49,10 @@ int main() {
     if((char) input[1] == 'I') {
       if((char)input[2] == 'P') {
         if((char)input[3] == 'E') {
-          // fill the buffer so overwriting \0 does the right thing
-          // by default its full of 00s, aka \0
-          for(int i=0; i < MAX_SIZE; i++ ) {input[i] ='B';}
-          input[input_len] = 'A';
-          // print should run until a null...which we removed
+          // OOB write
+          int input_len = strlen(input); 
+          // input 0,len-1, \0 at len, len+1 OOB
+          input[input_len+1] = 'A';
           printf("1:You entered %s.Hope it doesn't have a problem!", input);
         } 
       }

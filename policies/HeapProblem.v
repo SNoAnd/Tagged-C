@@ -366,19 +366,19 @@ Module HeapProblem <: Policy.
     | NotHeap =>
       raise (PolicyFailure (inj_loc "HeapProblem|| Pointer corruption |StoreT tried to write nonheap memory at " store_l))
     | UnallocatedHeap =>
-      raise (PolicyFailure (inj_loc "HeapProblem|| Pointer corruption|StoreT tried to write unallocated heap memory at " store_l))
+      raise (PolicyFailure (inj_loc "HeapProblem|| Heap Overwrite|StoreT tried to write unallocated heap memory at " store_l))
     | (AllocatedDirty l2 c2) =>
       if (Z.eqb c2 ptr_color) && (Cabs.loc_eqb l2 ptr_l)
       then ret lt
-      else raise (PolicyFailure (rw_err_msg "HeapProblem|| Pointer corruption |StoreT tried to write (dirty) memory belonging to " l2 store_l))
+      else raise (PolicyFailure (rw_err_msg "HeapProblem|| Heap Overwrite|StoreT tried to write (dirty) memory belonging to " l2 store_l))
     | (Allocated l2 c2)  =>
         (* if the color & the locations match, keep going *)
         if (Z.eqb c2 ptr_color) && (Cabs.loc_eqb l2 ptr_l)
         then ret lt
         (* right kind of tag, but this memory belongs to someone else *)
-        else raise (PolicyFailure (rw_err_msg "HeapProblem|| Pointer corruption |StoreT tried to write memory belonging to " l2 store_l))
-    | (AllocatedHeader owner_l _) =>  raise (PolicyFailure (rw_err_msg "HeapProblem|| Pointer corruption| StoreT tried to write over a heap header belonging to " owner_l store_l))
-    | (AllocatedPadding owner_l _) =>  raise (PolicyFailure (rw_err_msg "HeapProblem|| Pointer corruption| StoreT tried to write over heap padding belonging to " owner_l store_l))
+        else raise (PolicyFailure (rw_err_msg "HeapProblem|| Heap Overwrite |StoreT tried to write memory belonging to " l2 store_l))
+    | (AllocatedHeader owner_l _) =>  raise (PolicyFailure (rw_err_msg "HeapProblem|| Heap Overwrite| StoreT tried to write over a heap header belonging to " owner_l store_l))
+    | (AllocatedPadding owner_l _) =>  raise (PolicyFailure (rw_err_msg "HeapProblem|| Heap Overwrite| StoreT tried to write over heap padding belonging to " owner_l store_l))
     end. 
 
     (* Non heap pointer write nonheap things, but anything in the stack is off limits *)
@@ -398,7 +398,7 @@ Module HeapProblem <: Policy.
   
   Definition StoreT (l:loc) (pct : control_tag) (pt vt : val_tag) (lts : list loc_tag)
   : PolicyResult (control_tag * val_tag * list loc_tag) := 
-  log ("StoreT called pt= " ++ (print_vt pt) ++ " vt= " ++ (print_vt vt));;
+  (*log ("StoreT called pt= " ++ (print_vt pt) ++ " vt= " ++ (print_vt vt));;*)
     match pt with 
     (* we need to know the pointer's location and the store operations location if something goes wrong *)
     | PointerWithColor ptr_l ptr_color =>
@@ -606,7 +606,7 @@ Module HeapProblem <: Policy.
   *)
   Definition MallocT (l:loc) (pct: control_tag) (fpt: val_tag) :
     PolicyResult (control_tag * val_tag * val_tag * loc_tag  * loc_tag * loc_tag) :=
-    log "MallocT called";;
+    (*log "MallocT called";;*)
     match pct with
     | PC_Extra currcolor =>
       (* ret (pct', pt, vtb, vht', lt, ltpadding) *)
@@ -652,7 +652,7 @@ Module HeapProblem <: Policy.
       nothing resets the pointer tag pt itself. it has to act to be changed *)
  Definition FreeT (l:loc) (pct: control_tag) (pt : val_tag) (ht: list loc_tag ) :
  PolicyResult (control_tag * loc_tag ) :=
- log "FreeT called";;
+ (*log "FreeT called";;*)
   if (ltop.(alleq) ht)
   then (
     match pt, (List.hd_error ht) with 

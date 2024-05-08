@@ -224,10 +224,17 @@ if __name__ == '__main__':
     print("=======\nHeap Problems Tests\n=======")
     # heaproblem not responsible for making sure you dont OOM your heap. 
     #      users still need to check for 0 :p 
+    # Over Reads
     runACFileWithoutInput("heapproblem_overread_basic_nopad.c", heapproblem,
                           b"HeapProblem|| Heap Overread| LoadT tried to read unallocated heap memory at  src location heapproblem_overread_basic_nopad.c:32")    
     runACFileWithoutInput("heapproblem_overread_basic_pad.c", heapproblem,
                           b"HeapProblem|| Heap Overread| LoadT read past the end into padding belonging to  heapproblem_overread_basic_pad.c:36 at heapproblem_overread_basic_pad.c:46")    
+    runACFileWithInput("heapproblem_overread_getchar_1_fault.c",
+                       heapproblem, "hellohihowareyou",
+                       nofault_cleanexit)
+    runACFileWithInput("heapproblem_overread_getchar_1_fault.c",
+                       heapproblem, "PIPE0000000",
+                       b'HeapProblem|| Heap Overread| LoadT tried to read unallocated heap memory at  src location heapproblem_overread_getchar_1_fault.c:63')
     runACFileWithInput("heapproblem_overread_getchar_3_faults.c",
                        heapproblem, "hellohihowareyou",
                        nofault_cleanexit)
@@ -236,14 +243,41 @@ if __name__ == '__main__':
                        nofault_cleanexit)
     runACFileWithInput("heapproblem_overread_getchar_3_faults.c",
                        heapproblem, "P0000000000",
-                       b'HeapProblem|| Heap Overread| LoadT read past the end into padding belonging to  heapproblem_overread_getchar_3_faults.c:73 at heapproblem_overread_getchar_3_faults.c:92')
+                       b'HeapProblem|| Heap Overread| LoadT read past the end into padding belonging to  heapproblem_overread_getchar_3_faults.c:73 at heapproblem_overread_getchar_3_faults.c:97')
     runACFileWithInput("heapproblem_overread_getchar_3_faults.c",
                        heapproblem, "0I000000000",
-                       b'HeapProblem|| Heap Overread| LoadT read past the end into padding belonging to  heapproblem_overread_getchar_3_faults.c:73 at heapproblem_overread_getchar_3_faults.c:107')
+                       b'HeapProblem|| Heap Overread| LoadT read past the end into padding belonging to  heapproblem_overread_getchar_3_faults.c:73 at heapproblem_overread_getchar_3_faults.c:112')
     runACFileWithInput("heapproblem_overread_getchar_3_faults.c",
                        heapproblem, "00P00000000",
-                       b'HeapProblem|| Heap Overread| LoadT tried to read allocator header belonging to  heapproblem_overread_getchar_3_faults.c:73 at heapproblem_overread_getchar_3_faults.c:118')
-    
-    
+                       b'HeapProblem|| Heap Overread| LoadT tried to read allocator header belonging to  heapproblem_overread_getchar_3_faults.c:73 at heapproblem_overread_getchar_3_faults.c:123')
+    # Over Writes 
+    runACFileWithoutInput("heapproblem_overwrite_basic_nopad.c", heapproblem,
+                          b"HeapProblem|| Heap Overwrite|StoreT tried to write unallocated heap memory at  src location heapproblem_overwrite_basic_nopad.c:8")    
+    runACFileWithoutInput("heapproblem_overwrite_basic_pad.c", heapproblem,
+                          b"HeapProblem|| Heap Overwrite| StoreT tried to write over heap padding belonging to  heapproblem_overwrite_basic_pad.c:6 at heapproblem_overwrite_basic_pad.c:7")    
+    runACFileWithInput("heapproblem_overwrite_getchar_1_fault.c",
+                       heapproblem, "FOOD0000000",
+                       nofault_cleanexit)
+    runACFileWithInput("heapproblem_overwrite_getchar_1_fault.c",
+                       heapproblem, "PIPE0000000",
+                       b'HeapProblem|| Heap Overwrite| StoreT tried to write over heap padding belonging to  heapproblem_overwrite_getchar_1_fault.c:42 at heapproblem_overwrite_getchar_1_fault.c:55')
+    runACFileWithInput("heapproblem_overwrite_4_faults.c",
+                       heapproblem, "hi",
+                       nofault_cleanexit)
+    runACFileWithInput("heapproblem_overwrite_4_faults.c",
+                       heapproblem, "FOOD!",
+                       nofault_cleanexit)
+    runACFileWithInput("heapproblem_overwrite_4_faults.c",
+                       heapproblem, "P000000000",
+                       b'HeapProblem|| Heap Overwrite| StoreT tried to write over heap padding belonging to  heapproblem_overwrite_4_faults.c:70 at heapproblem_overwrite_4_faults.c:88')
+    runACFileWithInput("heapproblem_overwrite_4_faults.c",
+                       heapproblem, "0I00000000",
+                       b'HeapProblem|| Heap Overwrite| StoreT tried to write over heap padding belonging to  heapproblem_overwrite_4_faults.c:70 at heapproblem_overwrite_4_faults.c:99')
+    runACFileWithInput("heapproblem_overwrite_4_faults.c",
+                       heapproblem, "00P0000000",
+                       b'HeapProblem|| Heap Overwrite| StoreT tried to write over a heap header belonging to  heapproblem_overwrite_4_faults.c:70 at heapproblem_overwrite_4_faults.c:108')
+    runACFileWithInput("heapproblem_overwrite_4_faults.c",
+                       heapproblem, "000E000000",
+                       b'HeapProblem|| Heap Overwrite| StoreT tried to write over heap padding belonging to  heapproblem_overwrite_4_faults.c:116 at heapproblem_overwrite_4_faults.c:64')
     # end
     print(f"\n=======\ntest suit ending.\n\ttotal tests run: {testsrun}\n\ttotal failed: {testsfailed}\n\ttotal passed: {testspassed}")
