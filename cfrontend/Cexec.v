@@ -47,83 +47,65 @@ Module Cexec (Pol: Policy).
     Notation " 'check' A ; B" := (if A then B else nil)
                                    (at level 200, A at level 100, B at level 200)
         : list_monad_scope.
+      
+    Notation "'do' X <- A ; B" := (match A with
+                                   | Success X => B
+                                   | Fail failure => Fail failure
+                                   end)
+                                    (at level 200, X name, A at level 100, B at level 200)
+        : memory_monad_scope.
     
-  (* Policy-agnostic Tactics *)
-  Ltac mydestr :=
-    match goal with
-    | [ |- None = Some _ -> _ ] => let X := fresh "X" in intro X; discriminate
-    | [ |- Some _ = Some _ -> _ ] => let X := fresh "X" in intro X; inv X
-    | [ |- match ?x with Some _ => _ | None => _ end = Some _ -> _ ] => destruct x eqn:?; mydestr
-    | [ |- match ?x with true => _ | false => _ end = Some _ -> _ ] => destruct x eqn:?; mydestr
-    | [ |- match ?x with inl _ => _ | inr _ => _ end = Some _ -> _ ] => destruct x; mydestr
-    | [ |- match ?x with left _ => _ | right _ => _ end = Some _ -> _ ] => destruct x; mydestr
-    | [ |- match ?x with Success _ => _ | Fail _ => _ end = _ -> _ ] => destruct x eqn:?;mydestr
-    | [ |- match ?x with true => _ | false => _ end = _ -> _ ] => destruct x eqn:?; mydestr
-    | [ |- (if ?x then _ else _) = _ -> _ ] => destruct x eqn:?; mydestr
-    | [ |- (let (_, _) := ?x in _) = _ -> _ ] => destruct x eqn:?; mydestr
-    | _ => idtac
-    end.  
+    Notation "'do' X , Y <- A ; B" := (match A with
+                                       | Success (X, Y) => B
+                                       | Fail failure => Fail failure
+                                       end)
+                                        (at level 200, X name, Y name, A at level 100, B at level 200)
+        : memory_monad_scope.
   
-  Notation "'do' X <- A ; B" := (match A with
-                                 | Success X => B
-                                 | Fail failure => Fail failure
-                                 end)
-                                  (at level 200, X name, A at level 100, B at level 200)
-      : memory_monad_scope.
-
-  Notation "'do' X , Y <- A ; B" := (match A with
-                                     | Success (X, Y) => B
-                                     | Fail failure => Fail failure
-                                     end)
-                                      (at level 200, X name, Y name, A at level 100, B at level 200)
-      : memory_monad_scope.
+    Local Open Scope memory_monad_scope.
   
-  Local Open Scope memory_monad_scope.
-  
-  Definition is_val (a: expr) : option (atom * type) :=
-    match a with
-    | Eval v ty => Some(v, ty)
-    | _ => None
-    end.
+    Definition is_val (a: expr) : option (atom * type) :=
+      match a with
+      | Eval v ty => Some(v, ty)
+      | _ => None
+      end.
 
-  Lemma is_val_inv:
-    forall a v ty, is_val a = Some(v, ty) -> a = Eval v ty.
-  Proof.
-    intros until ty. destruct a; simpl; congruence.
-  Qed.
+    Lemma is_val_inv:
+      forall a v ty, is_val a = Some(v, ty) -> a = Eval v ty.
+    Proof.
+      intros until ty. destruct a; simpl; congruence.
+    Qed.
 
-  Definition is_loc (a: expr) : option (loc_kind*type) :=
-    match a with
-    | Eloc l ty => Some (l, ty)
-    | _ => None
-    end.
+    Definition is_loc (a: expr) : option (loc_kind*type) :=
+      match a with
+      | Eloc l ty => Some (l, ty)
+      | _ => None
+      end.
 
-  Lemma is_loc_inv:
-    forall a l ty, is_loc a = Some (l, ty) -> a = Eloc l ty.
-  Proof.
-    intros until ty. destruct a; simpl; congruence.
-  Qed.
+    Lemma is_loc_inv:
+      forall a l ty, is_loc a = Some (l, ty) -> a = Eloc l ty.
+    Proof.
+      intros until ty. destruct a; simpl; congruence.
+    Qed.
 
-  Local Open Scope option_monad_scope.
+    Local Open Scope option_monad_scope.
 
-  Fixpoint is_val_list (al: exprlist) : option (list (atom * type)) :=
-    match al with
-    | Enil => Some nil
-    | Econs a1 al => vt1 <- is_val a1;; vtl <- is_val_list al;; Some(vt1::vtl)
-    end.
+    Fixpoint is_val_list (al: exprlist) : option (list (atom * type)) :=
+      match al with
+      | Enil => Some nil
+      | Econs a1 al => vt1 <- is_val a1;; vtl <- is_val_list al;; Some(vt1::vtl)
+      end.
 
-  Definition is_skip (s: statement) : {s = Sskip} + {s <> Sskip}.
-  Proof.
-    destruct s; (left; congruence) || (right; congruence).
-  Defined.
+    Definition is_skip (s: statement) : {s = Sskip} + {s <> Sskip}.
+    Proof.
+      destruct s; (left; congruence) || (right; congruence).
+    Defined.
 
-  Definition is_ptr (v: val) : option int64 :=
-    match v with
-    | Vptr i => Some i
-    | _ => None
-    end.
-  
-
+    Definition is_ptr (v: val) : option int64 :=
+      match v with
+      | Vptr i => Some i
+      | _ => None
+      end.
 
   (** * Events, volatile memory accesses, and external functions. *)
 

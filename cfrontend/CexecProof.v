@@ -6,19 +6,153 @@ Require Import Errors Maps Integers Floats.
 Require Import AST Values Memory AllocatorImpl Allocator Events Globalenvs Builtins Csem.
 Require Import Tags.
 Require Import List. Import ListNotations.
-Require Import CexecExprProof Ctypes.
+Require Import CexecExprSig Ctypes.
 Require Import ExtLib.Structures.Monads. Import MonadNotation.
 
 Local Open Scope list_scope.
 
 Module StepProof (Pol: Policy).
   Module ExprProof := ExprProof Pol.
-  Module Inner (I: AllocatorImpl ConcretePointer Pol ExprProof.Cexec.CM).
-    Module ExprInner := ExprProof.Inner I.
-    Import ExprInner.
+
+  Module Inner (I: AllocatorImpl ConcretePointer Pol ExprProof.Cexec.CM) (EP: ExprProof.Inner I).
+    Import EP.
     Import CexecInner.
     Import A.
     Import ConcretePointer.
+
+    Local Open Scope option_monad_scope.
+    
+    Ltac doinv :=
+      match goal with
+      | [ H: _ <- ?e ;; _ = Some _ |- _ ] => destruct e eqn:?; [simpl in H| inv H]
+      | [ H: let _ := ?e in _ |- _ ] => destruct e eqn:?
+      | [ H: is_val ?e = _ |- context[?e] ] => rewrite (is_val_inv _ _ _ H)
+      | [ H1: is_val ?e = _, H2: context[?e] |- _ ] => rewrite (is_val_inv _ _ _ H1) in H2
+      | [ H: is_loc ?e = _ |- context[?e] ] => rewrite (is_loc_inv _ _ _ H)
+      | [ H1: is_loc ?e = _, H2: context[?e] |- _ ] => rewrite (is_loc_inv _ _ _ H1) in H2
+      | [ p : _ * _ |- _ ] => destruct p
+      | [ a: atom |- _ ] => destruct a eqn:?; subst a
+      | [ H: False |- _ ] => destruct H
+      | [ H: _ /\ _ |- _ ] => destruct H
+      | [ H: _ \/ _ |- _ ] => destruct H
+      | [ H: exists _, _ |- _ ] => destruct H
+      | [H: bind_prop_success_rel ?e _ _ _ |- _ ] =>
+          let res := fresh "res" in
+          let H' := fresh "H" in
+          let RES := fresh "RES" in
+          inversion H as [res [H' RES]]; clear H
+      | [ H: Vptr _ = Vnullptr |- _ ] => inv H
+      | [H: is_ptr ?v = Some _ |- _] => destruct v; simpl in H; try discriminate
+      | [ H: Int64.eq _ _ = true |- _ ] => apply Int64.same_if_eq in H
+      | [ H: Int64.eq ?v1 ?v2 = false |- _] =>
+          assert (v1 <> v2) by (intro; subst; rewrite (Int64.eq_true v2) in H; discriminate);
+          clear H
+      | [ H: (_,_) = (_,_) |- _ ] => inv H
+      | [ H: (_,_,_) = (_,_,_) |- _ ] => inv H
+      | [ H: possible_trace ?w (?tr1 ++ ?tr2) ?w' |- _ ] =>
+          let w := fresh "w" in
+          let H1 := fresh "H" in
+          let H2 := fresh "H" in
+          eapply possible_trace_app_inv in H;
+          destruct H as [w [H1 H2]]
+      | [ H: possible_trace ?w E0 ?w' |- _ ] => inv H
+      | _ => idtac
+      end.
+
+    Ltac dodestr :=
+      match goal with
+      | [ |- context [match ?e with
+                      | Some _ => _
+                      | _ => _
+                      end] ] =>
+          destruct e eqn:?
+      | [ |- context [check ?e ; _] ] =>
+          destruct e eqn:?
+      | [ |- context [match ?e with
+                      | Success _ => _
+                      | Fail _ => _
+                      end] ] =>
+          destruct e eqn:?
+      | [ |- context [match ?e with
+                      | inl _ => _
+                      | inr _ => _
+                      end] ] =>
+          destruct e eqn:?
+      | [ |- context [match ?e with
+                      | PRIV _ => _
+                      | PUB _ _ _ => _
+                      end] ] =>
+          destruct e eqn:?
+      | [ |- context [match ?ty with
+                      | Tstruct _ _ => _
+                      | _ => _
+                      end] ] =>
+          destruct ty eqn:?
+      | [ |- context [match ?e with
+                      | OK _ => _
+                      | Error _ => _
+                      end] ] =>
+          destruct e eqn:?
+      | [ |- context [if ?e then _ else _] ] => destruct e eqn:?
+      | [ |- context [match ?v with
+                      | Vptr _ => _
+                      | _ => _
+                      end] ] => destruct v
+      | [ |- context [match ?l with
+                      | Lmem _ _ _ => _
+                      | Ltmp _ => _
+                      | Lifun _ _ => _
+                      | Lefun _ _ _ _ _ => _
+                      end] ] => destruct l
+      | [ |- context [match ?e with
+                      | fun_case_f _ _ _ => _
+                      | fun_default => _
+                      end] ] => destruct e eqn:?
+      | [ |- context [let '(_, _) := ?e in _] ] =>
+          destruct e eqn:?
+      | [ |- context [sem_unary_operation ?op ?v ?ty ?m] ] =>
+          destruct (sem_unary_operation op v ty m) eqn:?
+      | [ |- context [sem_binary_operation ?ce ?op ?v ?ty1 ?v2 ?ty2 ?m] ] =>
+          destruct (sem_binary_operation ce op v ty1 v2 ty2 m) eqn:?
+      | [ |- context [sem_cast ?v ?ty1 ?ty2 ?m] ] =>
+          destruct (sem_cast v ty1 ty2 m) eqn:?
+      | [ |- context [bool_val ?v ?ty ?m] ] =>
+          destruct (bool_val v ty m) eqn:?
+      | _ => idtac
+      end.
+
+      Ltac cronch :=
+        match goal with
+        | [ H: ?e1 = None
+            |- context[?e1]] => rewrite H
+        | [ H: ?e1 = Some _
+            |- context[?e1]] => rewrite H
+        | [ H: ?e ! ?b = Some _ |- context [?e ! ?b]] => rewrite H
+        | [ H: ?e ! ?b = None |- context [?e ! ?b]] => rewrite H
+        | [ H: ?e1 = (Success _, _) |- context[?e1] ] =>
+            rewrite H; simpl
+        | [ H: ?e1 = (Fail _, _) |- context[?e1] ] =>
+            rewrite H; simpl
+        | [ H: ?e = true |- (if ?e then _ else _) = _ ] => rewrite H
+        | [ H: ?e = false |- (if ?e then _ else _) = _ ] => rewrite H
+        | [ H: ?v = Vptr ?v' |- match ?v with
+                                | Vptr _ => _
+                                | _ => _
+                                end = _ ] =>
+            rewrite H
+        | [ H: access_mode ?ty = ?e |- context [match access_mode ?ty with
+                                                | By_value _ => _
+                                                | _ => _
+                                                end ]] =>
+            rewrite H
+        | [ |- context [type_eq ?ty ?ty] ] => rewrite dec_eq_true
+        | [ H: possible_trace ?w ?tr ?w' |- possible_trace ?w ?tr _ ] => apply H
+        | [ |- exists w' : world, possible_trace ?w E0 w' ] =>
+            exists w; constructor
+        | [ H: ?e ?ps |- bind_prop_success_rel ?e _ _ _ ] =>
+            exists ps; intuition eauto
+        end.
+
     
     Section EXEC.
       Variable ge: genv.
@@ -270,7 +404,6 @@ Module StepProof (Pol: Policy).
         (* callred *)
         + unfold do_step; rewrite NOTVAL.
           exploit callred_topred; eauto.
-          
           instantiate (1 := te). instantiate (1 := w). instantiate (1 := e).
           intros (rule & STEP). exists rule.
           change (TR rule E0 (Callstate fd l s' pct' fpt vargs (Kcall f e te l pct fpt C ty k) m)) with (expr_final_state f k l s pct e (C, Callred rule fd fpt vargs ty te m pct' s')).

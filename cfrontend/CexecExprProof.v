@@ -6,21 +6,38 @@ Require Import Errors Maps Integers Floats.
 Require Import AST Values Memory AllocatorImpl Allocator Events Globalenvs Builtins Csem.
 Require Import Tags.
 Require Import List. Import ListNotations.
-Require Import Cexec Ctypes.
+Require Import Cexec CexecExprSig Ctypes.
 Require Import ExtLib.Structures.Monads. Import MonadNotation.
 
 Local Open Scope list_scope.
 
 Module ExprProof (Pol: Policy).
-  Module Cexec := Cexec Pol.
-  Module Inner (I: AllocatorImpl ConcretePointer Pol Cexec.CM).
-    Module CexecInner := Cexec.Inner I.
+
+  Module Sig := CexecExprSig.ExprProof Pol.
+
+  Module Inner (I: AllocatorImpl ConcretePointer Pol Sig.Cexec.CM) : Sig.Inner I.
+    Module CexecInner := Sig.Cexec.Inner I.
     Import CexecInner.
     Import A.
     Import ConcretePointer.
-
+    
     Local Open Scope option_monad_scope.
 
+    Ltac mydestr :=
+      match goal with
+      | [ |- None = Some _ -> _ ] => let X := fresh "X" in intro X; discriminate
+      | [ |- Some _ = Some _ -> _ ] => let X := fresh "X" in intro X; inv X
+      | [ |- match ?x with Some _ => _ | None => _ end = Some _ -> _ ] => destruct x eqn:?; mydestr
+      | [ |- match ?x with true => _ | false => _ end = Some _ -> _ ] => destruct x eqn:?; mydestr
+      | [ |- match ?x with inl _ => _ | inr _ => _ end = Some _ -> _ ] => destruct x; mydestr
+      | [ |- match ?x with left _ => _ | right _ => _ end = Some _ -> _ ] => destruct x; mydestr
+      | [ |- match ?x with Success _ => _ | Fail _ => _ end = _ -> _ ] => destruct x eqn:?;mydestr
+      | [ |- match ?x with true => _ | false => _ end = _ -> _ ] => destruct x eqn:?; mydestr
+      | [ |- (if ?x then _ else _) = _ -> _ ] => destruct x eqn:?; mydestr
+      | [ |- (let (_, _) := ?x in _) = _ -> _ ] => destruct x eqn:?; mydestr
+      | _ => idtac
+      end.  
+    
     Ltac doinv :=
       match goal with
       | [ H: _ <- ?e ;; _ = Some _ |- _ ] => destruct e eqn:?; [simpl in H| inv H]
@@ -1036,8 +1053,7 @@ Module ExprProof (Pol: Policy).
         forall lc ps pct v vt ty ty1 attr attr1 te m,
           reducts_ok RV lc ps pct (Ecast (Eval (v,vt) (Tpointer ty attr)) (Tpointer ty1 attr1)) te m
                      (step_expr ge ce e w RV lc ps pct (Ecast (Eval (v,vt) (Tpointer ty attr)) (Tpointer ty1 attr1)) te m).
-      Admitted.
-(*      Proof.
+      Proof.
         intros. unfold step_expr; simpl.
         repeat dodestr; repeat doinv; repeat chomp; repeat tag_destr; subst; try solve_red;
           try solve_nullptr.
@@ -1063,7 +1079,7 @@ Module ExprProof (Pol: Policy).
           unfold is_ptr in H3. discriminate.
         - apply not_invert_ok; simpl; intros; repeat doinv.    
           inv H. inv Heqo. repeat chomp. discriminate.
-      Qed. *)
+      Qed.
 
       Lemma step_cast_sound_ptr_to:
         forall lc ps pct v vt ty ty1 attr te m,
@@ -1081,8 +1097,7 @@ Module ExprProof (Pol: Policy).
           forall lc ps pct v vt ty ty1 attr te m,
             reducts_ok RV lc ps pct (Ecast (Eval (v,vt) ty) (Tpointer ty1 attr)) te m
                        (step_expr ge ce e w RV lc ps pct (Ecast (Eval (v,vt) ty) (Tpointer ty1 attr)) te m).
-        Admitted.
-        (*Proof with try (apply not_invert_ok; simpl; intros; repeat doinv; repeat chomp; discriminate).
+        Proof with try (apply not_invert_ok; simpl; intros; repeat doinv; repeat chomp; discriminate).
           intros. destruct ty...
           3: apply step_cast_sound_ptr_ptr.
           - unfold step_expr; simpl;
@@ -1129,7 +1144,7 @@ Module ExprProof (Pol: Policy).
             + apply not_invert_ok; simpl; intros; repeat doinv; repeat chomp.
               destruct H0; try solve_nullptr; repeat doinv.
               do_complete. repeat chomp. discriminate.
-        Qed. *)
+        Qed.
 
         Lemma step_cast_sound:
           forall lc ps pct v vt ty ty1 te m,

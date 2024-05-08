@@ -332,8 +332,8 @@ Module InterpreterEvents (Pol: Policy) (A: Memory ConcretePointer Pol UnitRegion
         + inv H0.
           specialize H6 with id gv.
           rewrite H6; auto.
-        + inv H0. destruct (store chunk m p (v,vt) lts); auto.
-    Admitted. (*Qed.*)
+        + inv H0. auto.
+    Qed.
 
     (** External calls *)
     Variable do_external_function:
@@ -398,41 +398,25 @@ Module InterpreterEvents (Pol: Policy) (A: Memory ConcretePointer Pol UnitRegion
         extcall_malloc_sem l tt ge vargs pct fpt m tr res ->
         possible_trace w tr w' ->
         do_ef_malloc l w vargs pct fpt m = Some (w', tr, res).
-    Admitted.
-    (*Proof.
-      intros. unfold do_ef_malloc. inv H; apply do_alloc_size_correct in H1; rewrite H1; inv H0.
-      - rewrite H2. simpl. rewrite H3. auto.
-      - rewrite H2. simpl. auto.
-      - rewrite H2. simpl. rewrite H3. auto.
-    Qed.*)
+    Proof.
+      intros. unfold do_ef_malloc. inv H; apply do_alloc_size_correct in H1;
+        simpl; rewrite H1; inv H0. auto.
+    Qed.
     
     Lemma do_ef_malloc_sound :
       forall l vargs pct fpt m tr res w w',
         do_ef_malloc l w vargs pct fpt m = Some (w', tr, res) ->
         extcall_malloc_sem l tt ge vargs pct fpt m tr res /\ possible_trace w tr w'.
-(*    Proof.
+    Proof.
       unfold do_ef_malloc. intros.
       destruct vargs as [| [v vt]]; try congruence.
       destruct vargs; try congruence.
       destruct (do_alloc_size v) eqn:?.
       - apply do_alloc_size_correct in Heqo.
-        destruct (MallocT l pct fpt vt) as
-          [[[[[pct' pt'] vt_body] vt_head] lt]
-          |[[[[pct' pt'] vt_body] vt_head] lt]
-          |] eqn:?.
-        + destruct (heapalloc m z vt_head vt_body lt) as [[[m' base] bound]| |] eqn:?; inv H.
-          * rewrite Heqp0. split; econstructor; eauto.
-          * rewrite Heqp0. admit. (*split; econstructor; eauto.*)
-          * rewrite Heqp0. split. eapply extcall_malloc_sem_fail_1; eauto. constructor.
-        +  destruct (heapalloc m z vt_head vt_body lt) as [[[m' base] bound]| |] eqn:?; inv H.
-           * rewrite Heqp0. simpl. split; econstructor; eauto.
-
-          rewrite Heqp.
-          inv H1. admit. (* split; econstructor; eauto.*)
-        + admit.
-      - inv H.*)
-    Admitted.
-    
+        simpl in H. inv H. intuition econstructor. auto.
+      - inv H.
+    Qed.
+        
     Definition do_ef_free (l: Cabs.loc) (w: world) (vargs: list atom) (pct: control_tag) (fpt: val_tag) (m: mem)
       : option (world * trace * (PolicyResult (atom * control_tag * mem))) :=
       match vargs with
@@ -446,38 +430,21 @@ Module InterpreterEvents (Pol: Policy) (A: Memory ConcretePointer Pol UnitRegion
         extcall_free_sem l tt ge vargs pct fpt m tr res ->
         possible_trace w tr w' ->
         do_ef_free l w vargs pct fpt m = Some (w', tr, res).
-    Admitted.
-    (*Proof.
-      intros. unfold do_ef_free. inv H.
-      - rewrite (Int64.eq_false _ _ H1).
-        rewrite H2. inv H0. auto. 
-      - rewrite (Int64.eq_false _ _ H1).
-        rewrite H2. inv H0. auto.
-      - rewrite (Int64.eq_false _ _ H1).
-        rewrite H2. inv H0. auto.
-      - rewrite Int64.eq_true. inv H0. auto.
-    Qed.*)
+    Proof.
+      intros. unfold do_ef_free. inv H. inv H0. auto.
+    Qed.
 
     Lemma do_ef_free_sound :
       forall l vargs pct fpt m tr res w w',
         do_ef_free l w vargs pct fpt m = Some (w', tr, res) ->
         extcall_free_sem l tt ge vargs pct fpt m tr res /\ possible_trace w tr w'.
-    Admitted.
-    (*Proof.
+    Proof.
       unfold do_ef_free. intros.
       destruct vargs as [| [v vt]]; try congruence.
       destruct v; try congruence.
       destruct vargs; try congruence.
-      destruct (Int64.eq i Int64.zero) eqn:?.
-      - apply Int64.same_if_eq in Heqb. rewrite Heqb.
-        inv H. split.
-        + eapply extcall_free_sem_null.
-        + constructor.
-      - destruct (heapfree m (Int64.unsigned i) (fun vt0 : val_tag => FreeT l pct fpt vt vt0))
-          as [[[pct' m']|]|] eqn:?;
-                             inv H; split; constructor; auto; intro;
-          rewrite H in Heqb; rewrite Int64.eq_true in Heqb; discriminate.
-    Qed.*)
+      inv H. intuition econstructor.
+    Qed.
 
     Definition do_external (ef: external_function) (lc: Cabs.loc) :
       world -> list atom -> control_tag -> val_tag -> mem -> option (world * trace * (PolicyResult (atom * control_tag * mem))) :=
