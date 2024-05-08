@@ -12,9 +12,9 @@ Require Import Csem.
 Require Import Csyntax.
 Require Import AST Ctypes.
   
-Module ProgEquiv (Ptr1: Pointer) (Pol1: Policy) (Reg1: Region)
+Module ProgEquiv (Ptr1: Pointer) (Pol1: Policy) (Reg1: Region Ptr1)
                  (A1: Memory Ptr1 Pol1 Reg1) (Sem1: Semantics Ptr1 Pol1 Reg1 A1)
-                 (Ptr2: Pointer) (Pol2: Policy) (Reg2: Region)
+                 (Ptr2: Pointer) (Pol2: Policy) (Reg2: Region Ptr2)
                  (A2: Memory Ptr2 Pol2 Reg2) (Sem2: Semantics Ptr2 Pol2 Reg2 A2).
 
   Module CS1 := Sem1.Csyntax.
@@ -203,9 +203,9 @@ End ProgEquiv.
 
 (** The general form of a forward simulation. *)
 
-Module SIM (Ptr1: Pointer) (Pol1: Policy) (Reg1: Region)
+Module SIM (Ptr1: Pointer) (Pol1: Policy) (Reg1: Region Ptr1)
            (A1: Memory Ptr1 Pol1 Reg1) (Sem1: Semantics Ptr1 Pol1 Reg1 A1)
-           (Ptr2: Pointer) (Pol2: Policy) (Reg2: Region)
+           (Ptr2: Pointer) (Pol2: Policy) (Reg2: Region Ptr2)
            (A2: Memory Ptr2 Pol2 Reg2) (Sem2: Semantics Ptr2 Pol2 Reg2 A2).
   Module PE := ProgEquiv Ptr1 Pol1 Reg1 A1 Sem1
                          Ptr2 Pol2 Reg2 A2 Sem2.

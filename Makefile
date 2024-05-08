@@ -302,7 +302,7 @@ distclean:
 	$(MAKE) clean
 	rm -f Makefile.config
 
-check-admitted: $(FILES)
+check-admitted: $(FILES) $(PROOFS)
 	@grep -w 'admit\|Admitted\|ADMITTED' $^ || echo "Nothing admitted."
 
 check-proof: $(FILES)
