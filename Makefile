@@ -119,7 +119,7 @@ CFRONTEND=Ctypes.v Cop.v Csyntax.v Csem.v Ctyping.v Cexec.v \
 # NB Product.v is the (Cartisian) product of multiple policies
 POLICIES=NullPolicy.v PVI.v DoubleFree.v HeapProblem.v Product.v Omnilog.v
 
-PROOFS=CexecExprProof.v CexecProof.v Simulation.v CompartmentSem.v SemanticsProofs.v
+PROOFS=CexecExprSig.v CexecExprProof.v CexecProof.v Simulation.v CompartmentSem.v SemanticsProofs.v
 
 PARSER=Cabs.v Parser.v
 

@@ -37,6 +37,8 @@ Require Import ExtLib.Structures.Monads. Import MonadNotation.
 
 Require Import List. Import ListNotations. (* list notations is a module inside list *)
 
+Open Scope monad_scope.
+
 Module DoubleFree <: Policy.
  Import Passthrough.
   
@@ -89,7 +91,6 @@ Definition init_state : policy_state := tt.
 
 Definition PolicyResult := PolicyResult policy_state.
 Definition ltop := ltop lt_eq_dec policy_state.
-Definition log := log policy_state.
 
  (* 
     MallocT sets the tag to Alloc, and clears free color if one was present becausee
@@ -186,8 +187,10 @@ Definition log := log policy_state.
   .
 
   (***)
- Definition ClearT (l:loc) (pct: control_tag) (pt: val_tag) (currlt: loc_tag) : PolicyResult (loc_tag) :=
-   ret (Unallocated).
+  Definition ClearT (l:loc) (pct: control_tag) (pt: val_tag) (currlt: loc_tag) (b: loggable byte) :
+    PolicyResult (loc_tag) :=
+    log_value b;;
+    ret (Unallocated).
    
   (* These are required, but cannot pass through because they don't get tags to start with.
     In other words, they have to make tags out of thin air. *)

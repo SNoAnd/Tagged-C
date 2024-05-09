@@ -60,7 +60,7 @@ Module NullPolicy <: Policy.
     PolicyResult (control_tag * loc_tag) :=
     ret (tt, tt).
 
-    Definition ClearT (l:loc) (pct: control_tag) (pt: val_tag) (currlt: loc_tag) :
+    Definition ClearT (l:loc) (pct: control_tag) (pt: val_tag) (currlt: loc_tag) (b: loggable byte) :
     PolicyResult loc_tag :=
     ret tt.
   

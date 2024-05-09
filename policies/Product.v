@@ -201,10 +201,10 @@ Module PolProduct (P1:Policy) (P2: Policy) <: Policy.
                 (fun '(pct1, lt1) '(pct2, lt2) => 
                   ((pct1, pct2), (lt1, lt2))).
 
-  Definition ClearT (l:loc) (pct: control_tag) (pt: val_tag) (currlt: loc_tag) :
+  Definition ClearT (l:loc) (pct: control_tag) (pt: val_tag) (currlt: loc_tag) (b: loggable byte) :
     PolicyResult (loc_tag) :=
-    double_bind (P1.ClearT l (fst pct) (fst pt) (fst currlt))
-                (P2.ClearT l (snd pct) (snd pt) (snd currlt))
+    double_bind (P1.ClearT l (fst pct) (fst pt) (fst currlt) b)
+                (P2.ClearT l (snd pct) (snd pt) (snd currlt) b)
                 (fun '(lts1) '(lts2) => 
                    ((lts1, lts2))).
   

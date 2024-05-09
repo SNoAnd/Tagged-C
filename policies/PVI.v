@@ -54,8 +54,6 @@ Module PVI <: Policy.
 
   Definition PolicyResult := PolicyResult policy_state.
   Definition ltop := ltop lt_eq_dec policy_state.
-
-  Definition log := log policy_state.
   
   Definition color_eq (pt: val_tag) (lt: loc_tag) : bool :=
     match pt, lt with
@@ -118,7 +116,7 @@ Module PVI <: Policy.
     PolicyResult (control_tag * loc_tag) :=
     ret (pct, N).
 
-  Definition ClearT (l:loc) (pct: control_tag) (pt: val_tag) (lt: loc_tag) :
+  Definition ClearT (l:loc) (pct: control_tag) (pt: val_tag) (lt: loc_tag) (b: loggable byte) :
     PolicyResult loc_tag :=
     ret N.
   

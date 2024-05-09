@@ -517,6 +517,12 @@ Inductive extcall_malloc_sem (l:Cabs.loc) (r: region) (ge: Genv.t F V):
     extcall_malloc_sem l r ge [(v,st)] pct fpt m E0
                        (do_extcall_malloc l r pct fpt st m sz).
 
+Definition mv2b (mv: memval) : byte :=
+  match mv with
+  | Byte b _ => b
+  | Fragment _ _ _ b => b
+  end.
+
 Definition do_extcall_free (l:Cabs.loc) (r: region) (pct: control_tag)  (fpt pt: val_tag) (p: ptr) (m: mem)
   : PolicyResult (atom * control_tag * mem) :=
   if Int64.eq (concretize p) Int64.zero
@@ -525,7 +531,7 @@ Definition do_extcall_free (l:Cabs.loc) (r: region) (pct: control_tag)  (fpt pt:
     '(sz,pct',m') <- heapfree l pct m r p pt;;
     mvs <- loadbytes m' p sz;;
     lts <- loadtags m' p sz;;
-    lts' <- ltop.(mmap) (ClearT l pct' pt) lts;;
+    lts' <- my_mmap (fun '(b,lt) => ClearT l pct' pt lt (DONT_TOUCH_THIS byte (mv2b b))) (List.combine mvs lts);;
     m'' <- storebytes m' p mvs lts';;
     ret ((Vundef,InitT), pct', m'').
 

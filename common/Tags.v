@@ -11,6 +11,8 @@ Require Import Switch.
 Require Import Encoding.
 Require Import ExtLib.Structures.Monads. Import MonadNotation.
 Require Import VectorDef.
+Require Import Show.
+Require Import Ascii.
 
 Require Import List. Import ListNotations. (* list notations is a module inside list *)
 
@@ -33,39 +35,48 @@ Inductive Result (A: Type) :=
 Arguments Success {_} _.
 Arguments Fail {_} _.
 
-Section WITH_T.
-  Variable T : Type.
+Instance showByte : Show byte :=
+  {| show := fun b => String (ascii_of_nat (Z.to_nat (Byte.unsigned b))) EmptyString |}.
 
-  Definition logs : Type := list string.
-  
-  Definition PolicyResult (A: Type) := (T*logs) -> (Result A*(T*logs)).
+Definition logs : Type := list string.
 
-  Definition bind_res (A B:Type) (a: PolicyResult A) (f: A -> PolicyResult B) :=
-    fun s =>
-      match a s with
-      | (Success a', s') => f a' s'
-      | (Fail failure, s') => (Fail failure, s')
-      end.
-  
-  Global Instance Monad_pr : Monad PolicyResult :=
-    {| bind := bind_res
-    ; ret := fun _ a s => (Success a, s) |}.
-  
-  Global Instance MonadState_pr : MonadState T PolicyResult :=
-    {| get := fun x => (Success (fst x),x)
-    ; put := fun v '(_,log) => (Success tt, (v,log)) |}.
+Definition PolicyResult (T A: Type) := (T*logs) -> (Result A*(T*logs)).
 
-  Definition log (msg:string) (state:T*logs) :=
-    let '(s,log) := state in (Success tt, (s,log++[msg])).
-
-  Global Instance Exception_pr : MonadExc FailureClass PolicyResult :=
-    {| raise := fun _ v s => (Fail v, s)
-    ; catch := fun _ c h s => match c s with
-                              | (Fail failure,s') => h failure s
-                              | x => x 
-                              end |}.
+Definition bind_res (T A B:Type) (a: PolicyResult T A) (f: A -> PolicyResult T B) :=
+  fun s =>
+    match a s with
+    | (Success a', s') => f a' s'
+    | (Fail failure, s') => (Fail failure, s')
+    end.
   
-End WITH_T.
+Global Instance Monad_pr (T: Type) : Monad (PolicyResult T) :=
+  {| bind := bind_res T
+  ; ret := fun _ a s => (Success a, s) |}.
+  
+Global Instance MonadState_pr (T: Type) : MonadState T (PolicyResult T) :=
+  {| get := fun x => (Success (fst x),x)
+  ; put := fun v '(_,log) => (Success tt, (v,log)) |}.
+
+Definition log {T:Type} (msg:string) (state:T*logs) :=
+  let '(s,log) := state in (Success tt, (s,log++[msg])).
+
+Inductive loggable (A: Type) `{Show A} :=
+| DONT_TOUCH_THIS (a: A)
+.
+
+Definition wrap {A:Type} `{Show A} (a:A) : loggable A := DONT_TOUCH_THIS A a.
+  
+Definition log_value {T A:Type} `{Show A} (l:loggable A) (state:T*logs) :=
+  let 'DONT_TOUCH_THIS _ a := l in
+  log (show a) state.
+  
+Global Instance Exception_pr (T: Type) : MonadExc FailureClass (PolicyResult T) :=
+  {| raise := fun _ v s => (Fail v, s)
+  ; catch := fun _ c h s => match c s with
+                            | (Fail failure,s') => h failure s
+                            | x => x 
+                            end |}.
+  
 Section WITH_LT.
   Local Open Scope monad_scope.
   
@@ -75,14 +86,13 @@ Section WITH_LT.
     policy_state : Type;
 
     const : nat -> loc_tag -> list loc_tag;
-    mmap : (loc_tag -> PolicyResult policy_state  loc_tag) ->
+    mmap : (loc_tag -> PolicyResult policy_state loc_tag) ->
             list loc_tag -> PolicyResult policy_state (list loc_tag);
     alleq : list loc_tag -> bool;
     forallb : (loc_tag -> bool) -> list loc_tag -> bool
   }.
 
-  Fixpoint my_mmap {T A B:Type} (f:A-> PolicyResult T B)
-    (lts: list A) : PolicyResult T (list B) :=
+  Fixpoint my_mmap {T A B:Type} (f:A-> PolicyResult T B) (lts: list A) : PolicyResult T (list B) :=
     match lts with
     | [] => ret []
     | h::t => 
@@ -397,22 +407,15 @@ Module Type Policy.
                           * loc_tag)        (* New location tag for header (should be replicated to all header bytes) *).       
   
   (* The ClearT rule is invoked in the do_extcall_free function in Events.v.
-     It gives a single tag that will be copied across the entire cleared regions. 
-     ** DESIGN CHOICE: ** As with MallocT, we opt to return a single tag rather
-    than a list, because there is no information we have access to that would
-    give structure to the now-deallocated memory. Likewise, we do not examine
-    the tags that are already present: the allocator in conjunction with the
-    FreeT rule are responsible for making sure that the free is valid, and as long
-    as it is, we do not expect any invariants to be maintained over it. That said,
-    the values retain their original tags, so a SIF policy (for instance) could
-    still track data provenance over the free. *)
-(* APT: Change so ClearT handles one byte at a time *)
+     It takes a single byte's location tag at a time, as it's being cleared, and
+     yields a new location tag. It also takes the byte value itself in a loggable form. *)
   Parameter ClearT : loc                    (* Inputs: *)
                      -> control_tag         (* PC tag *)
                      -> val_tag             (* @TODO AMN: discuss next meeting. 
                                                 pointer's val tag *)
                      -> loc_tag             (* tag on byte within block *)
-
+                     -> loggable byte
+                          
                      -> PolicyResult        (* Outputs: *)
                           loc_tag           (* Tag to be copied to byte *).
   

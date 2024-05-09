@@ -213,7 +213,6 @@ Module HeapProblem <: Policy.
 
   Definition PolicyResult := PolicyResult policy_state.
   Definition ltop := ltop lt_eq_dec policy_state.
-  Definition log := log policy_state.
 
   Local Open Scope monad_scope.
   Local Open Scope string_scope.
@@ -677,7 +676,7 @@ Module HeapProblem <: Policy.
   .
 
   (* ClearT is for the tags on lts, the location tags. Works tag by tag *)
-  Definition ClearT (l:loc) (pct: control_tag) (pt: val_tag) (currlt: loc_tag) : PolicyResult (loc_tag) :=
+  Definition ClearT (l:loc) (pct: control_tag) (pt: val_tag) (currlt: loc_tag) (b: loggable byte) : PolicyResult (loc_tag) :=
     (*log ("ClearT called on " ++ (print_lt currlt));;*)
     match pt, currlt with 
     | PointerWithColor ptr_l ptr_c, Allocated m_l m_c => 
