@@ -52,6 +52,8 @@ module InterpP (Pol: Policy) = struct
     module Vals = Printing.Vals
     open Vals
 
+    let s = ref Csem.Stuckstate  (* Initialize to dummy state *)
+
 (* Printing events *)
 
 let print_id_ofs p (id, ofs) =
@@ -174,6 +176,7 @@ let print_failure failure =
   match failure with
   | OtherFailure msg -> (Camlcoq.camlstring_of_coqstring msg)
   | PolicyFailure msg -> (Camlcoq.camlstring_of_coqstring msg)
+  | RecoveryNotSupported -> "This policy does not support recovery-mode"
   | PrivateLoad ofs ->
     sprintf "Private Load at address %Ld" (Camlcoq.camlint64_of_coqint ofs)
   | PrivateStore ofs ->
@@ -363,14 +366,14 @@ let extract_string lc m ofs pct pt =
       let c = Char.chr (Z.to_int n) in
       if c = '\000' then
         let res = fun ps ->
-          match (Pol.coq_LoadT lc pct pt vt [lt] ps) with
+          match (Pol.coq_LoadT lc pct pt vt ofs [lt] ps) with
           | (Success vt',ps') -> (Success [c], ps')
           | (Fail f, ps') -> (Fail f, ps')
         in (res, 0)
       else
         let (res, i) = extract (Z.succ ofs) in
         let res' = fun ps ->
-          (match (Pol.coq_LoadT lc pct pt vt [lt] ps) with
+          (match (Pol.coq_LoadT lc pct pt vt ofs [lt] ps) with
           | (Success vt',ps') ->
             (match res ps' with
               | (Success cs, ps'') -> (Success (c::cs), ps'')
@@ -706,8 +709,8 @@ let diagnose_stuck_state p ge ce w = function
 (* Execution of a single step.  Return list of triples
    (reduction rule, next state, next world). *)
 
-let do_step p prog ge ce time s w =
-  match Cexec.at_final_state s with
+let do_step p prog ge ce time w =
+  match Cexec.at_final_state !s with
   | Some (r,lg) ->
       let _ = List.map (fun s -> Printf.eprintf "%s\n" (Camlcoq.camlstring_of_coqstring s)) lg in
       if !trace >= 1 then
@@ -718,12 +721,12 @@ let do_step p prog ge ce time s w =
       | First | Random -> exit (Int32.to_int (camlint_of_coqint r))
       end
   | None ->
-      match s with
+      match !s with
       | Csem.Stuckstate ->
         begin
           pp_set_max_boxes p 1000;
-          fprintf p "@[<hov 2>Stuck state: %a@]@." print_state (prog, (ge,ce), s);
-          diagnose_stuck_state p ge ce w s;
+          fprintf p "@[<hov 2>Stuck state: %a@]@." print_state (prog, (ge,ce), !s);
+          diagnose_stuck_state p ge ce w !s;
           fprintf p "ERROR: Undefined behavior@.";
           exit 126
         end
@@ -738,19 +741,19 @@ let do_step p prog ge ce time s w =
         (print_failure failure);
         exit 42 (* error*)
       | _ ->
-        let l = Cexec.do_step ge ce do_external_function (*do_inline_assembly*) w s in
+        let l = Cexec.do_step ge ce do_external_function (*do_inline_assembly*) w !s in
         List.map (fun (Cexec.TR(r, t, s')) -> (r, s', do_events p ge time w t)) l
 
 (* Exploration of a single execution. *)
 
-let rec explore_one p prog ge ce time s w =
+let rec explore_one p prog ge ce time w =
   if !trace >= 2 then
-    fprintf p "@[<hov 2>Time %d:@ %a@]@." time print_state (prog, (ge,ce), s);
+    fprintf p "@[<hov 2>Time %d:@ %a@]@." time print_state (prog, (ge,ce), !s);
   if !timeoutMaxSteps > 0 && time > !timeoutMaxSteps then
     (fprintf p "ERROR: Timeout Exceeded."; 
     exit 43);
     (*ignore (exit 43);  stops printing entirely. ignores side effects and we dont care that exit never returns *)
-  let succs = do_step p prog ge ce time s w in
+  let succs = do_step p prog ge ce time w in
   if succs <> [] then begin
     let (r, s', w') =
       match !mode with
@@ -759,7 +762,8 @@ let rec explore_one p prog ge ce time s w =
       | All -> assert false in
     if !trace >= 2 then
       fprintf p "--[%s]-->@." (camlstring_of_coqstring r);
-    explore_one p prog ge ce (time + 1) s' w'
+    (s := s';
+    explore_one p prog ge ce (time + 1) w')
   end
 
 (* Exploration of all possible executions. *)
@@ -879,6 +883,19 @@ let fixup_main p =
              (extern_atom p.Ctypes.prog_main);
           None
 
+let read_s a =
+  match !s with
+  | Csem.State (_, _, _, _, _, _, _, m) -> Some (fst (M.direct_read m a))
+  | Csem.ExprState (_, _, _, _, _, _, _, _, m) -> Some (fst (M.direct_read m a))
+  | Csem.Callstate (_, _, _, _, _, _, _, m) -> Some (fst (M.direct_read m a))
+  | Csem.Returnstate (_, _, _, _, _, _, m) -> Some (fst (M.direct_read m a))
+  | _ -> None
+
+let parse_opt_memval mv =
+  match mv with
+  | Some (MD.Byte(b,_)) -> Camlcoq.camlstring_of_coqstring (Show.show showByte b)
+  | _ -> ""
+
 (* Execution of a whole program *)
 
 let execute prog =
@@ -886,15 +903,17 @@ let execute prog =
   let p = std_formatter in
   pp_set_max_indent p 30;
   pp_set_max_boxes p 10;
+  HeapProblemHelper.mem_reader := (fun a -> parse_opt_memval (read_s a));
   match fixup_main prog with
   | None -> exit 126
   | Some prog1 ->
      (let ce = prog1.prog_comp_env in
       (match Cexec.do_initial_state prog1 with
-        | Some (ge, s) ->
-          (match s with
+        | Some (ge, init) ->
+          s := init;
+          (match init with
           | Csem.Callstate (_, _, _, _, _, _, _, m) ->
-            (explore_one p prog1 ge ce 0 s (world ge m))
+            (explore_one p prog1 ge ce 0 (world ge m))
           | _ -> fprintf p "ERROR: Initial state not a call@."; exit 126)
         | _ -> fprintf p "ERROR: Initial state undefined@."; exit 126))
   end  
