@@ -452,7 +452,7 @@ Definition volatile_load_tags (l:Cabs.loc) (chunk: memory_chunk) (m:mem) (p:ptr)
            (pt:val_tag) (vts: list val_tag) (lts: list loc_tag) (pct:control_tag) :
   PolicyResult val_tag :=
   vt <- CoalesceT l vts;;
-  vt' <- LoadT l pct pt vt lts;;
+  vt' <- LoadT l pct pt vt (concretize p) lts;;
   AccessT l pct vt'.  
 
 Inductive volatile_load_sem (l:Cabs.loc) (chunk: memory_chunk) (r: region) (ge: Genv.t F V):
@@ -471,7 +471,7 @@ Definition volatile_store_tags (l:Cabs.loc) (chunk: memory_chunk) (m:mem) (p: pt
   PolicyResult (control_tag*val_tag*list loc_tag) :=
   '(_,vts,lts) <- load chunk m p;;
   '(pct',vt') <-  AssignT l pct (EffectiveT l vts) vt;;
-  '(pct'',vt'',lts') <- StoreT l pct' pt vt' lts;;
+  '(pct'',vt'',lts') <- StoreT l pct' pt vt' (concretize p) lts;;
   ret (pct'',vt'', lts').
 
 Inductive volatile_store_sem (l:Cabs.loc) (chunk: memory_chunk) (ge: Genv.t F V):
@@ -517,12 +517,6 @@ Inductive extcall_malloc_sem (l:Cabs.loc) (r: region) (ge: Genv.t F V):
     extcall_malloc_sem l r ge [(v,st)] pct fpt m E0
                        (do_extcall_malloc l r pct fpt st m sz).
 
-Definition mv2b (mv: memval) : byte :=
-  match mv with
-  | Byte b _ => b
-  | Fragment _ _ _ b => b
-  end.
-
 Definition do_extcall_free (l:Cabs.loc) (r: region) (pct: control_tag)  (fpt pt: val_tag) (p: ptr) (m: mem)
   : PolicyResult (atom * control_tag * mem) :=
   if Int64.eq (concretize p) Int64.zero
@@ -531,7 +525,7 @@ Definition do_extcall_free (l:Cabs.loc) (r: region) (pct: control_tag)  (fpt pt:
     '(sz,pct',m') <- heapfree l pct m r p pt;;
     mvs <- loadbytes m' p sz;;
     lts <- loadtags m' p sz;;
-    lts' <- my_mmap (fun '(b,lt) => ClearT l pct' pt lt (DONT_TOUCH_THIS byte (mv2b b))) (List.combine mvs lts);;
+    lts' <- my_mmap (fun '(b,lt) => ClearT l pct' pt (concretize p) lt) (List.combine mvs lts);;
     m'' <- storebytes m' p mvs lts';;
     ret ((Vundef,InitT), pct', m'').
 

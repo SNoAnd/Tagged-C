@@ -87,6 +87,9 @@ Require Import Values Tags Memory Allocator AllocatorImpl Csem Initializers
 
   Extract Inlined Constant Globalenvs.ext =>
             "EF.check_ef".
+
+  (* Policy-specific recovery code *)
+  Extract Constant HeapProblem.HeapProblem.recover => "HeapProblemHelper.recover".
   
   (* Processor-specific extraction directives *)
 

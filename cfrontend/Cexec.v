@@ -410,15 +410,15 @@ Section EXPRS.
             Rred "red_const" pct (Eval (v,vt) ty) te m E0 ps'
     | RV, Evalof l ty =>
         match is_loc l with
-        | Some (Lmem ofs pt bf, ty') =>
+        | Some (Lmem p pt bf, ty') =>
             top <<=
                 check type_eq ty ty';
-                let! (w', tr, res) <- do_deref_loc w ty m ofs pt bf;
+                let! (w', tr, res) <- do_deref_loc w ty m p pt bf;
                 try (v, vts, lts), ps' <- res ps;
                 catch "failred_rvalof_mem0", tr;
                 (let res' :=
                   vt <- CoalesceT lc vts;;
-                  vt' <- LoadT lc pct pt vt lts;;
+                  vt' <- LoadT lc pct pt vt (concretize p) lts;;
                   AccessT lc pct vt' in
                 (try vt'',ps'' <- res' ps';
                 catch "failred_rvalof_mem1", tr;
@@ -581,19 +581,19 @@ Section EXPRS.
             Rred "red_alignof" pct (Eval (Vlong (Int64.repr (alignof ce ty')), vt') ty) te m E0 ps'
     | RV, Eassign l1 r2 ty =>
         match is_loc l1, is_val r2 with
-        | Some (Lmem ofs pt1 bf, ty1), Some(v2, vt2, ty2) =>
+        | Some (Lmem p pt1 bf, ty1), Some(v2, vt2, ty2) =>
             top <<=
                 check type_eq ty1 ty;
                 let! v <- sem_cast v2 ty2 ty1 tt;
-                let! (w', tr, res) <- do_deref_loc w ty1 m ofs pt1 bf;
+                let! (w', tr, res) <- do_deref_loc w ty1 m p pt1 bf;
                 try (_,vts,lts), ps1 <- res ps;
                 catch "failred_assign_mem0", tr;
                 let res' :=
                   '(pct',vt') <- AssignT lc pct (EffectiveT lc vts) vt2;;
-                  StoreT lc pct' pt1 vt' lts in
+                  StoreT lc pct' pt1 vt' (concretize p) lts in
                 try (pct'',vt'',lts'), ps2 <- res' ps1;
                 catch "failred_assign_mem1", tr;
-                let! (w'', tr', res') <- do_assign_loc w' ty1 m ofs pt1 bf (v,vt'') lts';
+                let! (w'', tr', res') <- do_assign_loc w' ty1 m p pt1 bf (v,vt'') lts';
                 try (m', (v,vt''')), ps3 <- res' ps2;
                 catch "failred_assign_mem2", (tr ++ tr');
                 Rred "red_assign_mem" pct'' (Eval (v,vt''') ty) te m' (tr ++ tr') ps3
@@ -614,19 +614,19 @@ Section EXPRS.
         end
     | RV, Eassignop op l1 r2 tyopres ty =>
         match is_loc l1, is_val r2 with
-        | Some (Lmem ofs pt1 bf, ty1), Some(v2, vt2, ty2) =>
+        | Some (Lmem p pt1 bf, ty1), Some(v2, vt2, ty2) =>
             top <<=
                 check type_eq ty1 ty;
-                let! (w', tr, res) <- do_deref_loc w ty m ofs pt1 bf;
+                let! (w', tr, res) <- do_deref_loc w ty m (concretize p) pt1 bf;
                 try (v1,vts,lts), ps' <- res ps;
                 catch "failred_assignop_mem0", tr;
                 let res' :=
                   vt <- CoalesceT lc vts;;
-                  vt' <- LoadT lc pct pt1 vt lts;;
+                  vt' <- LoadT lc pct pt1 vt (concretize p) lts;;
                   AccessT lc pct vt' in
                 try vt'', ps'' <- res' ps';
                 catch "failred_assignop_mem1", tr;
-                let r' := Eassign (Eloc (Lmem ofs pt1 bf) ty1)
+                let r' := Eassign (Eloc (Lmem p pt1 bf) ty1)
                                   (Ebinop op (Eval (v1,vt'') ty1) (Eval (v2,vt2) ty2) tyopres) ty1 in
                 Rred "red_assignop_mem" pct r' te m tr ps''
         | Some (Ltmp b, ty1), Some (v2, vt2, ty2) =>
@@ -658,21 +658,21 @@ Section EXPRS.
         end
     | RV, Epostincr id l ty =>
         match is_loc l with
-        | Some (Lmem ofs pt bf, ty1) =>
+        | Some (Lmem p pt bf, ty1) =>
             top <<=
                 check type_eq ty1 ty;
-                let! (w', tr, res) <- do_deref_loc w ty m ofs pt bf;
+                let! (w', tr, res) <- do_deref_loc w ty m p pt bf;
                 try (v, vts, lts), ps' <- res ps;
                 catch "failred_postincr_mem0", tr;
                 let res' :=
                   vt <- CoalesceT lc vts;;
-                  vt' <- LoadT lc pct pt vt lts;;
+                  vt' <- LoadT lc pct pt vt (concretize p) lts;;
                   AccessT lc pct vt' in
                 try vt'', ps'' <- res' ps';
                 catch "failred_postincr_mem1", tr;
                 let op := match id with Incr => Oadd | Decr => Osub end in
                 let r' :=
-                  Ecomma (Eassign (Eloc (Lmem ofs pt bf) ty)
+                  Ecomma (Eassign (Eloc (Lmem p pt bf) ty)
                                   (Ebinop op (Eval (v,vt'') ty) (Econst (Vint Int.one) type_int32s)
                                           (incrdecr_type ty)) ty)
                          (Eval (v,vt'') ty) ty in

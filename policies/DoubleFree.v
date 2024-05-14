@@ -91,6 +91,8 @@ Definition init_state : policy_state := tt.
 
 Definition PolicyResult := PolicyResult policy_state.
 Definition ltop := ltop lt_eq_dec policy_state.
+Definition recover (lc:Cabs.loc) (a: option int64) (s: string) : PolicyResult unit :=
+    raise RecoveryNotSupported.
 
  (* 
     MallocT sets the tag to Alloc, and clears free color if one was present becausee
@@ -187,9 +189,8 @@ Definition ltop := ltop lt_eq_dec policy_state.
   .
 
   (***)
-  Definition ClearT (l:loc) (pct: control_tag) (pt: val_tag) (currlt: loc_tag) (b: loggable byte) :
+  Definition ClearT (l:loc) (pct: control_tag) (pt: val_tag) (a: int64) (currlt: loc_tag) :
     PolicyResult (loc_tag) :=
-    log_value b;;
     ret (Unallocated).
    
   (* These are required, but cannot pass through because they don't get tags to start with.

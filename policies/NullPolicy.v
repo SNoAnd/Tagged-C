@@ -37,6 +37,7 @@ Module NullPolicy <: Policy.
   
   Definition PolicyResult := PolicyResult policy_state.
   Definition ltop := ltop lt_eq_dec policy_state.
+  Definition recover (lc: Cabs.loc) (a: option int64) (s: string) : PolicyResult unit := ret tt. 
   
   Definition ConstT (l:loc) (pct: control_tag) : PolicyResult val_tag := ret tt.
   Definition GlobalT (ce : composite_env) (id : ident) (ty : type) : val_tag * val_tag * loc_tag :=
@@ -60,7 +61,7 @@ Module NullPolicy <: Policy.
     PolicyResult (control_tag * loc_tag) :=
     ret (tt, tt).
 
-    Definition ClearT (l:loc) (pct: control_tag) (pt: val_tag) (currlt: loc_tag) (b: loggable byte) :
+  Definition ClearT (l:loc) (pct: control_tag) (pt: val_tag) (a: int64) (currlt: loc_tag) :
     PolicyResult loc_tag :=
     ret tt.
   

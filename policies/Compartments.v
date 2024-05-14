@@ -84,8 +84,8 @@ Module Compartments (Scheme: CompScheme) <: Policy.
 
   Definition PolicyResult := PolicyResult policy_state.
   Definition ltop := ltop lt_eq_dec policy_state.
-
-  Definition log := log policy_state.
+  Definition recover (lc:Cabs.loc) (a: option int64) (s: string) : PolicyResult unit :=
+    raise RecoveryNotSupported.
   
   Definition valid_access (pct: control_tag) (pt: val_tag) (lt: loc_tag) : bool :=
     match pct, pt, lt with
@@ -109,31 +109,35 @@ Module Compartments (Scheme: CompScheme) <: Policy.
     | _, _ => raise (PolicyFailure (inj_loc "Comp || CallT, not a function pointer" l))
     end.
 
-  Definition ArgT (l:loc) (pct: control_tag) (fpt: val_tag) (vt: val_tag) (index: nat) (ty: type) :=
+  Definition ArgT (l:loc) (pct: control_tag) (fpt: val_tag) (vt: val_tag) (index: nat) (ty: type)
+    : PolicyResult (control_tag * val_tag) :=
     match vt, ty, fpt with
     | LPtr C, Tpointer _ _, FPtr _ true =>
-      raise (PolicyFailure (inj_loc "Comp || ArgT, passing LPtr as pointer" l))
-    | LPtr _, _, FPtr _ true => log "Demoting a local pointer to integer";; ret (pct, N)
+        raise (PolicyFailure (inj_loc "Comp || ArgT, passing LPtr as pointer" l))
+    | LPtr _, _, FPtr _ true =>
+        log "Demoting a local pointer to integer";; ret (pct, N)
     | _, _, _ => ret (pct, vt)
     end.
   
   Definition RetT (l:loc) (pct: control_tag) (oldpct: control_tag) (fpt: val_tag)
-    (vt: val_tag) (ty: type) : PolicyResult (control_tag * val_tag) :=
+             (vt: val_tag) (ty: type) : PolicyResult (control_tag * val_tag) :=
     match vt, ty, fpt with
     | LPtr C, Tpointer _ _, FPtr _ true =>
-      raise (PolicyFailure (inj_loc "Comp || ArgT, passing LPtr as pointer" l))
-    | LPtr _, _, FPtr _ true => log "Demoting a local pointer to integer";; ret (pct, N)
+        raise (PolicyFailure (inj_loc "Comp || ArgT, passing LPtr as pointer" l))
+    | LPtr _, _, FPtr _ true =>
+        log "Demoting a local pointer to integer";; ret (pct, N)
     | _, _, _ => ret (pct, vt)
     end.
 
-  Definition LoadT (l:loc) (pct: control_tag) (pt vt: val_tag) (lts : list loc_tag) : PolicyResult val_tag :=
+  Definition LoadT (l:loc) (pct: control_tag) (pt vt: val_tag) (a: int64) (lts : list loc_tag) :
+    PolicyResult val_tag :=
     match pt with
     | N => raise (PolicyFailure (inj_loc "Comp || LoadT, not a pointer" l))
     | _ => if ltop.(forallb) (valid_access pct pt) lts then ret vt 
            else raise (PolicyFailure (inj_loc "Comp || LoadT, wrong pointer" l))
     end.
 
-  Definition StoreT (l:loc) (pct: control_tag) (pt vt: val_tag)
+  Definition StoreT (l:loc) (pct: control_tag) (pt vt: val_tag) (a: int64)
     (lts : list loc_tag) : PolicyResult (control_tag * val_tag * list loc_tag) :=
     match pt with
     | N => raise (PolicyFailure (inj_loc "Comp || StoreT, not a pointer" l))
@@ -190,7 +194,7 @@ Module Compartments (Scheme: CompScheme) <: Policy.
   Definition FreeT (l:loc) (pct: control_tag) (pt: val_tag) (lts: list loc_tag) :
     PolicyResult (control_tag * loc_tag) := ret (pct, Free).
 
-  Definition ClearT (l:loc) (pct: control_tag) (pt: val_tag) (lt: loc_tag) :
+  Definition ClearT (l:loc) (pct: control_tag) (pt: val_tag) (a: int64) (lt: loc_tag) :
     PolicyResult loc_tag := ret Free.
   
   (* Passthrough rules *)  

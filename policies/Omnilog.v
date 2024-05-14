@@ -49,7 +49,10 @@ Module Log (P:Policy) <: Policy.
   Definition init_state : policy_state := P.init_state.
   
   Definition PolicyResult := Tags.PolicyResult policy_state.
-  
+
+  Definition recover (lc:Cabs.loc) (a: option int64) (s: string) : PolicyResult unit :=
+    raise RecoveryNotSupported.
+
   Definition CallT (l: loc) (pct: control_tag) (pt: val_tag) : 
     PolicyResult control_tag :=
     pct' <- P.CallT l pct pt;;
@@ -71,16 +74,16 @@ Module Log (P:Policy) <: Policy.
     ") = (" ++ print_ct pct' ++ "," ++ print_vt vt' ++ ")");;
     ret (pct', vt').
 
-  Definition LoadT (l: loc) (pct: control_tag) (pt vt: val_tag) (lts: list loc_tag) :
+  Definition LoadT (l: loc) (pct: control_tag) (pt vt: val_tag) (a: int64) (lts: list loc_tag) :
     PolicyResult val_tag := 
-    vt' <- P.LoadT l pct pt vt lts;;
+    vt' <- P.LoadT l pct pt vt a lts;;
     log ("LoadT(" ++ print_ct pct ++ "," ++ print_vt pt ++ "," ++ print_vt vt ++
     ") = " ++ print_vt vt');;
     ret vt'.
     
-  Definition StoreT (l: loc) (pct: control_tag) (pt vt: val_tag) (lts: list loc_tag) :
+  Definition StoreT (l: loc) (pct: control_tag) (pt vt: val_tag) (a: int64) (lts: list loc_tag) :
     PolicyResult (control_tag * val_tag * list loc_tag) := 
-    '(pct', vt', lts') <- P.StoreT l pct pt vt lts;;
+    '(pct', vt', lts') <- P.StoreT l pct pt vt a lts;;
     log ("StoreT(" ++ print_ct pct ++ "," ++ print_vt pt ++ "," ++ print_vt vt ++
     ") = (" ++ print_ct pct' ++ "," ++ print_vt vt' ++ ")");;
     ret (pct', vt', lts').
@@ -189,12 +192,11 @@ Module Log (P:Policy) <: Policy.
     print_ct pct' ++ "," ++ print_lt lt ++ ")");;
     ret (pct', lt).
 
-  Definition ClearT (l:loc) (pct: control_tag) (pt: val_tag) (currlt: loc_tag) (b: loggable byte) :
+  Definition ClearT (l:loc) (pct: control_tag) (pt: val_tag) (a: int64) (currlt: loc_tag) :
     PolicyResult (loc_tag) :=
-    lt' <- P.ClearT l pct pt currlt b;;
+    lt' <- P.ClearT l pct pt a currlt;;
     log ("ClearT(" ++ print_ct pct ++ "," ++ print_vt pt ++ "," ++ print_lt currlt ++
                    ") = " ++ print_lt lt');;
-    log_value b;;
     ret lt'.
     
   Definition ExtCallT (l: loc) (fn: external_function) (pct: control_tag)

@@ -23,7 +23,7 @@ Module Compartmentalization (Scheme: CompScheme)
   
     Module MA2 := MemRegionAgnostic ConcretePointer Pol UnitRegion M2 A2.
     Module Sem2 := TaggedCsem Pol MA2.
-
+    
     Module FS := SIM SemiconcretePointer NullPolicy CompReg MA1 Sem1
                      ConcretePointer Pol UnitRegion MA2 Sem2.
     Import FS.
@@ -31,7 +31,7 @@ Module Compartmentalization (Scheme: CompScheme)
   
     Variable prog1 : CS1.program.
     Variable prog2 : CS2.program.
-  
+
     Variable ge1 : Sem1.genv.
     Variable ge2 : Sem2.genv.
     Variable ce : composite_env.
@@ -39,7 +39,7 @@ Module Compartmentalization (Scheme: CompScheme)
     Definition sem1 := Sem1.semantics prog1 ge1 ce.
     Definition sem2 := Sem2.semantics prog2 ge2 ce.
 
-    Hypothesis same_prog : prog_match prog1 prog2.
+    Hypothesis same_prog : match_prog_eq match_val_concrete prog1 prog2.
 
     Definition match_option_map {A1 A2:Type}
                (m: A1 -> A2 -> Prop)
@@ -61,70 +61,26 @@ Module Compartmentalization (Scheme: CompScheme)
       end.
     
     Variable match_function : CS1.function -> CS2.function -> Prop.
-    Variable match_expr : CS1.expr -> CS2.expr -> Prop.
 
-    Variable match_env : Sem1.env -> Sem2.env -> Prop.
+    Inductive match_var_entry : Sem1.var_entry -> Sem2.var_entry -> Prop :=
+    | MPRIV : forall ty,
+        match_var_entry (Sem1.PRIV ty) (Sem2.PRIV ty) 
+    | MPUB : forall p1 p2 pt1 pt2 ty,
+        match_var_entry (Sem1.PUB p1 pt1 ty)
+                        (Sem2.PUB p2 pt2 ty) 
+    .
+    
+    Definition match_env (e1: Sem1.env) (e2: Sem2.env) : Prop :=
+      forall p, match_option_map match_var_entry (e1!p) (e2!p).
+
     Variable match_tenv : Sem1.tenv -> Sem2.tenv -> Prop.
     Variable match_mem : MA1.mem -> MA2.mem -> Prop.
-    Variable match_val : Val1.val -> Val2.val -> Prop. 
+    Definition match_val : Val1.val -> Val2.val -> Prop := match_val_concrete.
+    Variable match_atom : TLib1.atom -> TLib2.atom -> Prop.
+    Definition match_expr := match_expr_eq match_val.
+    Definition match_statement := match_statement_eq match_val.
+    Definition match_ls := match_ls_eq match_val.
     
-    Inductive match_statement : CS1.statement -> CS2.statement -> Prop :=
-    | MSskip : match_statement CS1.Sskip CS2.Sskip
-    | MSSdo : forall e1 e2 l,
-        match_expr e1 e2 ->
-        match_statement (CS1.Sdo e1 l) (CS2.Sdo e2 l)
-    | MSsequence : forall s1_1 s2_1 s1_2 s2_2,
-        match_statement s1_1 s1_2 ->
-        match_statement s2_1 s2_2 ->
-        match_statement (CS1.Ssequence s1_1 s2_1) (CS2.Ssequence s1_2 s2_2)
-    | MSifthenelse : forall e1 e2 s1_1 s1_2 s2_1 s2_2 lb lc,
-        match_expr e1 e2 ->
-        match_statement s1_1 s1_2 ->
-        match_statement s2_1 s2_2 ->
-        match_statement (CS1.Sifthenelse e1 s1_1 s2_1 lb lc)
-                        (CS2.Sifthenelse e2 s1_2 s2_2 lb lc)
-    | MSwhile : forall e1 e2 s1 s2 lb lc,
-        match_expr e1 e2 ->
-        match_statement s1 s2 ->
-        match_statement (CS1.Swhile e1 s1 lb lc) (CS2.Swhile e2 s2 lb lc)
-    | MSdowhile : forall e1 e2 s1 s2 lb lc,
-        match_expr e1 e2 ->
-        match_statement s1 s2 ->
-        match_statement (CS1.Sdowhile e1 s1 lb lc) (CS2.Sdowhile e2 s2 lb lc)
-    | MSfor: forall s1_1 s1_2 e1 e2 s2_1 s2_2 s3_1 s3_2 lb lc,
-        match_statement s1_1 s1_2 ->
-        match_expr e1 e2 ->
-        match_statement s2_1 s2_2 ->
-        match_statement s3_1 s3_2 ->
-        match_statement (CS1.Sfor s1_1 e1 s2_1 s3_1 lb lc)
-                        (CS2.Sfor s1_2 e2 s2_2 s3_2 lb lc)                      
-    | MSbreak : forall l,
-        match_statement (CS1.Sbreak l) (CS2.Sbreak l)
-    | MScontinue : forall l,
-        match_statement (CS1.Scontinue l) (CS2.Scontinue l)
-    | MSreturn_Some : forall e1 e2 l,
-        match_expr e1 e2 ->
-        match_statement (CS1.Sreturn (Some e1) l) (CS2.Sreturn (Some e2) l)
-    | MSreturn_None : forall l,
-        match_statement (CS1.Sreturn None l) (CS2.Sreturn None l)     
-    | MSswitch : forall e1 e2 ls1 ls2 l,
-        match_expr e1 e2 ->
-        match_ls ls1 ls2 ->
-        match_statement (CS1.Sswitch e1 ls1 l) (CS2.Sswitch e2 ls2 l)
-    | MSlabel : forall l s1 s2,
-        match_statement s1 s2 ->
-        match_statement (CS1.Slabel l s1) (CS2.Slabel l s2)
-    | MSgoto : forall lb lc,
-        match_statement (CS1.Sgoto lb lc) (CS2.Sgoto lb lc)
-
-    with match_ls : CS1.labeled_statements -> CS2.labeled_statements -> Prop :=
-    | MLSnil: match_ls CS1.LSnil CS2.LSnil
-    | MLScons: forall z s1 s2 ls1 ls2,
-        match_statement s1 s2 ->
-        match_ls ls1 ls2 ->
-        match_ls (CS1.LScons z s1 ls1) (CS2.LScons z s2 ls2)
-    .
-
     Record match_ctx
            (ctx1: CS1.expr -> CS1.expr)
            (ctx2: CS2.expr -> CS2.expr) :=
@@ -148,7 +104,7 @@ Module Compartmentalization (Scheme: CompScheme)
             k2_1 = k2_2 ->
             (Sem1.context k1_1 k2_1 ctx1 <-> Sem2.context k1_2 k2_2 ctx2)
         }.
-
+    
     Inductive match_cont : Sem1.cont -> Sem2.cont -> Prop :=
     | MKstop: match_cont Sem1.Kstop Sem2.Kstop
     | MKdo: forall k1 k2,
@@ -230,9 +186,6 @@ Module Compartmentalization (Scheme: CompScheme)
                    (Sem2.Kcall f2 e2 te2 l pct2 fpt2 ctx2 ty k2)
     .
 
-    Definition match_atom (v1: TLib1.atom) (v2: TLib2.atom) : Prop :=
-      match_val (fst v1) (fst v2).
-    
     (* Matching relation on states:
        - PCT corresponds to active compartment (CMP) and block generator (bg)
        - Per region Lcl CMP: for each live block, values match, and all bytes are tagged
@@ -241,48 +194,80 @@ Module Compartmentalization (Scheme: CompScheme)
        its values match, and all bytes are tagged Shared b
      *)
 
-    Inductive match_states : Sem1.state -> Sem2.state -> Prop :=
-    | MState : forall f1 f2 CMP bg ps1 ps2 pct2 b stmt1 stmt2 k1 k2 e1 e2 te1 te2 m1 m2,
-        pct2 = (CMP, b) ->
+    (* This inductive proposition checks (1) structural equivalence and (2) an arbitrary
+       state relation R, which may not care about structural equivalence. The idea is,
+       if we want to prove equivalence over all, we need structural equivalence, but
+       the other invariants we need might be unrelated. So this lets us factor them out. *)
+    Inductive smatch_states (R: Sem1.state -> Sem2.state -> Prop) :
+      Sem1.state -> Sem2.state -> Prop :=
+    | MState : forall f1 f2 CMP bg ps1 ps2 pct2 stmt1 stmt2 k1 k2 e1 e2 te1 te2 m1 m2,
+        R (Sem1.State f1 ps1 CMP bg stmt1 k1 e1 te1 m1) (Sem2.State f2 ps2 pct2 stmt2 k2 e2 te2 m2) ->
         match_function f1 f2 ->
         match_statement stmt1 stmt2 ->
         match_cont k1 k2 ->
         match_env e1 e2 ->
         match_tenv te1 te2 ->
         match_mem m1 m2 ->
-        match_states (Sem1.State f1 ps1 CMP bg stmt1 k1 e1 te1 m1)
-                     (Sem2.State f2 ps2 pct2 stmt2 k2 e2 te2 m2)
-    | MExprState : forall f1 f2 l CMP bg ps1 ps2 pct2 b expr1 expr2 k1 k2 e1 e2 te1 te2 m1 m2,
-        pct2 = (CMP, b) ->
+        smatch_states R (Sem1.State f1 ps1 CMP bg stmt1 k1 e1 te1 m1)
+                      (Sem2.State f2 ps2 pct2 stmt2 k2 e2 te2 m2)
+    | MExprState : forall f1 f2 l CMP bg ps1 ps2 pct2 expr1 expr2 k1 k2 e1 e2 te1 te2 m1 m2,
+        R (Sem1.ExprState f1 l ps1 CMP bg expr1 k1 e1 te1 m1)
+          (Sem2.ExprState f2 l ps2 pct2 expr2 k2 e2 te2 m2) ->
         match_function f1 f2 ->
         match_expr expr1 expr2 ->
         match_cont k1 k2 ->
         match_env e1 e2 ->
         match_tenv te1 te2 ->
         match_mem m1 m2 ->
-        match_states (Sem1.ExprState f1 l ps1 CMP bg expr1 k1 e1 te1 m1)
-                     (Sem2.ExprState f2 l ps2 pct2 expr2 k2 e2 te2 m2)      
-    | MCallstate : forall fd1 fd2 l ps1 ps2 CMP bg pct2 b fpt2 args1 args2 k1 k2 m1 m2,
-        pct2 = (CMP, b) ->
-        fundef_match fd1 fd2 ->
+        smatch_states R (Sem1.ExprState f1 l ps1 CMP bg expr1 k1 e1 te1 m1)
+                      (Sem2.ExprState f2 l ps2 pct2 expr2 k2 e2 te2 m2)      
+    | MCallstate : forall fd1 fd2 l ps1 ps2 CMP bg pct2 fpt2 args1 args2 k1 k2 m1 m2,
+        R (Sem1.Callstate fd1 l ps1 CMP bg args1 k1 m1)
+          (Sem2.Callstate fd2 l ps2 pct2 fpt2 args2 k2 m2) ->
+        smatch_fundef match_statement fd1 fd2 ->
         match_list_map match_atom args1 args2 ->
         match_cont k1 k2 ->       
         match_mem m1 m2 ->
-        match_states (Sem1.Callstate fd1 l ps1 CMP bg args1 k1 m1)
-                     (Sem2.Callstate fd2 l ps2 pct2 fpt2 args2 k2 m2)
+        smatch_states R (Sem1.Callstate fd1 l ps1 CMP bg args1 k1 m1)
+                      (Sem2.Callstate fd2 l ps2 pct2 fpt2 args2 k2 m2)
     | MReturnState : forall fd1 fd2 l CMP bg ps1 ps2 pct2 retv1 retv2 k1 k2 m1 m2,
-        fundef_match fd1 fd2 ->
+        R (Sem1.Returnstate fd1 l ps1 CMP bg retv1 k1 m1)
+          (Sem2.Returnstate fd2 l ps2 pct2 retv2 k2 m2) ->
+        smatch_fundef match_statement fd1 fd2 ->
         match_atom retv1 retv2 ->
         match_cont k1 k2 ->
         match_mem m1 m2 ->
-        match_states (Sem1.Returnstate fd1 l CMP bg ps1 retv1 k1 m1)
-                     (Sem2.Returnstate fd2 l ps2 pct2 retv2 k2 m2)  
-    | MStuckstate : match_states Sem1.Stuckstate Sem2.Stuckstate
-    | Failstop : forall s2 msg failure,
-        match_states (Sem1.Failstop msg failure)
-                     s2
+        smatch_states R (Sem1.Returnstate fd1 l ps1 CMP bg retv1 k1 m1)
+                      (Sem2.Returnstate fd2 l ps2 pct2 retv2 k2 m2)  
+    | MStuckstate : smatch_states R Sem1.Stuckstate Sem2.Stuckstate
+    | Failstop : forall failure lg,
+        smatch_states R (Sem1.Failstop failure lg)
+                      (Sem2.Failstop failure lg)
     .
 
+    Definition Comp_of_S (S: Sem1.state) : option SemiconcretePointer.Comp :=
+      match S with
+      | Sem1.State _ _ CMP _ _ _ _ _ _ => Some CMP
+      | Sem1.ExprState _ _ _ CMP _ _ _ _ _ _ => Some CMP
+      | Sem1.Callstate _ _ _ CMP _ _ _ _ => Some CMP
+      | Sem1.Returnstate _ _ _ CMP _ _ _ _ => Some CMP
+      | _ => None
+      end.
+
+    Definition pct_of_S (S: Sem2.state) : option Pol.control_tag :=
+      match S with
+      | Sem2.State _ _ pct _ _ _ _ _ => Some pct
+      | Sem2.ExprState _ _ _ pct _ _ _ _ _ => Some pct
+      | Sem2.Callstate _ _ _ pct _ _ _ _ => Some pct
+      | Sem2.Returnstate _ _ _ pct _ _ _ => Some pct
+      | _ => None
+      end.
+    
+    Definition match_states_compartment_pct_invariant (S1 : Sem1.state) (S2: Sem2.state) : Prop :=
+      Comp_of_S S1 = option_map fst (pct_of_S S2).
+
+    Definition match_states := smatch_states match_states_compartment_pct_invariant.
+    
     (* Well-formedness of Sem1 states
     - No values in S1 are pointers with index (ShareInd b _) for b >= bg
      *)
@@ -292,7 +277,200 @@ Module Compartmentalization (Scheme: CompScheme)
        - No values in S2 are tagged Share b for b >= bg
      *) 
     Variable WF2 : Sem2.state -> Prop.
+    Variable expr1_to_expr2 : CS1.expr -> CS2.expr.
+    Variable expr2_to_expr1 : CS2.expr -> CS1.expr.
+  
+    Definition matching_ctx (ctx1: CS1.expr -> CS1.expr) : CS2.expr -> CS2.expr :=
+      fun e2 =>
+        let e1 := expr2_to_expr1 e2 in
+        let e1' := ctx1 e1 in
+        expr1_to_expr2 e1'.
 
+    Axiom matching_ctx_matches : forall ctx1,
+        match_ctx ctx1 (matching_ctx ctx1). 
+    
+    Ltac doinv :=
+      match goal with
+      | [ H: match_cont (_ _) _ |- _ ] => inv H
+      | [ H: match_statement (_ _) _ |- _ ] => inv H
+      | [ H: match_statement CS1.Sskip _ |- _ ] => inv H
+      | [ H: match_expr (_ _) _ |- _ ] => inv H
+      | [ H: match_val _ _ |- _ ] => inv H
+      | [ H1: match_expr (?C1 ?expr1) ?expr2,
+            H2: match_ctx ?C1 ?C2 |- _ ] =>
+          apply (H2.(r C1 C2) expr1 expr2) in H1;
+          let a := fresh "a" in
+          let H3 := fresh "H" in
+          let H4 := fresh "H" in
+          destruct H1 as [a [H3 H4]]; subst expr2; inv H4; inv H1
+      | [ H1: match_env ?e1 ?e2,
+            H2: ?e1 ! ?x = _ |- _ ] =>
+          let H3 := fresh "H" in
+          pose proof (H1 x) as H3;
+          rewrite H2 in H3;
+          destruct (e2!x) eqn:?; inv H3; clear H2
+      | [ H1: match_tenv ?te1 ?te2,
+            H2: ?te1 ! ?b = ?a |- _ ] =>
+          let H3 := fresh "H" in
+          let v := fresh "v" in
+          let vt := fresh "vt" in
+          pose proof (H1 b) as H3; unfold TLib1.atom in *;
+          rewrite H2 in H3; destruct te2!b as [[v vt]|] eqn:?; inv H3;
+          simpl in *; subst; clear H2
+      | [ H1: match_ctx ?C1 ?C2,
+            H2: Sem1.context ?k1 ?k2 ?C1 |- _ ] =>
+          assert (Sem2.context k1 k2 C2) by
+          (rewrite <- (H1.(closed_context C1 C2)); eauto);
+          clear H2
+      | [ H1: _ = ?C1 ?expr1,
+            H2: _ = ?C1 ?expr1 |- _ ] =>
+          rewrite <- H1 in H2; inv H2
+(*    | [ H: Sem1.Csyntax.Cop.bool_val _ _ _ = Some _ |- _ ] =>
+        erewrite bool_val_eq in H; [| reflexivity]
+    | [ H1: Sem1.Csyntax.Cop.sem_cast ?v1 ?ty ?ty' ?m1 = Some _,
+          H2: match_mem ?m1 ?m2 |- _ ] =>
+        let H3 := fresh "H" in
+        pose proof (sem_cast_match v1 v1 ty ty' m1 m2) as H3;
+        rewrite H1 in H3;
+        destruct (Sem2.Csyntax.Cop.sem_cast v1 ty ty' m2) eqn:?;
+                 unfold match_option_map in H3; try congruence; clear H1
+    | [ H1: CS1.Cop.sem_unary_operation ?op ?v1 ?ty ?m1 = Some ?v1',
+          H2: match_mem ?m1 ?m2 |- _ ] =>
+        let H3 := fresh "H" in
+        let H4 := fresh "H" in
+        pose proof (sem_unop_match op v1 v1 ty m1 m2) as H3;
+        unfold match_option_map in H3;
+        destruct (CS2.Cop.sem_unary_operation op v1 ty m2) eqn:H4;
+        rewrite H1 in H3; [rewrite H3 in H4 | congruence];
+        [| reflexivity]; clear H1
+    | [ H1: CS1.Cop.sem_binary_operation _ ?op ?v1 ?ty ?v2 ?ty' ?m1 = Some ?v,
+          H2: match_mem ?m1 ?m2 |- _ ] =>
+        let H3 := fresh "H" in
+        let H4 := fresh "H" in
+        pose proof (sem_binop_match op v1 v1 v2 v2 ty ty' m1 m2) as H3;
+        rewrite H1 in H3; unfold match_option_map in H3;
+        destruct (CS2.Cop.sem_binary_operation ce op v1 ty v2 ty' m2) eqn:H4;
+        [ rewrite H3 in H4 | exfalso; apply H3 ]; try constructor;
+        clear H1
+    | [ H1: Sem1.do_alloc_variables _ ?lc ?ps1 ?pct1 Sem1.empty_env ?m1 ?vars =
+              Success (?pct1', ?e1', ?m1'),
+          H2: match_mem ?m1 ?m2 |- _ ] =>
+        let H3 := fresh "H" in
+        let pct2' := fresh "pct2" in
+        let e2' := fresh "e2" in
+        let m2' := fresh "m2" in
+        let A := fresh "A" in
+        let B := fresh "B" in
+        let C := fresh "C" in
+        pose proof (do_alloc_variables_match_success
+                      lc ps1 pct1 Sem1.empty_env m1 vars pct1' e1' m1'
+                      tt tt Sem2.empty_env m2) as H3;
+        destruct H3 as [pct2' [e2' [m2' [A [B C]]]]]; eauto;
+        [ constructor | clear H1 ]
+    | [ H1: Sem1.do_alloc_variables _ ?lc ?ps1 ?pct1 Sem1.empty_env ?m1 ?vars =
+              Fail ?msg ?failure,
+          H2: match_mem ?m1 ?m2 |- _ ] =>
+        apply (do_alloc_variables_match_fail
+                 lc ps1 pct1 Sem1.empty_env m1 vars
+                 tt tt Sem2.empty_env m2 msg failure) in H1;
+        [ | constructor | auto ]
+    | [ H1: Sem1.do_init_params _ ?lc ?ps1 ?pct1 ?e1 ?m1
+                                (Sem1.option_zip ?params ?args1) =
+              Success (?pct1', ?e1', ?m1'),
+          H2: match_env ?e1 ?e2,
+            H3: match_mem ?m1 ?m2,
+              H4: match_list_map match_atom ?args1 ?args2 |- _ ] =>
+        let H5 := fresh "H" in
+        let pct2' := fresh "pct2" in
+        let e2' := fresh "e2" in
+        let m2' := fresh "m2" in
+        let A := fresh "A" in
+        let B := fresh "B" in
+        let C := fresh "C" in
+        pose proof (do_init_params_match_success lc ps1 pct1 e1 m1 params args1
+                                                 pct1' e1' m1' tt tt e2 m2 args2) as H5;
+        destruct H5 as [pct2' [e2' [m2' [A [B C]]]]]; eauto; clear H1
+    | [ H1: Sem1.do_init_params _ ?lc ?ps1 ?pct1 ?e1 ?m1
+                                (Sem1.option_zip ?params ?args1) =
+              Fail ?msg ?failure,
+          H2: match_env ?e1 ?e2,
+            H3: match_mem ?m1 ?m2,
+              H4:  match_list_map match_atom ?args1 ?args2 |- _ ] =>
+        apply (do_init_params_match_fail lc ps1 pct1 e1 m1 params args1
+                                         tt tt e2 m2 args2 msg failure) in H1; eauto
+    | [ H1: Sem1.do_free_variables
+              ?ce ?lc ?ps1 ?pct1 ?m1
+              (Sem1.variables_of_env ?e1) = Success (?pct1', ?m1'),
+          H2: match_env ?e1 ?e2,
+            H3: match_mem ?m1 ?m2|- _ ] =>
+        let A := fresh "A" in
+        let B := fresh "B" in
+        apply (do_free_variables_match_success lc ps1 pct1 m1 e1 pct1' m1' tt tt
+                                               m2 e2) in H1; eauto;
+        destruct H1 as [pct2' [m2' [A B]]]
+    | [ H1: Sem1.do_free_variables
+              ?ce ?lc ?ps1 ?pct1 ?m1
+              (Sem1.variables_of_env ?e1) = Fail ?msg ?failure,
+          H2: match_env ?e1 ?e2,
+            H3: match_mem ?m1 ?m2|- _ ] =>
+        apply (do_free_variables_match_fail lc ps1 pct1 m1 e1 tt tt
+                                            m2 e2 msg failure) in H1; eauto
+    | [ H1: Sem1.deref_loc _ ?ty ?m1 ?ofs ?pt1 ?bf ?tr1 (Success (?v, ?vt, ?lts)),
+          H2: match_mem ?m1 ?m2 |- _] =>
+        let tr2 := fresh "tr2" in
+        let v2 := fresh "v2" in
+        let vt2 := fresh "vt2" in
+        let lts2 := fresh "lts2" in
+        let A := fresh "A" in
+        let B := fresh "B" in
+        pose proof (deref_loc_match ty m1 m2 ofs pt1 tt bf tr1 v vt lts H2 H1)
+        as [tr2 [v2 [vt2 [lts2 [A B]]]]]; inv B; clear H1
+    | [ H1: Sem1.deref_loc _ ?ty ?m1 ?ofs ?pt1 ?bf ?tr1 (Fail ?msg ?failure),
+          H2: match_mem ?m1 ?m2 |- _] =>
+        let tr2 := fresh "tr2" in
+        let A := fresh "A" in
+        let B := fresh "B" in
+        pose proof (deref_loc_match ty m1 m2 ofs pt1 tt bf tr1 msg failure H2 H1)
+        as [tr2 [A B]]; inv B; clear H1
+    | [ H1: Sem1.assign_loc _ _ ?ty ?m1 ?p ?pt1 ?bf (?v1, ?vt1) ?tr1
+                            (Success (?m1', (?v1', ?vt1'))) ?lts1,
+          H2: match_mem ?m1 ?m2 |- _ ] =>
+        let tr2 := fresh "tr2" in
+        let m2' := fresh "m2" in
+        let v2' := fresh "v2" in
+        let vt2' := fresh "vt2" in
+        let A := fresh "A" in
+        let B := fresh "B" in
+        pose proof (assign_loc_match
+                      ty m1 m2 p pt1 tt bf tr1 v1 v1 vt1 tt lts1
+                      [tt] m1' v1' vt1') as
+          [tr2 [m2' [v2' [vt2' [A B]]]]];
+        auto; clear H1
+    | [ H1: Sem1.assign_loc _ _ ?ty ?m1 ?p ?pt1 ?bf (?v1, ?vt1) ?tr1
+                            (Fail ?msg ?failure) ?lts1,
+          H2: match_mem ?m1 ?m2 |- _ ] =>
+        let tr2 := fresh "tr2" in
+        let A := fresh "A" in
+        let B := fresh "B" in
+        pose proof (assign_loc_match
+                      ty m1 m2 p pt1 tt bf tr1 v1 v1 vt1 tt lts1
+                      [tt] failure) as
+          [tr2 [A B]];
+        auto; clear H1
+    | [ H: Sem1.context ?k1 ?k2 ?C1 |- _ ] =>
+        let H0 := fresh "H" in
+        let H1 := fresh "H" in
+        pose proof matching_ctx_matches as H;
+        pose proof (H.(closed_context _ _) k1 k2 k1 k2 H) as H1;
+        clear H
+    | [ H: Sem1.context ?k1 ?k2 ?C1 |- _ ] =>
+        let H0 := fresh "H" in
+        let H1 := fresh "H" in
+        pose proof (matching_ctx_matches C1) as H0;
+        pose proof (H0.(closed_context _ _) k1 k2 k1 k2) as H1;
+        apply H1 in H; auto; [ clear H1 ]*)
+      end.
+    
     Lemma estep_pres1 :
       forall (s1: Sem1.state) (tr: S1.Events.trace) (s1': Sem1.state),
         WF1 s1 ->
@@ -306,7 +484,64 @@ Module Compartmentalization (Scheme: CompScheme)
         Sem2.estep ge2 ce s2 tr s2' ->
         WF2 s2'.
     Admitted.
-        
+    
+    Lemma lred_transl :
+      forall e1 e2 lc CMP expr1 expr2 ps1 ps1' ps2 pct2 te1 te2 m1 m2 expr1' te1' m1',
+        match_env e1 e2 ->
+        match_expr expr1 expr2 ->
+        match_tenv te1 te2 ->
+        match_mem m1 m2 ->
+        Sem1.lred ge1 ce e1 CMP expr1 te1 m1 expr1' te1' m1' ps1 ps1' ->
+        exists ps2' expr2' te2' m2',
+          Sem2.lred ge2 ce e2 lc expr2 pct2 te2 m2 expr2' te2' m2' ps2 ps2' /\
+            match_expr expr1' expr2' /\
+            match_tenv te1' te2' /\
+            match_mem m1' m2'.
+    Admitted.
+
+    Lemma cast_arguments_dont_touch_pct :
+      forall lc pct pct' ps ps' fpt el tyargs vargs,
+        Sem2.cast_arguments lc pct ps fpt tt el tyargs ps' (Success (pct', vargs)) ->
+        pct = pct'.
+    Proof.
+      intros until el.
+      generalize dependent pct'. generalize dependent pct.
+      generalize dependent ps'. generalize dependent ps.
+      induction el.
+      - intros. inv H. auto.
+      - intros. inv H. unfold Pol.ArgT in H8.
+        eapply IHel in H6. subst.
+        destruct vt; destruct targ1; destruct fpt; inv H8; auto.
+        all: destruct pub; destruct ps'0; inv H0; auto.
+    Qed.
+    
+    Lemma rred_transl :
+      forall lc e1 e2 CMP expr1 expr2 ps1 ps1' ps2 pct2 te1 te2 m1 m2 expr1' te1' m1' tr1,
+        match_env e1 e2 ->
+        match_expr expr1 expr2 ->
+        match_tenv te1 te2 ->
+        match_mem m1 m2 ->
+        Sem1.rred ge1 ce CMP expr1 te1 m1 tr1 expr1' te1' m1' ps1 ps1' ->
+        exists ps2' pct2' expr2' te2' m2' tr2,
+          Sem2.rred ge2 ce lc pct2 expr2 te2 m2 tr2 pct2' expr2' te2' m2' ps2 ps2' /\
+            match_expr expr1' expr2' /\
+            match_tenv te1' te2' /\
+            match_mem m1' m2' /\
+            match_traces tr1 tr2.
+    Admitted.
+    
+  Lemma callred_transl :
+    forall lc ps1 ps1' ps2 CMP pct2 a1 a2 m1 m2 fd1
+           fpt1 fpt2 vargs1 vargs2 ty,
+      match_expr a1 a2 ->
+      match_mem m1 m2 ->
+      Sem1.callred ge1 lc CMP a1 m1 fd1 fpt1 vargs1 ty ps1 ps1' ->
+      exists ps2' fd2,
+        Sem2.callred ge2 lc pct2 a2 m2 fd2 fpt2 vargs2 ty pct2 ps2 ps2' /\
+          smatch_fundef match_statement fd1 fd2 /\
+          match_list_map match_atom vargs1 vargs2.
+    Admitted.
+    
     Lemma estep_forward :
       forall (s1: Sem1.state) (tr1: S1.Events.trace) (s1': Sem1.state) (s2: Sem2.state),
         match_states s1 s2 ->
@@ -315,16 +550,120 @@ Module Compartmentalization (Scheme: CompScheme)
         Sem1.estep ge1 ce s1 tr1 s1' ->
         exists s2' tr2,
           Sem2.estep ge2 ce s2 tr2 s2' /\ match_states s1' s2' /\ match_traces tr1 tr2.
-    Admitted.
-      
+    Proof.
+      induction 1.
+      - intros. inv H8.
+      - intros. inv H8.
+        + pose proof (matching_ctx_matches C).
+          inv H.
+          eapply H8.(r _ _) in H1.
+          destruct H1 as [a2 [A B]]. subst.
+          eapply lred_transl in H21; eauto.
+          destruct H21 as [ps2' [expr2'' [te2' [m2' [A' [B' [D E]]]]]]].
+          eexists. eexists. intuition; try econstructor; eauto.
+          eapply H8.(closed_context _ _); eauto.
+          constructor.
+          eapply H8.(closed_expr _ _); eauto. 
+        + pose proof (matching_ctx_matches C).
+          inv H.
+          eapply H8.(r _ _) in H1.
+          destruct H1 as [a2 [A B]]. subst.
+          eapply rred_transl in H21; eauto.
+          destruct H21 as [ps2' [pct2' [expr2'' [te2' [m2' [A' [B' [D E]]]]]]]].
+          eexists. eexists. intuition eauto. eapply Sem2.step_rred; eauto.
+          eapply H8.(closed_context _ _); eauto.
+          constructor; auto. unfold match_states_compartment_pct_invariant.
+          simpl. inv B'; try inv H11; auto.
+          * unfold Pol.BinopT in H13. destruct vt1; destruct vt2; inv H13; auto.
+          * unfold Pol.EffectiveT in H12. unfold Passthrough.EffectiveT in H12. simpl in H12.
+            unfold Pol.AssignT in H12. unfold Passthrough.AssignT in H12. simpl in H12.
+            unfold Pol.StoreT in H12. unfold Passthrough.StoreT in H12. simpl in H12.
+            unfold bind_res in H12.
+            destruct pt.
+            -- destruct (forallb (Pol.valid_access pct2 (Pol.LPtr C0)) lts); inv H12. auto.
+            -- destruct (forallb (Pol.valid_access pct2 (Pol.SPtr clr)) lts); inv H12.
+               destruct vt2; inv H15; auto. destruct pub; inv H12; auto.
+            -- destruct (forallb (Pol.valid_access pct2 (Pol.FPtr C0 pub)) lts); inv H12. auto.
+            -- inv H12.
+          * inv H13; auto.
+          * eapply H8.(closed_expr _ _); eauto. 
+        + pose proof (matching_ctx_matches C).
+          inv H.
+          eapply H8.(r _ _) in H1.
+          destruct H1 as [a2 [A B]]. subst.
+          eapply callred_transl in H21; eauto.
+          destruct H21 as [ps2' [fd2 H]].
+          eexists. eexists. intuition eauto. eapply Sem2.step_call; eauto.
+          eapply H8.(closed_context _ _); eauto.
+          constructor; auto. unfold match_states_compartment_pct_invariant.
+          simpl. auto. constructor; eauto. constructor.
+        + (*pose proof (matching_ctx_matches C).
+          inv H.
+          eapply H8.(r _ _) in H1.
+          destruct H1 as [a2 [A B]]. subst.
+          eexists. eexists. intuition eauto.
+          eapply Sem2.step_stuck.
+          eapply H8.(closed_context _ _); eauto.*)
+          admit.
+        + pose proof (matching_ctx_matches C).
+          inv H.
+          eapply H8.(r _ _) in H1.
+          destruct H1 as [a2 [A B]]. subst.
+          admit.
+      - intros. inv H6.
+      - intros. inv H6.
+      - intros. inv H1.
+      - intros. inv H1.
+    Admitted.    
+    
     Lemma sstep_forward :
       forall (s1: Sem1.state) (tr1: S1.Events.trace) (s1': Sem1.state) (s2: Sem2.state),
-        match_states s1 s2 ->
+        match_states null_invariant s1 s2 ->
+        WF1 s1 ->
+        WF2 s2 ->
         Sem1.sstep ge1 ce s1 tr1 s1' ->
         exists s2' tr2,
           Sem2.sstep ge2 ce s2 tr2 s2' /\ match_states s1' s2' /\ match_traces tr1 tr2.
+    Proof.
+      intros. inv H; inv H2; repeat doinv;
+      try (eexists; eexists;
+           intuition econstructor;
+           eauto; repeat (econstructor; eauto); fail).
+      - eexists; eexists. intuition econstructor; eauto.
+        + inv H12; try congruence.
+        + repeat (constructor; auto).
+      - admit.
+      - admit.
+      - (* Return *)
+        admit.
+      - admit.
+      - admit.
+      - admit.
+      - admit.
+      - admit.
+      - admit.
+      - admit.
+      - admit.
+      - (* Return *)
+        admit.
+      - (* Return *)
+        admit.
+      - admit.
+      - admit.
+      - (* Call *)
+        admit.
+      - (* Call *)
+        admit.
+      - (* Call *)
+        admit.
+      - (* Call *)
+        admit.
+      - (* Call *)
+        admit.
+      - (* Return *)
+        admit.
     Admitted.
-      
+
     Theorem CompartmentCorrectness : forward_simulation sem1 sem2.
     Admitted.
 
@@ -640,43 +979,7 @@ Module PolicyInsensitivity (Pol: Policy)
 
   Definition match_tenv (te1: Sem1.tenv) (te2: Sem2.tenv) : Prop :=
     forall p, match_option_map match_atom (te1!p) (te2!p).
-  
-  Record match_ctx
-         (ctx1: CS1.expr -> CS1.expr)
-         (ctx2: CS2.expr -> CS2.expr) :=
-    ctxaxioms {
-        closed_expr : forall e1 e2,
-          match_expr e1 e2 ->
-          match_expr (ctx1 e1) (ctx2 e2);
-
-        r : forall e1 e2,
-          match_expr (ctx1 e1) e2 ->
-          exists e2',
-            e2 = ctx2 e2' /\ match_expr e1 e2';
-
-        l : forall e1 e2,
-          match_expr e1 (ctx2 e2) ->
-          exists e1',
-            e1 = ctx1 e1' /\ match_expr e1' e2;
-
-        closed_context : forall (k1_1 k2_1 k1_2 k2_2:kind),
-          k1_1 = k1_2 ->
-          k2_1 = k2_2 ->
-          (Sem1.context k1_1 k2_1 ctx1 <-> Sem2.context k1_2 k2_2 ctx2)
-      }.
-
-  Variable expr1_to_expr2 : CS1.expr -> CS2.expr.
-  Variable expr2_to_expr1 : CS2.expr -> CS1.expr.
-  
-  Definition matching_ctx (ctx1: CS1.expr -> CS1.expr) : CS2.expr -> CS2.expr :=
-    fun e2 =>
-      let e1 := expr2_to_expr1 e2 in
-      let e1' := ctx1 e1 in
-      expr1_to_expr2 e1'.
-
-  Axiom matching_ctx_matches : forall ctx1,
-      match_ctx ctx1 (matching_ctx ctx1). 
-  
+    
   Inductive match_cont : Sem1.cont -> Sem2.cont -> Prop :=
   | MKstop: match_cont Sem1.Kstop Sem2.Kstop
   | MKdo: forall k1 k2,
@@ -809,39 +1112,6 @@ Module PolicyInsensitivity (Pol: Policy)
       match_states (Sem1.Failstop msg failure)
                    s2
   .
-
-  Lemma bool_val_eq :
-    forall v1 v2 ty m1 m2,
-      match_val v1 v2 ->
-      Sem1.Csyntax.Cop.bool_val v1 ty m1 =
-        Sem2.Csyntax.Cop.bool_val v2 ty m2.
-  Proof.
-    intros. inv H.
-    unfold CS1.Cop.bool_val.
-    unfold CS2.Cop.bool_val.
-    unfold CS1.Cop.classify_bool.
-    unfold CS2.Cop.classify_bool.
-    unfold typeconv.
-    destruct ty; auto.
-    - destruct i; destruct v1; auto.
-    - destruct (remove_attributes (Tlong s a)); auto.
-      + destruct v1; auto.
-      + destruct v1; auto.
-      + destruct f; destruct v1; auto.
-      + destruct v1; auto.
-    - destruct (remove_attributes (Tfloat f a)); auto.
-      + destruct v1; auto.
-      + destruct v1; auto.
-      + destruct f0; destruct v1; auto.
-      + destruct v1; auto.
-    - destruct (remove_attributes (Tpointer ty a)); auto.
-      + destruct v1; auto.
-      + destruct v1; auto.
-      + destruct f; destruct v1; auto.
-      + destruct v1; auto.
-    - destruct v1; auto.
-    - destruct v1; auto.
-  Qed.
 
   Lemma sem_cast_match :
     forall v1 v2 ty ty' m1 m2,

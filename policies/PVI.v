@@ -54,6 +54,8 @@ Module PVI <: Policy.
 
   Definition PolicyResult := PolicyResult policy_state.
   Definition ltop := ltop lt_eq_dec policy_state.
+  Definition recover (lc:Cabs.loc) (a: option int64) (s: string) : PolicyResult unit :=
+    raise RecoveryNotSupported.
   
   Definition color_eq (pt: val_tag) (lt: loc_tag) : bool :=
     match pt, lt with
@@ -67,14 +69,15 @@ Module PVI <: Policy.
 
   Local Open Scope monad_scope.
   
-  Definition LoadT (l:loc) (pct: control_tag) (pt vt: val_tag) (lts : list loc_tag) : PolicyResult val_tag :=
+  Definition LoadT (l:loc) (pct: control_tag) (pt vt: val_tag) (a: int64) (lts : list loc_tag) :
+    PolicyResult val_tag :=
     match pt with
     | N => raise (PolicyFailure (inj_loc "PVI || LoadT X Failure" l))
     | _ => if ltop.(forallb) (color_eq pt) lts then ret vt 
            else raise (PolicyFailure (inj_loc "PVI || LoadT tag_eq_dec Failure" l))
     end.
 
-  Definition StoreT (l:loc) (pct: control_tag) (pt vt: val_tag)
+  Definition StoreT (l:loc) (pct: control_tag) (pt vt: val_tag) (a: int64)
     (lts : list loc_tag) : PolicyResult (control_tag * val_tag * list loc_tag) :=
     match pt with
     | N => raise (PolicyFailure (inj_loc "PVI || StoreT X Failure" l))
@@ -116,7 +119,7 @@ Module PVI <: Policy.
     PolicyResult (control_tag * loc_tag) :=
     ret (pct, N).
 
-  Definition ClearT (l:loc) (pct: control_tag) (pt: val_tag) (lt: loc_tag) (b: loggable byte) :
+  Definition ClearT (l:loc) (pct: control_tag) (pt: val_tag) (a: int64) (lt: loc_tag) :
     PolicyResult loc_tag :=
     ret N.
   

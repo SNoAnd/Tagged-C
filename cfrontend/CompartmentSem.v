@@ -444,8 +444,9 @@ Module CompartmentCsem (Scheme: CompScheme) (A: AllocatorAxioms SemiconcretePoin
     | red_builtin: forall ef tyargs cc ty te m ps,
         lred (Ebuiltin ef tyargs cc ty) te m
              (Eloc (Lefun ef tyargs Tany64 cc def_tag) ty) te m ps ps
-    | red_deref: forall p vt ty1 ty te m ps,
-        lred (Ederef (Eval (Vptr p,vt) ty1) ty) te m
+    | red_deref: forall v p vt ty1 ty te m ps,
+        sem_cast v ty1 ty1 (Lcl CMP) = Some (Vptr p) ->
+        lred (Ederef (Eval (v,vt) ty1) ty) te m
              (Eloc (Lmem p vt Full) ty) te m ps ps
     | red_field_struct: forall p pt pt' id co a f ty delta bf te m ps0 ps1,
         ce!id = Some co ->
@@ -928,7 +929,7 @@ with find_label_ls (lbl: label) (sl: labeled_statements) (k: cont)
 
 Inductive estep: state -> trace -> state -> Prop :=
 | step_lred: forall C f l CMP bg a k e te a' m te' m' ps ps',
-    lred e a te m a' te' m' ps ps' ->
+    lred e CMP a te m a' te' m' ps ps' ->
     context LV RV C ->
     estep (ExprState f l ps CMP bg (C a) k e te m)
           E0 (ExprState f l ps' CMP bg (C a') k e te' m')

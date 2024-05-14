@@ -25,6 +25,7 @@ Inductive FailureClass : Type :=
 | PrivateLoad (ofs : Z)
 | OtherFailure (msg: string)
 | PolicyFailure (msg: string)
+| RecoveryNotSupported
 .
 
 Inductive Result (A: Type) :=
@@ -58,17 +59,7 @@ Global Instance MonadState_pr (T: Type) : MonadState T (PolicyResult T) :=
   ; put := fun v '(_,log) => (Success tt, (v,log)) |}.
 
 Definition log {T:Type} (msg:string) (state:T*logs) :=
-  let '(s,log) := state in (Success tt, (s,log++[msg])).
-
-Inductive loggable (A: Type) `{Show A} :=
-| DONT_TOUCH_THIS (a: A)
-.
-
-Definition wrap {A:Type} `{Show A} (a:A) : loggable A := DONT_TOUCH_THIS A a.
-  
-Definition log_value {T A:Type} `{Show A} (l:loggable A) (state:T*logs) :=
-  let 'DONT_TOUCH_THIS _ a := l in
-  log (show a) state.
+  let '(s,lg) := state in (Success tt, (s,lg++[msg])).
   
 Global Instance Exception_pr (T: Type) : MonadExc FailureClass (PolicyResult T) :=
   {| raise := fun _ v s => (Fail v, s)
@@ -148,6 +139,10 @@ Module Type Policy.
 
   Definition PolicyResult := PolicyResult policy_state.
   Definition ltop := ltop lt_eq_dec policy_state.
+  Parameter recover : Cabs.loc (* invocation location *) ->
+                      option int64 (* base pointer *) ->
+                      string (* name of tag rule *) ->
+                      PolicyResult unit.
   
   Parameter def_tag : val_tag.
   Parameter InitPCT : control_tag.          (* Initial Program Counter tag*)
@@ -215,14 +210,18 @@ Module Type Policy.
       2. The LoadT rule checks the relationship between the tag on the pointer being accessed,
          the tag on the value being loaded, and the tags on the memory locations being accessed.
       3. AccessT is invoked to determine the tag on the result value, just as in any other
-         variable access.
-  *)
-  Parameter CoalesceT : loc -> list val_tag -> PolicyResult val_tag.
+         variable access. *)
+  Parameter CoalesceT : loc                 (* Inputs: *)
+                        -> list val_tag     (* Value tags, one per loaded byte *)
+
+                        -> PolicyResult     (* Outputs: *)
+                             val_tag        (* Resulting val tag *).
 
   Parameter LoadT :    loc                  (* Inputs: *)
                     -> control_tag          (* PC tag *)
                     -> val_tag              (* Pointer tag *)
                     -> val_tag              (* Tag on value in memory (coalesced) *)
+                    -> int64                (* Location being loaded, for logging purposes only *)
                     -> list loc_tag         (* Location tags (one per byte) *)
 
                     -> PolicyResult         (* Outputs: *)
@@ -250,12 +249,17 @@ Module Type Policy.
           written to, based on the pointer tag, current location tags, and value being
           written.
   *)
-  Parameter EffectiveT : loc -> list val_tag -> val_tag.
+  Parameter EffectiveT : loc                (* Inputs: *)
+                         -> list val_tag    (* Value tags, one per overwritten byte *)
+
+                                            (* Outputs: *)
+                         -> val_tag         (* Input to AssignT *).
 
   Parameter StoreT : loc                    (* Inputs: *)
                      -> control_tag         (* PC tag *)
                      -> val_tag             (* Pointer tag *)
                      -> val_tag             (* Tag on value to be stored *)
+                     -> int64               (* Location being stored, for logging purposes only *)
                      -> list loc_tag        (* Location tags (one per byte) *)
 
                      -> PolicyResult        (* Outputs: *)
@@ -338,7 +342,7 @@ Module Type Policy.
                      -> loc                 (* Inputs: *)
                      -> control_tag         (* PC tag *)
                      -> type                (* Variable type *)
-
+                          
                      -> PolicyResult        (* Outputs: *)
                           (control_tag      (* New PC tag *)
                            * val_tag        (* Pointer tag *)
@@ -348,7 +352,7 @@ Module Type Policy.
                        -> composite_env     (* Inputs: *)
                        -> control_tag       (* PC tag *)
                        -> type              (* Variable type *)
-
+                            
                        -> PolicyResult      (* Outputs: *)
                             (control_tag    (* New PC tag *)
                              * val_tag      (* Cleared value tag *)
@@ -373,7 +377,8 @@ Module Type Policy.
   Parameter MallocT : 
                       loc                   (* Inputs: *)
                       -> control_tag        (* PC tag *)
-                      -> val_tag            (* APT: more documentation, please!  Function pointer tag *)
+                      -> val_tag            (* Function pointer tag
+                                               (used to distinguish versions of malloc) *)
 
                       -> PolicyResult       (* Outputs: *)
                            (control_tag     (* New PC tag *)
@@ -401,10 +406,11 @@ Module Type Policy.
                     loc                     (* Inputs: *)
                     -> control_tag          (* PC tag *)
                     -> val_tag              (* Pointer tag *)
-                    -> list loc_tag         (*Header location tags (vht is now a vec)*)
+                    -> list loc_tag         (* Header location tags *)
                     -> PolicyResult         (* Outputs: *)
                          (control_tag       (* New PC tag *)
-                          * loc_tag)        (* New location tag for header (should be replicated to all header bytes) *).       
+                          * loc_tag)        (* New location tag for header
+                                               (replicated to all header bytes) *).       
   
   (* The ClearT rule is invoked in the do_extcall_free function in Events.v.
      It takes a single byte's location tag at a time, as it's being cleared, and
@@ -413,8 +419,8 @@ Module Type Policy.
                      -> control_tag         (* PC tag *)
                      -> val_tag             (* @TODO AMN: discuss next meeting. 
                                                 pointer's val tag *)
+                     -> int64               (* Location being cleared, for logging purposes only *)
                      -> loc_tag             (* tag on byte within block *)
-                     -> loggable byte
                           
                      -> PolicyResult        (* Outputs: *)
                           loc_tag           (* Tag to be copied to byte *).
@@ -534,10 +540,10 @@ Module Passthrough.
 
     Definition EffectiveT (l:loc) (vts: list val_tag) : val_tag := hd def_tag vts.
       
-    Definition LoadT (l:loc) (pct: control_tag) (pt vt: val_tag) (lts: list loc_tag):
+    Definition LoadT (l:loc) (pct: control_tag) (pt vt: val_tag) (a: int64) (lts: list loc_tag):
       PolicyResult val_tag := ret vt.
 
-    Definition StoreT (l:loc) (pct: control_tag) (pt vt: val_tag) (lts: list loc_tag) :
+    Definition StoreT (l:loc) (pct: control_tag) (pt vt: val_tag) (a: int64) (lts: list loc_tag) :
       PolicyResult (control_tag * val_tag * list loc_tag) :=
       ret (pct, vt, lts).
     

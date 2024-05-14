@@ -11,7 +11,8 @@ Require Import Values.
 Require Import Csem.
 Require Import Csyntax.
 Require Import AST Ctypes.
-  
+Require Import List. Import ListNotations.
+
 Module ProgEquiv (Ptr1: Pointer) (Pol1: Policy) (Reg1: Region Ptr1)
                  (A1: Memory Ptr1 Pol1 Reg1) (Sem1: Semantics Ptr1 Pol1 Reg1 A1)
                  (Ptr2: Pointer) (Pol2: Policy) (Reg2: Region Ptr2)
@@ -27,176 +28,269 @@ Module ProgEquiv (Ptr1: Pointer) (Pol1: Policy) (Reg1: Region Ptr1)
   Module TLib2 := A2.Genv.MD.TLib.
   Module Val2 := TLib2.Switch.BI.BI1.BI0.Values.
   Import Val2.
-  
-  Variable val_match : Val1.val -> Val2.val -> Prop.
 
-  Inductive expr_match : CS1.expr -> CS2.expr -> Prop :=
+  (* Structural matching relation on expressions. Checks that they use
+     equivalent constructors all the way through their parse tree, and
+     are equivalent in all fields that are shared between CS1 and CS2
+     (that is, not necessarily equivalent on values.) The argument
+     R is a relation on expressions that will also be checked on each
+     pair of matching nodes that contain non-shared fields.
+     This is where you put constraints that are not
+     pure structural equivalence, including constraints on values.
+     Q: should this apply to the values instead?
+     A: if it did, then the next level up would get more complex,
+        and we couldn't use things like types *)
+  Inductive smatch_expr (R: CS1.expr -> CS2.expr -> Prop) : CS1.expr -> CS2.expr -> Prop :=
+  | MEval : forall v1 v2 vt1 vt2 ty,
+      R (CS1.Eval (v1,vt1) ty) (CS2.Eval (v2,vt2) ty) ->
+      smatch_expr R (CS1.Eval (v1,vt1) ty) (CS2.Eval (v2,vt2) ty)
+  | MEloc_mem : forall p1 pt1 p2 pt2 bf ty,
+      R (CS1.Eloc (CS1.Lmem p1 pt1 bf) ty) (CS2.Eloc (CS2.Lmem p2 pt2 bf) ty) ->
+      smatch_expr R (CS1.Eloc (CS1.Lmem p1 pt1 bf) ty) (CS2.Eloc (CS2.Lmem p2 pt2 bf) ty)
+  | MEloc_tmp : forall b ty,
+      R (CS1.Eloc (CS1.Ltmp b) ty) (CS2.Eloc (CS2.Ltmp b) ty) ->
+      smatch_expr R (CS1.Eloc (CS1.Ltmp b) ty) (CS2.Eloc (CS2.Ltmp b) ty)
+  | MEloc_ifun : forall b pt1 pt2 ty,
+      R (CS1.Eloc (CS1.Lifun b pt1) ty) (CS2.Eloc (CS2.Lifun b pt2) ty) ->
+      smatch_expr R (CS1.Eloc (CS1.Lifun b pt1) ty) (CS2.Eloc (CS2.Lifun b pt2) ty)
+  | MEloc_efun : forall ef tyl retty cc pt1 pt2 ty,
+      R (CS1.Eloc (CS1.Lefun ef tyl retty cc pt1) ty) (CS2.Eloc (CS2.Lefun ef tyl retty cc pt2) ty) ->
+      smatch_expr R (CS1.Eloc (CS1.Lefun ef tyl retty cc pt1) ty)
+                  (CS2.Eloc (CS2.Lefun ef tyl retty cc pt2) ty)
   | MEvar : forall x ty,
-      expr_match (CS1.Evar x ty) (CS2.Evar x ty)
+      smatch_expr R (CS1.Evar x ty) (CS2.Evar x ty)
   | MEconst : forall v1 v2 ty,
-      val_match v1 v2 ->
-      expr_match (CS1.Econst v1 ty) (CS2.Econst v2 ty)
+      R (CS1.Econst v1 ty) (CS2.Econst v2 ty) ->
+      smatch_expr R (CS1.Econst v1 ty) (CS2.Econst v2 ty)
   | MEfield : forall l1 l2 f ty,
-      expr_match l1 l2 ->
-      expr_match (CS1.Efield l1 f ty) (CS2.Efield l2 f ty)
+      smatch_expr R l1 l2 ->
+      smatch_expr R (CS1.Efield l1 f ty) (CS2.Efield l2 f ty)
   | MEvalof : forall l1 l2 ty,
-      expr_match l1 l2 ->
-      expr_match (CS1.Evalof l1 ty) (CS2.Evalof l2 ty)
+      smatch_expr R (CS1.Evalof l1 ty) (CS2.Evalof l2 ty)
   | MEderef : forall r1 r2 ty,
-      expr_match r1 r2 ->
-      expr_match (CS1.Ederef r1 ty) (CS2.Ederef r2 ty)
+      smatch_expr R (CS1.Ederef r1 ty) (CS2.Ederef r2 ty)
   | MEaddrof : forall l1 l2 ty,
-      expr_match l1 l2 ->
-      expr_match (CS1.Eaddrof l1 ty) (CS2.Eaddrof l2 ty)
+      smatch_expr R l1 l2 ->
+      smatch_expr R (CS1.Eaddrof l1 ty) (CS2.Eaddrof l2 ty)
   | MEunop : forall op r1 r2 ty,
-      expr_match r1 r2 ->
-      expr_match (CS1.Eunop op r1 ty) (CS2.Eunop op r2 ty)
+      smatch_expr R r1 r2 ->
+      smatch_expr R (CS1.Eunop op r1 ty) (CS2.Eunop op r2 ty)
   | MEbinop : forall op r1_1 r2_1 r1_2 r2_2 ty,
-      expr_match r1_1 r1_2 ->
-      expr_match r2_1 r2_2 ->
-      expr_match (CS1.Ebinop op r1_1 r2_1 ty) (CS2.Ebinop op r1_2 r2_2 ty)
+      smatch_expr R r1_1 r1_2 ->
+      smatch_expr R r2_1 r2_2 ->
+      smatch_expr R (CS1.Ebinop op r1_1 r2_1 ty) (CS2.Ebinop op r1_2 r2_2 ty)
   | MEcast : forall r1 r2 ty,
-      expr_match r1 r2 ->
-      expr_match (CS1.Ecast r1 ty) (CS2.Ecast r2 ty)
+      smatch_expr R r1 r2 ->
+      smatch_expr R (CS1.Ecast r1 ty) (CS2.Ecast r2 ty)
   | MEseqand : forall r1_1 r2_1 r1_2 r2_2 ty,
-      expr_match r1_1 r1_2 ->
-      expr_match r2_1 r2_2 ->
-      expr_match (CS1.Eseqand r1_1 r2_1 ty) (CS2.Eseqand r1_2 r2_2 ty)
+      smatch_expr R r1_1 r1_2 ->
+      smatch_expr R r2_1 r2_2 ->
+      smatch_expr R (CS1.Eseqand r1_1 r2_1 ty) (CS2.Eseqand r1_2 r2_2 ty)
   | MEseqor : forall r1_1 r2_1 r1_2 r2_2 ty, 
-      expr_match r1_1 r1_2 ->
-      expr_match r2_1 r2_2 ->
-      expr_match (CS1.Eseqor r1_1 r2_1 ty) (CS2.Eseqor r1_2 r2_2 ty)
+      smatch_expr R r1_1 r1_2 ->
+      smatch_expr R r2_1 r2_2 ->
+      smatch_expr R (CS1.Eseqor r1_1 r2_1 ty) (CS2.Eseqor r1_2 r2_2 ty)
   | MEcondition : forall r1_1 r2_1 r3_1 r1_2 r2_2 r3_2 ty,
-      expr_match r1_1 r1_2 ->
-      expr_match r2_1 r2_2 ->
-      expr_match r3_1 r3_2 ->
-      expr_match (CS1.Econdition r1_1 r2_1 r3_1 ty) (CS2.Econdition r1_2 r2_2 r3_2 ty)
+      smatch_expr R r1_1 r1_2 ->
+      smatch_expr R r2_1 r2_2 ->
+      smatch_expr R r3_1 r3_2 ->
+      smatch_expr R (CS1.Econdition r1_1 r2_1 r3_1 ty) (CS2.Econdition r1_2 r2_2 r3_2 ty)
   | MEsizeof : forall ty' ty,  
-      expr_match (CS1.Esizeof ty' ty) (CS2.Esizeof ty' ty)
+      smatch_expr R (CS1.Esizeof ty' ty) (CS2.Esizeof ty' ty)
   | MEalignof : forall ty' ty,       
-      expr_match (CS1.Ealignof ty' ty) (CS2.Ealignof ty' ty)
+      smatch_expr R (CS1.Ealignof ty' ty) (CS2.Ealignof ty' ty)
   | MEassign : forall l1 l2 r1 r2 ty,
-      expr_match l1 l2 ->
-      expr_match r1 r2 ->
-      expr_match (CS1.Eassign l1 r1 ty) (CS2.Eassign l2 r2 ty)
+      smatch_expr R l1 l2 ->
+      smatch_expr R r1 r2 ->
+      smatch_expr R (CS1.Eassign l1 r1 ty) (CS2.Eassign l2 r2 ty)
   | MEassignop : forall op l1 l2 r1 r2 tyres ty,
-      expr_match l1 l2 ->
-      expr_match r1 r2 ->
-      expr_match (CS1.Eassignop op l1 r1 tyres ty) (CS2.Eassignop op l2 r2 tyres ty)
+      smatch_expr R l1 l2 ->
+      smatch_expr R r1 r2 ->
+      smatch_expr R (CS1.Eassignop op l1 r1 tyres ty) (CS2.Eassignop op l2 r2 tyres ty)
   | MEpostincr : forall l1 l2 ty,
-      expr_match l1 l2 ->
-      expr_match (CS1.Epostincr CS1.Cop.Incr l1 ty) (CS2.Epostincr CS2.Cop.Incr l2 ty)  | MEpostdecr : forall l1 l2 ty,
-      expr_match l1 l2 ->
-      expr_match (CS1.Epostincr CS1.Cop.Decr l1 ty) (CS2.Epostincr CS2.Cop.Decr l2 ty)
+      smatch_expr R l1 l2 ->
+      smatch_expr R (CS1.Epostincr CS1.Cop.Incr l1 ty) (CS2.Epostincr CS2.Cop.Incr l2 ty)  | MEpostdecr : forall l1 l2 ty,
+      smatch_expr R l1 l2 ->
+      smatch_expr R (CS1.Epostincr CS1.Cop.Decr l1 ty) (CS2.Epostincr CS2.Cop.Decr l2 ty)
   | MEcomma : forall r1_1 r2_1 r1_2 r2_2 ty,                  
-      expr_match r1_1 r1_2 ->
-      expr_match r2_1 r2_2 ->
-      expr_match (CS1.Ecomma r1_1 r2_1 ty) (CS2.Ecomma r1_2 r2_2 ty)
+      smatch_expr R r1_1 r1_2 ->
+      smatch_expr R r2_1 r2_2 ->
+      smatch_expr R (CS1.Ecomma r1_1 r2_1 ty) (CS2.Ecomma r1_2 r2_2 ty)
   | MEcall : forall r1_1 r1_2 rargs1 rargs2 ty,
-      expr_match r1_1 r1_2 ->
-      exprlist_match rargs1 rargs2 ->
-      expr_match (CS1.Ecall r1_1 rargs1 ty) (CS2.Ecall r1_2 rargs2 ty)
+      R (CS1.Ecall r1_1 rargs1 ty) (CS2.Ecall r1_2 rargs2 ty) ->
+      smatch_expr R r1_1 r1_2 ->
+      smatch_exprlist R rargs1 rargs2 ->
+      smatch_expr R (CS1.Ecall r1_1 rargs1 ty) (CS2.Ecall r1_2 rargs2 ty)
   | MEbuiltin : forall ef tyargs cc ty,
-      expr_match (CS1.Ebuiltin ef tyargs cc ty) (CS2.Ebuiltin ef tyargs cc ty)
+      smatch_expr R (CS1.Ebuiltin ef tyargs cc ty) (CS2.Ebuiltin ef tyargs cc ty)
 
-  with exprlist_match : CS1.exprlist -> CS2.exprlist -> Prop :=
-  | MEnil : exprlist_match CS1.Enil CS2.Enil
+  with smatch_exprlist (R: CS1.expr -> CS2.expr -> Prop) : CS1.exprlist -> CS2.exprlist -> Prop :=
+  | MEnil : smatch_exprlist R CS1.Enil CS2.Enil
   | MEcons : forall r1 r2 rl1 rl2,
-      expr_match r1 r2 ->
-      exprlist_match rl1 rl2 ->
-      exprlist_match (CS1.Econs r1 rl1) (CS2.Econs r2 rl2)
-  .
-
-  Inductive statement_match : CS1.statement -> CS2.statement -> Prop :=
-  | MSskip : statement_match CS1.Sskip CS2.Sskip
-  | MSSdo : forall e1 e2 l,
-      expr_match e1 e2 ->
-      statement_match (CS1.Sdo e1 l) (CS2.Sdo e2 l)
-  | MSsequence : forall s1_1 s2_1 s1_2 s2_2,
-        statement_match s1_1 s1_2 ->
-        statement_match s2_1 s2_2 ->
-        statement_match (CS1.Ssequence s1_1 s2_1) (CS2.Ssequence s1_2 s2_2)
-  | MSifthenelse : forall e1 e2 s1_1 s1_2 s2_1 s2_2 lb lc,
-      expr_match e1 e2 ->
-      statement_match s1_1 s1_2 ->
-      statement_match s2_1 s2_2 ->
-      statement_match (CS1.Sifthenelse e1 s1_1 s2_1 lb lc)
-                      (CS2.Sifthenelse e2 s1_2 s2_2 lb lc)
-  | MSwhile : forall e1 e2 s1 s2 lb lc,
-      expr_match e1 e2 ->
-      statement_match s1 s2 ->
-      statement_match (CS1.Swhile e1 s1 lb lc) (CS2.Swhile e2 s2 lb lc)
-  | MSdowhile : forall e1 e2 s1 s2 lb lc,
-      expr_match e1 e2 ->
-      statement_match s1 s2 ->
-      statement_match (CS1.Sdowhile e1 s1 lb lc) (CS2.Sdowhile e2 s2 lb lc)
-  | MSfor: forall s1_1 s1_2 e1 e2 s2_1 s2_2 s3_1 s3_2 lb lc,
-      statement_match s1_1 s1_2 ->
-      expr_match e1 e2 ->
-      statement_match s2_1 s2_2 ->
-      statement_match s3_1 s3_2 ->
-      statement_match (CS1.Sfor s1_1 e1 s2_1 s3_1 lb lc)
-                      (CS2.Sfor s1_2 e2 s2_2 s3_2 lb lc)                      
-  | MSbreak : forall l,
-      statement_match (CS1.Sbreak l) (CS2.Sbreak l)
-  | MScontinue : forall l,
-      statement_match (CS1.Scontinue l) (CS2.Scontinue l)
-  | MSreturn_Some : forall e1 e2 l,
-      expr_match e1 e2 ->
-      statement_match (CS1.Sreturn (Some e1) l) (CS2.Sreturn (Some e2) l)
-  | MSreturn_None : forall l,
-      statement_match (CS1.Sreturn None l) (CS2.Sreturn None l)     
-  | MSswitch : forall e1 e2 ls1 ls2 l,
-      expr_match e1 e2 ->
-      ls_match ls1 ls2 ->
-      statement_match (CS1.Sswitch e1 ls1 l) (CS2.Sswitch e2 ls2 l)
-  | MSlabel : forall l s1 s2,
-      statement_match s1 s2 ->
-      statement_match (CS1.Slabel l s1) (CS2.Slabel l s2)
-  | MSgoto : forall lb lc,
-      statement_match (CS1.Sgoto lb lc) (CS2.Sgoto lb lc)
-
-  with ls_match : CS1.labeled_statements -> CS2.labeled_statements -> Prop :=
-  | MLSnil: ls_match CS1.LSnil CS2.LSnil
-  | MLScons: forall z s1 s2 ls1 ls2,
-      statement_match s1 s2 ->
-      ls_match ls1 ls2 ->
-      ls_match (CS1.LScons z s1 ls1) (CS2.LScons z s2 ls2)
+      smatch_expr R r1 r2 ->
+      smatch_exprlist R rl1 rl2 ->
+      smatch_exprlist R (CS1.Econs r1 rl1) (CS2.Econs r2 rl2)
   .
   
-  Inductive fundef_match : CS1.fundef -> CS2.fundef -> Prop :=
+  Inductive smatch_statement (R: CS1.statement -> CS2.statement -> Prop) :
+    CS1.statement -> CS2.statement -> Prop :=
+  | MSskip : smatch_statement R CS1.Sskip CS2.Sskip
+  | MSSdo : forall e1 e2 l,
+      R (CS1.Sdo e1 l) (CS2.Sdo e2 l) ->
+      smatch_statement R (CS1.Sdo e1 l) (CS2.Sdo e2 l)
+  | MSsequence : forall s1_1 s2_1 s1_2 s2_2,
+      smatch_statement R s1_1 s1_2 ->
+      smatch_statement R s2_1 s2_2 ->
+      smatch_statement R (CS1.Ssequence s1_1 s2_1) (CS2.Ssequence s1_2 s2_2)
+  | MSifthenelse : forall e1 e2 s1_1 s1_2 s2_1 s2_2 lb lc,
+      R (CS1.Sifthenelse e1 s1_1 s2_1 lb lc) (CS2.Sifthenelse e2 s1_2 s2_2 lb lc) ->
+      smatch_statement R s1_1 s1_2 ->
+      smatch_statement R s2_1 s2_2 ->
+      smatch_statement R (CS1.Sifthenelse e1 s1_1 s2_1 lb lc)
+                       (CS2.Sifthenelse e2 s1_2 s2_2 lb lc)
+  | MSwhile : forall e1 e2 s1 s2 lb lc,
+      R (CS1.Swhile e1 s1 lb lc) (CS2.Swhile e2 s2 lb lc) ->
+      smatch_statement R s1 s2 ->
+      smatch_statement R (CS1.Swhile e1 s1 lb lc) (CS2.Swhile e2 s2 lb lc)
+  | MSdowhile : forall e1 e2 s1 s2 lb lc,
+      R (CS1.Sdowhile e1 s1 lb lc) (CS2.Sdowhile e2 s2 lb lc) ->
+      smatch_statement R s1 s2 ->
+      smatch_statement R (CS1.Sdowhile e1 s1 lb lc) (CS2.Sdowhile e2 s2 lb lc)
+  | MSfor: forall s1_1 s1_2 e1 e2 s2_1 s2_2 s3_1 s3_2 lb lc,
+      R (CS1.Sfor s1_1 e1 s2_1 s3_1 lb lc) (CS2.Sfor s1_2 e2 s2_2 s3_2 lb lc) ->
+      smatch_statement R s1_1 s1_2 ->
+      smatch_statement R s2_1 s2_2 ->
+      smatch_statement R s3_1 s3_2 ->
+      smatch_statement R (CS1.Sfor s1_1 e1 s2_1 s3_1 lb lc)
+                       (CS2.Sfor s1_2 e2 s2_2 s3_2 lb lc)                      
+  | MSbreak : forall l,
+      smatch_statement R (CS1.Sbreak l) (CS2.Sbreak l)
+  | MScontinue : forall l,
+      smatch_statement R (CS1.Scontinue l) (CS2.Scontinue l)
+  | MSreturn_Some : forall e1 e2 l,
+      R (CS1.Sreturn (Some e1) l) (CS2.Sreturn (Some e2) l) ->
+      smatch_statement R (CS1.Sreturn (Some e1) l) (CS2.Sreturn (Some e2) l)
+  | MSreturn_None : forall l,
+      R (CS1.Sreturn None l) (CS2.Sreturn None l) ->
+      smatch_statement R (CS1.Sreturn None l) (CS2.Sreturn None l)     
+  | MSswitch : forall e1 e2 ls1 ls2 l,
+      R (CS1.Sswitch e1 ls1 l) (CS2.Sswitch e2 ls2 l) ->
+      smatch_ls R ls1 ls2 ->
+      smatch_statement R (CS1.Sswitch e1 ls1 l) (CS2.Sswitch e2 ls2 l)
+  | MSlabel : forall l s1 s2,
+      smatch_statement R s1 s2 ->
+      smatch_statement R (CS1.Slabel l s1) (CS2.Slabel l s2)
+  | MSgoto : forall lb lc,
+      smatch_statement R (CS1.Sgoto lb lc) (CS2.Sgoto lb lc)
+
+  with smatch_ls (R: CS1.statement -> CS2.statement -> Prop) :
+    CS1.labeled_statements -> CS2.labeled_statements -> Prop :=
+  | MLSnil: smatch_ls R CS1.LSnil CS2.LSnil
+  | MLScons: forall z s1 s2 ls1 ls2,
+      smatch_statement R s1 s2 ->
+      smatch_ls R ls1 ls2 ->
+      smatch_ls R (CS1.LScons z s1 ls1) (CS2.LScons z s2 ls2)
+  .
+  
+  Inductive smatch_fundef (R: CS1.statement -> CS2.statement -> Prop) :
+    CS1.fundef -> CS2.fundef -> Prop :=
   | MFInternal : forall fn_ret fn_cc fn_params fn_vars fn_body1 fn_body2,
-      statement_match fn_body1 fn_body2 ->
-      fundef_match (Internal (CS1.mkfunction fn_ret fn_cc fn_params fn_vars fn_body1))
+      smatch_statement R fn_body1 fn_body2 ->
+      smatch_fundef R (Internal (CS1.mkfunction fn_ret fn_cc fn_params fn_vars fn_body1))
                    (Internal (CS2.mkfunction fn_ret fn_cc fn_params fn_vars fn_body2))
   | MFExternal : forall ef tyargs ty cc,
-      fundef_match (External ef tyargs ty cc) (External ef tyargs ty cc)
+      smatch_fundef R (External ef tyargs ty cc) (External ef tyargs ty cc)
   .
 
-  Inductive pd_match : list (ident*globdef CS1.fundef type) ->
-                       list (ident*globdef CS2.fundef type) ->
-                       Prop :=
-  | MPDnil : pd_match nil nil
+  Inductive smatch_defs (R: CS1.statement -> CS2.statement -> Prop)
+    : list (ident*globdef CS1.fundef type) -> list (ident*globdef CS2.fundef type) -> Prop :=
+  | MPDnil : smatch_defs R nil nil
   | MPDcons_var : forall id gv pd1 pd2,
-      pd_match pd1 pd2 ->
-      pd_match ((id,Gvar gv)::pd1) ((id,Gvar gv)::pd2)
+      smatch_defs R pd1 pd2 ->
+      smatch_defs R ((id,Gvar gv)::pd1) ((id,Gvar gv)::pd2)
   | MPDcons_fun : forall id fd1 fd2 pd1 pd2,
-      fundef_match fd1 fd2 ->
-      pd_match pd1 pd2 ->
-      pd_match ((id,Gfun fd1)::pd1) ((id,Gfun fd2)::pd2).
+      smatch_fundef R fd1 fd2 ->
+      smatch_defs R pd1 pd2 ->
+      smatch_defs R ((id,Gfun fd1)::pd1) ((id,Gfun fd2)::pd2).
   
-  Inductive prog_match : CS1.program -> CS2.program -> Prop :=
+  Inductive smatch_prog (R: CS1.statement -> CS2.statement -> Prop)
+    : CS1.program -> CS2.program -> Prop :=
   | MP : forall prog_defs1 prog_defs2 prog_public prog_main prog_types
                 prog_comp_env prog_comp_env_eq,
-      pd_match prog_defs1 prog_defs2 ->
-      prog_match (@Build_program CS1.function
-                                 prog_defs1 prog_public prog_main
-                                 prog_types prog_comp_env prog_comp_env_eq)
+      smatch_defs R prog_defs1 prog_defs2 ->
+      smatch_prog R (@Build_program CS1.function
+                                   prog_defs1 prog_public prog_main
+                                   prog_types prog_comp_env prog_comp_env_eq)
                  (@Build_program CS2.function
                                  prog_defs2 prog_public prog_main
                                  prog_types prog_comp_env prog_comp_env_eq)
   .
 
+  Definition match_expr_eq_prop (match_val: Val1.val -> Val2.val -> Prop)
+             (e1 : CS1.expr) (e2 : CS2.expr) :
+    Prop :=
+    match e1, e2 with
+    | (CS1.Eval (v1,_) _), (CS2.Eval (v2,_) _) => match_val v1 v2
+    | (CS1.Econst v1 _), (CS2.Econst v2 _) => match_val v1 v2
+    | _, _ => True
+    end.
+
+  Definition match_expr_eq match_val := smatch_expr (match_expr_eq_prop match_val).
+  
+  Definition match_statement_eq_prop (match_val: Val1.val -> Val2.val -> Prop)
+             (s1 : CS1.statement) (s2 : CS2.statement) : Prop :=
+    match s1, s2 with
+    | (CS1.Sdo e1 _), (CS2.Sdo e2 _)
+    | (CS1.Sifthenelse e1 _ _ _ _), (CS2.Sifthenelse e2 _ _ _ _)
+    | (CS1.Swhile e1 _ _ _), (CS2.Swhile e2 _ _ _)
+    | (CS1.Sdowhile e1 _ _ _), (CS2.Sdowhile e2 _ _ _)
+    | (CS1.Sfor _ e1 _ _ _ _), (CS2.Sfor _ e2 _ _ _ _)
+    | (CS1.Sreturn (Some e1) _), (CS2.Sreturn (Some e2) _)
+    | (CS1.Sswitch e1 _ _), (CS2.Sswitch e2 _ _) =>
+        match_expr_eq match_val e1 e2
+    | _, _ => True
+    end.
+
+  Definition match_statement_eq match_val := smatch_statement (match_statement_eq_prop match_val).
+  Definition match_ls_eq match_val := smatch_ls (match_statement_eq_prop match_val).
+
+  Definition match_prog_eq match_val := smatch_prog (match_statement_eq match_val).
+
+  Inductive match_val_concrete : Val1.val -> Val2.val -> Prop :=
+  | MVUndef : match_val_concrete Val1.Vundef Val2.Vundef
+  | MVInt : forall i, match_val_concrete (Val1.Vint i) (Val2.Vint i)
+  | MVLong : forall i, match_val_concrete (Val1.Vlong i) (Val2.Vlong i)
+  | MVFloat : forall f, match_val_concrete (Val1.Vfloat f) (Val2.Vfloat f)
+  | MVSingle : forall f, match_val_concrete (Val1.Vsingle f) (Val2.Vsingle f)
+  | MVPtr : forall p1 p2,
+      Ptr1.concretize p1 = Ptr2.concretize p2 ->
+      match_val_concrete (Val1.Vptr p1) (Val2.Vptr p2)
+  | MVFptr : forall b, match_val_concrete (Val1.Vfptr b) (Val2.Vfptr b)
+  | MVEfptr : forall ef tyl retty cc, match_val_concrete (Val1.Vefptr ef tyl retty cc)
+                                                         (Val2.Vefptr ef tyl retty cc)
+  .
+  
+  Definition Concretizable (match_val: Val1.val -> Val2.val -> Prop) : Prop :=
+    forall v1 v2,
+      match_val v1 v2 ->
+      match_val_concrete v1 v2.
+
+    Lemma bool_val_eq_if_concretizeable :
+      forall match_val,
+        Concretizable match_val ->
+        forall v1 v2 ty m1 m2,
+          match_val v1 v2 ->
+          Sem1.Csyntax.Cop.bool_val v1 ty m1 =
+            Sem2.Csyntax.Cop.bool_val v2 ty m2.
+    Proof.
+      intros. apply H in H0. cbv.
+      inv H0; destruct ty; auto.
+      all: try destruct i; auto.
+      all: try destruct f; auto.
+      all: try destruct i0; auto.
+      all: try destruct f0; auto.
+    Qed.
+  
 End ProgEquiv.
 
 (** * Forward simulations between two transition semantics. *)

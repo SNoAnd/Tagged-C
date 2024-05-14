@@ -213,7 +213,8 @@ Module HeapProblem <: Policy.
 
   Definition PolicyResult := PolicyResult policy_state.
   Definition ltop := ltop lt_eq_dec policy_state.
-
+  Variable recover : Cabs.loc -> option int64 -> string -> PolicyResult unit.
+  
   Local Open Scope monad_scope.
   Local Open Scope string_scope.
 
@@ -325,8 +326,9 @@ Module HeapProblem <: Policy.
       end. 
 
   (* Loads through N are ok to touch nonHeap*)
-  Definition LoadT (l:loc) (pct : control_tag) (pt vt: val_tag) (lts : list loc_tag) 
-  : PolicyResult val_tag := 
+  Definition LoadT (l:loc) (pct : control_tag) (pt vt: val_tag) (a: int64) (lts : list loc_tag) 
+    : PolicyResult val_tag :=
+    recover l (Some a) "LoadT";;
     (*log ("LoadT called pt= " ++ (print_vt pt) ++ " vt= " ++ (print_vt vt));;*)
     match pt with 
     (* location the ptr was assigned memory (l) != location of this load (ptr_l) *)
@@ -395,7 +397,7 @@ Module HeapProblem <: Policy.
       | (AllocatedPadding owner_l _) =>  raise (PolicyFailure ( rw_err_msg "HeapProblem|| Heap Tampering| StoreT tried to write through nonheap ptr and write over heap padding belonging to " owner_l store_l))
       end. 
   
-  Definition StoreT (l:loc) (pct : control_tag) (pt vt : val_tag) (lts : list loc_tag)
+  Definition StoreT (l:loc) (pct : control_tag) (pt vt : val_tag) (a: int64) (lts : list loc_tag)
   : PolicyResult (control_tag * val_tag * list loc_tag) := 
   (*log ("StoreT called pt= " ++ (print_vt pt) ++ " vt= " ++ (print_vt vt));;*)
     match pt with 
@@ -676,7 +678,7 @@ Module HeapProblem <: Policy.
   .
 
   (* ClearT is for the tags on lts, the location tags. Works tag by tag *)
-  Definition ClearT (l:loc) (pct: control_tag) (pt: val_tag) (currlt: loc_tag) (b: loggable byte) : PolicyResult (loc_tag) :=
+  Definition ClearT (l:loc) (pct: control_tag) (pt: val_tag) (a: int64) (currlt: loc_tag) : PolicyResult (loc_tag) :=
     (*log ("ClearT called on " ++ (print_lt currlt));;*)
     match pt, currlt with 
     | PointerWithColor ptr_l ptr_c, Allocated m_l m_c => 

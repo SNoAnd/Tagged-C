@@ -7,6 +7,7 @@ Require Import Ctypes.
 Require Import Cabs.
 Require Import String.
 Require Import Tags.
+Require Import ExtLib.Structures.Monad. Import Monads.
 
 Module PolProduct (P1:Policy) (P2: Policy) <: Policy.
   Import P1.
@@ -48,6 +49,9 @@ Module PolProduct (P1:Policy) (P2: Policy) <: Policy.
   Definition init_state : policy_state := (P1.init_state, P2.init_state).
   
   Definition PolicyResult := Tags.PolicyResult policy_state.
+
+  Definition recover (lc:Cabs.loc) (a: option int64) (s: string) : PolicyResult unit :=
+    raise RecoveryNotSupported.
   
   Definition double_bind {A B C:Type}
              (r1: P1.PolicyResult A)
@@ -88,16 +92,16 @@ Module PolProduct (P1:Policy) (P2: Policy) <: Policy.
                 (P2.RetT l (snd pct) (snd oldpct) (snd fpt) (snd vt) ty)
                 (fun '(pct1, vt1) '(pct2, vt2) => ((pct1, pct2), (vt1, vt2))).
 
-  Definition LoadT (l: loc) (pct: control_tag) (pt vt: val_tag) (lts: list loc_tag) :
+  Definition LoadT (l: loc) (pct: control_tag) (pt vt: val_tag) (a: int64) (lts: list loc_tag) :
     PolicyResult val_tag := 
-    double_bind (P1.LoadT l (fst pct)(fst pt)(fst vt)(map fst lts))
-                (P2.LoadT l (snd pct)(snd pt)(snd vt)(map snd lts))
+    double_bind (P1.LoadT l (fst pct) (fst pt) (fst vt) a (map fst lts))
+                (P2.LoadT l (snd pct)(snd pt)(snd vt) a (map snd lts))
                 (fun pct1 pct2 => (pct1, pct2)).
     
-  Definition StoreT (l: loc) (pct: control_tag) (pt vt: val_tag) (lts: list loc_tag) :
+  Definition StoreT (l: loc) (pct: control_tag) (pt vt: val_tag) (a: int64) (lts: list loc_tag) :
     PolicyResult (control_tag * val_tag * list loc_tag) := 
-    double_bind (P1.StoreT l (fst pct) (fst pt) (fst vt) (map fst lts))
-                (P2.StoreT l (snd pct) (snd pt) (snd vt) (map snd lts))
+    double_bind (P1.StoreT l (fst pct) (fst pt) (fst vt) a (map fst lts))
+                (P2.StoreT l (snd pct) (snd pt) (snd vt) a (map snd lts))
                 (fun '(pct1, vt1, lts1) '(pct2, vt2, lts2) => 
                   ((pct1,pct2), (vt1,vt2), ((combine lts1 lts2)))).
 
@@ -201,10 +205,10 @@ Module PolProduct (P1:Policy) (P2: Policy) <: Policy.
                 (fun '(pct1, lt1) '(pct2, lt2) => 
                   ((pct1, pct2), (lt1, lt2))).
 
-  Definition ClearT (l:loc) (pct: control_tag) (pt: val_tag) (currlt: loc_tag) (b: loggable byte) :
+  Definition ClearT (l:loc) (pct: control_tag) (pt: val_tag) (a: int64) (currlt: loc_tag) :
     PolicyResult (loc_tag) :=
-    double_bind (P1.ClearT l (fst pct) (fst pt) (fst currlt) b)
-                (P2.ClearT l (snd pct) (snd pt) (snd currlt) b)
+    double_bind (P1.ClearT l (fst pct) (fst pt) a (fst currlt))
+                (P2.ClearT l (snd pct) (snd pt) a (snd currlt))
                 (fun '(lts1) '(lts2) => 
                    ((lts1, lts2))).
   
