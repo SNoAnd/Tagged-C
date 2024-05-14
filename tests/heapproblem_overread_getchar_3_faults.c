@@ -78,7 +78,7 @@ int main() {
 
     printf("Even cases are safe.\nEnter some input:");
     faux_fgets(input, MAX_SIZE, stdin);
-    //printf(input);
+ 
     int input_len = strlen(input); // does not inlcude the \0
 
     if (input_len < 4) {
@@ -91,7 +91,7 @@ int main() {
         // carefully write over the null terminator, but not beyond so
         //  as not to trigger the overwrite protection but still 
         //  lead to overread
-        int input_len = strlen(input); // does not inlcude the \0
+    
         input[input_len] = 'A';
         // print should run until a null...which we removed
         printf("1:You entered %s.Hope it doesn't have a problem!", input);
