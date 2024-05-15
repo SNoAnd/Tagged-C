@@ -279,6 +279,10 @@ if __name__ == '__main__':
     runACFileWithInput("heapproblem_overwrite_4_faults.c",
                        heapproblem, "000E000000",
                        b'HeapProblem|| Heap Overwrite| StoreT tried to write over heap padding belonging to  heapproblem_overwrite_4_faults.c:111 at heapproblem_overwrite_4_faults.c:64')
+    # dumpster diving for leftover secrets in the heap
+    runACFileWithoutInput("heapproblem_leftoversecret_basic.c", heapproblem,
+                          b'TODO')
+
     # Mixed Heap Corruption 
     runACFileWithInput("heapproblem_multi_faults.c",
                        heapproblem, "hi",

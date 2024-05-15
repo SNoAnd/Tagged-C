@@ -285,20 +285,29 @@ Module HeapProblem <: Policy.
 *)
   
   (* Helper function for LoadT. To be applied to each lt *)
-  Definition CheckforColorMatchOnLoad (ptr_color: Z) (ptr_l load_l:loc) (lt : loc_tag) :
+  Definition CheckforColorMatchOnLoad (ptr_color: Z) (ptr_l load_l:loc) (addr: int64) (lt : loc_tag) :
   PolicyResult loc_tag :=
     (*log ("Check for Color match tags onLoad= " ++ (print_lt lt));;*)
     match lt with 
     | NotHeap => raise (PolicyFailure (inj_loc "HeapProblem|| Pointer corruption|LoadT tried to read nonheap memory at source location " load_l))
     | UnallocatedHeap => raise (PolicyFailure (inj_loc "HeapProblem|| Heap Overread| LoadT tried to read unallocated heap memory at " load_l))
     | AllocatedHeader owner_l _ => raise (PolicyFailure (rw_err_msg "HeapProblem|| Heap Overread| LoadT tried to read allocator header belonging to " owner_l load_l))
-    (* @TODO when we have "log with success" it will go here. 
-        We also need to be able to write out the contents of memory to that log
-        For now, we fail *)
-    | AllocatedPadding owner_l _ => raise (PolicyFailure (rw_err_msg "HeapProblem|| Heap Overread| LoadT read past the end into padding belonging to " owner_l load_l))
-    | AllocatedDirty alloc_l c2 => raise (PolicyFailure (rw_err_msg "HeapProblem|| Potential secret disclosure| Allocated memory not yet written belonging to" alloc_l load_l))
+    | AllocatedPadding owner_l _ => 
+        raise (PolicyFailure (rw_err_msg "HeapProblem|| Heap Overread| LoadT read past the end into padding belonging to " owner_l load_l))
+    | AllocatedDirty alloc_l alloc_c =>
+      (*Dumpster diving: sometimes you find secrets, sometimes its all trash
+        Should not read memory you haven't written, but it's not always dangerous.
+        Continue, but report it and ask the fuzzer to figure out if it had anything valuable*)
+        log (rw_err_msg "HeapProblem|| Potential secret disclosure| Allocated memory was read before writing. Belonging to" alloc_l load_l);;
+        recover load_l (Some addr) "HeapProblem|| Potential secret disclosure|memory contains| ";;
+        (* if the color & the locations match, keep going*)
+        if (Z.eqb ptr_color alloc_c) && (Cabs.loc_eqb alloc_l ptr_l)
+          then ret lt
+          (* right kind of tag, but this memory belongs to someone else *)
+          else raise (PolicyFailure (rw_err_msg "HeapProblem|| Pointer corruption|LoadT tried to read dirty memory allocated to " alloc_l load_l))
+
     | Allocated alloc_l alloc_c  =>
-        (* if the color & the locations match, recurse on tail (called t)*)
+        (* if the color & the locations match, keep going*)
         if (Z.eqb ptr_color alloc_c) && (Cabs.loc_eqb alloc_l ptr_l)
         then ret lt
         (* right kind of tag, but this memory belongs to someone else *)
@@ -326,14 +335,14 @@ Module HeapProblem <: Policy.
       end. 
 
   (* Loads through N are ok to touch nonHeap*)
-  Definition LoadT (l:loc) (pct : control_tag) (pt vt: val_tag) (a: int64) (lts : list loc_tag) 
+  Definition LoadT (l:loc) (pct : control_tag) (pt vt: val_tag) (addr: int64) (lts : list loc_tag) 
     : PolicyResult val_tag :=
-    recover l (Some a) "LoadT";;
+    (*recover l (Some addr) "LoadT";; *)
     (*log ("LoadT called pt= " ++ (print_vt pt) ++ " vt= " ++ (print_vt vt));;*)
     match pt with 
     (* location the ptr was assigned memory (l) != location of this load (ptr_l) *)
     | PointerWithColor ptr_l ptr_color =>
-      ltop.(mmap) (CheckforColorMatchOnLoad ptr_color ptr_l l) lts;; ret vt
+      ltop.(mmap) (CheckforColorMatchOnLoad ptr_color ptr_l l addr) lts;; ret vt
     | N => 
       ltop.(mmap) (CheckforNlocTagsonLoad l) lts;; ret vt
     end.
@@ -468,7 +477,7 @@ Module HeapProblem <: Policy.
     *)
   Definition BinopT (l:loc) (op : binary_operation) (pct: control_tag) (vt1 vt2 : val_tag) :
   PolicyResult (control_tag * val_tag) := 
-  log ("BinOpt called vt1= " ++ (print_vt vt1) ++ " vt2= " ++ (print_vt vt2));;
+  (*log ("BinOpt called vt1= " ++ (print_vt vt1) ++ " vt2= " ++ (print_vt vt2));;*)
     match op with
     (* classic arthimetic ops *)
     | Oadd (* addition (binary [+]) *)
