@@ -236,8 +236,10 @@ end
 
 (* Single policies *)
 module FrontendNull = FrontendP (NullPolicy.NullPolicy)
-module NullAlloc = FrontendNull.InterpInst.PrintCsyntax.C2CPInst.CMA.FLAllocator
-module WithNull = FrontendNull.Inner (NullAlloc)
+module NullFLAlloc = FrontendNull.InterpInst.PrintCsyntax.C2CPInst.CMA.FLAllocator
+module NullCAlloc = FrontendNull.InterpInst.PrintCsyntax.C2CPInst.CMA.ConcreteAllocator
+module WithNullF = FrontendNull.Inner (NullFAlloc)
+module WithNullC = FrontendNull.Inner (NullCAlloc)
 
 module FrontendPVI = FrontendP (PVI.PVI)
 module PVIAlloc = FrontendPVI.InterpInst.PrintCsyntax.C2CPInst.CMA.FLAllocator

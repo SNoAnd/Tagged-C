@@ -37,8 +37,8 @@ let object_filename sourcename =
   else
     tmp_file ".o"
 
-let runner = ref (WithNull.run_i_file)
-let initter = ref (WithNull.init_with)
+let runner = ref (WithNullF.run_i_file)
+let initter = ref (WithNullF.init_with)
 
 (* Processing of a .c file *)
 
@@ -51,7 +51,7 @@ let process_c_file sourcename =
     let set_dest dst opt ext =
       dst := if !opt then Some (output_filename sourcename ~suffix:ext)
       else None in
-    set_dest WithNull.Printing.destination option_dcmedium ".compcert.c";
+    set_dest WithNullF.Printing.destination option_dcmedium ".compcert.c";
     let preproname = if !option_dprepro then
       output_filename sourcename ~suffix:".i"
     else
@@ -307,8 +307,10 @@ let cmdline_actions =
                 else (if arg = "dfxpvi"
                 then (runner := WithDFxPVI.run_i_file; initter := WithDFxPVI.init_with)
                 else (if arg = "null"
-                then (runner := WithNull.run_i_file; initter := WithNull.init_with)
-                else error no_loc "Unknown policy `%s'" arg)))))
+                then (runner := WithNullF.run_i_file; initter := WithNullF.init_with)
+                else (if arg = "nullc"
+                then (runner := WithNullA.run_i_file; initter := WithNullA.init_with)
+                else error no_loc "Unknown policy `%s'" arg))))))
   ]
 (* Optimization options *)
 (* -f options: come in -f and -fno- variants *)
