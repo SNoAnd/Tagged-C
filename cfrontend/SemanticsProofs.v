@@ -80,6 +80,21 @@ Module Compartmentalization (Scheme: CompScheme)
     Definition match_expr := match_expr_eq match_val.
     Definition match_statement := match_statement_eq match_val.
     Definition match_ls := match_ls_eq match_val.
+
+    Lemma match_stkfree_success : forall m1 m2 ce ty ps1 ps2 CMP ps1' m1',
+        match_mem m1 m2 ->
+        MA1.stkfree m1 (CompReg.Lcl CMP) (alignof ce ty) (sizeof ce ty) ps1 = (Success m1', ps1') ->
+        exists m2' ps2',
+          MA2.stkfree m2 tt (alignof ce ty) (sizeof ce ty) ps2 = (Success m2', ps2') /\
+            match_mem m1' m2'.
+    Admitted.
+
+    Lemma match_stkfree_fail : forall m1 m2 ce ty ps1 ps2 CMP ps1' failure,
+        match_mem m1 m2 ->
+        MA1.stkfree m1 (CompReg.Lcl CMP) (alignof ce ty) (sizeof ce ty) ps1 = (Fail failure, ps1') ->
+        exists ps2',
+          MA2.stkfree m2 tt (alignof ce ty) (sizeof ce ty) ps2 = (Fail failure, ps2').
+    Admitted.
     
     Record match_ctx
            (ctx1: CS1.expr -> CS1.expr)
@@ -186,6 +201,14 @@ Module Compartmentalization (Scheme: CompScheme)
                    (Sem2.Kcall f2 e2 te2 l pct2 fpt2 ctx2 ty k2)
     .
 
+    Lemma match_call_cont :
+      forall k1 k2,
+        match_cont k1 k2 ->
+        match_cont (Sem1.call_cont k1) (Sem2.call_cont k2).
+    Proof.
+      intros. induction H; try constructor; simpl; auto.
+    Qed.
+
     (* Matching relation on states:
        - PCT corresponds to active compartment (CMP) and block generator (bg)
        - Per region Lcl CMP: for each live block, values match, and all bytes are tagged
@@ -288,7 +311,101 @@ Module Compartmentalization (Scheme: CompScheme)
 
     Axiom matching_ctx_matches : forall ctx1,
         match_ctx ctx1 (matching_ctx ctx1). 
+
+    Lemma do_free_variables_ret :
+      forall lc CMP ps1 pct1 m1 e1 pct1' m1',
+        Sem1.do_free_variables ce lc CMP pct1 m1 (Sem1.variables_of_env e1) = (Monad.ret (pct1', m1')) ->
+        Sem1.do_free_variables ce lc CMP pct1 m1 (Sem1.variables_of_env e1) ps1 = (Success (pct1', m1'), ps1).
+    Proof.
+      intros. rewrite H. auto.
+    Qed.
+
+    Inductive match_ptr_list : list (SemiconcretePointer.ptr * type) ->
+                               list (ConcretePointer.ptr * type) -> Prop :=
+    | MPLnil : match_ptr_list [] []
+    | MPLcons : forall p1 p2 ty pl1 pl2,
+        SemiconcretePointer.concretize p1 = ConcretePointer.concretize p2 ->
+        match_ptr_list pl1 pl2 ->
+        match_ptr_list ((p1,ty)::pl1) ((p2,ty)::pl2).      
     
+    Lemma variables_of_env_match :
+      forall e1 e2,
+        match_env e1 e2 ->
+        match_ptr_list (Sem1.variables_of_env e1) (Sem2.variables_of_env e2).
+    Admitted.
+    
+    Lemma do_free_variables_match_success :
+      forall lc CMP ps1 ps1' pct1 m1 e1 pct1' m1' ps2 pct2 m2 e2,
+        match_env e1 e2 ->
+        match_mem m1 m2 ->
+        Sem1.do_free_variables ce lc CMP pct1 m1 (Sem1.variables_of_env e1) ps1 =
+          (Success (pct1', m1'), ps1') ->
+        exists ps2' pct2' m2',
+          Sem2.do_free_variables ce lc pct2 m2 (Sem2.variables_of_env e2) ps2 =
+            (Success (pct2', m2'), ps2') /\ match_mem m1' m2'.
+    Proof.
+      intros. apply variables_of_env_match in H.
+      generalize dependent m2. generalize dependent pct2. generalize dependent ps2. 
+      generalize dependent m1'. generalize dependent pct1'. generalize dependent ps1'.
+      generalize dependent m1. generalize dependent pct1. generalize dependent ps1.
+      induction H.
+      - intros. eexists. eexists. eexists.
+        split.
+        + constructor.
+        + inv H1. auto.
+      - intros. cbn in H1. unfold bind_res in *.
+        destruct (MA1.stkfree m1 (CompReg.Lcl CMP) (alignof ce ty) (sizeof ce ty) ps1) eqn:?.
+        destruct r0 eqn:?; try discriminate.
+        apply match_stkfree_success with (ps2 := ps2) (m2 := m2) in Heqp; auto.
+        destruct Heqp as [m2' [ps2' [A B]]].
+        eapply IHmatch_ptr_list in H1; eauto. destruct H1 as [ps2'' [pct2'' [m2'' [A' B']]]].
+        eexists. eexists. eexists.
+        split.
+        + cbn. unfold bind_res. rewrite A. eauto.
+        + auto.
+    Qed.
+          
+    Lemma do_free_variables_match_fail :
+      forall lc CMP ps1 ps1' pct1 m1 e1 ps2 pct2 m2 e2 failure,
+        match_env e1 e2 ->
+        match_mem m1 m2 ->
+        Sem1.do_free_variables ce lc CMP pct1 m1 (Sem1.variables_of_env e1) ps1 =
+          (Fail failure, ps1') ->
+        exists ps2',
+          Sem2.do_free_variables ce lc pct2 m2 (Sem2.variables_of_env e2) ps2 =
+            (Fail failure, ps2').
+    Proof.
+      intros. apply variables_of_env_match in H.
+      generalize dependent m2. generalize dependent pct2. generalize dependent ps2. 
+      generalize dependent failure. generalize dependent ps1'.
+      generalize dependent m1. generalize dependent pct1. generalize dependent ps1.
+      induction H.
+      - intros. inv H1.
+      - intros. cbn in H1. unfold bind_res in *.
+        destruct (MA1.stkfree m1 (CompReg.Lcl CMP) (alignof ce ty) (sizeof ce ty) ps1) eqn:?.
+        destruct r0 eqn:?.
+        + apply match_stkfree_success with (ps2 := ps2) (m2 := m2) in Heqp; auto.
+          destruct Heqp as [m2' [ps2' [A B]]].
+          eapply IHmatch_ptr_list in H1; eauto. destruct H1 as [ps2'' H'].
+          eexists.
+          cbn. unfold bind_res. rewrite A. eauto.
+        + inv H1.
+          apply match_stkfree_fail with (ps2 := ps2) (m2 := m2) in Heqp; auto.
+          destruct Heqp as [ps2' A].
+          eexists. cbn. unfold bind_res. rewrite A. reflexivity.
+    Qed.
+    
+    Lemma do_alloc_variables_match_success :
+      forall lc CMP ps1 ps1' pct1 m1 e1 pct1' m1' ps2 pct2 m2 e2,
+        match_env e1 e2 ->
+        match_mem m1 m2 ->
+        Sem1.do_free_variables ce lc CMP pct1 m1 (Sem1.variables_of_env e1) ps1 =
+          (Success (pct1', m1'), ps1') ->
+        exists ps2' pct2' m2',
+          Sem2.do_free_variables ce lc pct2 m2 (Sem2.variables_of_env e2) ps2 =
+            (Success (pct2', m2'), ps2') /\ match_mem m1' m2'.
+
+
     Ltac doinv :=
       match goal with
       | [ H: match_cont (_ _) _ |- _ ] => inv H
@@ -399,7 +516,7 @@ Module Compartmentalization (Scheme: CompScheme)
         apply (do_init_params_match_fail lc ps1 pct1 e1 m1 params args1
                                          tt tt e2 m2 args2 msg failure) in H1; eauto
     | [ H1: Sem1.do_free_variables
-              ?ce ?lc ?ps1 ?pct1 ?m1
+              ?ce ?lc _ ?ps1 ?pct1 ?m1
               (Sem1.variables_of_env ?e1) = Success (?pct1', ?m1'),
           H2: match_env ?e1 ?e2,
             H3: match_mem ?m1 ?m2|- _ ] =>
@@ -409,7 +526,7 @@ Module Compartmentalization (Scheme: CompScheme)
                                                m2 e2) in H1; eauto;
         destruct H1 as [pct2' [m2' [A B]]]
     | [ H1: Sem1.do_free_variables
-              ?ce ?lc ?ps1 ?pct1 ?m1
+              ?ce ?lc _ ?ps1 ?pct1 ?m1
               (Sem1.variables_of_env ?e1) = Fail ?msg ?failure,
           H2: match_env ?e1 ?e2,
             H3: match_mem ?m1 ?m2|- _ ] =>
@@ -615,10 +732,15 @@ Module Compartmentalization (Scheme: CompScheme)
       - intros. inv H1.
       - intros. inv H1.
     Admitted.    
+
+    Ltac find_equivs :=
+      repeat multimatch goal with
+             | [H: smatch_statement _ _ _ |- _ ] => try (inv H; [])
+             end.      
     
     Lemma sstep_forward :
       forall (s1: Sem1.state) (tr1: S1.Events.trace) (s1': Sem1.state) (s2: Sem2.state),
-        match_states null_invariant s1 s2 ->
+        match_states s1 s2 ->
         WF1 s1 ->
         WF2 s2 ->
         Sem1.sstep ge1 ce s1 tr1 s1' ->
@@ -626,15 +748,18 @@ Module Compartmentalization (Scheme: CompScheme)
           Sem2.sstep ge2 ce s2 tr2 s2' /\ match_states s1' s2' /\ match_traces tr1 tr2.
     Proof.
       intros. inv H; inv H2; repeat doinv;
-      try (eexists; eexists;
+      try (eexists; eexists; find_equivs;
            intuition econstructor;
            eauto; repeat (econstructor; eauto); fail).
       - eexists; eexists. intuition econstructor; eauto.
-        + inv H12; try congruence.
+        + intro. apply H20. subst. find_equivs. auto.
         + repeat (constructor; auto).
-      - admit.
-      - admit.
       - (* Return *)
+        eexists; eexists. intuition econstructor; eauto.
+        admit.
+        admit.
+        admit.
+        apply match_call_cont. auto.
         admit.
       - admit.
       - admit.
@@ -644,16 +769,48 @@ Module Compartmentalization (Scheme: CompScheme)
       - admit.
       - admit.
       - admit.
-      - (* Return *)
-        admit.
-      - (* Return *)
-        admit.
       - admit.
       - admit.
+      - eexists. eexists. intuition. 2: econstructor; eauto.
+        + econstructor. admit. admit.
+        + admit.
+        + admit.
+        + apply match_call_cont. auto.
+        + admit.
+        + constructor.
+      - admit.
+      - eexists. eexists. intuition. 2: econstructor; eauto.
+        + econstructor. admit.
+        + admit.
+        + constructor. auto.
+        + constructor.
       - (* Call *)
-        admit.
-      - (* Call *)
-        admit.
+        destruct fd2.
+        + destruct pct2. destruct fpt2.
+          * inv H3. eexists. eexists. intuition. 2: econstructor; eauto.
+            -- econstructor.
+               ++ admit.
+               ++ simpl. (* Uh oh! Need to match function pointers and their tags *) admit.
+               ++ admit.
+               ++ admit.
+            -- admit. (* Ditto. *)
+            -- admit.
+            -- admit.
+            -- admit.
+            -- admit.
+            -- admit.
+            -- constructor.
+          * admit. (* Ditto. *)
+          * destruct pub.
+            -- inv H3. eexists. eexists. intuition. 2: econstructor; eauto.
+               ++ econstructor.
+                  ** admit.
+                  ** simpl. reflexivity.
+                  ** 
+                  ** admit.
+               ++ admit.
+                     
+        + destruct fd2.
       - (* Call *)
         admit.
       - (* Call *)

@@ -633,7 +633,7 @@ Module TaggedCsem (Pol: Policy) (A: Memory ConcretePointer Pol UnitRegion) <:
         deref_loc ty1 m p pt bf t1 <<ps0>> (Success (v1, vts, lts)) <<ps1>> ->
         ('(pct',vt') <- AssignT l pct (EffectiveT l vts) vt2;;
          StoreT l pct' pt vt' (concretize p) lts) ps1 = (Fail failure,ps2) ->
-        rfailred pct (Eassign (Eloc (Lmem (concretize p) pt bf) ty1) (Eval (v2, vt2) ty2) ty1) te m t1 failure ps0 ps2
+        rfailred pct (Eassign (Eloc (Lmem p pt bf) ty1) (Eval (v2, vt2) ty2) ty1) te m t1 failure ps0 ps2
     | failred_assign_mem2:
       forall p ty1 pt bf v1 vts v2 vt2 ty2 te m t1 v' lts pct'' vt'' lts' t2 failure ps0 ps1 ps2 ps3,
         sem_cast v2 ty2 ty1 tt = Some v' ->
