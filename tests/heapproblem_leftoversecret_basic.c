@@ -21,11 +21,27 @@
  * 
  * 
 */
-int get_secret_from_vault(char* newtoken) {
-    // https://codelabs.cs.pdx.edu/labs/W7.1_cloud_setup/index.html?index=..%2F..cs495#1
-    newtoken = "bUbcM250Ej3OS";
-    return 14; // length of new token
 
+/**
+ * TaggedC doesn't have strcpy. 
+*/
+char* strcpy(char* destination, const char* source) {
+    int src_len = strlen(source);
+    for (int i = 0; i<src_len;i++ ) {
+        destination[i] = source[i];
+    }
+    return destination;
+}
+
+int get_secret_from_vault(char* destination) {
+    // https://codelabs.cs.pdx.edu/labs/W7.1_cloud_setup/index.html?index=..%2F..cs495#1
+    char* source = "bUbcM250Ej3OS";
+    int src_len = strlen(source);
+    int i = 0;
+    for (i = 0; i<src_len;i++ ) {
+        destination[i] = source[i];
+    }
+    return i;
 }
 int main() {
     char* input = (char*) malloc(MAX_INPUT_SIZE * sizeof(char));

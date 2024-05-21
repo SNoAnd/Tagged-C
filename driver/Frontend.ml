@@ -238,7 +238,7 @@ end
 module FrontendNull = FrontendP (NullPolicy.NullPolicy)
 module NullFLAlloc = FrontendNull.InterpInst.PrintCsyntax.C2CPInst.CMA.FLAllocator
 module NullCAlloc = FrontendNull.InterpInst.PrintCsyntax.C2CPInst.CMA.ConcreteAllocator
-module WithNullF = FrontendNull.Inner (NullFAlloc)
+module WithNullF = FrontendNull.Inner (NullFLAlloc)
 module WithNullC = FrontendNull.Inner (NullCAlloc)
 
 module FrontendPVI = FrontendP (PVI.PVI)
