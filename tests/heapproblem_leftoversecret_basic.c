@@ -21,6 +21,18 @@
  * 
  * 
 */
+/**
+ * TaggedC does not have strlen. 
+ * NB: strlen does not include the \0 terminator
+*/
+int strlen(char *p) {
+  int c = 0;
+  while (*p != '\0') {
+    p++;
+    c++;
+  }
+  return c;
+}
 
 /**
  * TaggedC doesn't have strcpy. 
@@ -44,18 +56,20 @@ int get_secret_from_vault(char* destination) {
     return i;
 }
 int main() {
-    char* input = (char*) malloc(MAX_INPUT_SIZE * sizeof(char));
+    // get & use token normally
     char* token = (char*) malloc(MAX_TOKEN_SIZE * sizeof(char));
     int len = get_secret_from_vault(token);
-    if (len > 0) { printf(token); }
+    if (len > 0) { 
+        // nominally use the secret to do things
+        printf("got the secret token\n");
+    }
     // secret should now be left in the heap
     free(token);
-    // go heap dumpster diving
+    // go heap dumpster diving; last used is the heap root and we're the right size
     char* dumpsterdive = (char*) malloc(MAX_TOKEN_SIZE * sizeof(char));
     // should trigger inside printf as it reads it to print
-    printf(dumpsterdive);
-
+    printf("left in the trash: %s", dumpsterdive);
     free(dumpsterdive);
-    free(input);
+
 	return EXIT_SUCCESS;
 }
