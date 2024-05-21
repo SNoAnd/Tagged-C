@@ -15,13 +15,6 @@
 #define MAX_TOKEN_SIZE 20
 
 /**
- * Simulate a service that gets a secret from a vault, api, etc
- * 
- * return length of key, 0 if key could not be retreived 
- * 
- * 
-*/
-/**
  * TaggedC does not have strlen. 
  * NB: strlen does not include the \0 terminator
 */
@@ -35,16 +28,28 @@ int strlen(char *p) {
 }
 
 /**
- * TaggedC doesn't have strcpy. 
+ * fgets is mangling tags, but we think getchar will preserve that 
+ *  fgets adds the \0 at n-1 th spot 
+ * NB: fgets returns an s techically, though most users never check it 
+ * NB: taggedc only supports stdin, not all streams
 */
-char* strcpy(char* destination, const char* source) {
-    int src_len = strlen(source);
-    for (int i = 0; i<src_len;i++ ) {
-        destination[i] = source[i];
-    }
-    return destination;
+void faux_fgets(char* s, int n, FILE* stream) {
+    int read = 0;
+    char c;
+    do { 
+        c = getchar();
+        s[read] = c;
+        read++; 
+    } while (c != '\n' && c != EOF && (read < n));
+    //write over newline from io if shorter than buffer
+    if (read < n) { s[read-1] = '\0'; } 
+    else          { s[n-1] = '\0'; }
 }
 
+/**
+ * Simulate a service that gets a secret from a vault, api, etc
+ * return length of key, 0 if key could not be retreived 
+*/
 int get_secret_from_vault(char* destination) {
     // https://codelabs.cs.pdx.edu/labs/W7.1_cloud_setup/index.html?index=..%2F..cs495#1
     char* source = "bUbcM250Ej3OS";
@@ -55,6 +60,7 @@ int get_secret_from_vault(char* destination) {
     }
     return i;
 }
+
 int main() {
     // get & use token normally
     char* token = (char*) malloc(MAX_TOKEN_SIZE * sizeof(char));

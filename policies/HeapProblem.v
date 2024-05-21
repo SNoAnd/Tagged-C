@@ -431,7 +431,7 @@ Module HeapProblem <: Policy.
   (* @TODO cleanup. condense cases *)
   Definition UnopT (l:loc) (op : unary_operation) (pct: control_tag) (vt : val_tag)
   : PolicyResult (control_tag * val_tag) := 
-    log ("UnOpt called vt= " ++ (print_vt vt));;
+    (*log ("UnOpt called vt= " ++ (print_vt vt));;*)
     match op with
       | Onotbool (* boolean negation ([!] in C) *)
           (* used sometimes to convert pointer into a bool 

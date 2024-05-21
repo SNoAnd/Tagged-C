@@ -234,7 +234,7 @@ if __name__ == '__main__':
                        nofault_cleanexit)
     runACFileWithInput("heapproblem_overread_getchar_1_fault.c",
                        heapproblem, "PIPE0000000",
-                       b'HeapProblem|| Heap Overread| LoadT tried to read unallocated heap memory at  src location heapproblem_overread_getchar_1_fault.c:63')
+                       b'HeapProblem|| Heap Overread| LoadT tried to read unallocated heap memory at  src location heapproblem_overread_getchar_1_fault.c:67')
     runACFileWithInput("heapproblem_overread_getchar_3_faults.c",
                        heapproblem, "hellohihowareyou",
                        nofault_cleanexit)
@@ -280,8 +280,9 @@ if __name__ == '__main__':
                        heapproblem, "000E000000",
                        b'HeapProblem|| Heap Overwrite| StoreT tried to write over heap padding belonging to  heapproblem_overwrite_4_faults.c:111 at heapproblem_overwrite_4_faults.c:64')
     # dumpster diving for leftover secrets in the heap
+    # these are currently very messy in terms of logging output
     runACFileWithoutInput("heapproblem_leftoversecret_basic.c", heapproblem,
-                          b'TODO')
+                          b'HeapProblem|| Potential secret disclosure| Allocated memory was read before writing. Belonging to heapproblem_leftoversecret_basic.c:75 at heapproblem_leftoversecret_basic.c:77\nbUbcM250Ej3OS')
 
     # Mixed Heap Corruption 
     runACFileWithInput("heapproblem_multi_faults.c",

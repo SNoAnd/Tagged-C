@@ -50,6 +50,10 @@ int main() {
   faux_fgets(input, MAX_SIZE, stdin);
   //printf(input);
   int input_len = strlen(input); // does not inlcude the \0
+  if (input_len < 4) {
+    printf("too short \n");
+    return EXIT_SUCCESS;
+  }
   // PIPE
   if((char) input[0] == 'P') {
     if((char) input[1] == 'I') {
