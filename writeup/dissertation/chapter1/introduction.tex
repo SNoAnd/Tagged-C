@@ -59,7 +59,7 @@ are protected from subversion by application code.
 
 However, PIPE also exemplifies the challenges in the definition, specification, and
 verification of tag policies. Tag policies are challenging to write due to their very
-flexibility, and because they must currently be written with deep knowledge of the assembly
+flexibility and because they must currently be written with deep knowledge of the assembly
 program to which they are attached.
 
 Since subtle errors might enable a policy to be compromised,
@@ -76,6 +76,7 @@ in a policy when proof is infeasible.
 These are the challenges that this dissertation will address, both by 
 providing new specifications, policies, and proofs, and by making the three tasks
 easier with a powerful new source language, Tagged C.
+
 In the next section we will walk through two example policies implemented in a PIPE-style
 system to understand how they are written, why doing so is challenging,
 and why a tag-aware source language is a big step forward.
@@ -140,7 +141,7 @@ also protecting deallocated data from future accesses. But in the interest of si
 this example only offered spatial safety. If it were meant to be more than an illustrative
 example, spatial stack safety should be formally defined so that the policy can be shown
 to enforce it. Then it will be up to the user whether that level of security is sufficient.
-A more realistic policy might not sacrifice protection for simplicity, but might due to
+A more realistic policy might not sacrifice protection for simplicity, but it still might due to
 performance constraints, as we will later see in a stack safety policy from the
 literature \cite{RoesslerD18}.
 
@@ -358,7 +359,7 @@ As for validation, it is hard to prove properties of assembly code, even for ISA
 have formalizations. Many features of the source language are lost in assembly, such as 
 structured control flow, function arguments and returns, and type information.
 In the case of IFC, it matters that the code in question is a compiled {\tt if} statement
-rather than a hand-written assembly branch. A {\tt bne} instruction is not guaranteed to
+rather than a hand-written assembly branch, because a {\tt bne} instruction is not guaranteed to
 reach any future instruction the way the {\tt if} statment is.
 Proofs about assembly programs are also non-portable across architectures and compilers.
 
@@ -366,8 +367,8 @@ Proofs about assembly programs are also non-portable across architectures and co
 
 As these examples illustrate, much of the complexity of hardware tagging lies in ad hoc,
 non-portable assembly modifications and bookkeeping, which also contribute to challenges in
-specification and validation. The natural solution is to, wherever possible, lift
-tags to the level of a source language. In this dissertation that source language is C,
+specification and validation. The natural solution is to lift
+tags to the level of a source language wherever possible. In this dissertation that source language is C,
 and the instrumented variant is Tagged C. Figure \ref{fig:language}
 sketches an outline of an ideal such system. The source language (blue) has semantics that are
 parameterized by a policy definition. Tagged C works by annotating the
