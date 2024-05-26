@@ -4,24 +4,32 @@
  * @brief Demonstrate three different conditional left over secrets risk
  * @note
  * "heap leak" can mean just about any problem with the heap. There are at least 5:
- *      (1) heap buffer overwrite (RCE)
- *      (2) heap buffer overread (heartbleed)
- *      (3) heap address leak (defeat ASLR in an exploit chain)
  *      (4) heap secret recovery from improper clean up (steal keys that were correctly
  *              freed but not zeroed out)
- *      (5) heap resource exhaustion/resource leak through memory (OOM )
- * 
- *      (1)(2)(5) are things that SOTA fuzzers can reasonably detect when augmented with 
- *          sanitizers like ASAN. 
- *      However they cannot usually tell (1) and (2) apart from each other or other segfaulting
- *          conditions. 
- *      (5) can sometimes be detected by other means. find_or_create_page() returns null,
- *          linux exit code 137(), etc. 
  */
 
 #include <stdlib.h> 
 #include <stdio.h>
 #define MAX_SIZE 80
+
+/**
+ * fgets is mangling tags, but we think getchar will preserve that 
+ *  fgets adds the \0 at n-1 th spot 
+ * NB: fgets returns an s techically, though most users never check it 
+ * NB: taggedc only supports stdin, not all streams
+*/
+void faux_fgets(char* s, int n, FILE* stream) {
+    int read = 0;
+    char c;
+    do { 
+        c = getchar();
+        s[read] = c;
+        read++; 
+    } while (c != '\n' && c != EOF && (read < n));
+    //write over newline from io if shorter than buffer
+    if (read < n) { s[read-1] = '\0'; } 
+    else          { s[n-1] = '\0'; }
+}
 
 int main() {
     char* input = (char*) malloc(MAX_SIZE * sizeof(char));

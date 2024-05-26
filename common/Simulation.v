@@ -283,7 +283,7 @@ Module ProgEquiv (Ptr1: Pointer) (Pol1: Policy) (Reg1: Region Ptr1)
           Sem1.Csyntax.Cop.bool_val v1 ty m1 =
             Sem2.Csyntax.Cop.bool_val v2 ty m2.
     Proof.
-      intros. apply H in H0. cbv.
+      intros. apply H in H0. 
       inv H0; destruct ty; auto.
       all: try destruct i; auto.
       all: try destruct f; auto.

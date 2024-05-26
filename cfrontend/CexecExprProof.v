@@ -419,17 +419,17 @@ Module ExprProof (Pol: Policy).
             exists b, bool_val v1 ty1 m = Some b
         | Econdition (Eval (v1,vt1) ty1) r1 r2 ty =>
             exists b, bool_val v1 ty1 m = Some b
-        | Eassign (Eloc (Lmem ofs pt bf) ty1) (Eval (v2,vt2) ty2) ty =>
+        | Eassign (Eloc (Lmem p pt bf) ty1) (Eval (v2,vt2) ty2) ty =>
             exists v2' t w' res,
             ty = ty1 /\ sem_cast v2 ty2 ty1 tt = Some v2' /\
-              deref_loc ge ty1 m ofs pt bf t res /\ possible_trace w t w' /\
+              deref_loc ge ty1 m p pt bf t res /\ possible_trace w t w' /\
               forall v1 vts lts ps1,
                 res ps = (Success (v1, vts, lts), ps1) ->
                 forall pct'' vt' lts' ps2,
                   ('(pct',vt2') <- AssignT lc pct (EffectiveT lc vts) vt2;;
-                   StoreT lc pct' pt vt2' lts) ps1 = (Success (pct'', vt', lts'), ps2) ->
+                   StoreT lc pct' pt vt2' (concretize p) lts) ps1 = (Success (pct'', vt', lts'), ps2) ->
                   exists t' w'' res',
-                    assign_loc ge ce ty1 m ofs pt lts' bf (v2',vt') t' res' /\ possible_trace w' t' w''
+                    assign_loc ge ce ty1 m p pt lts' bf (v2',vt') t' res' /\ possible_trace w' t' w''
         | Eassign (Eloc (Ltmp b) ty1) (Eval (v2,vt2) ty2) ty =>
             exists v1 v2' vt1,
             ty = ty1 /\ te!b = Some (v1,vt1) /\ sem_cast v2 ty2 ty1 tt = Some v2'
@@ -518,12 +518,13 @@ Module ExprProof (Pol: Policy).
           possible_trace w t w' ->
           invert_expr_prop lc r ps pct te m.
       Proof.
-        induction 1; intros; red; repeat doinv; auto; repeat (repeat chomp; try contradiction; eexists; eauto; intros).
+        induction 1; intros; red; repeat doinv; auto;
+          repeat (repeat chomp; try contradiction; eexists; eauto; intros).
         - destruct ty1; destruct ty; try congruence; repeat (eexists; eauto; try contradiction).  
         - destruct ty1; destruct ty; try congruence; repeat (eexists; eauto; try contradiction).  
         - destruct ty1; try congruence; repeat (eexists; eauto; try contradiction).  
         - destruct ty; try congruence; repeat (eexists; eauto; try contradiction).  
-        - destruct ty1; destruct ty; try congruence; repeat (eexists; eauto; try contradiction).  
+        - destruct ty1; destruct ty; try congruence; repeat (eexists; eauto; try contradiction). 
       Qed.
     
       Lemma rfailred_invert:
@@ -1222,7 +1223,7 @@ Module ExprProof (Pol: Policy).
               repeat dodestr; repeat tag_destr; repeat doinv; subst; try solve_red...
               destruct (p4 ps) eqn:?; destruct r; subst; simpl. 
               unfold bind_res. repeat dodestr; repeat doinv; simpl.
-              * destruct (StoreT lc c pt v3 l (p2,l1)) eqn:?;
+              * destruct (StoreT lc c pt v3 (concretize p1) l (p2,l1)) eqn:?;
                          destruct r; subst; simpl; repeat dodestr; repeat doinv; try solve_red;
                   repeat cronch.
                 -- destruct (p7 (p0,l4)) eqn:?; destruct r; subst; simpl;

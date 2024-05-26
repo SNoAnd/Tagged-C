@@ -309,7 +309,7 @@ let cmdline_actions =
                 else (if arg = "null"
                 then (runner := WithNullF.run_i_file; initter := WithNullF.init_with)
                 else (if arg = "nullc"
-                then (runner := WithNullA.run_i_file; initter := WithNullA.init_with)
+                then (runner := WithNullC.run_i_file; initter := WithNullC.init_with)
                 else error no_loc "Unknown policy `%s'" arg))))))
   ]
 (* Optimization options *)

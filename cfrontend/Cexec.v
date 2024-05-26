@@ -617,7 +617,7 @@ Section EXPRS.
         | Some (Lmem p pt1 bf, ty1), Some(v2, vt2, ty2) =>
             top <<=
                 check type_eq ty1 ty;
-                let! (w', tr, res) <- do_deref_loc w ty m (concretize p) pt1 bf;
+                let! (w', tr, res) <- do_deref_loc w ty m p pt1 bf;
                 try (v1,vts,lts), ps' <- res ps;
                 catch "failred_assignop_mem0", tr;
                 let res' :=

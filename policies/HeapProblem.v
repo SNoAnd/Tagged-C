@@ -295,10 +295,11 @@ Module HeapProblem <: Policy.
     | AllocatedPadding owner_l _ => 
         raise (PolicyFailure (rw_err_msg "HeapProblem|| Heap Overread| LoadT read past the end into padding belonging to " owner_l load_l))
     | AllocatedDirty alloc_l alloc_c =>
-      (*Dumpster diving: sometimes you find secrets, sometimes its all trash
+      (* Dumpster diving: sometimes you find secrets, sometimes its all trash
         Should not read memory you haven't written, but it's not always dangerous.
         Continue, but report it and ask the fuzzer to figure out if it had anything valuable*)
         log (rw_err_msg "HeapProblem|| Potential secret disclosure| Allocated memory was read before writing. Belonging to" alloc_l load_l);;
+        (* driver/HeapProblemHelper.ml *)
         recover load_l (Some addr) "HeapProblem|| Potential secret disclosure|memory contains| ";;
         (* if the color & the locations match, keep going*)
         if (Z.eqb ptr_color alloc_c) && (Cabs.loc_eqb alloc_l ptr_l)
@@ -430,7 +431,7 @@ Module HeapProblem <: Policy.
   (* @TODO cleanup. condense cases *)
   Definition UnopT (l:loc) (op : unary_operation) (pct: control_tag) (vt : val_tag)
   : PolicyResult (control_tag * val_tag) := 
-    log ("UnOpt called vt= " ++ (print_vt vt));;
+    (*log ("UnOpt called vt= " ++ (print_vt vt));;*)
     match op with
       | Onotbool (* boolean negation ([!] in C) *)
           (* used sometimes to convert pointer into a bool 
