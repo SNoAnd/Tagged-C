@@ -1,19 +1,7 @@
-\documentclass{report}
-
-\usepackage{geometry}
-\usepackage{verbatim}
-\usepackage[table]{xcolor}
-\usepackage{subcaption}
-\usepackage{graphicx}
-
-\begin{document}
-
-\chapter{Introduction}
-
-The computing infrastructure that underpins today's world is insecure. Code written
+The computing infrastructure that underpins the world is insecure. Code written
 in unsafe languages (e.g., C) may hide any number of programming bugs that go uncaught
 until they are exploited in the wild, especially memory errors. Safe or not, any code
-might contain logic errors (SQL injection, input-sanitization flaws, etc.) that subvert
+might contain logic errors (SQL injection, input-sanitization flaws, etc.), that subvert
 its security requirements.
 
 Although static analyses can detect and mitigate many insecurities, an important line of
@@ -42,7 +30,8 @@ Notable policies that can be implemented in this way include:
   but also non-code entities such as users) and explicitly restricts their access to resources
 \end{itemize}
 
-Tag-based policies include a number of important security concepts, and are well-suited to
+The class of tag-based policies includes a number of important security concepts, with implementations
+that are well suited to
 efficient hardware enforcement. As an exemplar of hardware tag monitors, we take the 
 PIPE\footnote{ Variants of PIPE have
 been called PUMP~\cite{Dhawan+15} or SDMP~\cite{RoesslerD18} and marketed commercially
@@ -50,7 +39,7 @@ under the names Dover CoreGuard and Draper Inherently Secure Processor.}
 (Processor Interlocks for Policy Enforcement) ISA extension \cite{Azevedo+16,Azevedo+15}.
 
 PIPE is a programmable hardware mechanism that associates large (word-sized) metadata tags
-with every word of memory and register. At each step of execution, while the ALU processes
+with every word of memory and every register. At each step of execution, while the ALU processes
 the operands of the current instruction, the tags associated with those operands are processed
 by a module called the ``tag management unit'' (TMU).
 The TMU, implemented in hardware as a cache or lookup table into a set of software-defined rules,
@@ -73,7 +62,7 @@ are written, why doing so is challenging, and what might be done about it.
 
 \section{Tag Policies By Example}
 
-This section is comprised of two example policies: a simplified ``spatial'' stack safety
+This section shows two example policies: a simplified ``spatial'' stack safety
 policy, and an information flow control policy. The goal is not to introduce these policies
 on a deep techical level, but to give an intuition for how they might be attached to an assembly
 program and why this is a complex process.
@@ -89,22 +78,22 @@ tags.
 
 \paragraph{Example: Spatial Stack Safety}
 
-For example, Figure \ref{ex:call} shows how a single function header must be updated to
+For example, Figure \ref{ch1:ex:call} shows how a single function header must be updated to
 support a (simplified) spatial stack safety policy. The purpose of this policy is to prevent
 loads and stores to stack frames other than that of the active function.
 The policy is conceptually simple:
 each location in a stack frame is identified by the depth of the frame, and the stack pointer
 is tagged with the depth of the current function.  Loads and stores of stack
-addresses must use a pointer that matches that of the location, i.e. the current stack pointer
+addresses must use a pointer that matches that of the location, i.e., the current stack pointer
 or a pointer derived from it. For simplicity, this version does not attempt to protect deallocated
 frames (which may share the depth of the active frame), so it only offers spatial and not temporal
 protection.
 
-Figure \ref{ex:call1} shows a typical header sequence in assembly for a function whose frame
+Figure \ref{ch1:ex:call1} shows a typical header sequence in assembly for a function whose frame
 (including saved return address) is sixteen bytes. It simply allocates those bytes by decreasing
 the stack pointer, then stores the return address to the stack. Later it will attempt to store data
-elsewhere in the frame, then load it. Figure \ref{ex:call2} gives a sense of how
-this code might be instrumented with tags, and Figure \ref{ex:call3} describes some of
+elsewhere in the frame, then load it. Figure \ref{ch1:ex:call2} gives a sense of how
+this code might be instrumented with tags, and Figure \ref{ch1:ex:call3} describes some of
 the rules that act on these tags. The header sequence is given special tags to enforce
 that it runs from beginning to end and only following a call, and instructions are added
 to initialize tags on the stack frame.
@@ -126,7 +115,7 @@ this example only offered spatial safety, while stack safety is more commonly th
 a temporal dimension. If it were meant to be more than an illustrative example, spatial stack safety
 should be formally defined so that the policy can be shown to enforce it. Then it will be up to the user
 whether that level of security is sufficient. In a more realistic setting the policies would not
-sacrifice protection for simplicity, but might due to performance constraints.
+sacrifice protection for simplicity, but it still might due to performance constraints.
 
 Once defined and specified, a policy needs to be validated, either by testing or formal verification.
 Verification is preferable, as proofs rule out the possibility of bugs too subtle to show up in testing.
@@ -146,7 +135,7 @@ adding one more tool to the developer's security kit.
       64: {\tt load r0 (sp+8)} & Load from stack in body \\
     \end{tabular}
     \caption{Initial generated code}
-    \label{ex:call1}
+    \label{ch1:ex:call1}
   \end{subfigure}
   \begin{subfigure}[t]{0.45\textwidth}
     \vspace{0em}
@@ -161,7 +150,7 @@ adding one more tool to the developer's security kit.
       80: {\tt load r0 (sp+8)} & @ {\sc Normal} \\
     \end{tabular}
     \caption{Code tagged and expanded for policy}
-    \label{ex:call2}
+    \label{ch1:ex:call2}
   \end{subfigure}
 
   \vspace{\belowdisplayskip}
@@ -234,24 +223,24 @@ adding one more tool to the developer's security kit.
       \hline
     \end{tabular}
     \caption{Associated policy rules}
-    \label{ex:call3}
+    \label{ch1:ex:call3}
   \end{subfigure}
 
   \caption{Example: Adding Stack Safety policy at call}
-  \label{ex:call}
+  \label{ch1:ex:call}
 \end{figure}
 
 \paragraph{Example: IFC}
 
-The example in Figure \ref{ex:if} illustrates another scenario that requires the assembly to be
+The example in Figure \ref{ch1:ex:if} illustrates another scenario that requires the assembly to be
 rewritten. An important class of ``information flow control'' (IFC) policies needs to keep track
-of when execution is in a state that depends on a secret value. In the source snippet in \ref{ex:if0},
+of when execution is in a state that depends on a secret value. In the source snippet in \ref{ch1:ex:if0},
 the choice of whether execution reaches line 3 depends on the value of {\tt x},
 but it will always reach line 5 regardless of {\tt x}.
 
 Policies typically track contextual information about the current control flow via the tag on
 the program counter. In this case, the program counter needs to be updated inside of the {\tt if}
-block and then restored to its old value once it leaves. In the expanded code in Figure \ref{ex:if2},
+block and then restored to its old value once it leaves. In the expanded code in Figure \ref{ch1:ex:if2},
 the subtraction instruction at 16 saves a zero tagged with the program counter's tag to {\tt r2}.
 Then, at the join point at 40, the jump instruction has no effect except that it enables the policy
 to restore the tag on {\tt r2} to the program counter.
@@ -276,7 +265,7 @@ to focus on the rules that are relevant to the policy at hand.
     }
 
     \caption{Source program}
-    \label{ex:if0}
+    \label{ch1:ex:if0}
   \end{subfigure}
   \begin{subfigure}[t]{0.42\textwidth}
     \vspace{0em}
@@ -288,7 +277,7 @@ to focus on the rules that are relevant to the policy at hand.
       32: \dots & \\
     \end{tabular}
     \caption{Initial generated code}
-    \label{ex:if1}
+    \label{ch1:ex:if1}
   \end{subfigure}
   \begin{subfigure}[t]{0.4\textwidth}
      \vspace{0em}
@@ -301,11 +290,11 @@ to focus on the rules that are relevant to the policy at hand.
       40: {\tt jmp r2} & @ {\sc Join} \\ % make this a mov or whatever
     \end{tabular}
     \caption{Code tagged and expanded for policy}
-    \label{ex:if2}
+    \label{ch1:ex:if2}
   \end{subfigure}
 
   \caption{Example: Adding IFC policy at if statement}
-  \label{ex:if}
+  \label{ch1:ex:if}
 \end{figure}
 
 Moving the task of policy definition to the source level has benefits to specification and validation of
@@ -323,7 +312,7 @@ would just be present implicitly in a source program.
 
 As for validation, it is hard to prove properties of assembly code.
 Just as some policies cannot be easily specified at the source level, some policies cannot be easily
-proven correct at that level. In the case of the Figure \ref{ex:if} example, it matters that the code
+proven correct at that level. In the case of the Figure \ref{ch1:ex:if} example, it matters that the code
 in question is a compiled {\tt if} statement rather than a hand-written assembly branch. A {\tt bne}
 instruction is not guaranteed to reach any future instruction the way the {\tt if} statment is. An
 assembly-level proof that uses this fact would need to first prove this fact about the generated
@@ -334,7 +323,7 @@ Proofs about assembly programs are also non-portable across architectures and co
 
 Much of the complexity of hardware tagging lies in ad hoc, non-portable assembly modifications,
 bookkeeping, specification and validation. The natural solution is to, whereever possible, lift
-tags to the level of a source language. In this dissertation that language is C. Figure \ref{fig:language}
+tags to the level of a source language. In this dissertation that language is C. Figure \ref{ch1:fig:language}
 sketches a model of such a system: a source language (blue) has semantics that are parameterized
 by a policy definition, and compiles to assembly code (red). The compiler should be proven to not only
 produce correct code, but to preserve the behavior of any source policy. To assist that preservation
@@ -360,11 +349,11 @@ stack safety, and the specification and verification of a source-level compartme
 policy. The Tagged C compiler is out of scope, as is any work with real hardware.
 
 \begin{figure}
-  \includegraphics[width=\textwidth]{Structure.png}
+  \includegraphics[width=\textwidth]{chapter1/Structure.png}
   \caption{Tagging with Source Language}
-  \label{fig:language}
+  \label{ch1:fig:language}
 \end{figure}
-
+        
 \section{Overview}
 
 This dissertation is divided into three main parts. The first proposes a new formal characterization
@@ -388,7 +377,7 @@ Tagged C allows policies to be defined at the source level via a fixed interface
 that never requires rewriting code. Where assembly instructions can serve different roles and must
 be distinguished for tag purposes, each Tagged C control point serves one clear role. The policy
 designer needs little knowledge of how the control points might be compiled, and need not
-deal with portions of a policy that would be colored red in Figure \ref{ex:call}.
+deal with portions of a policy that would be colored red in Figure \ref{ch1:ex:call}.
 
 The current iteration of Tagged C is implemented as an interpreter, based on that of
 CompCert C \cite{Leroy09:CompCert}. This is sufficient to test small programs. Ultimately
@@ -487,22 +476,3 @@ abstract model. The detailed contributions are:
 \end{itemize}
 
 This work is not yet submitted for publication.
-
-\chapter{Tags and Monitors}
-\label{ch:background}
-
-\chapter{Formalizing Stack Safety as a Security Policy}
-\label{ch:stacksafety}
-
-\chapter{Flexible Runtime Security Enforcement with Tagged C}
-\label{ch:taggedc}
-
-\chapter{Formalizing Compartmentalization as an Abstract Machine}
-\label{ch:compartments}
-
-\chapter{Conclusion}
-
-\bibliographystyle{acm}
-\bibliography{taggedc.bib}
-
-\end{document}

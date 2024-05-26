@@ -1,5 +1,8 @@
 all:
-	pdflatex introduction.tex
-	bibtex introduction
-	pdflatex introduction.tex
-	pdflatex introduction.tex
+	pdflatex dissertation.tex
+	bibtex dissertation
+	pdflatex dissertation.tex
+	pdflatex dissertation.tex
+
+clean:
+	rm *.aux *.bbl *.blg *.log *.out
