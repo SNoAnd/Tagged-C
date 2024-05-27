@@ -381,14 +381,14 @@ The source language might compile to tag-aware assembly code (red), be executed 
 interpreter (top green), or be compiled into instrumented code as part of a more
 complex toolchain. A compiler should be proven to not only
 produce correct code, but to preserve the behavior of any source policy. To assist that preservation
-proof it will also need to enforce a "baseline policy" that ensures that the abstactions of the
-source language. Other assembly-level policies might be attached as well: not all policies make sense
-to apply at the source level, e.g. stack safety, and such policies might also be applied to
-arbitrary assembly programs that do not come from the tag-aware compiler.
-An interpreter should also be proven sound and complete with respect to the source semantics.
+proof, the compiler will also need to enforce a ``baseline policy'' that ensures that protects the
+abstractions of the source language, especially control flow. Other assembly-level policies might be
+attached as well: not all policies make sense to apply at the source level, e.g., stack safety, and
+such policies might also be applied to arbitrary assembly programs that do not come from the tag-aware
+compiler. An interpreter should also be proven sound and complete with respect to the source semantics.
 
 Green boxes represent important technical components of this system. The interpreter enables
-actual running of programs, and is the most portable means of doing so, not reliant on actual
+actual running of programs portably, not being reliant on actual
 tagged hardware or even on a compiler backend for the target architecture.
 Any given policy needs both a specification and to be validated against that specification,
 ideally with a source-level proof or, at the assembly-level, with proof or testing.
