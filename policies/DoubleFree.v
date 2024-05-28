@@ -42,8 +42,8 @@ Open Scope monad_scope.
 Module DoubleFree <: Policy.
  Import Passthrough.
   
+ (* This policy only uses loc_tags *)
  Inductive myTag :=
- (* tt, the unit functions as "we dont care" *)
  | NotHeap (* stack, globals, etc. Not in heap and should not be touched*)
  | Unallocated (* Unallocated heap *)
  | FreedHeader(l:loc) (* new tag carrying the free site unique id *)
