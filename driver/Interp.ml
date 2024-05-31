@@ -242,7 +242,7 @@ let print_state p (prog, ge, s) =
 
 (* Comparing continuations *)
 
-(*let some_expr = Csyntax.Eval((Vint Int.zero, Pol.def_tag), Tvoid)
+(*let some_expr = Csyntax.Eval((Vint Int.zero, Pol.coq_TempT), Tvoid)
 
 let rank_cont = function
   | Csem.Kstop -> 0
@@ -506,7 +506,7 @@ let store_string m ofs buff size =
   let rec store m i = 
     if i < size then (* use default value and location tags for now; this is probably bogus *)
       (match M.store Mint8unsigned m  (Z.add ofs (Z.of_sint i))
-          (Vint (Z.of_uint (Char.code (Bytes.get buff i))),Pol.def_tag) [Pol.coq_DefLT] (Pol.init_state,[]) with
+          (Vint (Z.of_uint (Char.code (Bytes.get buff i))),Pol.coq_TempT) [Pol.coq_DefLT] (Pol.init_state,[]) with
       | (Success m', _) -> store m' (i+1)
       | _ -> None)
     else Some m in
@@ -543,7 +543,7 @@ let do_fgets_aux size =
 let do_fgets m ofs pt size =
   match do_fgets_aux (Z.to_int size) with
     None ->
-      Some ((Vptr (Camlcoq.coqint_of_camlint64 0L),Pol.def_tag), m)
+      Some ((Vptr (Camlcoq.coqint_of_camlint64 0L),Pol.coq_TempT), m)
   | Some (buff,count) ->
       store_string m ofs buff count >>= fun m' ->
       Some ((Vptr ofs,pt), m')
@@ -583,7 +583,7 @@ let do_external_function lc id sg ge w args pct fpt m =
           | (Success fmt',ps'') ->
             Format.print_string fmt';
             flush stdout;
-            (Success(((Vint (Z.of_uint len), Pol.def_tag), pct), m), ps'')
+            (Success(((Vint (Z.of_uint len), Pol.coq_TempT), pct), m), ps'')
           | (Fail f, ps'') -> (Fail f, ps'')
           )
         | (Fail f, ps') -> (Fail f, ps')
@@ -598,7 +598,7 @@ let do_external_function lc id sg ge w args pct fpt m =
       Some((w,[Events.Event_syscall(id, eargs, eres)]),res)
   | "getchar", args' ->
       let c = input_char stdin in
-      let v = (Vint (Z.of_uint (Char.code c)),Pol.def_tag) in
+      let v = (Vint (Z.of_uint (Char.code c)),Pol.coq_TempT) in
       convert_external_arg ge (fst v) (proj_rettype sg.sig_res) >>= fun eres -> 
       let res = fun ps -> (Success((v,pct),m),ps) in 
       Some ((w,[Events.Event_syscall(id,[],eres)]),res)
@@ -836,7 +836,7 @@ let change_main_function p new_main_fn =
 
 let call_main3_function main_id main_ty =
   let main_var = Csyntax.Evalof(Csyntax.Evar(main_id, main_ty), main_ty) in
-  let arg1 = Csyntax.Eval((Vint(coqint_of_camlint 0l), Pol.def_tag), type_int32s) in
+  let arg1 = Csyntax.Eval((Vint(coqint_of_camlint 0l), Pol.coq_TempT), type_int32s) in
   let arg2 = arg1 in
   let body =
     Csyntax.Sreturn(Some(Csyntax.Ecall(main_var, Csyntax.Econs(arg1, Csyntax.Econs(arg2, Csyntax.Enil)), type_int32s)), Cabs.no_loc)
@@ -848,7 +848,7 @@ let call_other_main_function main_id main_ty main_ty_res =
   let main_var = Csyntax.Evalof(Csyntax.Evar(main_id, main_ty), main_ty) in
   let body =
     Csyntax.Ssequence(Csyntax.Sdo(Csyntax.Ecall(main_var, Csyntax.Enil, main_ty_res), Cabs.no_loc),
-              Csyntax.Sreturn(Some(Csyntax.Eval((Vint(coqint_of_camlint 0l),Pol.def_tag), type_int32s)), Cabs.no_loc)) in
+              Csyntax.Sreturn(Some(Csyntax.Eval((Vint(coqint_of_camlint 0l),Pol.coq_TempT), type_int32s)), Cabs.no_loc)) in
   { Csyntax.fn_return = type_int32s; Csyntax.fn_callconv = cc_default;
     Csyntax.fn_params = []; Csyntax.fn_vars = []; Csyntax.fn_body = body }
 

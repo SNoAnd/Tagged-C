@@ -219,7 +219,7 @@ Module HeapProblem <: Policy.
   Local Open Scope string_scope.
 
   (* starting values of various things *)
-  Definition def_tag := N. (* value *)
+  Definition TempT := N. (* value *)
   Definition InitPCT : control_tag := PC_Extra 0. (* dynamic colors start at 0 *)
   Definition DefLT   : loc_tag := NotHeap. (* stack et al. is NotHeap at start and should remain that way*)
   Definition DefHT   : loc_tag := UnallocatedHeap. (* the whole heap is unallocated at start. *)
@@ -725,8 +725,8 @@ Module HeapProblem <: Policy.
       These are required, but cannot "passthrough" because they don't get tags to pass along.
       Originally, these were tt (hence the name), so use the default for that tag type*)
  
-  (* Constants are never pointers to malloced memory. *)
-  Definition ConstT (l:loc) (pct : control_tag) : PolicyResult val_tag := ret N.
+  (* Literals are never pointers to malloced memory. *)
+  Definition LiteralT (l:loc) (pct : control_tag) : PolicyResult val_tag := ret N.
 
   (* NB this is for stack allocated variables. Not relevant to dynamic memory. Tag as "Not Heap" *)
   Definition DeallocT (l:loc) (ce : composite_env) (pct : control_tag) (ty : type) :
@@ -749,7 +749,7 @@ Module HeapProblem <: Policy.
   Definition RetT := Passthrough.RetT policy_state val_tag control_tag.
   Definition AccessT := Passthrough.AccessT policy_state val_tag control_tag.
   Definition AssignT := Passthrough.AssignT policy_state val_tag control_tag.
-  Definition EffectiveT := Passthrough.EffectiveT val_tag def_tag.
+  Definition EffectiveT := Passthrough.EffectiveT val_tag TempT.
   Definition CoalesceT := Passthrough.CoalesceT policy_state val_tag vt_eq_dec.
   Definition SplitT := Passthrough.SplitT policy_state val_tag control_tag.
   Definition LabelT := Passthrough.LabelT policy_state control_tag.
@@ -757,10 +757,7 @@ Module HeapProblem <: Policy.
   Definition ExprJoinT := Passthrough.ExprJoinT policy_state val_tag control_tag.
   Definition FieldT := Passthrough.FieldT policy_state val_tag control_tag. 
   Definition ExtCallT   := Passthrough.ExtCallT policy_state val_tag control_tag.
-
-  Definition PICastT := Passthrough.PICastT policy_state val_tag control_tag loc_tag.
-  Definition IPCastT := Passthrough.IPCastT policy_state val_tag control_tag loc_tag.
-  Definition PPCastT := Passthrough.PPCastT policy_state val_tag control_tag loc_tag.
-  Definition IICastT := Passthrough.IICastT policy_state val_tag control_tag.
+  Definition CastToPtrT := Passthrough.CastToPtrT policy_state val_tag control_tag loc_tag.
+  Definition CastOtherT := Passthrough.CastOtherT policy_state val_tag control_tag.
 
 End HeapProblem.

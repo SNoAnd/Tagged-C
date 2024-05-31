@@ -474,7 +474,7 @@ let make_builtin_va_arg env ty e =
         "__compcert_va_composite" ty e
   | _ ->
       unsupported "va_arg at this type";
-      Csyntax.Eval((Vint(coqint_of_camlint 0l), Pol.def_tag), type_int32s)
+      Csyntax.Eval((Vint(coqint_of_camlint 0l), Pol.coq_TempT), type_int32s)
 
 (** ** Translation functions *)
 
@@ -748,7 +748,7 @@ let check_volatile_bitfield env e =
   && List.mem AVolatile (Cutil.attributes_of_type env e.etyp) then
     warning Diagnostics.Unnamed "access to a volatile bit field, the 'volatile' qualifier is ignored"
 
-let ezero = Csyntax.Eval((Vint(coqint_of_camlint 0l), Pol.def_tag), type_int32s)
+let ezero = Csyntax.Eval((Vint(coqint_of_camlint 0l), Pol.coq_TempT), type_int32s)
 
 let ewrap = function
   | Errors.OK e -> e

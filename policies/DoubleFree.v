@@ -62,7 +62,7 @@ Module DoubleFree <: Policy.
  Theorem lt_eq_dec : forall (t1 t2:loc_tag), {t1 = t2} + {t1 <> t2}.
  Proof. repeat decide equality. apply eqdec_loc. Qed.
 
- Definition def_tag : val_tag := tt.
+ Definition TempT : val_tag := tt.
  (* nothing has a loc id *)
  Definition InitPCT : control_tag := tt.
  Definition DefLT   : loc_tag := NotHeap.
@@ -197,8 +197,8 @@ Definition recover (lc:Cabs.loc) (a: option int64) (s: string) : PolicyResult un
     In other words, they have to make tags out of thin air. *)
  (* Required for policy interface. Not relevant to this particular policy, pass values through *)
  
- (* Constants are never pointers to malloced memory. *)
- Definition ConstT (l:loc) (pct : control_tag) :
+ (* Literals are never pointers to malloced memory. *)
+ Definition LiteralT (l:loc) (pct : control_tag) :
    PolicyResult val_tag := ret tt.
 
  (* NB this is for stack allocated variables. Not relevant to dynamic memory *)
@@ -222,7 +222,7 @@ Definition recover (lc:Cabs.loc) (a: option int64) (s: string) : PolicyResult un
   Definition RetT       := Passthrough.RetT policy_state val_tag control_tag.
   Definition AccessT    := Passthrough.AccessT policy_state val_tag control_tag.
   Definition AssignT    := Passthrough.AssignT policy_state val_tag control_tag.
-  Definition EffectiveT := Passthrough.EffectiveT val_tag def_tag.
+  Definition EffectiveT := Passthrough.EffectiveT val_tag TempT.
   Definition CoalesceT  := Passthrough.CoalesceT policy_state val_tag vt_eq_dec.
   Definition LoadT      := Passthrough.LoadT policy_state val_tag control_tag loc_tag.
   Definition StoreT     := Passthrough.StoreT policy_state val_tag control_tag loc_tag.
@@ -234,8 +234,6 @@ Definition recover (lc:Cabs.loc) (a: option int64) (s: string) : PolicyResult un
   Definition ExprJoinT  := Passthrough.ExprJoinT policy_state val_tag control_tag.
   Definition FieldT     := Passthrough.FieldT policy_state val_tag control_tag.
   Definition ExtCallT   := Passthrough.ExtCallT policy_state val_tag control_tag.
-  Definition PICastT    := Passthrough.PICastT policy_state val_tag control_tag loc_tag.
-  Definition IPCastT    := Passthrough.IPCastT policy_state val_tag control_tag loc_tag.
-  Definition PPCastT    := Passthrough.PPCastT policy_state val_tag control_tag loc_tag.
-  Definition IICastT    := Passthrough.IICastT policy_state val_tag control_tag.
+  Definition CastToPtrT := Passthrough.CastToPtrT policy_state val_tag control_tag loc_tag.
+  Definition CastOtherT := Passthrough.CastOtherT policy_state val_tag control_tag.
 End DoubleFree.

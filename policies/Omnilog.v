@@ -30,7 +30,7 @@ Module Log (P:Policy) <: Policy.
   Theorem lt_eq_dec : forall (t1 t2:loc_tag), {t1 = t2} + {t1 <> t2}.
     Proof. unfold loc_tag. intros. repeat decide equality. apply P.lt_eq_dec. Qed.
 
-  Definition def_tag := P.def_tag.
+  Definition TempT := P.TempT.
   
   Definition InitPCT : control_tag := P.InitPCT.
  
@@ -123,10 +123,10 @@ Module Log (P:Policy) <: Policy.
     ") = (" ++ print_ct pct' ++ "," ++ print_vt vt' ++ ")");;
     ret (pct', vt'). 
 
-  Definition ConstT (l: loc) (pct: control_tag) :
+  Definition LiteralT (l: loc) (pct: control_tag) :
     PolicyResult val_tag := 
-    vt <- P.ConstT l pct;; 
-    log ("ConstT(" ++ print_ct pct ++ ") = " ++ print_vt vt);;
+    vt <- P.LiteralT l pct;; 
+    log ("LiteralT(" ++ print_ct pct ++ ") = " ++ print_vt vt);;
     ret vt.
 
   Definition SplitT (l: loc) (pct: control_tag) (vt: val_tag) (id: option ident) :
@@ -211,27 +211,16 @@ Module Log (P:Policy) <: Policy.
     log ("FieldT(" ++ print_ct pct ++ "," ++ print_vt vt ++ ") = " ++ print_vt vt');;
     ret vt'.
 
-  Definition PICastT (l: loc) (pct: control_tag) (pt: val_tag) (lts: option (list loc_tag)) (ty: type) :
+  Definition CastToPtrT (l: loc) (pct: control_tag) (pt: val_tag) (lts: option (list loc_tag)) (ty: type) :
     PolicyResult val_tag :=
-    vt' <- P.PICastT l pct pt lts ty;;
-    log ("PICastT(" ++ print_ct pct ++ "," ++ print_vt pt ++ ") = " ++ print_vt vt');;
+    vt' <- P.CastToPtrT l pct pt lts ty;;
+    log ("CastToPtrT(" ++ print_ct pct ++ "," ++ print_vt pt ++ ") = " ++ print_vt vt');;
     ret vt'.
           
-  Definition IPCastT (l: loc) (pct: control_tag) (vt: val_tag)  (lts: option (list loc_tag)) (ty: type) :
+  Definition CastOtherT (l: loc) (pct: control_tag) (vt: val_tag) (ty: type) :
     PolicyResult val_tag :=
-    vt' <- P.IPCastT l pct vt lts ty;;
-    log ("IPCastT(" ++ print_ct pct ++ "," ++ print_vt vt ++ ") = " ++ print_vt vt');;
-    ret vt'.
-
-  Definition PPCastT (l: loc) (pct: control_tag) (vt: val_tag)
-    (lts: option (list loc_tag)) (ty: type) : PolicyResult val_tag :=
-    vt' <- P.PPCastT l pct vt lts ty;;
-    log ("PPCastT(" ++ print_ct pct ++ "," ++ print_vt vt ++ ") = " ++ print_vt vt');;
-    ret vt'.
-
-  Definition IICastT (l: loc) (pct: control_tag) (vt: val_tag) (ty: type) : PolicyResult val_tag :=
-    vt' <- P.IICastT l pct vt ty;;
-    log ("IICastT(" ++ print_ct pct ++ "," ++ print_vt vt ++ ") = " ++ print_vt vt');;
+    vt' <- P.CastOtherT l pct vt ty;;
+    log ("CastOtherT(" ++ print_ct pct ++ "," ++ print_vt vt ++ ") = " ++ print_vt vt');;
     ret vt'.
 
 End Log.

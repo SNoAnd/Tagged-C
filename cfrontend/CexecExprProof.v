@@ -523,8 +523,6 @@ Module ExprProof (Pol: Policy).
         - destruct ty1; destruct ty; try congruence; repeat (eexists; eauto; try contradiction).  
         - destruct ty1; destruct ty; try congruence; repeat (eexists; eauto; try contradiction).  
         - destruct ty1; try congruence; repeat (eexists; eauto; try contradiction).  
-        - destruct ty; try congruence; repeat (eexists; eauto; try contradiction).  
-        - destruct ty1; destruct ty; try congruence; repeat (eexists; eauto; try contradiction). 
       Qed.
     
       Lemma rfailred_invert:
@@ -535,8 +533,6 @@ Module ExprProof (Pol: Policy).
         induction 1; intros; red; repeat doinv; auto;
           repeat (repeat chomp; try contradiction; eexists; intuition eauto).
         - destruct ty1; destruct ty; try congruence; repeat (eexists; eauto; try contradiction).
-        - destruct ty1; destruct ty; try congruence; repeat (eexists; eauto; try contradiction).
-        - destruct ty; try congruence; repeat (eexists; eauto; try contradiction).
         - destruct ty1; destruct ty; try congruence; repeat (eexists; eauto; try contradiction).
         - destruct ty1; try congruence; repeat (eexists; eauto; try contradiction).
       Qed.
@@ -950,18 +946,12 @@ Module ExprProof (Pol: Policy).
             solve_rred red_comma
         | [ |- reducts_ok _ _ _ _ _ _ _ (topred (Rred "red_paren" _ _ _ _ _ _)) ] =>
             solve_rred red_paren
-        | [ |- reducts_ok _ _ _ _ _ _ _ (topred (Rred "red_cast_int_int" _ _ _ _ _ _)) ] =>
-            solve_rred red_cast_int_int
-        | [ |- reducts_ok _ _ _ _ _ _ _ (topred (Rred "red_cast_ptr_int" _ _ _ _ _ _)) ] =>
-            repeat inv_deref_assign; solve_rred red_cast_ptr_int
-        | [ |- reducts_ok _ _ _ _ _ _ _ (topred (Rred "red_cast_int_ptr" _ _ _ _ _ _)) ] =>
-            repeat inv_deref_assign; solve_rred red_cast_int_ptr
-        | [ |- reducts_ok _ _ _ _ _ _ _ (topred (Rred "red_cast_int_nullptr" _ _ _ _ _ _)) ] =>
-            solve_rred red_cast_int_nullptr
-        | [ |- reducts_ok _ _ _ _ _ _ _ (topred (Rred "red_cast_ptr_ptr" _ _ _ _ _ _)) ] =>
-            repeat inv_deref_assign; solve_rred red_cast_ptr_ptr
-        | [ |- reducts_ok _ _ _ _ _ _ _ (topred (Rred "red_cast_ptr_nullptr" _ _ _ _ _ _)) ] =>
-            solve_rred red_cast_ptr_nullptr
+        | [ |- reducts_ok _ _ _ _ _ _ _ (topred (Rred "red_cast_int" _ _ _ _ _ _)) ] =>
+            solve_rred red_cast_int
+        | [ |- reducts_ok _ _ _ _ _ _ _ (topred (Rred "red_cast_ptr" _ _ _ _ _ _)) ] =>
+            repeat inv_deref_assign; solve_rred red_cast_ptr
+        | [ |- reducts_ok _ _ _ _ _ _ _ (topred (Rred "red_cast_nullptr" _ _ _ _ _ _)) ] =>
+            solve_rred red_cast_nullptr
                                                                    
         (* Rfailred *)
 
@@ -1009,18 +999,12 @@ Module ExprProof (Pol: Policy).
             solve_rred failred_postincr_tmp
         | [ |- reducts_ok _ _ _ _ _ _ _ (topred (Failstopred "failred_paren" _ _ _)) ] =>
             solve_rred failred_paren
-        | [ |- reducts_ok _ _ _ _ _ _ _ (topred (Failstopred "failred_cast_int_int" _ _ _)) ] =>
-            solve_rred failred_cast_int_int
-        | [ |- reducts_ok _ _ _ _ _ _ _ (topred (Failstopred "failred_cast_ptr_int" _ _ _)) ] =>
-            repeat inv_deref_assign; solve_rred failred_cast_ptr_int
-        | [ |- reducts_ok _ _ _ _ _ _ _ (topred (Failstopred "failred_cast_int_ptr" _ _ _)) ] =>
-            repeat inv_deref_assign; solve_rred failred_cast_int_ptr
-        | [ |- reducts_ok _ _ _ _ _ _ _ (topred (Failstopred "failred_cast_int_nullptr" _ _ _)) ] =>
-            solve_rred failred_cast_int_nullptr
-        | [ |- reducts_ok _ _ _ _ _ _ _ (topred (Failstopred "failred_cast_ptr_ptr" _ _ _)) ] =>
-            repeat inv_deref_assign; solve_rred failred_cast_ptr_ptr
-        | [ |- reducts_ok _ _ _ _ _ _ _ (topred (Failstopred "failred_cast_ptr_nullptr" _ _ _)) ] =>
-            solve_rred failred_cast_ptr_nullptr
+        | [ |- reducts_ok _ _ _ _ _ _ _ (topred (Failstopred "failred_cast_int" _ _ _)) ] =>
+            solve_rred failred_cast_int
+        | [ |- reducts_ok _ _ _ _ _ _ _ (topred (Failstopred "failred_cast_ptr" _ _ _)) ] =>
+            repeat inv_deref_assign; solve_rred failred_cast_ptr
+        | [ |- reducts_ok _ _ _ _ _ _ _ (topred (Failstopred "failred_cast_nullptr" _ _ _)) ] =>
+            solve_rred failred_cast_nullptr
         | [ |- reducts_ok _ _ _ _ _ _ _ (topred (Failstopred "red_call_internal_fail" _ _ _)) ] =>
             eapply topred_ok; split; [eapply red_call_internal_fail; eauto | solve_trace]
         | [ |- reducts_ok _ _ _ _ _ _ _ (topred (Failstopred "red_call_external_fail" _ _ _)) ] =>
@@ -1048,7 +1032,6 @@ Module ExprProof (Pol: Policy).
             let H := fresh "H" in
             intro H; inv H; unfold concretize in *; lia
         end.
-
       
       Lemma step_cast_sound_ptr_ptr:
         forall lc ps pct v vt ty ty1 attr attr1 te m,
@@ -1179,11 +1162,15 @@ Module ExprProof (Pol: Policy).
               try (apply wrong_kind_ok; simpl; congruence).
             + (* Eval *)
               split; intros. tauto. simpl; congruence.
-            + (* Evar *)
-              repeat dodestr; repeat doinv; subst; try solve_red...
-              destruct s; repeat dodestr; repeat doinv; subst; try solve_red...  
+            + (* Eloc *)
+              split; intros. tauto. simpl; congruence.
             + (* Econst *)
               repeat dodestr; repeat tag_destr; repeat doinv; subst; try solve_red...
+            + (* Evar *)
+              repeat dodestr; repeat doinv; subst; try solve_red...
+              destruct s; repeat dodestr; repeat doinv; subst; try solve_red...
+            + (* Ebuiltin *)
+              solve_red.
             + (* Efield *)
               repeat dodestr; repeat tag_destr; repeat doinv; subst; try solve_red...
             + (* Evalof *)
@@ -1273,11 +1260,7 @@ Module ExprProof (Pol: Policy).
                    destruct H0; auto.
                    ++ repeat doinv; eapply sem_cast_arguments_complete in H0;
                         repeat doinv; congruence.
-            + (* Ebuiltin *)
-              solve_red.
-            + (* loc *)
-              split; intros. tauto. simpl; congruence.
-            + (* paren *)
+            + (* Eparen *)
               repeat dodestr; repeat tag_destr; repeat doinv; try solve_red...
               
           - clear step_exprlist_sound. induction al; simpl; intros.
@@ -1359,26 +1342,15 @@ Module ExprProof (Pol: Policy).
         - destruct ty1; destruct ty; repeat cronch; eauto; congruence.
         - subst. do_complete; eauto.
           assert (Int64.unsigned p =? 0 = false)%Z.
-          { destruct (Int64.unsigned p) eqn:?; auto. exfalso. elim H2.
+          { destruct (Int64.unsigned p) eqn:?; auto. exfalso. elim H1.
             constructor. unfold concretize. auto. }
-          destruct ty1; repeat cronch; simpl; rewrite H0; repeat cronch; auto.
-          exfalso. eapply H. reflexivity.
-        - subst. inv H2. unfold concretize in H4. rewrite H4.      
+          destruct ty1; repeat cronch; simpl; rewrite H; repeat cronch; auto.
+        - inv H1. unfold concretize in H3. rewrite H3.      
           destruct ty1; repeat cronch; simpl; auto.
-          exfalso. eapply H. reflexivity.
-        - subst. destruct ty; repeat cronch; simpl; auto.
-          exfalso. eapply H0. reflexivity.
-        - subst. eapply do_deref_loc_complete in H6; eauto.
-          assert (Int64.unsigned p =? 0 = false)%Z.
-          { destruct (Int64.unsigned p) eqn:?; auto. exfalso. elim H2.
-            constructor. unfold concretize. auto. }
-          simpl; repeat cronch; rewrite H; auto.
-        - subst. inv H2. unfold concretize in H0. rewrite H0. simpl; repeat cronch; simpl; eauto.
-        - eapply do_deref_loc_complete in H0; eauto.
-          eapply do_assign_loc_complete in H4; eauto.
+        - repeat do_complete.
           repeat doinv; repeat cronch; eauto. simpl in H1. rewrite H1. simpl.
           repeat cronch. eauto.
-        - eapply do_deref_loc_complete in H2; eauto.
+        - repeat do_complete; eauto.
           repeat doinv; repeat cronch; eauto. simpl in H0. rewrite H0. simpl. eauto.
         - eapply do_deref_loc_complete in H3; eauto.
           repeat cronch.
@@ -1406,19 +1378,9 @@ Module ExprProof (Pol: Policy).
         - subst. do_complete.
           assert (Int64.unsigned p =? 0 = false)%Z.
           { destruct (Int64.unsigned p) eqn:?; auto.
-            elim H2. constructor. unfold concretize. auto. }
-          destruct ty1; repeat cronch; simpl; rewrite H0; repeat cronch; auto.
-          exfalso. eapply H. reflexivity.
-        - destruct ty; auto. eelim H0. reflexivity.
-        - subst. do_complete. simpl.
-          assert (Int64.unsigned p =? 0 = false)%Z.
-          { destruct (Int64.unsigned p) eqn:?; auto.
-            elim H2. constructor. unfold concretize. auto. }
-          rewrite H. repeat cronch. auto.
-        - inv H2. unfold concretize in H4. rewrite H4.
-          destruct ty1; try congruence; repeat cronch; simpl; auto.
-        - inv H2. unfold concretize in H0. rewrite H0.
-          repeat cronch; simpl; auto.
+            elim H1. constructor. unfold concretize. auto. }
+          destruct ty1; repeat cronch; simpl; rewrite H; repeat cronch; auto.
+        - inv H1. unfold concretize in H3. rewrite H3. reflexivity.
         - destruct (is_val_list el) eqn:?.
           + unfold Genv.find_funct in H. rewrite H. rewrite H1. rewrite H0. cronch.
             eapply sem_cast_arguments_complete in H2. destruct H2 as [vtl [res [A [B C]]]].

@@ -57,20 +57,20 @@ Module InterpreterEvents (Pol: Policy) (A: Memory ConcretePointer Pol UnitRegion
       let '(v,vt) := a in
       match v with
       | Vint i => check (typ_eq t AST.Tint);
-                  check (vt_eq_dec vt def_tag);
+                  check (vt_eq_dec vt TempT);
                   Some (EVint i)
         (* ev_match_int : forall i : int, eventval_match ge (EVint i) AST.Tint (Vint i, def_tag)*)
       | Vfloat f => check (typ_eq t AST.Tfloat);
-                    check (vt_eq_dec vt def_tag);
+                    check (vt_eq_dec vt TempT);
                     Some (EVfloat f)
         (* ev_match_float : forall f : float, eventval_match ge (EVfloat f) AST.Tfloat (Vfloat f, def_tag) *)
       | Vsingle f => check (typ_eq t AST.Tsingle);
-                     check (vt_eq_dec vt def_tag);
+                     check (vt_eq_dec vt TempT);
                      Some (EVsingle f)
         (* ev_match_single : forall f : float32, eventval_match ge (EVsingle f) Tsingle (Vsingle f, def_tag) *)
       | Vlong n =>
           check (typ_eq t AST.Tlong);
-          check (vt_eq_dec vt def_tag); Some (EVlong n)
+          check (vt_eq_dec vt TempT); Some (EVlong n)
           (* ev_match_long : forall i : int64, eventval_match ge (EVlong i) AST.Tlong (Vlong i, def_tag) *)
 (*          else check (typ_eq t AST.Tptr);
           match invert_symbol_ofs ge n with
@@ -125,13 +125,13 @@ Module InterpreterEvents (Pol: Policy) (A: Memory ConcretePointer Pol UnitRegion
        we always recieve a "harmless" tag. *)
     Definition atom_of_eventval (ev: eventval) (t: typ) : option atom :=
       match ev with
-      | EVint i => check (typ_eq t AST.Tint); Some (Vint i, def_tag)
+      | EVint i => check (typ_eq t AST.Tint); Some (Vint i, TempT)
         (* ev_match_int : forall i : int, eventval_match ge (EVint i) AST.Tint (Vint i, def_tag)*)
-      | EVfloat f => check (typ_eq t AST.Tfloat); Some (Vfloat f, def_tag)
+      | EVfloat f => check (typ_eq t AST.Tfloat); Some (Vfloat f, TempT)
         (* ev_match_float : forall f : float, eventval_match ge (EVfloat f) AST.Tfloat (Vfloat f, def_tag) *)
-      | EVsingle f => check (typ_eq t AST.Tsingle); Some (Vsingle f, def_tag)
+      | EVsingle f => check (typ_eq t AST.Tsingle); Some (Vsingle f, TempT)
         (* ev_match_single : forall f : float32, eventval_match ge (EVsingle f) Tsingle (Vsingle f, def_tag) *)
-      | EVlong i => check (typ_eq t AST.Tlong); Some (Vlong i, def_tag)
+      | EVlong i => check (typ_eq t AST.Tlong); Some (Vlong i, TempT)
         (* ev_match_long : forall i : int64, eventval_match ge (EVlong i) AST.Tlong (Vlong i, def_tag) *)
       | EVptr_global id ofs => None
 (*        check (Genv.public_symbol ge id);

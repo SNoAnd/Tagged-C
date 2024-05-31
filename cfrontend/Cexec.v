@@ -73,7 +73,7 @@ Module Cexec (Pol: Policy).
     Lemma is_val_inv:
       forall a v ty, is_val a = Some(v, ty) -> a = Eval v ty.
     Proof.
-      intros until ty. destruct a; simpl; congruence.
+      destruct a; simpl; congruence.
     Qed.
 
     Definition is_loc (a: expr) : option (loc_kind*type) :=
@@ -85,7 +85,7 @@ Module Cexec (Pol: Policy).
     Lemma is_loc_inv:
       forall a l ty, is_loc a = Some (l, ty) -> a = Eloc l ty.
     Proof.
-      intros until ty. destruct a; simpl; congruence.
+      destruct a; simpl; congruence.
     Qed.
 
     Local Open Scope option_monad_scope.
@@ -357,7 +357,7 @@ Section EXPRS.
             end
         end
     | LV, Ebuiltin ef tyargs cc ty =>
-        topred (Lred "red_builtin" (Eloc (Lefun ef tyargs (Tret Tany64) cc def_tag) ty) te m ps)
+        topred (Lred "red_builtin" (Eloc (Lefun ef tyargs (Tret Tany64) cc TempT) ty) te m ps)
     | LV, Ederef r ty =>
         match is_val r with
         | Some (v, pt, ty') =>
@@ -405,7 +405,7 @@ Section EXPRS.
     | RV, Eval v ty => []
     | RV, Econst v ty =>
         top <<=
-            try vt, ps' <- ConstT lc pct ps;
+            try vt, ps' <- LiteralT lc pct ps;
             catch "failred_const", E0;
             Rred "red_const" pct (Eval (v,vt) ty) te m E0 ps'
     | RV, Evalof l ty =>
@@ -485,51 +485,29 @@ Section EXPRS.
     | RV, Ecast r1 ty =>
         match is_val r1 with
         | Some(v1, vt1, ty1) =>
-            match ty1, ty with
-            | Tpointer _ _, Tpointer _ _ =>
+            match ty with
+            | Tpointer _ _ =>
                 top <<=
                 let! v <- sem_cast v1 ty1 ty tt;
                 let! p <- is_ptr v;
                 if (Int64.unsigned p =? 0)%Z
-                then try pt', ps' <- PPCastT lc pct vt1 None ty ps;
-                     catch "failred_cast_ptr_nullptr", E0;
-                     Rred "red_cast_ptr_nullptr" pct (Eval (v,pt') ty) te m E0 ps'
+                then try pt', ps' <- CastToPtrT lc pct vt1 None ty ps;
+                     catch "failred_cast_nullptr", E0;
+                     Rred "red_cast_nullptr" pct (Eval (v,pt') ty) te m E0 ps'
                 else let! (w', tr, res) <- do_deref_loc w ty m p vt1 Full;
                        match res ps with
                        | (Success (_,lts), ps') =>
-                        try pt',ps'' <- PPCastT lc pct vt1 (Some lts) ty ps';
-                        catch "failred_cast_ptr_ptr", tr;
-                        Rred "red_cast_ptr_ptr" pct (Eval (v,pt') ty) te m tr ps''
+                        try pt',ps'' <- CastToPtrT lc pct vt1 (Some lts) ty ps';
+                        catch "failred_cast_ptr", tr;
+                        Rred "red_cast_ptr" pct (Eval (v,pt') ty) te m tr ps''
                        | _ => Stuckred
                        end
-            | Tpointer _ _, _ =>
-                top <<=
-                let! v <- sem_cast v1 ty1 ty tt;
-                try pt', ps' <- PICastT lc pct vt1 None ty ps;
-                catch "failred_cast_ptr_int", E0;
-                Rred "red_cast_ptr_int" pct (Eval (v,pt') ty) te m E0 ps'
-            | _, Tpointer _ _ =>
-                top <<=
-                let! v <- sem_cast v1 ty1 ty tt;
-                let! p <- is_ptr v;
-                if (Int64.unsigned p =? 0)%Z
-                then try pt', ps' <- IPCastT lc pct vt1 None ty ps;
-                     catch "failred_cast_int_nullptr", E0;
-                     Rred "red_cast_int_nullptr" pct (Eval (v,pt') ty) te m E0 ps'
-                else let! (w', tr, res) <- do_deref_loc w ty m p vt1 Full;
-                     match res ps with
-                     | (Success (_, lts), ps') =>
-                       try pt', ps'' <- IPCastT lc pct vt1 (Some lts) ty ps';
-                       catch "failred_cast_int_ptr", tr;
-                       Rred "red_cast_int_ptr" pct (Eval (v,pt') ty) te m tr ps''
-                     | _ => Stuckred
-                     end
-            | _, _ => 
+            | _ => 
                 top <<=
                     let! v <- sem_cast v1 ty1 ty tt;
-                    try vt', ps' <- IICastT lc pct vt1 ty ps;
-                    catch "failred_cast_int_int", E0;
-                    Rred "red_cast_int_int" pct (Eval (v,vt') ty) te m E0 ps'
+                    try vt', ps' <- CastOtherT lc pct vt1 ty ps;
+                    catch "failred_cast_int", E0;
+                    Rred "red_cast_int" pct (Eval (v,vt') ty) te m E0 ps'
             end
         | None =>
             incontext (fun x => Ecast x ty) (step_expr RV lc ps pct r1 te m)
@@ -571,12 +549,12 @@ Section EXPRS.
         end
     | RV, Esizeof ty' ty =>
         top <<=
-            try vt', ps' <- ConstT lc pct ps;
+            try vt', ps' <- LiteralT lc pct ps;
             catch "failred_sizeof", E0;
             Rred "red_sizeof" pct (Eval (Vlong (Int64.repr (sizeof ce ty')), vt') ty) te m E0 ps'
     | RV, Ealignof ty' ty =>
         top <<=
-            try vt', ps' <- ConstT lc pct ps;
+            try vt', ps' <- LiteralT lc pct ps;
             catch "failred_alignof", E0;
             Rred "red_alignof" pct (Eval (Vlong (Int64.repr (alignof ce ty')), vt') ty) te m E0 ps'
     | RV, Eassign l1 r2 ty =>
@@ -956,7 +934,7 @@ Definition do_step (w: world) (s: Csem.state) : list transition :=
   | State f ps pct (Sreturn None lc) k e te m =>
       match do_free_variables ce lc pct m (variables_of_env e) ps with
       | (Success (pct', m'), ps') =>
-          ret "step_return_none" (Returnstate (Internal f) lc ps' pct' (Vundef,def_tag) (call_cont k) m')
+          ret "step_return_none" (Returnstate (Internal f) lc ps' pct' (Vundef,TempT) (call_cont k) m')
       | (Fail failure, (_,lg)) =>
           ret "step_return_none_fail1" (Failstop failure lg)
       end
@@ -1019,7 +997,7 @@ Definition do_initial_state (p: program) :
       | Some (SymIFun _ b pt) =>
           match Genv.find_funct_ptr ge b with
           | Some f => if (type_eq (type_of_fundef f) (Tfunction Tnil type_int32s cc_default))
-                      then Some (ge, Callstate f Cabs.no_loc ps InitPCT def_tag nil Kstop m)
+                      then Some (ge, Callstate f Cabs.no_loc ps InitPCT TempT nil Kstop m)
                       else None
           | None => None
           end

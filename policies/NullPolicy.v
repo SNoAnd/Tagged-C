@@ -22,7 +22,7 @@ Module NullPolicy <: Policy.
   Theorem ct_eq_dec : forall (t1 t2:control_tag), {t1 = t2} + {t1 <> t2}. Proof. decide equality. Qed.
   Theorem lt_eq_dec : forall (t1 t2:loc_tag), {t1 = t2} + {t1 <> t2}. Proof. decide equality. Qed.
   
-  Definition def_tag : val_tag := tt.
+  Definition TempT   : val_tag := tt.
   Definition InitPCT : control_tag := tt.
   Definition DefLT   : loc_tag := tt.
   Definition DefHT   : loc_tag := tt.
@@ -39,7 +39,7 @@ Module NullPolicy <: Policy.
   Definition ltop := ltop lt_eq_dec policy_state.
   Definition recover (lc: Cabs.loc) (a: option int64) (s: string) : PolicyResult unit := ret tt. 
   
-  Definition ConstT (l:loc) (pct: control_tag) : PolicyResult val_tag := ret tt.
+  Definition LiteralT (l:loc) (pct: control_tag) : PolicyResult val_tag := ret tt.
   Definition GlobalT (ce : composite_env) (id : ident) (ty : type) : val_tag * val_tag * loc_tag :=
     (tt, tt, tt).
   Definition FunT (ce : composite_env) (id : ident) (ty : type) : val_tag :=
@@ -69,7 +69,7 @@ Module NullPolicy <: Policy.
   Definition ArgT       := Passthrough.ArgT policy_state val_tag control_tag.
   Definition RetT       := Passthrough.RetT policy_state val_tag control_tag.
   Definition CoalesceT  := Passthrough.CoalesceT policy_state val_tag vt_eq_dec.
-  Definition EffectiveT := Passthrough.EffectiveT val_tag def_tag.
+  Definition EffectiveT := Passthrough.EffectiveT val_tag TempT.
   Definition LoadT      := Passthrough.LoadT policy_state val_tag control_tag loc_tag.
   Definition StoreT     := Passthrough.StoreT policy_state val_tag control_tag loc_tag.
   Definition AccessT    := Passthrough.AccessT policy_state val_tag control_tag.
@@ -82,9 +82,7 @@ Module NullPolicy <: Policy.
   Definition ExprJoinT  := Passthrough.ExprJoinT policy_state val_tag control_tag.
   Definition FieldT     := Passthrough.FieldT policy_state val_tag control_tag.
   Definition ExtCallT   := Passthrough.ExtCallT policy_state val_tag control_tag.
-  Definition PICastT    := Passthrough.PICastT policy_state val_tag control_tag loc_tag.
-  Definition IPCastT    := Passthrough.IPCastT policy_state val_tag control_tag loc_tag.
-  Definition PPCastT    := Passthrough.PPCastT policy_state val_tag control_tag loc_tag.
-  Definition IICastT    := Passthrough.IICastT policy_state val_tag control_tag.
+  Definition CastToPtrT := Passthrough.CastToPtrT policy_state val_tag control_tag loc_tag.
+  Definition CastOtherT := Passthrough.CastOtherT policy_state val_tag control_tag.
 
 End NullPolicy.

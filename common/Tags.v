@@ -1,3 +1,4 @@
+(*| .. coq:: none |*)
 Require Import Coqlib.
 Require Import AST.
 Require Import Integers.
@@ -18,6 +19,17 @@ Require Import List. Import ListNotations. (* list notations is a module inside 
 
 Parameter extern_atom : positive -> string.
 
+(*|
+The PolicyResult Monad
+----------------------
+|*)
+
+(*|
+A ``FailureClass`` distinguishes different kinds of failures, which
+can represent failstop behavior in Tagged C itself, or failstops due
+to a policy violation, identified with ``PolicyFailure``
+|*)
+
 Inductive FailureClass : Type :=
 | MisalignedStore (alignment ofs : Z)
 | MisalignedLoad (alignment ofs : Z)
@@ -33,16 +45,23 @@ Inductive Result (A: Type) :=
 | Fail (failure: FailureClass)
 .
 
+(*| .. coq:: none |*)
 Arguments Success {_} _.
 Arguments Fail {_} _.
 
 Instance showByte : Show byte :=
   {| show := fun b => String (ascii_of_nat (Z.to_nat (Byte.unsigned b))) EmptyString |}.
 
+(*|
+``PolicyResult`` is a combination of a state monad and an exception monad,
+where the state includes a policy-specific state type and a list of string logs.
+|*)
+
 Definition logs : Type := list string.
 
 Definition PolicyResult (T A: Type) := (T*logs) -> (Result A*(T*logs)).
 
+(*| .. coq:: none |*)
 Definition bind_res (T A B:Type) (a: PolicyResult T A) (f: A -> PolicyResult T B) :=
   fun s =>
     match a s with
@@ -120,12 +139,28 @@ End WITH_LT.
 
 Definition header_size_in_bytes := size_chunk_nat Mint64.
 
+(*|
+Policy Modules
+--------------
+|*)
+
 Module Type Policy.
-  
+
+(*|
+Tags come in three flavors:
+- value tags are associated with values and their data-flow,
+usually explicitly paired with them to form atoms
+- control tags are associated with the program's control-flow; the program's
+state carries one such tag as the program counter tag, or ``pct``
+- location tags are associated with memory locations
+(as opposed to the values stored in those locations)
+|*)
   Parameter val_tag : Type.
   Parameter control_tag : Type.
   Parameter loc_tag : Type.
 
+(*| .. coq:: none |*)
+  
   Parameter vt_eq_dec : forall (vt1 vt2:val_tag), {vt1 = vt2} + {vt1 <> vt2}.
   Parameter ct_eq_dec : forall (ct1 ct2:control_tag), {ct1 = ct2} + {ct1 <> ct2}. 
   Parameter lt_eq_dec : forall (lt1 lt2:loc_tag), {lt1 = lt2} + {lt1 <> lt2}.
@@ -143,18 +178,35 @@ Module Type Policy.
                       option int64 (* base pointer *) ->
                       string (* name of tag rule *) ->
                       PolicyResult unit.
-  
-  Parameter def_tag : val_tag.
-  Parameter InitPCT : control_tag.          (* Initial Program Counter tag*)
-  Parameter DefLT   : loc_tag.              (* Default starting tag for nonheap memory locations *)
-  Parameter DefHT   : loc_tag.              (* Default starting tag for heap memory locations, possible consumed by allocator *)
-  Parameter InitT   : val_tag.              (* Inital value for things with val tags *)
-  
-  (* CallT executes at the transition from an expression state to a call state.
-     It takes the PC tag at the point of the call and the tag on the function pointer,
-     and returns the new PC tag.
-     The PC tag will also be saved to later be used in the RetT rule.
-  *)
+
+(*|
+Each policy must define several tags to be used as defaults and initializers.
+``InitT`` is the tag given to a newly initialized value, while ``TempT`` is given to
+values whose tag is expected to be overwritten or discarded.
+For example, a return without a given value results in a ``Vundef`` value paired with ``TempT``.
+We also use ``TempT`` to stand in for tags that originate outside the modeled system.
+|*)
+  Parameter InitT   : val_tag.
+  Parameter TempT   : val_tag.
+
+(*|
+``InitPCT`` is the program counter tag at execution start.
+|*)
+  Parameter InitPCT : control_tag.
+
+(*|
+All location tags in memory are initialized with ``DefHT`` if they are in the bounds of the heap
+and ``DefLT`` otherwise.
+|*)
+  Parameter DefLT   : loc_tag.
+  Parameter DefHT   : loc_tag.
+
+(*|
+``CallT`` executes at the transition from an expression state to a call state.
+It takes the PC tag at the point of the call and the tag on the function pointer,
+and returns the new PC tag.
+The PC tag will also be saved to later be used in the ``RetT`` rule.
+|*)
   Parameter CallT : loc                     (* Inputs: *)
                     -> control_tag          (* PC tag *)
                     -> val_tag              (* Tag on function pointer being called *)
@@ -162,8 +214,10 @@ Module Type Policy.
                     -> PolicyResult         (* Outputs: *)
                          control_tag        (* New PC tag *).
 
-  (* ArgT executes at the transition from an expression state to a call state,
-     once for each argument being passed. *)
+(*|
+ArgT executes at the transition from an expression state to a call state,
+once for each argument being passed.
+|*)
   Parameter ArgT : loc                      (* Inputs: *)
                    -> control_tag           (* PC tag *)
                    -> val_tag               (* Tag on function pointer being called *)
@@ -176,14 +230,15 @@ Module Type Policy.
                         (control_tag        (* New PC tag *)
                          * val_tag)         (* New tag on argument value *).
 
-  (* RetT executes at the transition from a return state into the caller's context.
-     It takes the PC tag at the point of the return and the one that was saved from the
-     call, as well as the tag on the value being returned.
+(*|
+``RetT`` executes at the transition from a return state into the caller's context.
+It takes the PC tag at the point of the return and the one that was saved from the
+call, as well as the tag on the value being returned.
      
-     Proposal: it would be useful to have the identity of the function being returned from.
-     We could always accomplish the same thing by carrying that information on the PC tag,
-     but it might be more convenient to access it directly.
-    *)
+Proposal: it would be useful to have the identity of the function being returned from.
+We could always accomplish the same thing by carrying that information on the PC tag,
+but it might be more convenient to access it directly.
+|*)
   Parameter RetT : loc                      (* Inputs: *)
                    -> control_tag           (* PC tag at return time *)
                    -> control_tag           (* Prior PC tag from before call *)
@@ -195,8 +250,10 @@ Module Type Policy.
                         (control_tag        (* New PC tag *)
                          * val_tag)         (* New tag on return value *).
   
-  (* The AccessT rule is invoked anytime a variable or object is accessed. If the variable
-     is private (not in memory), it will be the only rule that is invoked. *)
+(*|
+The AccessT rule is invoked anytime a variable or object is accessed. If the variable
+is private (not in memory), it will be the only rule that is invoked.
+|*)
   Parameter AccessT : loc                   (* Inputs: *)
                       -> control_tag        (* PC tag *)
                       -> val_tag            (* Tag on read value *)
@@ -204,13 +261,15 @@ Module Type Policy.
                       -> PolicyResult       (* Outputs: *)
                            val_tag          (* Tag on result value *).
  
-  (* Loads from memory follow three steps:
-      1. Since the value being loaded may take up multiple bytes in memory, each with its
-         own value tag, the CoalesceT rule combines these into one tag.
-      2. The LoadT rule checks the relationship between the tag on the pointer being accessed,
-         the tag on the value being loaded, and the tags on the memory locations being accessed.
-      3. AccessT is invoked to determine the tag on the result value, just as in any other
-         variable access. *)
+(*|
+Loads from memory follow three steps:
+1. Since the value being loaded may take up multiple bytes in memory, each with its
+own value tag, the ``CoalesceT`` rule combines these into one tag.
+2. The ``LoadT`` rule checks the relationship between the tag on the pointer being accessed,
+the tag on the value being loaded, and the tags on the memory locations being accessed.
+3. ``AccessT`` is invoked to determine the tag on the result value, just as in any other
+variable access.
+|*)
   Parameter CoalesceT : loc                 (* Inputs: *)
                         -> list val_tag     (* Value tags, one per loaded byte *)
 
@@ -221,13 +280,15 @@ Module Type Policy.
                     -> control_tag          (* PC tag *)
                     -> val_tag              (* Pointer tag *)
                     -> val_tag              (* Tag on value in memory (coalesced) *)
-                    -> int64                (* Location being loaded, for logging purposes only *)
+                    -> int64                (* Location being accessed (for logging purposes only) *)
                     -> list loc_tag         (* Location tags (one per byte) *)
 
                     -> PolicyResult         (* Outputs: *)
                         val_tag             (* Tag on result value *).
 
-  (* AssignT is invoked when a value is written to a variable, whether private or in memory. *)
+(*|
+``AssignT`` is invoked when a value is written to a variable, whether private or in memory.
+|*)
   Parameter AssignT : loc                   (* Inputs: *)
                       -> control_tag        (* PC tag *)
                       -> val_tag            (* Tag on value to be overwritten *)
@@ -237,18 +298,19 @@ Module Type Policy.
                            (control_tag     (* New PC tag *)
                             * val_tag)      (* Tag on written value *).
 
-  (* Just like loads, stores to memory have three steps.
-      1. The EffectiveT rule interprets multiple value tags in memory into
-         a single effective tag which will then be fed to the AssignT rule.
-         Unlike CoalesceT, EffectiveT cannot fail, because the value associated
-         with these tags is not being read or written at this time. Rather, the tags
-         are being reinterpreted.
-      2. AssignT governs the relationship between the incoming value tag and the
-         effective tag on the data being overwritten.
-      3. StoreT is invoked to determine the new tags on the memory locations being
-          written to, based on the pointer tag, current location tags, and value being
-          written.
-  *)
+(*|
+Just like loads, stores to memory have three steps.
+1. The ``EffectiveT`` rule interprets multiple value tags in memory into
+a single effective tag which will then be fed to the ``AssignT`` rule.
+Unlike ``CoalesceT``, ``EffectiveT`` cannot fail, because the value associated
+with these tags is not being read or written at this time. Rather, the tags
+are being reinterpreted.
+2. ``AssignT`` governs the relationship between the incoming value tag and the
+effective tag on the data being overwritten.
+3. ``StoreT`` is invoked to determine the new tags on the memory locations being
+written to, based on the pointer tag, current location tags, and value being
+written.
+|*)
   Parameter EffectiveT : loc                (* Inputs: *)
                          -> list val_tag    (* Value tags, one per overwritten byte *)
 
@@ -259,7 +321,7 @@ Module Type Policy.
                      -> control_tag         (* PC tag *)
                      -> val_tag             (* Pointer tag *)
                      -> val_tag             (* Tag on value to be stored *)
-                     -> int64               (* Location being stored, for logging purposes only *)
+                     -> int64               (* Location being stored to (for loggin purposes only) *)
                      -> list loc_tag        (* Location tags (one per byte) *)
 
                      -> PolicyResult        (* Outputs: *)
@@ -267,6 +329,11 @@ Module Type Policy.
                            * val_tag        (* Tag on new value in memory *)
                            * list loc_tag)  (* New location tags *).
 
+(*|
+``UnopT`` is invoked for unary operations. It takes the identity of the operation
+as a parameter, along with the current PC tag and the tag on the operand, and it
+can update the PC tag and give a new tag to the result.
+|*)
   Parameter UnopT : loc                     (* Inputs: *)
                     -> unary_operation      (* Operator *)
                     -> control_tag          (* PC tag *)
@@ -276,6 +343,11 @@ Module Type Policy.
                          (control_tag       (* New PC tag *)
                           * val_tag)        (* Tag on result value *).
 
+(*|
+``BinopT`` is invoked for binary operations. It takes the identity of the operation
+as a parameter, along with the current PC tag and the tags on the operands, and it
+can update the PC tag and give a new tag to the result.
+|*)
   Parameter BinopT : loc                    (* Inputs: *)
                      -> binary_operation    (* Operator *)
                      -> control_tag         (* PC tag *)
@@ -286,27 +358,47 @@ Module Type Policy.
                           (control_tag      (* New PC tag *)
                            * val_tag)       (* Tag on result value *).
 
-  Parameter ConstT : loc                    (* Inputs: *)
+(*|
+A numeric literal needs to be paired with a tag before it can be used.
+This is done by the ``LiteralT`` rule, which only takes the PC tag.
+|*)
+  Parameter LiteralT : loc                  (* Inputs: *)
+                       -> control_tag       (* PC tag *)
+
+                       -> PolicyResult      (* Outputs: *)
+                            val_tag         (* Tag on new value *).
+
+(*|
+When accessing a field of a struct or union, the ``FieldT`` rule takes
+the tag associated with its pointer and determines the tag associated with
+the new pointer to the field. It can be specialized based on the type of
+the struct or union and the identity of the field for fine-grained control. 
+|*)
+  Parameter FieldT : loc
+                     -> composite_env       (* Inputs: *)
                      -> control_tag         (* PC tag *)
+                     -> val_tag             (* Tag on base pointer *)
+                     -> type                (* Type of object *)
+                     -> ident               (* Identity of field *)
 
                      -> PolicyResult        (* Outputs: *)
-                          val_tag           (* Tag on new value *).
+                          val_tag           (* Tag on resulting pointer *).
   
-  Parameter SplitT : loc                    (* Inputs: *)
-                     -> control_tag         (* PC tag *)
-                     -> val_tag             (* Tag on value of branch conditional *)
-                     -> option ident        (* Label of join point, if known. *)
+(*|
+Control flow splits and joins
+-----------------------------
+When control flow branches, whether as the result of a conditional or loop statement
+or a conditional expression, the value that determined the result of the branch
+influences every computation that happens until the branches rejoin. Policies
+that need to track this influence do so by changing the PC tag.
 
-                     -> PolicyResult        (* Outputs: *)
-                          control_tag       (* New PC tag *).
-
-  Parameter LabelT : loc                    (* Inputs: *)
-                     -> control_tag         (* PC tag *)
-                     -> ident               (* Label name *)
-
-                     -> PolicyResult        (* Outputs: *)
-                          control_tag       (* New PC tag *).
-
+Conditional expressions are slightly simpler than statements, because they are
+guaranteed to rejoin once fully evaluated. The ``ExprSplitT`` rule triggers
+when the branch is made (in evaluating ``Econdition``, ``Eseqand``, and ``Eseqor``
+expressions), setting a new PC tag. When the resulting expression ``Eparen e`` is
+fully evaluated such that ``e`` is an ``Eval`` expression, ``ExprJoinT`` triggers,
+setting the PC tag again and also determining the tag on the resulting atom.
+|*)
   Parameter ExprSplitT : loc                (* Inputs: *)
                          -> control_tag     (* PC tag *)
                          -> val_tag         (* Tag on value of branch condition *)
@@ -321,7 +413,47 @@ Module Type Policy.
                         -> PolicyResult     (* Outputs: *)
                              (control_tag   (* New PC tag *)
                               * val_tag)    (* Tag for final value *).
-  
+
+(*|
+Conditional and loop statements, on the other hand, might rejoin at a point arbitrarily removed
+from where they split. In the control-flow graph of the program, the branches rejoin at the 
+immediate post-dominator of the split node. Tagged C does not calculate this directly,
+but it offers the user the ability to annotate branching statements with a label corresponding
+to their join point. This is fed to the ``SplitT`` tag rule, which also takes the tag on the
+value that determines the branch, and updates the PC tag.
+|*)  
+  Parameter SplitT : loc                    (* Inputs: *)
+                     -> control_tag         (* PC tag *)
+                     -> val_tag             (* Tag on value of branch conditional *)
+                     -> option ident        (* Label of join point, if known. *)
+
+                     -> PolicyResult        (* Outputs: *)
+                          control_tag       (* New PC tag *).
+
+(*|
+The ``LabelT`` tag rule triggers when execution steps past a given label, and updates the PC tag.
+It can be used together with the optional label given to the ``SplitT`` rule to act as a
+join point for a branch.
+|*)
+  Parameter LabelT : loc                    (* Inputs: *)
+                     -> control_tag         (* PC tag *)
+                     -> ident               (* Label name *)
+
+                     -> PolicyResult        (* Outputs: *)
+                          control_tag       (* New PC tag *).
+
+(*|
+Global identifiers
+------------------
+Global variables and functions have fixed locations determined at program initialization;
+globals in memory and functions in abstract "blocks." Invoking either by name retrieves its
+location from the global environment, along with a fixed tag, also determined at initialization
+via the ``GlobalT`` and ``FunT`` rules. ``GlobalT`` also sets the initial value and location
+tags for the variables. Because they occur at initialization, these rules cannot fail.
+
+To be implemented: like local variables (below) globals should support arbitrary configurations
+of location tags.
+|*)
   Parameter GlobalT : composite_env         (* Inputs: *)
                       -> ident              (* Variable name *)
                       -> type               (* Variable type *)
@@ -337,7 +469,16 @@ Module Type Policy.
 
                                             (* Outputs: *)
                    -> val_tag               (* Function pointer tag *).
-  
+
+(*|
+Local (Stack) allocation and deallocation
+-----------------------------------------
+Local variables are allocated on function entry. Tagged C models their pointers as being
+tracked by a local environment, although the underlying implementation likely uses offset
+arithmetic as usual. ``LocalT`` determines the pointer that corresponds to each object
+and the initial tags on its memory locations. ``DeallocT`` sets the value and location
+tags, generally to clear them.
+|*)
   Parameter LocalT : composite_env          
                      -> loc                 (* Inputs: *)
                      -> control_tag         (* PC tag *)
@@ -352,12 +493,25 @@ Module Type Policy.
                        -> composite_env     (* Inputs: *)
                        -> control_tag       (* PC tag *)
                        -> type              (* Variable type *)
-                            
+
                        -> PolicyResult      (* Outputs: *)
                             (control_tag    (* New PC tag *)
                              * val_tag      (* Cleared value tag *)
                              * loc_tag)     (* Tag to be copied over all memory locations *).
 
+(*|
+External functions
+------------------
+Tagged C inherits from CompCert C a distinction between "internal" and "external" functions.
+Internal functions are deeply embedded: their bodies consist of Tagged C statements.
+External functions are shallowly embedded as relations between their entry and exit states.
+
+``ExtCallT`` is the equivalent of ``CallT`` but for external functions. It takes an extra
+argument of type ``external_function``, a record detailing which external function is to be called.
+
+If an external function has side-effects whose tag behaviors need to be modeled, Tagged C
+invokes a function-specific tag rule. Currently ``malloc`` and ``free`` use this feature.
+|*)  
   Parameter ExtCallT : loc                  (* Inputs: *)
                        -> external_function (* External function data *)
                        -> control_tag       (* PC tag *)
@@ -367,15 +521,18 @@ Module Type Policy.
                        -> PolicyResult      (* Outputs: *)
                             control_tag     (* New PC tag *).
 
-  (* This tag rule processes the body of malloc. So a call to malloc@fpt(sz@vt) is structured:
-     pct -> +========+ -> pct'   +========+    pct ---> +====+
-     fpt -> |ExtCallT| -> fpt -> |MallocT| -> pct'' -> |RetT| -> pct'''
+(*|
+The ``MallocT`` tag rule processes the body of malloc.
+A call to malloc@fpt(sz@vt) is structured:
+|*)
+  (* pct -> +========+ -> pct'   +========+    pct ---> +====+
+     fpt -> |ExtCallT| -> fpt -> |MallocT | -> pct'' -> |RetT| -> pct'''
      vt  -> +========+ -> vt -|  +========+ -> pt ----> +====+ -> pt'
                               vt1||vt2|lt1|lt2
                          [header@vt1][vt2.vt2.vt2...]
                          [lt1.lt1...][lt2.lt2.lt2...] *)
-  Parameter MallocT : 
-                      loc                   (* Inputs: *)
+
+  Parameter MallocT : loc                   (* Inputs: *)
                       -> control_tag        (* PC tag *)
                       -> val_tag            (* Function pointer tag
                                                (used to distinguish versions of malloc) *)
@@ -385,12 +542,17 @@ Module Type Policy.
                             * val_tag       (* Pointer tag *)
                             * val_tag       (* Initial tag on values in allocated block *)
                             * loc_tag       (* Tag on the location bytes in the block's header *)
-                            * loc_tag       (* Tag to be copied over all memory locations user code knows about *)
-                            * loc_tag).     (* Tag to be copied over padding memory locations  that might be needed for 8 byte alignment.
-                                                This is memory out of bounds for the user. *)
+                            * loc_tag       (* Tag to be copied over all allocated memory locations *)
+                            * loc_tag).     (* Tag to be copied over any padding memory locations
+                                               (needed for 8 byte alignment). *)
 
-  (* The follow tag rules process the body of free. So a call to free@fpt(p@pt) is structured:
-                                         p
+(*|
+The body of ``free`` is split between the ``FreeT`` and ``ClearT`` rules. ``FreeT`` updates
+the tags on the header block of the object being freed, then ``ClearT`` is invoked for each byte.
+This is generally used to clear the bytes for temporal safety.
+A call to free@fpt(p@pt) is structured:
+|*)
+(*                                       p
                               [header@vt][.....(v@_).........]
                               [   lts   ][...................]
                                  vt|  |lts
@@ -412,65 +574,42 @@ Module Type Policy.
                           * loc_tag)        (* New location tag for header
                                                (replicated to all header bytes) *).       
   
-  (* The ClearT rule is invoked in the do_extcall_free function in Events.v.
-     It takes a single byte's location tag at a time, as it's being cleared, and
-     yields a new location tag. It also takes the byte value itself in a loggable form. *)
   Parameter ClearT : loc                    (* Inputs: *)
                      -> control_tag         (* PC tag *)
-                     -> val_tag             (* @TODO AMN: discuss next meeting. 
-                                                pointer's val tag *)
+                     -> val_tag             (* Value tag of freed pointer *)
                      -> int64               (* Location being cleared, for logging purposes only *)
                      -> loc_tag             (* tag on byte within block *)
                           
                      -> PolicyResult        (* Outputs: *)
                           loc_tag           (* Tag to be copied to byte *).
-  
-  Parameter FieldT : loc
-                     -> composite_env       (* Inputs: *)
-                     -> control_tag         (* PC tag *)
-                     -> val_tag             (* Tag on base pointer *)
-                     -> type                (* Type of object *)
-                     -> ident               (* Identity of field *)
 
-                     -> PolicyResult        (* Outputs: *)
-                          val_tag           (* Tag on resulting pointer *).
+(*|
+Casts
+-----
+A policy may retag a value when it is cast to a different type. Tagged C distinguishes
+casts whose target types are pointers from other casts. Casts to pointers may check the location
+tags on the memory targeted by them, if non-null. This functionality is used in the ``PNVI``
+ policy, but is of questionable utility, and may be removed in the future.
+|*) 
+  Parameter CastToPtrT : loc                (* Inputs: *)
+                         -> control_tag     (* PC tag *)
+                         -> val_tag         (* Tag on integer value *)
+                         -> option (list loc_tag) (* Tags on memory at pointer location *)
+                         -> type            (* Type cast to *)
 
-  Parameter PICastT : loc                    (* Inputs: *)
-                      -> control_tag         (* PC tag *)
-                      -> val_tag             (* Tag on pointer value *)
-                      -> option (list loc_tag) (* Tags on memory at pointer location *)
-                      -> type                (* Type cast to *)
-
-                      -> PolicyResult       (* Outputs: *)
-                           val_tag          (* Tag on resulting integer *).
-
-  Parameter IPCastT : loc                    (* Inputs: *)
-                      -> control_tag         (* PC tag *)
-                      -> val_tag             (* Tag on integer value *)
-                      -> option (list loc_tag) (* Tags on memory at pointer location *)
-                      -> type                (* Type cast to *)
-
-                      -> PolicyResult       (* Outputs: *)
-                           val_tag          (* Tag on resulting pointer *).
-
-  Parameter PPCastT : loc                    (* Inputs: *)
-                      -> control_tag         (* PC tag *)
-                      -> val_tag             (* Tag on pointer value *)
-                      -> option (list loc_tag) (* Tags on memory at pointer location *)
-                      -> type                (* Type cast to *)
-
-                      -> PolicyResult       (* Outputs: *)
-                           val_tag          (* Tag on resulting pointer *).
+                         -> PolicyResult    (* Outputs: *)
+                              val_tag       (* Tag on resulting pointer *).
     
-  Parameter IICastT : loc                   (* Inputs: *)
-                      -> control_tag        (* PC tag *)
-                      -> val_tag            (* Tag on value *)
-                      -> type               (* Type cast to *)
+  Parameter CastOtherT : loc                (* Inputs: *)
+                         -> control_tag     (* PC tag *)
+                         -> val_tag         (* Tag on value *)
+                         -> type            (* Type cast to *)
 
-                      -> PolicyResult       (* Outputs: *)
-                           val_tag          (* Tag on resulting value *).
+                         -> PolicyResult    (* Outputs: *)
+                              val_tag       (* Tag on resulting value *).
 End Policy.
 
+(*| .. coq:: none |*)
 Module TagLib (Ptr: Pointer) (Pol: Policy).
   Export Pol.
   Module Switch := Switch Ptr.
@@ -502,7 +641,7 @@ Module TagLib (Ptr: Pointer) (Pol: Policy).
     decide equality.
     apply type_eq.
     repeat decide equality.        
-  Qed.  
+  Qed.
 
 End TagLib.
 
@@ -574,17 +713,11 @@ Module Passthrough.
     Definition FieldT (l:loc) (ce : composite_env) (pct: control_tag) (vt: val_tag)
                (ty : type) (id : ident) : PolicyResult val_tag := ret vt.
 
-    Definition PICastT (l:loc) (pct: control_tag) (pt: val_tag)
+    Definition CastToPtrT (l:loc) (pct: control_tag) (pt: val_tag)
       (lts : option (list loc_tag)) (ty : type) : PolicyResult val_tag := ret pt.
     
-    Definition IPCastT (l:loc) (pct: control_tag) (vt: val_tag)
-      (lts : option (list loc_tag)) (ty : type) : PolicyResult val_tag := ret vt.
-
-    Definition PPCastT (l:loc) (pct: control_tag) (vt: val_tag)
-      (lts: option (list loc_tag)) (ty : type) : PolicyResult val_tag := ret vt.
-
-    Definition IICastT (l:loc) (pct: control_tag) (vt: val_tag) (ty : type) :
-      PolicyResult val_tag := ret vt.
+    Definition CastOtherT (l:loc) (pct: control_tag) (vt: val_tag)
+      (ty : type) : PolicyResult val_tag := ret vt.
 
   End WITH_TAGS.
 End Passthrough.

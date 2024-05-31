@@ -110,13 +110,13 @@ Module Genv (Ptr: Pointer) (Pol: Policy).
         to [id]. *)
     Definition symbol_address (ge: t) (id: ident) (ofs: int64) : atom :=
       match find_symbol ge id with
-      | Some (SymIFun b pt) => if Int64.eq ofs Int64.zero then (Vfptr b, pt) else (Vundef, def_tag)
+      | Some (SymIFun b pt) => if Int64.eq ofs Int64.zero then (Vfptr b, pt) else (Vundef, TempT)
       | Some (SymEFun ef tyargs tyres cc pt) => if Int64.eq ofs Int64.zero
                                                 then (Vefptr ef tyargs tyres cc, pt)
-                                                else (Vundef, def_tag)
+                                                else (Vundef, TempT)
       | Some (SymGlob base block pt gv) =>
           (Vptr (off base ofs), pt)
-      | None => (Vundef, def_tag)
+      | None => (Vundef, TempT)
       end.
 
     (** [public_symbol ge id] says whether the name [id] is public and defined. *)
@@ -214,7 +214,7 @@ Module Genv (Ptr: Pointer) (Pol: Policy).
                 in
                 ge'
             | None =>
-                let genv_symb' := PTree.set idg#1 (SymIFun ge.(genv_next_block) def_tag)
+                let genv_symb' := PTree.set idg#1 (SymIFun ge.(genv_next_block) TempT)
                                             ge.(genv_symb) in
                 let genv_fun_defs' := PTree.set ge.(genv_next_block) idg#2 ge.(genv_fun_defs) in
                 let genv_next_block' := Pos.succ ge.(genv_next_block) in

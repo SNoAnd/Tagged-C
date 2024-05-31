@@ -290,13 +290,13 @@ Section EVENTVAL.
       i < bound ->
       eventval_match (EVptr_global id (Int64.repr (i - base))) Tptr (Vlong (Int64.repr i), pt) *)
   | ev_match_int: forall i,
-      eventval_match (EVint i) Tint (Vint i, def_tag)
+      eventval_match (EVint i) Tint (Vint i, TempT)
   | ev_match_long: forall i,
-      eventval_match (EVlong i) Tlong (Vlong i, def_tag)
+      eventval_match (EVlong i) Tlong (Vlong i, TempT)
   | ev_match_float: forall f,
-      eventval_match (EVfloat f) Tfloat (Vfloat f, def_tag)
+      eventval_match (EVfloat f) Tfloat (Vfloat f, TempT)
   | ev_match_single: forall f,
-      eventval_match (EVsingle f) Tsingle (Vsingle f, def_tag)
+      eventval_match (EVsingle f) Tsingle (Vsingle f, TempT)
   | ev_match_ptr: forall id b pt,
       public_symbol ge id = true ->
       find_symbol ge id = Some (SymIFun _ b pt) ->
@@ -654,7 +654,7 @@ Inductive extcall_annot_sem (text: string) (targs: list typ) (r: region) (ge: Ge
               list atom -> control_tag -> mem -> trace -> atom -> control_tag -> mem -> Prop :=
   | extcall_annot_sem_intro: forall vargs pct m args,
       eventval_list_match ge args targs vargs ->
-      extcall_annot_sem text targs r ge vargs pct m (Event_annot text args :: E0) (Vundef,def_tag) pct m.
+      extcall_annot_sem text targs r ge vargs pct m (Event_annot text args :: E0) (Vundef,TempT) pct m.
 
 (*Lemma extcall_annot_ok:
   forall text targs,
@@ -700,7 +700,7 @@ Inductive extcall_annot_val_sem (text: string) (targ: typ) (r: region) (ge: Genv
 Inductive extcall_debug_sem (r: region) (ge: Genv.t F V):
               list atom -> control_tag -> mem -> trace -> atom -> control_tag -> mem -> Prop :=
   | extcall_debug_sem_intro: forall vargs pct m,
-      extcall_debug_sem r ge vargs pct m E0 (Vundef,def_tag) pct m.
+      extcall_debug_sem r ge vargs pct m E0 (Vundef,TempT) pct m.
 
 (** ** Semantics of known built-in functions. *)
 
@@ -713,7 +713,7 @@ Inductive known_builtin_sem (bf: builtin_function) (r: region) (ge: Genv.t F V) 
   PolicyResult (atom * control_tag * mem) -> Prop :=
   | known_builtin_sem_intro: forall vargs vres pct fpt m,
       builtin_function_sem bf vargs = Some vres ->
-      known_builtin_sem bf r ge (map (fun v => (v,def_tag)) vargs) pct fpt m E0
+      known_builtin_sem bf r ge (map (fun v => (v,TempT)) vargs) pct fpt m E0
                         (ret ((vres,InitT), pct, m)).
 
 (** ** Semantics of external functions. *)

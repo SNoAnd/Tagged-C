@@ -53,7 +53,7 @@ Module Compartments (Scheme: CompScheme) <: Policy.
   Theorem lt_eq_dec : forall (t1 t2:loc_tag), {t1 = t2} + {t1 <> t2}.
   Proof. repeat decide equality. Qed.
 
-  Definition def_tag : val_tag := N.
+  Definition TempT   : val_tag := N.
   Definition InitPCT : control_tag := (init_comp, O).
   Definition DefLT   : loc_tag := Free.
   Definition DefHT   : loc_tag := Free.
@@ -167,7 +167,7 @@ Module Compartments (Scheme: CompScheme) <: Policy.
     | _, _ => raise (PolicyFailure (inj_loc "Comp || BinopT, combining pointers" l))
     end.
 
-  Definition ConstT (l:loc) (pct : control_tag) : PolicyResult val_tag := ret N.
+  Definition LiteralT (l:loc) (pct : control_tag) : PolicyResult val_tag := ret N.
 
   Definition GlobalT (ce : composite_env) (id : ident) (ty : type) :
     val_tag * val_tag * loc_tag :=
@@ -201,7 +201,7 @@ Module Compartments (Scheme: CompScheme) <: Policy.
   Definition AccessT    := Passthrough.AccessT policy_state val_tag control_tag.
   Definition AssignT    := Passthrough.AssignT policy_state val_tag control_tag.
   Definition CoalesceT  := Passthrough.CoalesceT policy_state val_tag vt_eq_dec.
-  Definition EffectiveT := Passthrough.EffectiveT val_tag def_tag. 
+  Definition EffectiveT := Passthrough.EffectiveT val_tag TempT. 
   Definition UnopT      := Passthrough.UnopT policy_state val_tag control_tag.
   Definition SplitT     := Passthrough.SplitT policy_state val_tag control_tag.
   Definition LabelT     := Passthrough.LabelT policy_state control_tag.
@@ -209,8 +209,6 @@ Module Compartments (Scheme: CompScheme) <: Policy.
   Definition ExprJoinT  := Passthrough.ExprJoinT policy_state val_tag control_tag.
   Definition FieldT     := Passthrough.FieldT policy_state val_tag control_tag.
   Definition ExtCallT   := Passthrough.ExtCallT policy_state val_tag control_tag.
-  Definition PICastT    := Passthrough.PICastT policy_state val_tag control_tag loc_tag.
-  Definition IPCastT    := Passthrough.IPCastT policy_state val_tag control_tag loc_tag.
-  Definition PPCastT    := Passthrough.PPCastT policy_state val_tag control_tag loc_tag.
-  Definition IICastT    := Passthrough.IICastT policy_state val_tag control_tag.
+  Definition CastToPtrT := Passthrough.CastToPtrT policy_state val_tag control_tag loc_tag.
+  Definition CastOtherT := Passthrough.CastOtherT policy_state val_tag control_tag.
 End Compartments.

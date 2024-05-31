@@ -26,7 +26,7 @@ Module PolProduct (P1:Policy) (P2: Policy) <: Policy.
   Theorem lt_eq_dec : forall (t1 t2:loc_tag), {t1 = t2} + {t1 <> t2}.
     Proof. unfold loc_tag. intros. repeat decide equality. apply P2.lt_eq_dec. apply P1.lt_eq_dec. Qed.
 
-  Definition def_tag := (P1.def_tag, P2.def_tag).
+  Definition TempT := (P1.TempT, P2.TempT).
   
   Definition InitPCT : control_tag := (P1.InitPCT, P2.InitPCT).
  
@@ -137,10 +137,10 @@ Module PolProduct (P1:Policy) (P2: Policy) <: Policy.
                 (P2.BinopT l  op (snd pct) (snd vt1) (snd vt2)) 
                 (fun '(pct1, vt1) '(pct2, vt2) => ((pct1, pct2), (vt1, vt2))).
 
-  Definition ConstT (l: loc) (pct: control_tag) :
+  Definition LiteralT (l: loc) (pct: control_tag) :
     PolicyResult val_tag := 
-    double_bind (P1.ConstT l (fst pct))
-                (P2.ConstT l (snd pct)) 
+    double_bind (P1.LiteralT l (fst pct))
+                (P2.LiteralT l (snd pct)) 
                 (fun vt1 vt2 => (vt1, vt2)).
 
   Definition SplitT (l: loc) (pct: control_tag) (vt: val_tag) (id: option ident) :
@@ -225,28 +225,16 @@ Module PolProduct (P1:Policy) (P2: Policy) <: Policy.
                 (P2.FieldT l ce  (snd pct) (snd vt) ty id)
                 (fun vt1 vt2 => (vt1, vt2)).
 
-  Definition PICastT (l: loc) (pct: control_tag) (pt: val_tag) (lts: option (list loc_tag)) (ty: type) :
+  Definition CastToPtrT (l: loc) (pct: control_tag) (pt: val_tag) (lts: option (list loc_tag)) (ty: type) :
     PolicyResult val_tag :=
-    double_bind (P1.PICastT l (fst pct) (fst pt) (option_map (map fst) lts) ty)
-                (P2.PICastT l (snd pct) (snd pt) (option_map (map snd) lts) ty)
+    double_bind (P1.CastToPtrT l (fst pct) (fst pt) (option_map (map fst) lts) ty)
+                (P2.CastToPtrT l (snd pct) (snd pt) (option_map (map snd) lts) ty)
                 (fun vt1 vt2 => (vt1, vt2)).
           
-  Definition IPCastT (l: loc) (pct: control_tag) (vt: val_tag)  (lts: option (list loc_tag)) (ty: type) :
+  Definition CastOtherT (l: loc) (pct: control_tag) (vt: val_tag) (ty: type) :
     PolicyResult val_tag :=
-    double_bind (P1.IPCastT l (fst pct) (fst vt) (option_map (map fst) lts) ty)
-                (P2.IPCastT l (snd pct) (snd vt) (option_map (map snd) lts) ty)
-                (fun vt1 vt2 => (vt1, vt2)).
-
-  Definition PPCastT (l: loc) (pct: control_tag) (vt: val_tag)
-    (lts: option (list loc_tag)) (ty: type) : PolicyResult val_tag :=
-    double_bind (P1.PPCastT l (fst pct) (fst vt) (option_map (map fst) lts) ty)
-                (P2.PPCastT l (snd pct) (snd vt) (option_map (map snd) lts) ty)
-                (fun vt1 vt2 => (vt1, vt2)).
-
-  Definition IICastT (l: loc) (pct: control_tag) (vt: val_tag) (ty: type) :
-    PolicyResult val_tag :=
-    double_bind (P1.IICastT l (fst pct) (fst vt) ty)
-                (P2.IICastT l (snd pct) (snd vt) ty)
+    double_bind (P1.CastOtherT l (fst pct) (fst vt) ty)
+                (P2.CastOtherT l (snd pct) (snd vt) ty)
                 (fun vt1 vt2 => (vt1, vt2)).
 
 End PolProduct.
