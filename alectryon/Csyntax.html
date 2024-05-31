@@ -1,0 +1,169 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" class="alectryon-standalone" xml:lang="en" lang="en">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="Docutils 0.20.1: https://docutils.sourceforge.io/" />
+<title>Abstract syntax for the Tagged C language</title>
+<link rel="stylesheet" href="alectryon.css" type="text/css" />
+<link rel="stylesheet" href="docutils_basic.css" type="text/css" />
+<link rel="stylesheet" href="pygments.css" type="text/css" />
+<script type="text/javascript" src="alectryon.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/IBM-type/0.5.4/css/ibm-type.min.css" integrity="sha512-sky5cf9Ts6FY1kstGOBHSybfKqdHR41M0Ldb0BjNiv3ifltoQIsg0zIaQ+wwdwgQ0w9vKFW7Js50lxH9vqNSSw==" crossorigin="anonymous" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/firacode/5.2.0/fira_code.min.css" integrity="sha512-MbysAYimH1hH2xYzkkMHB6MqxBqfP0megxsCLknbYqHVwXTCg9IqHbk+ZP/vnhO8UEW6PaXAkKe2vQ+SWACxxA==" crossorigin="anonymous" />
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body>
+<div class="alectryon-root alectryon-centered"><div class="alectryon-banner">Built with <a href="https://github.com/cpitclaudel/alectryon/">Alectryon</a>, running Coq+SerAPI v8.15.0+0.15.4. Bubbles (<span class="alectryon-bubble"></span>) indicate interactive fragments: hover for details, tap to reveal contents. Use <kbd>Ctrl+↑</kbd> <kbd>Ctrl+↓</kbd> to navigate, <kbd>Ctrl+🖱️</kbd> to focus. On Mac, use <kbd>⌘</kbd> instead of <kbd>Ctrl</kbd>.</div><div class="document" id="abstract-syntax-for-the-tagged-c-language">
+<h1 class="title">Abstract syntax for the Tagged C language</h1>
+
+<div class="section" id="atoms-and-locations">
+<h1>Atoms and Locations</h1>
+<p>Locations in Tagged C are left-hand values that can be the targets of
+assignments. A location can be a memory location, a temporary variable,
+or a function location (distinguishing internal functions whose code is
+visible to the semantics, and external functions whose implementation is
+opaque).</p>
+<pre class="alectryon-io highlight"><!-- Generator: Alectryon --><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Inductive</span> <span class="nf">loc_kind</span> : <span class="kt">Type</span> :=
+  | Lmem (p: ptr) (pt: val_tag) (bf: bitfield)
+  | Ltmp (i: <span class="kn">ident</span>)
+  | Lifun (i: <span class="kn">ident</span>) (pt: val_tag)
+  | Lefun (ef: external_function) (tyargs: typelist) (tyres:rettype) (cconv: calling_convention) (pt: val_tag)
+  .</span></span></pre><p>Atoms are right-hand values that can be operated upon.
+An atom is a pair of a val and a val_tag.</p>
+<pre class="alectryon-io highlight"><!-- Generator: Alectryon --><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><input class="alectryon-toggle" id="csyntax-v-chk0" style="display: none" type="checkbox"><label class="alectryon-input" for="csyntax-v-chk0"><span class="kn">Print</span> atom.</label><small class="alectryon-output"><div><div class="alectryon-messages"><blockquote class="alectryon-message">atom = (val * val_tag)%type
+     : <span class="kt">Type</span></blockquote></div></div></small></span></pre></div>
+<div class="section" id="expressions">
+<h1>Expressions</h1>
+<p>Tagged C expressions are based on those of Compcert C. As in CompCert C, there are no
+string literal expressions: string literals are transformed into pointers to global arrays.
+Some operators are treated as derived forms: array indexing, pre-increment, pre-decrement, and
+the [&amp;&amp;] and [||] operators.  All expressions are annotated with their types.</p>
+<p>In Tagged C, the <tt class="docutils literal">Eval</tt> expression carries an atom (a pair of a value and a value tag).
+Constants are represented via <tt class="docutils literal">Econst</tt> expression, without a tag.</p>
+<p>Expressions are implicitly classified into left-hand and right-hand, 
+ranged over by [l] and [r], respectively. Fully evaluated left-hand expressions become
+<tt class="docutils literal">Eloc</tt> expressions, and fully evaluated right-hand expressions becomes <tt class="docutils literal">Eval</tt>.</p>
+<pre class="alectryon-io highlight"><!-- Generator: Alectryon --><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Inductive</span> <span class="nf">expr</span> : <span class="kt">Type</span> :=
+  <span class="c">(* Fully evaluated right-hand expression *)</span>
+  | <span class="kn">Eval</span> (v: atom) (ty: type)
+  <span class="c">(* Fully evaluated left-hand expression *)</span>
+  | Eloc (l:loc_kind) (ty: type)
+  <span class="c">(* Literal value (right-hand) *)</span>
+  | Econst (v: val) (ty: type)
+  <span class="c">(* Variable identifier, produces left-hand value where the named variable is found.</span>
+<span class="c">     Includes functions other than &quot;builtin&quot; ones. *)</span>
+  | Evar (x: <span class="kn">ident</span>) (ty: type)
+  <span class="c">(* Builtin function identifier, produces left-hand value that simulates a function</span>
+<span class="c">     pointer for functions whose definitions are built into the semantics. *)</span>
+  | Ebuiltin (ef: external_function) (tyargs: typelist) (cc: calling_convention) (ty: type)
+  <span class="c">(* Access a specified field or member of a struct or union (left-hand to left-hand) *)</span>
+  | Efield (l: expr) (f: <span class="kn">ident</span>) (ty: type)
+  <span class="c">(* Access a left-hand value to retrieve a right-hand value *)</span>
+  | Evalof (l: expr) (ty: type)
+  <span class="c">(* Dereference a right-hand pointer into a left-hand location (unary [*]) *)</span>
+  | Ederef (r: expr) (ty: type)
+  <span class="c">(* Take the address of a left-hand location as a right-hand pointer ([&amp;]) *)</span>
+  | Eaddrof (l: expr) (ty: type)
+  <span class="c">(* Unary arithmetic operations (right-hand) *)</span>
+  | Eunop (op: unary_operation) (r: expr) (ty: type)
+  <span class="c">(* Binary arithmetic operation (left-hand) *)</span>
+  | Ebinop (op: binary_operation) (r1 r2: expr) (ty: type)
+  <span class="c">(* Type cast (right-hand, [(ty)r]) *)</span>
+  | Ecast (r: expr) (ty: type)
+  <span class="c">(* Sequential &quot;and&quot; with shortcutting (right-hand, [r1 &amp;&amp; r2]) *)</span>
+  | Eseqand (r1 r2: expr) (ty: type)
+  <span class="c">(* Sequential &quot;or&quot; with shortcutting (right-hand, [r1 || r2]) *)</span>
+  | Eseqor (r1 r2: expr) (ty: type)
+  <span class="c">(* Conditional ternary expression (right-hand, [r1 ? r2 : r3]) *)</span>
+  | Econdition (r1 r2 r3: expr) (ty: type)
+  <span class="c">(* Constant size of a type (right-hand) *)</span>
+  | Esizeof (ty&#39;: type) (ty: type)
+  <span class="c">(* Constant natural alignment of a type (right-hand) *)</span>
+  | Ealignof (ty&#39;: type) (ty: type)
+  <span class="c">(* Assign right-hand value into left-hand location (right-hand, [l = r]) *)</span>
+  | Eassign (l: expr) (r: expr) (ty: type)
+  <span class="c">(* In-place application of binary operation (right-hand, [l op= r]).</span>
+<span class="c">     Equivalent to (Eassign l (Ebinop (Evalof l) r)). *)</span>
+  | Eassignop (op: binary_operation) (l: expr) (r: expr) (tyres ty: type)
+  <span class="c">(* In-place post-increment or post-decrement (right-hand, [l++] and [l--]) *)</span>
+  | Epostincr (id: incr_or_decr) (l: expr) (ty: type)
+  <span class="c">(* Sequence expression (right-hand, [r1, r2]) *)</span>
+  | Ecomma (r1 r2: expr) (ty: type)
+  <span class="c">(* Call a function by its pointer (right-hand, [r1(rargs)]) *)</span>
+  | Ecall (r1: expr) (rargs: exprlist) (ty: type)
+  <span class="c">(* Intermediate expression representing a subexpression produced dynamically</span>
+<span class="c">     via a conditional or sequential boolen expression (right-hand) *)</span>
+  | Eparen (r: expr) (tycast: type) (ty: type)
+
+  <span class="kr">with</span> exprlist : <span class="kt">Type</span> :=
+  | Enil
+  | Econs (r1: expr) (rl: exprlist).</span></span></pre><p>The grammar above contains some forms that cannot appear in source terms
+but appear during reduction.  These forms are:
+- <tt class="docutils literal">[Eval v]</tt>, which occurs during reduction of right-hand expressions.
+(Numeric literals are represented by <tt class="docutils literal">Econst</tt>.)
+- <tt class="docutils literal">[Eloc lk]</tt>, which appears during reduction of l-values.
+- <tt class="docutils literal">[Eparen r tycast ty]</tt>, which appears during reduction of conditionals
+[r1 ? r2 : r3] as well as &amp;&amp; and ||.</p>
+<p>The <tt class="docutils literal">Evalof</tt> expression appears in source terms in the abstract syntax of
+Tagged C, but not in its concrete syntax. It is generated by the parser anytime
+a left-hand expression appears when a right-hand one is expected, to explicitly
+identify the access of the resulting location.</p>
+<p>Some C expressions are derived forms.  Array access <tt class="docutils literal">[r1[r2]]</tt> is expressed
+as <tt class="docutils literal"><span class="pre">[*(r1</span> + r2)]</tt>.</p>
+<pre class="alectryon-io highlight"><!-- Generator: Alectryon --><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Definition</span> <span class="nf">Eindex</span> (<span class="nv">r1</span> <span class="nv">r2</span>: expr) (<span class="nv">ty</span>: type) :=
+  Ederef (Ebinop Oadd r1 r2 (Tpointer ty noattr)) ty.</span></span></pre><p>Pre-increment [++l] and pre-decrement [--l] are expressed as 
+[l += 1] and [l -= 1], respectively.</p>
+<pre class="alectryon-io highlight"><!-- Generator: Alectryon --><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Definition</span> <span class="nf">Epreincr</span> (<span class="nv">id</span>: incr_or_decr) (<span class="nv">l</span>: expr) (<span class="nv">ty</span>: type) :=
+  Eassignop (<span class="kr">match</span> id <span class="kr">with</span> Incr =&gt; Oadd | Decr =&gt; Osub <span class="kr">end</span>)
+            l (Econst (Vint Int.one) type_int32s) (typeconv ty) ty.</span></span></pre></div>
+<div class="section" id="statements">
+<h1>Statements</h1>
+<p>Tagged C statements include:
+- the empty statement <tt class="docutils literal">Sskip</tt>
+- evaluation of an expression for its side-effects <tt class="docutils literal">Sdo r</tt>
+- conditional <tt class="docutils literal">if <span class="pre">(...)</span> { ... } else { ... }</tt>
+- the three loops <tt class="docutils literal"><span class="pre">while(...)</span> { ... }</tt> and <tt class="docutils literal">do { ... } while <span class="pre">(...)</span></tt>
+and <tt class="docutils literal"><span class="pre">for(...,</span> <span class="pre">...,</span> <span class="pre">...)</span> { ... }</tt>
+- the <tt class="docutils literal">switch</tt> construct
+- <tt class="docutils literal">break</tt>, <tt class="docutils literal">continue</tt>, <tt class="docutils literal">return</tt> with and without a return value
+- <tt class="docutils literal">goto</tt> and labeled statements</p>
+<p>Only structured forms of <tt class="docutils literal">switch</tt> are supported; moreover,
+the <tt class="docutils literal">default</tt> case must occur last.  Blocks and block-scoped declarations
+are not supported.</p>
+<pre class="alectryon-io highlight"><!-- Generator: Alectryon --><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Inductive</span> <span class="nf">statement</span> : <span class="kt">Type</span> :=
+<span class="c">(* Do nothing, move on to the next pending operations *)</span>
+| Sskip : statement
+<span class="c">(* Evaluate expression for side effects *)</span>
+| Sdo : expr -&gt; Cabs.loc -&gt; statement
+<span class="c">(* Sequence *)</span>
+| Ssequence : statement -&gt; statement -&gt; statement
+<span class="c">(* Conditional *)</span>
+| Sifthenelse : expr  -&gt; statement -&gt; statement -&gt; option label -&gt; Cabs.loc -&gt; statement
+<span class="c">(* While loop *)</span>
+| Swhile : expr -&gt; statement -&gt; option label -&gt; Cabs.loc -&gt; statement
+<span class="c">(* Do-while loop *)</span>
+| Sdowhile : expr -&gt; statement -&gt; option label -&gt; Cabs.loc -&gt; statement
+<span class="c">(* For loop *)</span>
+| Sfor: statement -&gt; expr -&gt; statement -&gt; statement -&gt; option label -&gt; Cabs.loc -&gt; statement
+<span class="c">(* Break *)</span>
+| Sbreak : Cabs.loc -&gt; statement
+<span class="c">(* Continue *)</span>
+| Scontinue : Cabs.loc -&gt; statement
+<span class="c">(* Return *)</span>
+| Sreturn : option expr -&gt; Cabs.loc -&gt; statement
+<span class="c">(* Switch *)</span>
+| Sswitch : expr -&gt; labeled_statements -&gt; Cabs.loc -&gt; statement
+<span class="c">(* Label in code, used for go-to *)</span>
+| Slabel : label -&gt; statement -&gt; statement
+<span class="c">(* Go-to *)</span>
+| Sgoto : label -&gt; Cabs.loc -&gt; statement
+
+<span class="c">(* Labeled statements are the targets of a switch statement *)</span>
+<span class="kr">with</span> labeled_statements : <span class="kt">Type</span> :=
+| LSnil: labeled_statements
+| LScons: option Z -&gt; statement -&gt; labeled_statements -&gt; labeled_statements.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-wsp"><span class="c">(* In LScons, [None] is [default], [Some x] is [case x] *)</span></span></pre></div>
+</div>
+</div></body>
+</html>

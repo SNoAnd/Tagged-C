@@ -18,20 +18,21 @@ open C
 
 open Camlcoq
 open! Floats
-open Values
 open Ctypes
 open Tags
-open Allocator
 
-module C2CP =
-        functor (Pol: Policy) (Alloc: Allocator) ->
-                struct
+module C2CP (Pol: Policy) = struct
+  module CMA = ConcreteAllocator.ConcMemAllocators (Pol)
+  module CM = CMA.CM
 
-module A = Alloc (Pol)
-module Init = Initializers.Initializers (Pol) (A)
-module Ctyping = Init.Cexec.InterpreterEvents.Cstrategy.Ctyping
-module Csyntax = Ctyping.Csem.Csyntax
-module Cop = Csyntax.Cop
+  module Inner (I: CMA.ConcAllocatorImpl) = struct
+    module TC = CMA.Init.Inner (I)
+    module Cexec = TC.Cexec
+    module Ctyping = Cexec.InterpreterEvents.Deterministic.Ctyping
+    module Csyntax = Ctyping.Csem.Csyntax
+    module Cop = Csyntax.Cop
+    module Vals = TC.Cexec.A.Genv.MD.TLib.Switch.BI.BI1.BI0.Values
+    open Vals
 
 (** ** Extracting information about global variables from their atom *)
 
@@ -347,8 +348,8 @@ let name_for_wide_string_literal s =
     Hashtbl.add decl_atom id
       { a_storage = C.Storage_static;
         a_alignment = Some wchar_size;
-        a_size = Some (Int64.(mul (of_int (List.length s + 1))
-                                  (of_int wchar_size)));
+        a_size = Some (Int64.mul (Int64.of_int (List.length s + 1))
+                                  (Int64.of_int wchar_size));
         a_sections = [Sections.for_stringlit()];
         a_access = Sections.Access_default;
         a_inline = No_specifier;
@@ -473,7 +474,7 @@ let make_builtin_va_arg env ty e =
         "__compcert_va_composite" ty e
   | _ ->
       unsupported "va_arg at this type";
-      Csyntax.Eval((Vint(coqint_of_camlint 0l), Pol.def_tag), type_int32s)
+      Csyntax.Eval((Vint(coqint_of_camlint 0l), Pol.coq_TempT), type_int32s)
 
 (** ** Translation functions *)
 
@@ -747,7 +748,7 @@ let check_volatile_bitfield env e =
   && List.mem AVolatile (Cutil.attributes_of_type env e.etyp) then
     warning Diagnostics.Unnamed "access to a volatile bit field, the 'volatile' qualifier is ignored"
 
-let ezero = Csyntax.Eval((Vint(coqint_of_camlint 0l), Pol.def_tag), type_int32s)
+let ezero = Csyntax.Eval((Vint(coqint_of_camlint 0l), Pol.coq_TempT), type_int32s)
 
 let ewrap = function
   | Errors.OK e -> e
@@ -992,6 +993,16 @@ let rec convertExpr env e =
       let r1 = Csyntax.Ebuiltin(AST.EF_external(coqstring_of_camlstring "fgets", sg),
                 targs, AST.cc_default, Tfunction(targs,tres,AST.cc_default)) in
       let rargs = convertExprList env [arg1; arg2] in
+      Csyntax.Ecall(Csyntax.Evalof(r1,Tfunction(targs,tres,AST.cc_default)), rargs, tres)
+
+  | C.ECall({edesc = C.EVar {name = "getchar"}}, [])
+    when !Clflags.option_interp ->
+      let targs = convertTypArgs env [] []
+      and tres = convertTyp env e.etyp in
+      let sg = signature_of_type targs tres AST.cc_default in
+      let r1 = Csyntax.Ebuiltin(AST.EF_external(coqstring_of_camlstring "getchar", sg),
+                targs, AST.cc_default, Tfunction(targs,tres,AST.cc_default)) in
+      let rargs = convertExprList env [] in 
       Csyntax.Ecall(Csyntax.Evalof(r1,Tfunction(targs,tres,AST.cc_default)), rargs, tres)
 
   | C.ECall(fn, args) ->
@@ -1293,21 +1304,21 @@ let convertFundecl env (sto, id, ty, optinit) =
 let rec convertInit env init =
   match init with
   | C.Init_single e ->
-      Init.Init_single (convertExpr env e)
+      TC.Init_single (convertExpr env e)
   | C.Init_array il ->
-      Init.Init_array (convertInitList env (List.rev il) Init.Init_nil)
+      TC.Init_array (convertInitList env (List.rev il) TC.Init_nil)
   | C.Init_struct(_, flds) ->
-      Init.Init_struct (convertInitList env (List.rev_map snd flds) Init.Init_nil)
+      TC.Init_struct (convertInitList env (List.rev_map snd flds) TC.Init_nil)
   | C.Init_union(_, fld, i) ->
-      Init.Init_union (intern_string fld.fld_name, convertInit env i)
+      TC.Init_union (intern_string fld.fld_name, convertInit env i)
 
 and convertInitList env il accu =
   match il with
   | [] -> accu
-  | i :: il' -> convertInitList env il' (Init.Init_cons(convertInit env i, accu))
+  | i :: il' -> convertInitList env il' (TC.Init_cons(convertInit env i, accu))
 
 let convertInitializer env ty i =
-  match Init.transl_init
+  match TC.transl_init
                !comp_env (convertTyp env ty) (convertInit env i)
   with
   | Errors.OK init -> init
@@ -1512,4 +1523,6 @@ let convertProgram p =
         p'
   with Env.Error msg ->
     fatal_error "%s" (Env.error_message msg)
-                end
+                
+  end
+end

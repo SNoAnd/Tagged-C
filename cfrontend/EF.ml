@@ -35,6 +35,16 @@ let fgets_tuple =
         Tpointer(Tint(I8,Signed,noattr),noattr)),
         AST.cc_default)
 
+let getchar_tuple =
+        (((AST.EF_external(Camlcoq.coqstring_of_camlstring "getchar",
+                                {AST.sig_args = [];
+                                 AST.sig_res = AST.Tret(AST.Tint);
+                                 AST.sig_cc = AST.cc_default;}),
+        Tnil),
+        Tint(I32,Signed,noattr)),
+        AST.cc_default)
+
+
 let check_ef id = None
         (*if intern_string "malloc" = id then Some(malloc_tuple) else
         if intern_string "free" = id then Some(free_tuple) else

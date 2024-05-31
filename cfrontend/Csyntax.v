@@ -1,137 +1,147 @@
-(* *********************************************************************)
-(*                                                                     *)
-(*              The Compcert verified compiler                         *)
-(*                                                                     *)
-(*          Xavier Leroy, INRIA Paris-Rocquencourt                     *)
-(*                                                                     *)
-(*  Copyright Institut National de Recherche en Informatique et en     *)
-(*  Automatique.  All rights reserved.  This file is distributed       *)
-(*  under the terms of the GNU Lesser General Public License as        *)
-(*  published by the Free Software Foundation, either version 2.1 of   *)
-(*  the License, or  (at your option) any later version.               *)
-(*  This file is also distributed under the terms of the               *)
-(*  INRIA Non-Commercial License Agreement.                            *)
-(*                                                                     *)
-(* *********************************************************************)
+(*|
+=========================================
+Abstract syntax for the Tagged C language
+=========================================
+|*)
 
-(** Abstract syntax for the Tagged C language *)
-
+(*| .. coq:: none |*)
 Require Import Coqlib Maps Integers Floats Errors.
-Require Import AST Linking Values Tags Allocator.
+Require Import AST Linking Values Tags Memory Allocator.
 Require Import Cabs Ctypes Cop.
 
-Module Csyntax (P:Policy) (A:Allocator P).
-  Module TLib := TagLib P.
+Module Csyntax (Ptr: Pointer) (Pol: Policy) (Reg: Region Ptr) (A: Memory Ptr Pol Reg).
+  Module Cop := Cop Ptr Pol Reg A.
+  Export Cop.
+  Import A.
   Import TLib.
-  Module Cop := Cop P A.
-  Import Cop.
-  Import Deterministic.
-  Import Behaviors.
-  Import Smallstep.
-  Import Events.
-  Import Genv.
+  Import Ptr.
 
-  (** ** Location Kinds *)
-
+(*|
+Atoms and Locations
+-------------------
+Locations in Tagged C are left-hand values that can be the targets of
+assignments. A location can be a memory location, a temporary variable,
+or a function location (distinguishing internal functions whose code is
+visible to the semantics, and external functions whose implementation is
+opaque).
+|*)
   Inductive loc_kind : Type :=
-  | Lmem (ofs: int64) (pt: tag) (bf: bitfield)
-  | Ltmp (b: block)
-  | Lifun (b: block) (pt: tag)
-  | Lefun (ef: external_function) (tyargs: typelist) (tyres:rettype) (cconv: calling_convention) (pt: tag)
+  | Lmem (p: ptr) (pt: val_tag) (bf: bitfield)
+  | Ltmp (i: ident)
+  | Lifun (i: ident) (pt: val_tag)
+  | Lefun (ef: external_function) (tyargs: typelist) (tyres:rettype) (cconv: calling_convention) (pt: val_tag)
   .
-  
-  (** ** Expressions *)
 
-  (** Tagged C expressions are almost identical to those of C.
-      The only omission is string literals.  Some operators are treated
-      as derived forms: array indexing, pre-increment, pre-decrement, and
-      the [&&] and [||] operators.  All expressions are annotated with
-      their types. *)
+(*|
+Atoms are right-hand values that can be operated upon.
+An atom is a pair of a val and a val_tag.
+.. coq::
+|*)
+
+  Print atom.
+  
+(*|
+Expressions
+-----------
+
+Tagged C expressions are based on those of Compcert C. As in CompCert C, there are no
+string literal expressions: string literals are transformed into pointers to global arrays.
+Some operators are treated as derived forms: array indexing, pre-increment, pre-decrement, and
+the [&&] and [||] operators.  All expressions are annotated with their types.
+
+In Tagged C, the ``Eval`` expression carries an atom (a pair of a value and a value tag).
+Constants are represented via ``Econst`` expression, without a tag.
+
+Expressions are implicitly classified into left-hand and right-hand, 
+ranged over by [l] and [r], respectively. Fully evaluated left-hand expressions become
+``Eloc`` expressions, and fully evaluated right-hand expressions becomes ``Eval``.
+|*)
 
   Inductive expr : Type :=
-  | Eval (v: atom) (ty: type)                                           (**r evaluated fully *)
-  | Evar (x: ident) (ty: type)                                                 (**r variable *)
-  | Econst (v: val) (ty: type)                                                 (**r constant *)
-  | Efield (l: expr) (f: ident) (ty: type)      (**r access to a member of a struct or union *)
-  | Evalof (l: expr) (ty: type)                               (**r l-value used as a r-value *)
-  | Ederef (r: expr) (ty: type)                         (**r pointer dereference (unary [*]) *)
-  | Eaddrof (l: expr) (ty: type)                             (**r address-of operators ([&]) *)
-  | Eunop (op: unary_operation) (r: expr) (ty: type)         (**r unary arithmetic operation *)
-  | Ebinop (op: binary_operation) (r1 r2: expr) (ty: type)  (**r binary arithmetic operation *)
-  | Ecast (r: expr) (ty: type)                                        (**r type cast [(ty)r] *)
-  | Eseqand (r1 r2: expr) (ty: type)                        (**r sequential "and" [r1 && r2] *)
-  | Eseqor (r1 r2: expr) (ty: type)                          (**r sequential "or" [r1 || r2] *)
-  | Econdition (r1 r2 r3: expr) (ty: type)                   (**r conditional [r1 ? r2 : r3] *)
-  | Esizeof (ty': type) (ty: type)                                       (**r size of a type *)
-  | Ealignof (ty': type) (ty: type)                         (**r natural alignment of a type *)
-  | Eassign (l: expr) (r: expr) (ty: type)                           (**r assignment [l = r] *)
-  | Eassignop (op: binary_operation) (l: expr) (r: expr) (tyres ty: type)
-                                                   (**r assignment with arithmetic [l op= r] *)
-  | Epostincr (id: incr_or_decr) (l: expr) (ty: type)
-                                          (**r post-increment [l++] and post-decrement [l--] *)
-  | Ecomma (r1 r2: expr) (ty: type)                        (**r sequence expression [r1, r2] *)
-  | Ecall (r1: expr) (rargs: exprlist) (ty: type)             (**r function call [r1(rargs)] *)
+  (* Fully evaluated right-hand expression *)
+  | Eval (v: atom) (ty: type)
+  (* Fully evaluated left-hand expression *)
+  | Eloc (l:loc_kind) (ty: type)
+  (* Literal value (right-hand) *)
+  | Econst (v: val) (ty: type)
+  (* Variable identifier, produces left-hand value where the named variable is found.
+     Includes functions other than "builtin" ones. *)
+  | Evar (x: ident) (ty: type)
+  (* Builtin function identifier, produces left-hand value that simulates a function
+     pointer for functions whose definitions are built into the semantics. *)
   | Ebuiltin (ef: external_function) (tyargs: typelist) (cc: calling_convention) (ty: type)
-                                                                  (**r builtin function name *)
-  | Eloc (l:loc_kind) (ty: type)               (**r location, result of evaluating a l-value *)
-  | Eparen (r: expr) (tycast: type) (ty: type)                     (**r marked subexpression *)
+  (* Access a specified field or member of a struct or union (left-hand to left-hand) *)
+  | Efield (l: expr) (f: ident) (ty: type)
+  (* Access a left-hand value to retrieve a right-hand value *)
+  | Evalof (l: expr) (ty: type)
+  (* Dereference a right-hand pointer into a left-hand location (unary [*]) *)
+  | Ederef (r: expr) (ty: type)
+  (* Take the address of a left-hand location as a right-hand pointer ([&]) *)
+  | Eaddrof (l: expr) (ty: type)
+  (* Unary arithmetic operations (right-hand) *)
+  | Eunop (op: unary_operation) (r: expr) (ty: type)
+  (* Binary arithmetic operation (left-hand) *)
+  | Ebinop (op: binary_operation) (r1 r2: expr) (ty: type)
+  (* Type cast (right-hand, [(ty)r]) *)
+  | Ecast (r: expr) (ty: type)
+  (* Sequential "and" with shortcutting (right-hand, [r1 && r2]) *)
+  | Eseqand (r1 r2: expr) (ty: type)
+  (* Sequential "or" with shortcutting (right-hand, [r1 || r2]) *)
+  | Eseqor (r1 r2: expr) (ty: type)
+  (* Conditional ternary expression (right-hand, [r1 ? r2 : r3]) *)
+  | Econdition (r1 r2 r3: expr) (ty: type)
+  (* Constant size of a type (right-hand) *)
+  | Esizeof (ty': type) (ty: type)
+  (* Constant natural alignment of a type (right-hand) *)
+  | Ealignof (ty': type) (ty: type)
+  (* Assign right-hand value into left-hand location (right-hand, [l = r]) *)
+  | Eassign (l: expr) (r: expr) (ty: type)
+  (* In-place application of binary operation (right-hand, [l op= r]).
+     Equivalent to (Eassign l (Ebinop (Evalof l) r)). *)
+  | Eassignop (op: binary_operation) (l: expr) (r: expr) (tyres ty: type)
+  (* In-place post-increment or post-decrement (right-hand, [l++] and [l--]) *)
+  | Epostincr (id: incr_or_decr) (l: expr) (ty: type)
+  (* Sequence expression (right-hand, [r1, r2]) *)
+  | Ecomma (r1 r2: expr) (ty: type)
+  (* Call a function by its pointer (right-hand, [r1(rargs)]) *)
+  | Ecall (r1: expr) (rargs: exprlist) (ty: type)
+  (* Intermediate expression representing a subexpression produced dynamically
+     via a conditional or sequential boolen expression (right-hand) *)
+  | Eparen (r: expr) (tycast: type) (ty: type)
          
   with exprlist : Type :=
   | Enil
   | Econs (r1: expr) (rl: exprlist).
 
-(** Expressions are implicitly classified into l-values and r-values,
-ranged over by [l] and [r], respectively, in the grammar above.
-
-L-values are those expressions that can occur to the left of an assignment.
-They denote an abstract notion of location, which can be a memory location,
- a temporary variable id, or the abstract location of a function.
- (Assigning to a function pointer is illegal, but syntactically well-formed.)
-L-values are variables ([Evar]), pointer dereferences ([Ederef]), and field accesses ([Efield]).
-R-values are all other expressions. They denote values, and the reduction
-semantics reduces them to [Eval v] expressions.
-
-A l-value can be used in a r-value context, but this use must be marked
-explicitly with the [Evalof] operator, which is not materialized in the
-concrete syntax of C but denotes a read from the location corresponding to
-the l-value [l] argument of [Evalof l].
-
+(*|
 The grammar above contains some forms that cannot appear in source terms
 but appear during reduction.  These forms are:
-- [Eval v] where [v] is a pointer or [Vundef].  (Numeric literals occur in
-source terms in the form of [Econst].)
-- [Eloc loc], which appears during reduction of l-values.
-- [Eparen r tycast ty], which appears during reduction of conditionals
-  [r1 ? r2 : r3] as well as sequential `and' / `or'.
+- ``[Eval v]``, which occurs during reduction of right-hand expressions.
+(Numeric literals are represented by ``Econst``.)
+- ``[Eloc lk]``, which appears during reduction of l-values.
+- ``[Eparen r tycast ty]``, which appears during reduction of conditionals
+[r1 ? r2 : r3] as well as && and ||.
 
-Some C expressions are derived forms.  Array access [r1[r2]] is expressed
-as [*(r1 + r2)].
-*)
+The ``Evalof`` expression appears in source terms in the abstract syntax of
+Tagged C, but not in its concrete syntax. It is generated by the parser anytime
+a left-hand expression appears when a right-hand one is expected, to explicitly
+identify the access of the resulting location. 
+|*)
 
+(*| Some C expressions are derived forms.  Array access ``[r1[r2]]`` is expressed
+as ``[*(r1 + r2)]``. |*)
+  
 Definition Eindex (r1 r2: expr) (ty: type) :=
   Ederef (Ebinop Oadd r1 r2 (Tpointer ty noattr)) ty.
 
-(** Pre-increment [++l] and pre-decrement [--l] are expressed as
-    [l += 1] and [l -= 1], respectively. *)
+(*| Pre-increment [++l] and pre-decrement [--l] are expressed as 
+[l += 1] and [l -= 1], respectively. |*)
 
 Definition Epreincr (id: incr_or_decr) (l: expr) (ty: type) :=
   Eassignop (match id with Incr => Oadd | Decr => Osub end)
-            l (Eval (Vint Int.one, def_tag) type_int32s) (typeconv ty) ty.
+            l (Econst (Vint Int.one) type_int32s) (typeconv ty) ty.
 
-(** Selection is a conditional expression that always evaluates both arms
-  and can be implemented by "conditional move" instructions.
-  It is expressed as an invocation of a builtin function. *)
-
-(*Definition Eselection (r1 r2 r3: expr) (ty: type) :=
-  let t := typ_of_type ty in
-  let sg := mksignature (AST.Tint :: t :: t :: nil) t cc_default in
-  Ebuiltin (EF_builtin "__builtin_sel"%string sg)
-           (Tcons type_bool (Tcons ty (Tcons ty Tnil)))
-           (Econs r1 (Econs r2 (Econs r3 Enil)))
-           ty.*)
-
-(** Extract the type part of a type-annotated expression. *)
-
+(*| .. coq:: none |*)
 Definition typeof (a: expr) : type :=
   match a with
   | Eloc _ ty => ty
@@ -159,45 +169,63 @@ Definition typeof (a: expr) : type :=
   | Eparen _ _ ty => ty
   end.
 
-(** ** Statements *)
-
-(** Compcert C statements are very much like those of C and include:
-- empty statement [Sskip]
-- evaluation of an expression for its side-effects [Sdo r]
-- conditional [if (...) { ... } else { ... } [lbl ...]]
-- the three loops [while(...) { ... }] and [do { ... } while (...) [lbl ...]]
-  and [for(..., ..., ...) { ... } [lbl ...]]
-- in all cases, the lbl is an optional parameter containing a label for the join
-point of execution after the loop or if statement.
-- the [switch] construct
-- [break], [continue], [return] (with and without argument)
-- [goto] and labeled statements.
-
-Only structured forms of [switch] are supported; moreover,
-the [default] case must occur last.  Blocks and block-scoped declarations
-are not supported. *)
-
 Definition label := ident.
 
-Inductive statement : Type :=
-  | Sskip : statement                   (**r do nothing *)
-  | Sdo : expr -> Cabs.loc -> statement            (**r evaluate expression for side effects *)
-  | Ssequence : statement -> statement -> statement  (**r sequence *)
-  | Sifthenelse : expr  -> statement -> statement -> option label -> Cabs.loc -> statement (**r conditional *)
-  | Swhile : expr -> statement -> option label -> Cabs.loc -> statement   (**r [while] loop *)
-  | Sdowhile : expr -> statement -> option label -> Cabs.loc -> statement (**r [do] loop *)
-  | Sfor: statement -> expr -> statement -> statement -> option label -> Cabs.loc -> statement (**r [for] loop *)
-  | Sbreak : Cabs.loc -> statement                      (**r [break] statement *)
-  | Scontinue : Cabs.loc -> statement                   (**r [continue] statement *)
-  | Sreturn : option expr -> Cabs.loc -> statement     (**r [return] statement *)
-  | Sswitch : expr -> labeled_statements -> Cabs.loc -> statement  (**r [switch] statement *)
-  | Slabel : label -> statement -> statement
-  | Sgoto : label -> Cabs.loc -> statement
+(*|
+Statements
+----------
+|*)
 
-with labeled_statements : Type :=            (**r cases of a [switch] *)
-  | LSnil: labeled_statements
-  | LScons: option Z -> statement -> labeled_statements -> labeled_statements.
-                      (**r [None] is [default], [Some x] is [case x] *)
+(*| Tagged C statements include:
+- the empty statement ``Sskip``
+- evaluation of an expression for its side-effects ``Sdo r``
+- conditional ``if (...) { ... } else { ... }``
+- the three loops ``while(...) { ... }`` and ``do { ... } while (...)``
+and ``for(..., ..., ...) { ... }``
+- the ``switch`` construct
+- ``break``, ``continue``, ``return`` with and without a return value
+- ``goto`` and labeled statements
+
+Only structured forms of ``switch`` are supported; moreover,
+the ``default`` case must occur last.  Blocks and block-scoped declarations
+are not supported.
+|*)
+
+Inductive statement : Type :=
+(* Do nothing, move on to the next pending operations *)
+| Sskip : statement
+(* Evaluate expression for side effects *)
+| Sdo : expr -> Cabs.loc -> statement
+(* Sequence *)
+| Ssequence : statement -> statement -> statement
+(* Conditional *)
+| Sifthenelse : expr  -> statement -> statement -> option label -> Cabs.loc -> statement
+(* While loop *)
+| Swhile : expr -> statement -> option label -> Cabs.loc -> statement
+(* Do-while loop *)
+| Sdowhile : expr -> statement -> option label -> Cabs.loc -> statement
+(* For loop *)
+| Sfor: statement -> expr -> statement -> statement -> option label -> Cabs.loc -> statement
+(* Break *)
+| Sbreak : Cabs.loc -> statement
+(* Continue *)
+| Scontinue : Cabs.loc -> statement
+(* Return *)
+| Sreturn : option expr -> Cabs.loc -> statement
+(* Switch *)
+| Sswitch : expr -> labeled_statements -> Cabs.loc -> statement
+(* Label in code, used for go-to *)
+| Slabel : label -> statement -> statement
+(* Go-to *)
+| Sgoto : label -> Cabs.loc -> statement
+
+(* Labeled statements are the targets of a switch statement *)
+with labeled_statements : Type :=
+| LSnil: labeled_statements
+| LScons: option Z -> statement -> labeled_statements -> labeled_statements.
+(* In LScons, [None] is [default], [Some x] is [case x] *)
+
+(*| .. coq:: none |*)
 
 Fixpoint loc_of (s : statement) : Cabs.loc :=
   match s with
@@ -262,5 +290,5 @@ Definition type_of_fundef (f: fundef) : type :=
 - a proof that this environment is consistent with the definitions. *)
 
 Definition program := Ctypes.program function.
-
+  
 End Csyntax.

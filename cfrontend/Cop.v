@@ -24,14 +24,20 @@ Require Import Memory.
 Require Import Allocator.
 Require Import Ctypes.
 Require Import Tags.
-Require Import Determinism.
+Require Import Values.
+Require Import Events.
+Require Import Smallstep.
 Require Archi.
+Require Import ExtLib.Structures.Monads. Import MonadNotation.
 
-Module Cop (P:Policy) (A:Allocator P).
-  Module TLib := TagLib P.
+Module Cop (Ptr: Pointer) (Pol: Policy) (Reg: Region Ptr) (A: Memory Ptr Pol Reg).
+  Module Smallstep := Smallstep Ptr Pol Reg A.
+  Export Smallstep.
+  Import A.
   Import TLib.
-  Module Deterministic := Deterministic P A.
-  Export Deterministic.
+  Import Values.
+  Import Genv.
+  Import Ptr.
 
 Inductive incr_or_decr : Type := Incr | Decr.
 
@@ -92,7 +98,7 @@ Definition classify_cast (tfrom tto: type) : classify_cast_cases :=
   | Tint IBool _ _, Tfloat F64 _ => cast_case_f2bool
   | Tint IBool _ _, Tfloat F32 _ => cast_case_s2bool
   | Tint IBool _ _, (Tpointer _ _ | Tarray _ _ _ | Tfunction _ _ _) => 
-      (*if Archi.ptr64 then*) cast_case_l2bool (*else cast_case_i2bool*)
+      cast_case_l2bool
   (* To [int] other than [_Bool] *)
   | Tint sz2 si2 _, Tint _ _ _ =>
       (*if Archi.ptr64 then*) cast_case_i2i sz2 si2
@@ -102,17 +108,15 @@ Definition classify_cast (tfrom tto: type) : classify_cast_cases :=
   | Tint sz2 si2 _, Tfloat F64 _ => cast_case_f2i sz2 si2
   | Tint sz2 si2 _, Tfloat F32 _ => cast_case_s2i sz2 si2
   | Tint sz2 si2 _, (Tpointer _ _ | Tarray _ _ _ | Tfunction _ _ _) =>
-      (*if Archi.ptr64 then*) cast_case_l2i sz2 si2
-      (*else if intsize_eq sz2 I32 then cast_case_pointer
-      else cast_case_i2i sz2 si2*)
+      cast_case_l2i sz2 si2
   (* To [long] *)
   | Tlong _ _, Tlong _ _ =>
-      (*if Archi.ptr64 then*) cast_case_pointer (*else cast_case_l2l*)
+      cast_case_l2l
   | Tlong _ _, Tint sz1 si1 _ => cast_case_i2l si1
   | Tlong si2 _, Tfloat F64 _ => cast_case_f2l si2
   | Tlong si2 _, Tfloat F32 _ => cast_case_s2l si2
   | Tlong si2 _, (Tpointer _ _ | Tarray _ _ _ | Tfunction _ _ _) =>
-      (*if Archi.ptr64 then*) cast_case_pointer (*else cast_case_i2l si2*)
+      cast_case_pointer
   (* To [float] *)
   | Tfloat F64 _, Tint sz1 si1 _ => cast_case_i2f si1
   | Tfloat F32 _, Tint sz1 si1 _ => cast_case_i2s si1
@@ -123,10 +127,10 @@ Definition classify_cast (tfrom tto: type) : classify_cast_cases :=
   | Tfloat F64 _, Tfloat F32 _ => cast_case_s2f
   | Tfloat F32 _, Tfloat F64 _ => cast_case_f2s
   (* To pointer types *)
-  | Tpointer _ _, Tint _ si _ =>
-      (*if Archi.ptr64 then*) cast_case_i2l si (*else cast_case_pointer*)
+  | Tpointer _ _, Tint _ _ _ =>
+      cast_case_pointer
   | Tpointer _ _, Tlong _ _ =>
-      (*if Archi.ptr64 then*) cast_case_pointer (*else cast_case_l2i I32 Unsigned*)
+      cast_case_pointer (*else cast_case_l2i I32 Unsigned*)
   | Tpointer _ _, (Tpointer _ _ | Tarray _ _ _ | Tfunction _ _ _) => cast_case_pointer
   (* To struct or union types *)
   | Tstruct id2 _, Tstruct id1 _ => cast_case_struct id1 id2
@@ -203,13 +207,13 @@ Definition cast_single_long (si : signedness) (f: float32) : option int64 :=
   | Unsigned => Float32.to_longu f
   end.
 
-Definition sem_cast (v: val) (t1 t2: type) (m: mem): option val :=
+Definition sem_cast (v: val) (t1 t2: type) (r: region): option val :=
   match classify_cast t1 t2 with
   | cast_case_pointer =>
       match v with
-      | Vfptr _ => Some v
-      | Vint _ => Some v
-      | Vlong _ => Some v
+      | Vfptr _ | Vptr _ => Some v
+      | Vint i => Some (Vptr (int_to_ptr (cast_int_long Unsigned i) r))
+      | Vlong i => Some (Vptr (int_to_ptr i r))
       | _ => None
       end
   | cast_case_i2i sz2 si2 =>
@@ -409,7 +413,7 @@ Definition bool_val (v: val) (t: type) (m: mem) : option bool :=
 (** *** Boolean negation *)
 
 Definition sem_notbool (v: val) (ty: type) (m: mem): option val :=
-  option_map (fun b => Val.of_bool (negb b)) (bool_val v ty m).
+  option_map (fun b => Values.of_bool (negb b)) (bool_val v ty m).
 
 (** *** Opposite and absolute value *)
 
@@ -561,13 +565,13 @@ Definition sem_binarith
     (sem_long: signedness -> int64 -> int64 -> option val)
     (sem_float: float -> float -> option val)
     (sem_single: float32 -> float32 -> option val)
-    (v1: val) (t1: type) (v2: val) (t2: type) (m: mem): option val :=
+    (v1: val) (t1: type) (v2: val) (t2: type) (r: region): option val :=
   let c := classify_binarith t1 t2 in
   let t := binarith_type c in
-  match sem_cast v1 t1 t m with
+  match sem_cast v1 t1 t r with
   | None => None
   | Some v1' =>
-  match sem_cast v2 t2 t m with
+  match sem_cast v2 t2 t r with
   | None => None
   | Some v2' =>
   match c with
@@ -612,34 +616,30 @@ Definition classify_add (ty1: type) (ty2: type) :=
   | _, _ => add_default
   end.
 
-Definition ptrofs_of_int (si: signedness) (n: int) : ptrofs :=
+Definition int64_of_int (si: signedness) (n: int) : int64 :=
   match si with
-  | Signed => Ptrofs.of_ints n
-  | Unsigned => Ptrofs.of_intu n
+  | Signed => Int64.repr (Int.signed n)
+  | Unsigned => Int64.repr (Int.unsigned n)
   end.
 
-Definition sem_add_ptr_int (cenv: composite_env) (ty: type) (si: signedness) (v1 v2: val): option val :=
+Definition sem_add_ptr_int (cenv: composite_env) (ty: type)
+           (si: signedness) (v1 v2: val): option val :=
   match v1, v2 with
-  | Vint n1, Vint n2 =>
-      Some (Vint (Int.add n1 (Int.mul (Int.repr (sizeof cenv ty)) n2)))
-  | Vlong n1, Vint n2 =>
-      let n2 := cast_int_long si n2 in
-      Some (Vlong (Int64.add n1 (Int64.mul (Int64.repr (sizeof cenv ty)) n2)))
+  | Vptr p, Vint n =>
+    let n' := Int64.mul (Int64.repr (sizeof cenv ty)) (int64_of_int si n) in
+    Some (Vptr (off p n'))
   | _,  _ => None
   end.
 
 Definition sem_add_ptr_long (cenv: composite_env) (ty: type) (v1 v2: val): option val :=
   match v1, v2 with
-  | Vfptr b1, Vlong n2 => None
-  | Vint n1, Vlong n2 =>
-      let n2 := Int.repr (Int64.unsigned n2) in
-      Some (Vint (Int.add n1 (Int.mul (Int.repr (sizeof cenv ty)) n2)))
-  | Vlong n1, Vlong n2 =>
-      Some (Vlong (Int64.add n1 (Int64.mul (Int64.repr (sizeof cenv ty)) n2)))
+  | Vptr p, Vlong n =>
+    let n' := Int64.mul (Int64.repr (sizeof cenv ty)) n in
+    Some (Vptr (off p n'))
   | _,  _ => None
   end.
 
-Definition sem_add (cenv: composite_env) (v1:val) (t1:type) (v2: val) (t2:type) (m: mem): option val :=
+Definition sem_add (cenv: composite_env) (v1:val) (t1:type) (v2: val) (t2:type) (r: region): option val :=
   match classify_add t1 t2 with
   | add_case_pi ty si =>             (**r pointer plus integer *)
       sem_add_ptr_int cenv ty si v1 v2
@@ -655,7 +655,7 @@ Definition sem_add (cenv: composite_env) (v1:val) (t1:type) (v2: val) (t2:type) 
         (fun sg n1 n2 => Some(Vlong(Int64.add n1 n2)))
         (fun n1 n2 => Some(Vfloat(Float.add n1 n2)))
         (fun n1 n2 => Some(Vsingle(Float32.add n1 n2)))
-        v1 t1 v2 t2 m
+        v1 t1 v2 t2 r
   end.
 
 (** *** Subtraction *)
@@ -674,7 +674,7 @@ Definition classify_sub (ty1: type) (ty2: type) :=
   | _, _ => sub_default
   end.
 
-Definition sem_sub (cenv: composite_env) (v1:val) (t1:type) (v2: val) (t2:type) (m:mem): option val :=
+Definition sem_sub (cenv: composite_env) (v1:val) (t1:type) (v2: val) (t2:type) (r:region): option val :=
   match classify_sub t1 t2 with
   | sub_case_pi ty si =>            (**r pointer minus integer *)
       match v1, v2 with
@@ -708,20 +708,20 @@ Definition sem_sub (cenv: composite_env) (v1:val) (t1:type) (v2: val) (t2:type) 
         (fun sg n1 n2 => Some(Vlong(Int64.sub n1 n2)))
         (fun n1 n2 => Some(Vfloat(Float.sub n1 n2)))
         (fun n1 n2 => Some(Vsingle(Float32.sub n1 n2)))
-        v1 t1 v2 t2 m
+        v1 t1 v2 t2 r
   end.
 
 (** *** Multiplication, division, modulus *)
 
-Definition sem_mul (v1:val) (t1:type) (v2: val) (t2:type) (m:mem) : option val :=
+Definition sem_mul (v1:val) (t1:type) (v2: val) (t2:type) (r:region) : option val :=
   sem_binarith
     (fun sg n1 n2 => Some(Vint(Int.mul n1 n2)))
     (fun sg n1 n2 => Some(Vlong(Int64.mul n1 n2)))
     (fun n1 n2 => Some(Vfloat(Float.mul n1 n2)))
     (fun n1 n2 => Some(Vsingle(Float32.mul n1 n2)))
-    v1 t1 v2 t2 m.
+    v1 t1 v2 t2 r.
 
-Definition sem_div (v1:val) (t1:type) (v2: val) (t2:type) (m:mem) : option val :=
+Definition sem_div (v1:val) (t1:type) (v2: val) (t2:type) (r:region) : option val :=
   sem_binarith
     (fun sg n1 n2 =>
       match sg with
@@ -745,9 +745,9 @@ Definition sem_div (v1:val) (t1:type) (v2: val) (t2:type) (m:mem) : option val :
       end)
     (fun n1 n2 => Some(Vfloat(Float.div n1 n2)))
     (fun n1 n2 => Some(Vsingle(Float32.div n1 n2)))
-    v1 t1 v2 t2 m.
+    v1 t1 v2 t2 r.
 
-Definition sem_mod (v1:val) (t1:type) (v2: val) (t2:type) (m:mem) : option val :=
+Definition sem_mod (v1:val) (t1:type) (v2: val) (t2:type) (r:region) : option val :=
   sem_binarith
     (fun sg n1 n2 =>
       match sg with
@@ -771,31 +771,31 @@ Definition sem_mod (v1:val) (t1:type) (v2: val) (t2:type) (m:mem) : option val :
       end)
     (fun n1 n2 => None)
     (fun n1 n2 => None)
-    v1 t1 v2 t2 m.
+    v1 t1 v2 t2 r.
 
-Definition sem_and (v1:val) (t1:type) (v2: val) (t2:type) (m:mem) : option val :=
+Definition sem_and (v1:val) (t1:type) (v2: val) (t2:type) (r:region) : option val :=
   sem_binarith
     (fun sg n1 n2 => Some(Vint(Int.and n1 n2)))
     (fun sg n1 n2 => Some(Vlong(Int64.and n1 n2)))
     (fun n1 n2 => None)
     (fun n1 n2 => None)
-    v1 t1 v2 t2 m.
+    v1 t1 v2 t2 r.
 
-Definition sem_or (v1:val) (t1:type) (v2: val) (t2:type) (m:mem) : option val :=
+Definition sem_or (v1:val) (t1:type) (v2: val) (t2:type) (r:region) : option val :=
   sem_binarith
     (fun sg n1 n2 => Some(Vint(Int.or n1 n2)))
     (fun sg n1 n2 => Some(Vlong(Int64.or n1 n2)))
     (fun n1 n2 => None)
     (fun n1 n2 => None)
-    v1 t1 v2 t2 m.
+    v1 t1 v2 t2 r.
 
-Definition sem_xor (v1:val) (t1:type) (v2: val) (t2:type) (m:mem) : option val :=
+Definition sem_xor (v1:val) (t1:type) (v2: val) (t2:type) (r:region) : option val :=
   sem_binarith
     (fun sg n1 n2 => Some(Vint(Int.xor n1 n2)))
     (fun sg n1 n2 => Some(Vlong(Int64.xor n1 n2)))
     (fun n1 n2 => None)
     (fun n1 n2 => None)
-    v1 t1 v2 t2 m.
+    v1 t1 v2 t2 r.
 
 (** *** Shifts *)
 
@@ -889,35 +889,45 @@ Definition classify_cmp (ty1: type) (ty2: type) :=
   | _, _ => cmp_default
   end.
 
-Definition cmp_ptr (m: mem) (c: comparison) (v1 v2: val): option val :=
+Definition cmp_ptr (r: region) (c: comparison) (v1 v2: val): option val :=
   match v1, v2 with
-  | Vint _, Vint _ => option_map Val.of_bool (Val.cmpu_bool c v1 v2)
-  | Vlong _, Vlong _ => option_map Val.of_bool (Val.cmplu_bool c v1 v2)
-  | Vfptr _, Vfptr _ => option_map Val.of_bool (Val.cmplu_bool c v1 v2)
+  | Vint _, Vint _ => option_map Values.of_bool (Values.cmpu_bool c v1 v2)
+  | Vlong _, Vlong _ => option_map Values.of_bool (Values.cmplu_bool c v1 v2)
+  | Vfptr _, Vfptr _ => option_map Values.of_bool (Values.cmplu_bool c v1 v2)
+  | Vptr p, Vlong _ =>
+    let v1' := Vlong (concretize p) in
+    option_map Values.of_bool (Values.cmplu_bool c v1' v2)
+  | Vlong _, Vptr p =>
+    let v2' := Vlong (concretize p) in
+    option_map Values.of_bool (Values.cmplu_bool c v1 v2')
+  | Vptr p1, Vptr p2 =>
+    let v1' := Vlong (concretize p1) in
+    let v2' := Vlong (concretize p2) in
+    option_map Values.of_bool (Values.cmplu_bool c v1' v2')
   | _, _ => None
   end.
 
 Definition sem_cmp (c:comparison)
                   (v1: val) (t1: type) (v2: val) (t2: type)
-                  (m: mem): option val :=
+                  (r: region): option val :=
   match classify_cmp t1 t2 with
   | cmp_case_pp 
   | cmp_case_pi _ 
   | cmp_case_ip _
   | cmp_case_pl 
   | cmp_case_lp =>
-      cmp_ptr m c v1 v2
+      cmp_ptr r c v1 v2
   | cmp_default =>
       sem_binarith
         (fun sg n1 n2 =>
-            Some(Val.of_bool(match sg with Signed => Int.cmp c n1 n2 | Unsigned => Int.cmpu c n1 n2 end)))
+            Some(Values.of_bool(match sg with Signed => Int.cmp c n1 n2 | Unsigned => Int.cmpu c n1 n2 end)))
         (fun sg n1 n2 =>
-            Some(Val.of_bool(match sg with Signed => Int64.cmp c n1 n2 | Unsigned => Int64.cmpu c n1 n2 end)))
+            Some(Values.of_bool(match sg with Signed => Int64.cmp c n1 n2 | Unsigned => Int64.cmpu c n1 n2 end)))
         (fun n1 n2 =>
-            Some(Val.of_bool(Float.cmp c n1 n2)))
+            Some(Values.of_bool(Float.cmp c n1 n2)))
         (fun n1 n2 =>
-            Some(Val.of_bool(Float32.cmp c n1 n2)))
-        v1 t1 v2 t2 m
+            Some(Values.of_bool(Float32.cmp c n1 n2)))
+        v1 t1 v2 t2 r
   end.
 
 (** ** Function applications *)
@@ -972,30 +982,30 @@ Definition sem_binary_operation
     (cenv: composite_env)
     (op: binary_operation)
     (v1: val) (t1: type) (v2: val) (t2:type)
-    (m: mem): option val :=
+    (r: region): option val :=
   match op with
-  | Oadd => sem_add cenv v1 t1 v2 t2 m
-  | Osub => sem_sub cenv v1 t1 v2 t2 m
-  | Omul => sem_mul v1 t1 v2 t2 m
-  | Omod => sem_mod v1 t1 v2 t2 m
-  | Odiv => sem_div v1 t1 v2 t2 m
-  | Oand => sem_and v1 t1 v2 t2 m
-  | Oor  => sem_or v1 t1 v2 t2 m
-  | Oxor  => sem_xor v1 t1 v2 t2 m
+  | Oadd => sem_add cenv v1 t1 v2 t2 r
+  | Osub => sem_sub cenv v1 t1 v2 t2 r
+  | Omul => sem_mul v1 t1 v2 t2 r
+  | Omod => sem_mod v1 t1 v2 t2 r
+  | Odiv => sem_div v1 t1 v2 t2 r
+  | Oand => sem_and v1 t1 v2 t2 r
+  | Oor  => sem_or v1 t1 v2 t2 r
+  | Oxor  => sem_xor v1 t1 v2 t2 r
   | Oshl => sem_shl v1 t1 v2 t2
   | Oshr  => sem_shr v1 t1 v2 t2
-  | Oeq => sem_cmp Ceq v1 t1 v2 t2 m
-  | One => sem_cmp Cne v1 t1 v2 t2 m
-  | Olt => sem_cmp Clt v1 t1 v2 t2 m
-  | Ogt => sem_cmp Cgt v1 t1 v2 t2 m
-  | Ole => sem_cmp Cle v1 t1 v2 t2 m
-  | Oge => sem_cmp Cge v1 t1 v2 t2 m
+  | Oeq => sem_cmp Ceq v1 t1 v2 t2 r
+  | One => sem_cmp Cne v1 t1 v2 t2 r
+  | Olt => sem_cmp Clt v1 t1 v2 t2 r
+  | Ogt => sem_cmp Cgt v1 t1 v2 t2 r
+  | Ole => sem_cmp Cle v1 t1 v2 t2 r
+  | Oge => sem_cmp Cge v1 t1 v2 t2 r
   end.
 
-Definition sem_incrdecr (cenv: composite_env) (id: incr_or_decr) (v: val) (ty: type) (m: mem) :=
+Definition sem_incrdecr (cenv: composite_env) (id: incr_or_decr) (v: val) (ty: type) (r: region) :=
   match id with
-  | Incr => sem_add cenv v ty (Vint Int.one) type_int32s m
-  | Decr => sem_sub cenv v ty (Vint Int.one) type_int32s m
+  | Incr => sem_add cenv v ty (Vint Int.one) type_int32s r
+  | Decr => sem_sub cenv v ty (Vint Int.one) type_int32s r
   end.
 
 Definition incrdecr_type (ty: type) :=
@@ -1043,95 +1053,41 @@ Definition bitfield_normalize (sz: intsize) (sg: signedness) (width: Z) (n: int)
   then Int.zero_ext width n
   else Int.sign_ext width n.
 
-Inductive load_bitfield: type -> intsize -> signedness -> Z -> Z -> mem -> Z ->
-                         MemoryResult (atom * list tag) -> Prop :=
-  | load_bitfield_intro: forall sz sg1 attr sg pos width m addr c vt lts,
-      0 <= pos -> 0 < width <= bitsize_intsize sz -> pos + width <= bitsize_carrier sz ->
-      sg1 = (if zlt width (bitsize_intsize sz) then Signed else sg) ->
-      load_all (chunk_for_carrier sz) m addr = MemorySuccess (Vint c, vt, lts) ->
-      load_bitfield (Tint sz sg1 attr) sz sg pos width m addr
-                    (MemorySuccess ((Vint (bitfield_extract sz sg pos width c), vt), lts))
-  | load_bitfield_fail: forall sz sg1 attr sg pos width m addr msg failure,
-      0 <= pos -> 0 < width <= bitsize_intsize sz -> pos + width <= bitsize_carrier sz ->
-      sg1 = (if zlt width (bitsize_intsize sz) then Signed else sg) ->
-      load_all (chunk_for_carrier sz) m addr = MemoryFail msg failure ->
-      load_bitfield (Tint sz sg1 attr) sz sg pos width m addr
-                    (MemoryFail msg failure).
+Definition do_load_bitfield (sz: intsize) (sg: signedness) (pos width: Z)
+  (p:ptr) (m:mem) : PolicyResult (val * list val_tag * list loc_tag) :=
+  '(v, vts, lts) <- load (chunk_for_carrier sz) m p;;
+  match v with
+  | Vint c => ret (Vint (bitfield_extract sz sg pos width c), vts, lts)
+  | _ => ret (Vundef, vts, lts)
+  end.
 
+Inductive load_bitfield: type -> intsize -> signedness -> Z -> Z -> mem -> ptr ->
+                         PolicyResult (val * list val_tag * list loc_tag) -> Prop :=
+| load_bitfield_intro: forall sz sg1 attr sg pos width m p,
+    0 <= pos -> 0 < width <= bitsize_intsize sz -> pos + width <= bitsize_carrier sz ->
+    sg1 = (if zlt width (bitsize_intsize sz) then Signed else sg) ->
+    load_bitfield (Tint sz sg1 attr) sz sg pos width m p
+                  (do_load_bitfield sz sg pos width p m).
 
+Definition do_store_bitfield (sz: intsize) (sg: signedness)
+           (pos width: Z) (p: ptr) (m:mem) (n: int) (vt: val_tag) (lts: list loc_tag) :=
+  '(v, _, _) <- load (chunk_for_carrier sz) m p;;
+  let v' := match v with
+            | Vint c =>
+                Vint (Int.bitfield_insert (first_bit sz pos width) width c n)
+            | _ => Vundef
+            end in
+  m' <- store (chunk_for_carrier sz) m p (v', vt) lts;;
+  ret (m', (v',vt)).
+  
 Inductive store_bitfield: type -> intsize -> signedness -> Z -> Z -> mem ->
-                          Z -> tag -> atom -> list tag ->
-                          MemoryResult (mem * atom) -> Prop :=
-  | store_bitfield_intro: forall sz sg1 attr sg pos width m addr pt c n vt ovt lts m',
+                          ptr -> val_tag -> atom -> list loc_tag ->
+                          PolicyResult (mem * atom) -> Prop :=
+  | store_bitfield_intro: forall sz sg1 attr sg pos width m p pt n vt lts,
       0 <= pos -> 0 < width <= bitsize_intsize sz -> pos + width <= bitsize_carrier sz ->
       sg1 = (if zlt width (bitsize_intsize sz) then Signed else sg) ->
-      load (chunk_for_carrier sz) m addr = MemorySuccess (Vint c, ovt) ->
-      store (chunk_for_carrier sz) m addr
-                 (Vint (Int.bitfield_insert (first_bit sz pos width) width c n), vt) lts = MemorySuccess m' ->
-      store_bitfield (Tint sz sg1 attr) sz sg pos width m addr pt (Vint n,vt) lts
-                     (MemorySuccess (m', (Vint (bitfield_normalize sz sg width n),vt)))
-  | store_bitfield_fail_0: forall sz sg1 attr sg pos width m addr pt n vt lts msg failure,
-      0 <= pos -> 0 < width <= bitsize_intsize sz -> pos + width <= bitsize_carrier sz ->
-      sg1 = (if zlt width (bitsize_intsize sz) then Signed else sg) ->
-      load (chunk_for_carrier sz) m addr = MemoryFail msg failure ->
-      store_bitfield (Tint sz sg1 attr) sz sg pos width m addr pt (Vint n,vt) lts
-                     (MemoryFail msg failure)
-  | store_bitfield_fail_1: forall sz sg1 attr sg pos width m addr pt c n vt ovt lts msg failure,
-      0 <= pos -> 0 < width <= bitsize_intsize sz -> pos + width <= bitsize_carrier sz ->
-      sg1 = (if zlt width (bitsize_intsize sz) then Signed else sg) ->
-      load (chunk_for_carrier sz) m addr = MemorySuccess (Vint c, ovt) ->
-      store (chunk_for_carrier sz) m addr
-            (Vint (Int.bitfield_insert (first_bit sz pos width) width c n), vt)
-            lts = MemoryFail msg failure ->
-      store_bitfield (Tint sz sg1 attr) sz sg pos width m addr pt (Vint n,vt) lts
-                     (MemoryFail msg failure).
-
-(*Lemma sem_cast_inject:
-  forall f v1 ty1 ty m v tv1 tm,
-  sem_cast v1 ty1 ty m = Some v ->
-  Val.inject f v1 tv1 ->
-  Mem.inject f m tm ->
-  exists tv, sem_cast tv1 ty1 ty tm = Some tv /\ Val.inject f v tv.
-Proof.
-  intros. eapply sem_cast_inj; eauto.
-  intros; eapply Mem.weak_valid_pointer_inject_val; eauto.
-Qed.
-
-Lemma sem_unary_operation_inject:
-  forall f m m' op v1 ty1 v tv1,
-  sem_unary_operation op v1 ty1 m = Some v ->
-  Val.inject f v1 tv1 ->
-  Mem.inject f m m' ->
-  exists tv, sem_unary_operation op tv1 ty1 m' = Some tv /\ Val.inject f v tv.
-Proof.
-  intros. eapply sem_unary_operation_inj; eauto.
-  intros; eapply Mem.weak_valid_pointer_inject_val; eauto.
-Qed.
-
-Lemma sem_binary_operation_inject:
-  forall f m m' cenv op v1 ty1 v2 ty2 v tv1 tv2,
-  sem_binary_operation cenv op v1 ty1 v2 ty2 m = Some v ->
-  Val.inject f v1 tv1 -> Val.inject f v2 tv2 ->
-  Mem.inject f m m' ->
-  exists tv, sem_binary_operation cenv op tv1 ty1 tv2 ty2 m' = Some tv /\ Val.inject f v tv.
-Proof.
-  intros. eapply sem_binary_operation_inj; eauto.
-  intros; eapply Mem.valid_pointer_inject_val; eauto.
-  intros; eapply Mem.weak_valid_pointer_inject_val; eauto.
-  intros; eapply Mem.weak_valid_pointer_inject_no_overflow; eauto.
-  intros; eapply Mem.different_pointers_inject; eauto.
-Qed.
-
-Lemma bool_val_inject:
-  forall f m m' v ty b tv,
-  bool_val v ty m = Some b ->
-  Val.inject f v tv ->
-  Mem.inject f m m' ->
-  bool_val tv ty m' = Some b.
-Proof.
-  intros. eapply bool_val_inj; eauto.
-  intros; eapply Mem.weak_valid_pointer_inject_val; eauto.
-Qed.*)
+      store_bitfield (Tint sz sg1 attr) sz sg pos width m p pt (Vint n,vt) lts
+                     (do_store_bitfield sz sg pos width p m n vt lts).
 
 (** * Some properties of operator semantics *)
 
@@ -1203,7 +1159,7 @@ Qed.*)
 Lemma notbool_bool_val:
   forall v t m,
   sem_notbool v t m =
-  match bool_val v t m with None => None | Some b => Some(Val.of_bool (negb b)) end.
+  match bool_val v t m with None => None | Some b => Some(Values.of_bool (negb b)) end.
 Proof.
   intros. unfold sem_notbool. destruct (bool_val v t0 m) as [[] | ]; reflexivity.
 Qed.

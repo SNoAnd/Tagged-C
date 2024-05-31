@@ -23,33 +23,21 @@ Require Floats.
 Require Ctypes.
 Require Csyntax.
 Require Parser.
-Require Initializers.
-Require Import Tags NullPolicy PVI PNVI DoubleFree Allocator Initializers Csem.
+(* Per Policies.md, add new policies here*)
+Require Import Values Tags Memory Allocator AllocatorImpl Csem Initializers
+               Product NullPolicy PVI DoubleFree HeapProblem
+               ConcreteAllocator.
 
-Module Extracted (P : Policy) (A : Allocator P).
-
-  Module I := Initializers P A.
-  Import I.
-  Import Cexec.
-  Import InterpreterEvents.
-  Import Cstrategy.
-  Import Ctyping.
-  Import Csem.
-  Import Csyntax.
-  Import Cop.
-  Import Deterministic.
-  Import Behaviors.
-  Import Smallstep.
-  Import Events.
-  Import Genv.
-  Import Mem.
-  Import A.
-  
-End Extracted.
-  
   (* Standard lib *)
   Require Import ExtrOcamlBasic.
   Require Import ExtrOcamlString.
+
+  Module Allocators (Pol: Policy).
+    Module CMA := ConcMemAllocators Pol.
+    Module Init := CMA.Init.
+    Module FL := CMA.FLAllocator.
+    Module CA := CMA.ConcreteAllocator.
+  End Allocators.
 
   (* Coqlib *)
   Extract Inlined Constant Coqlib.proj_sumbool => "(fun x -> x)".
@@ -99,6 +87,9 @@ End Extracted.
 
   Extract Inlined Constant Globalenvs.ext =>
             "EF.check_ef".
+
+  (* Policy-specific recovery code *)
+  Extract Constant HeapProblem.HeapProblem.recover => "HeapProblemHelper.recover".
   
   (* Processor-specific extraction directives *)
 
@@ -107,15 +98,16 @@ End Extracted.
 
   (* Needed in Coq 8.4 to avoid problems with Function definitions. *)
   Set Extraction AccessOpaque.
-
-  (* Go! *)
   
+  (* Go! *)
   Cd "extraction".
   
+  (* Per Policies.md, add new policies here *)
   Separate Extraction
-           Tags NullPolicy PVI PNVI DoubleFree
-           Allocator
-           Extracted
+           Values
+           Tags NullPolicy PVI DoubleFree HeapProblem PolProduct
+           Initializers Allocator AllocatorImpl ConcretePointer
+           ConcreteAllocator
            Ctypes.merge_attributes Ctypes.remove_attributes
            Ctypes.build_composite_env Ctypes.signature_of_type Ctypes.typlist_of_typelist
            Cabs
@@ -129,4 +121,4 @@ End Extracted.
            Floats
            (*invert_symbol*)
            Parser.translation_unit_file
-           Values.Vnullptr.
+           (*Values.Vnullptr*).

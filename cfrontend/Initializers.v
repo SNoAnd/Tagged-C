@@ -13,30 +13,24 @@
 (** Compile-time evaluation of initializers for global C variables. *)
 
 Require Import Coqlib Maps Errors.
-Require Import Integers Floats Values AST Memory Allocator Globalenvs.
+Require Import Integers Floats Values AST Encoding Memory Allocator AllocatorImpl Globalenvs.
 Require Import Ctypes Cop Csyntax Csem.
 Require Import Cexec Tags.
 
 Open Scope error_monad_scope.
 
-Module Initializers (P:Policy) (A:Allocator P).
-  Module TLib := TagLib P.
-  Import TLib.
-  Module Cexec := Cexec P A.
-  Export Cexec.
-  Import InterpreterEvents.
-  Import Cstrategy.
-  Import Ctyping.  
-  Import Csem.
-  Import Csyntax.
-  Import Cop.
-  Import Deterministic.
-  Import Behaviors.
-  Import Smallstep.
-  Import Events.
-  Import Genv.
-  Import P.
+Module Initializers (Pol: Policy).
+  Module Outer := Cexec Pol.
 
+  Module Inner (I: AllocatorImpl ConcretePointer Pol Outer.CM).
+  Module Cexec := Outer.Inner I.
+  Export Cexec.
+  Import Csem.
+  Import A.
+  Import MD.
+  Import TLib.
+  Import ConcretePointer.
+ 
 (** * Evaluation of compile-time constant expressions *)
 
 (** To evaluate constant expressions at compile-time, we use the same [value]
@@ -57,7 +51,7 @@ If [a] is a l-value, the returned value denotes:
 *)
 
 Definition do_cast (v: val) (t1 t2: type) : res val :=
-  match sem_cast v t1 t2 empty with
+  match sem_cast v t1 t2 tt with
   | Some v' => OK v'
   | None => Error(msg "undefined cast")
   end.
@@ -72,7 +66,7 @@ Fixpoint constval (ce: composite_env) (a: expr) : res val :=
   match a with
   | Eval (v,vt) ty =>
       match v with
-      | Vint _ | Vfloat _ | Vsingle _ | Vlong _ => OK v
+      | Vptr _ | Vint _ | Vfloat _ | Vsingle _ | Vlong _ => OK v
       | Vfptr _ | Vefptr _ _ _ _ | Vundef => Error(msg "illegal constant")
       end
   | Evalof l ty =>
@@ -91,16 +85,16 @@ Fixpoint constval (ce: composite_env) (a: expr) : res val :=
   | Ebinop op r1 r2 ty =>
       do v1 <- constval ce r1;
       do v2 <- constval ce r2;
-      match sem_binary_operation ce op v1 (typeof r1) v2 (typeof r2) empty with
+      match sem_binary_operation ce op v1 (typeof r1) v2 (typeof r2) tt with
       | Some v => OK v
       | None => Error(msg "undefined binary operation")
       end
   | Ecast r ty =>
       do v1 <- constval ce r; do_cast v1 (typeof r) ty
   | Esizeof ty1 ty =>
-      OK (Vofptrsize (sizeof ce ty1))
+      OK (Vlong (Int64.repr (sizeof ce ty1)))
   | Ealignof ty1 ty =>
-      OK (Vofptrsize (alignof ce ty1))
+      OK (Vlong (Int64.repr (alignof ce ty1)))
   | Eseqand r1 r2 ty =>
       do v1 <- constval ce r1;
       do v2 <- constval ce r2;
@@ -146,8 +140,8 @@ Fixpoint constval (ce: composite_env) (a: expr) : res val :=
       match bf with
       | Full =>
           OK (if Archi.ptr64
-              then Val.addl v (Vlong (Int64.repr delta))
-              else Val.add v (Vint (Int.repr delta)))
+              then Values.addl v (Vlong (Int64.repr delta))
+              else Values.add v (Vint (Int.repr delta)))
       | Bits _ _ _ _ =>
           Error(msg "taking the address of a bitfield")
       end
@@ -490,4 +484,5 @@ Definition transl_init (ce: composite_env) (ty: type) (i: initializer)
   do s1 <- transl_init_rec ce s0 ty i 0;
   init_data_list_of_state s1.
 
+  End Inner.
 End Initializers.

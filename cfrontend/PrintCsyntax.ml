@@ -18,22 +18,24 @@
 
 open Format
 open Camlcoq
-open Values
 open AST
 open! Ctypes
 open Tags
 open C2C
-open Allocator
 
-module PrintCsyntaxP =
-        functor (Pol: Policy) (Alloc: Allocator) ->
-                struct
+module PrintCsyntaxP (Pol: Policy) = struct
+  module C2CPInst = C2CP (Pol)
+     
+  module Inner (I: C2CPInst.CMA.ConcAllocatorImpl) =
+    struct
 
-module C2CPInst = C2CP (Pol) (Alloc)
-module Init = C2CPInst.Init
-module Ctyping = Init.Cexec.InterpreterEvents.Cstrategy.Ctyping
-module Csyntax = Ctyping.Csem.Csyntax
-module Cop = Csyntax.Cop
+    module C2CPInner = C2CPInst.Inner (I)
+    module Cexec = C2CPInner.Cexec
+    module Ctyping = C2CPInner.Ctyping
+    module Csyntax = C2CPInner.Csyntax
+    module Cop = Csyntax.Cop
+    module Vals = C2CPInner.Vals
+    open Vals
 
 let name_unop = function
   | Values.Onotbool -> "!"
@@ -200,6 +202,8 @@ let print_typed_value p vty =
       fprintf p "%LuLLU" (camlint64_of_coqint n)
   | (Vlong n, _) ->
       fprintf p "%LdLL" (camlint64_of_coqint n)
+  | (Vptr n, _) ->
+      fprintf p "%LdLL" (camlint64_of_coqint n)
   | (Vfptr b, _) ->
       fprintf p "<ptr%a>" !print_pointer_hook (b,coqint_of_camlint 0l)
   | (Vefptr(_, _, _, _),_) ->
@@ -238,7 +242,7 @@ let rec expr p (prec, e) =
   | Csyntax.Eval((v, vt), ty) ->
       fprintf p "%a %@ %s"
         print_typed_value (v,ty)
-        (String.of_seq (List.to_seq (Pol.print_tag vt)))
+        (String.of_seq (List.to_seq (Pol.print_vt vt)))
   | Csyntax.Econst(v, ty) ->
       print_typed_value p (v,ty)
   | Csyntax.Esizeof(ty, _) ->
@@ -464,7 +468,7 @@ let print_fundef p id fd =
 let print_fundecl p id fd =
   match fd with
   | Ctypes.Internal f ->
-      let linkage = if C2CPInst.atom_is_static id then "static" else "extern" in
+      let linkage = if C2CPInner.atom_is_static id then "static" else "extern" in
       fprintf p "%s %s;@ @ " linkage
                 (name_cdecl (extern_atom id) (Csyntax.type_of_function f))
   | _ -> ()
@@ -539,7 +543,7 @@ let print_globvar p id v =
 let print_globvardecl p  id v =
   let name = extern_atom id in
   let name = if v.gvar_readonly then "const "^name else name in
-  let linkage = if C2CPInst.atom_is_static id then "static" else "extern" in
+  let linkage = if C2CPInner.atom_is_static id then "static" else "extern" in
   fprintf p "%s %s;@ @ " linkage (name_cdecl name v.gvar_info)
 
 let print_globdecl p (id,gd) =
@@ -589,4 +593,5 @@ let print_if prog =
       print_program (formatter_of_out_channel oc) prog;
       close_out oc
 
-                end
+  end
+end

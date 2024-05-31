@@ -3,8 +3,9 @@
  * @brief a very simplified version of the error that caused CVE-2017-9078
  *      "root remote code execution because of a double free in cleanup
  *      of TCP listeners when the -a option is enabled"
- * @note "PPP" should fault, AAA should not fault
- * @note frees() are hand labelled. 
+ * @note "PPP" should fault, AAA should not fault, but will hang
+ * @note We cannot tell hangs apart.
+ * @note We no longer need the frees labelled
  */
 #include <stdlib.h> 
 #include <stdio.h>

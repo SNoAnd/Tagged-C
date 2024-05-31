@@ -38,7 +38,11 @@ Require Import Integers.
 Require Import Floats.
 Require Import Values.
 Require Import Tags.
-Require Export Memdata.
+Require Import Globalenvs.
+Require Import Builtins.
+Require Import Encoding.
+Require Import ExtLib.Structures.Monads. Import MonadNotation.
+Global Open Scope monad_scope.
 
 Require Import List. Import ListNotations.
 
@@ -48,39 +52,170 @@ Local Unset Case Analysis Schemes.
 
 Local Notation "a # b" := (PMap.get b a) (at level 1).
 
-Inductive FailureClass : Type :=
-| MisalignedStore (alignment ofs : Z)
-| MisalignedLoad (alignment ofs : Z)
-| PrivateStore (ofs : Z)
-| PrivateLoad (ofs : Z)
-| OtherFailure
-.
+Module Type Region (Ptr: Pointer).
+  Import Ptr.
 
-Inductive MemoryResult (A:Type) : Type :=
-| MemorySuccess (a:A)
-| MemoryFail (msg:string) (failure:FailureClass)
-.
+  (* The region type designates some subdivision of memory that may
+     inform the allocator; we use it for compartmentalization, but it
+     could be any arbitrary division. *)
 
-Arguments MemorySuccess {_} _.
-Arguments MemoryFail {_} _.
+  Parameter region : Type.
+  Parameter int_to_ptr : int64 -> region -> ptr.
+  
+  (* Maybe later we can use this module type to map global variables into regions? *)
 
-Module Mem (P:Policy).
-  Module TLib := TagLib P.
-  Import TLib.
-  Module MD := Memdata P.
-  Import MD.
+End Region.
 
-  (* At any given time, memory may be Live, Dead, or MostlyDead.
-     Live means that it is allocated for the use of the source program.
-     Live memory is always accessible until it is deallocated.
-     Dead means that it is allocated for the use of the compiler; the
-     source program should never access it, and if it tries, Tagged C will
-     failstop.
+Module UnitRegion <: Region ConcretePointer.
+  Import ConcretePointer.
+  Definition region : Type := unit.
+  Definition int_to_ptr (i: int64) (r: region) : ptr := i.  
+End UnitRegion.
 
-     Everything else is MostlyDead, and MostlyDead is partly alive: the program
-     can write to and read from MostlyDead memory, and values written will be stable
-     within the context that wrote them, but become undefined when control passes outside
-     of the current function. *)
+Module Type Memory (Ptr: Pointer) (Pol: Policy) (Reg: Region Ptr).
+  Module BI := Builtins Ptr.
+  Export BI.
+  Module Genv := Genv Ptr Pol.
+  Export Genv.
+  Export MD.
+  Export TLib.
+  Export Ptr.
+  Export Reg.
+
+  Parameter addr : Type.
+  Parameter of_ptr : ptr -> addr.
+  Parameter addr_off : addr -> int64 -> addr.
+  Parameter addr_eq : addr -> addr -> bool.
+  Parameter addr_sub : addr -> addr -> option int64.
+
+  (*Parameter addr_off_distributes :
+    forall p ofs,
+      of_ptr (off p ofs) = addr_off (of_ptr p) ofs.*)
+  
+  Parameter mem : Type.
+  
+  (** * Operations over memory stores *)
+
+  (** The initial store *)
+
+  Parameter empty : mem.
+
+  Parameter stkalloc : mem
+                       -> region
+                       -> Z (* align *)
+                       -> Z (* size *)
+                       -> PolicyResult (
+                           mem
+                           * ptr (* base *)).
+
+  Parameter stkfree : mem
+                      -> region
+                      -> Z (* align *)
+                      -> Z (* size *)
+                      -> PolicyResult mem.
+
+  Parameter heapalloc : mem
+                        -> region
+                        -> Z (* size *)
+                        -> loc_tag
+                        -> PolicyResult
+                             (mem
+                              * ptr (* base *)).
+  
+  Parameter heapfree : Cabs.loc
+                        -> control_tag     (* pct *)
+                        -> mem
+                        -> region
+                        -> ptr
+                        -> val_tag         (* pointer tag *)
+                        -> PolicyResult
+                            (Z             (* size of block *)
+                             * control_tag
+                             * mem).
+
+  Parameter globalalloc : mem
+                       -> list (ident*Z)
+                       -> (mem * (ident -> ptr)).
+  (** Memory reads. *)
+  
+  Parameter direct_read : mem -> addr -> memval * loc_tag.
+  
+  (** [load chunk m a] perform a read in memory state [m], at address
+      [a].  It returns the value of the memory chunk
+      at that address.  [None] is returned if the accessed bytes
+      are not readable. *)
+
+  Parameter load : memory_chunk -> mem -> ptr -> PolicyResult (val * list val_tag * list loc_tag).
+  
+  (** [loadbytes m ofs n] reads [n] consecutive bytes starting at
+      location [(b, ofs)].  Returns [None] if the accessed locations are
+      not readable. *)
+
+  Parameter loadbytes : mem -> ptr -> Z -> PolicyResult (list memval).
+
+  Parameter loadtags : mem -> ptr -> Z -> PolicyResult (list loc_tag).
+
+  (** Memory stores. *)
+  
+  (** [store chunk m a v] perform a write in memory state [m].
+      Value [v] is stored at address [a].
+      Return the updated memory store, or [None] if the accessed bytes
+      are not writable. *)
+  
+  Parameter store : memory_chunk -> mem -> ptr -> atom -> list loc_tag -> PolicyResult mem.
+
+  Parameter store_atom : memory_chunk -> mem -> ptr -> atom -> PolicyResult mem.
+  
+  (** [storebytes m ofs bytes] stores the given list of bytes [bytes]
+      starting at location [(b, ofs)].  Returns updated memory state
+      or [None] if the accessed locations are not writable. *)
+  Parameter storebytes : mem -> ptr -> list memval -> list loc_tag -> PolicyResult mem.
+  
+  Global Opaque Memory.store Memory.load Memory.storebytes Memory.loadbytes.
+
+End Memory.
+
+Module Type Submem (Ptr: Pointer) (Pol: Policy).
+  Module BI := Builtins Ptr.
+  Export BI.
+  Module Genv := Genv Ptr Pol.
+  Export Genv.
+  Export MD.
+  Export TLib.
+  Export Ptr.
+
+  Parameter submem : Type.
+  Parameter subempty : submem.
+
+  Parameter addr : Type.
+  Parameter of_ptr : ptr -> addr.
+  Parameter addr_off : addr -> int64 -> addr.
+  Parameter addr_eq : addr -> addr -> bool.
+  Parameter addr_sub : addr -> addr -> option int64.
+
+  Parameter null : addr.
+  Parameter null_zero : forall p, of_ptr p = null -> concretize p = Int64.zero.
+
+  Parameter direct_read : submem -> addr -> memval * loc_tag.
+  Parameter load : memory_chunk -> submem -> addr -> Result (val*list val_tag*list loc_tag).
+  Parameter loadbytes : submem -> addr -> Z -> Result (list memval).
+  Parameter loadtags : submem -> addr -> Z -> Result (list loc_tag).
+  Parameter store : memory_chunk -> submem -> addr -> atom -> list loc_tag -> Result submem.
+  Parameter store_atom : memory_chunk -> submem -> addr -> atom -> Result submem.
+  Parameter storebytes : submem -> addr -> list memval -> list loc_tag -> Result submem.
+
+  Parameter stack : submem -> list (addr*addr).
+  Parameter heap : submem -> list (addr*addr).
+End Submem.
+
+Module ConcMem (Ptr: Pointer) (Pol: Policy) <: Submem Ptr Pol.
+  Module BI := Builtins Ptr.
+  Export BI.
+  Module Genv := Genv Ptr Pol.
+  Export Genv.
+  Export MD.
+  Export TLib.
+  Export Ptr.
 
   Inductive permission : Type := Live | Dead | MostlyDead.
 
@@ -88,60 +223,62 @@ Module Mem (P:Policy).
   Proof.
     intros. destruct p1; destruct p2; try (right; intro; discriminate); left; auto.
   Qed.
+
+  Definition addr : Type := int64.
+  Definition of_ptr (p: ptr) : addr := concretize p.
+
+  Definition addr_off (a: addr) (i: int64) : addr :=
+    Int64.add a i.
   
+  Definition addr_eq (a1 a2: addr) : bool :=
+    Int64.eq a1 a2.
+
+  Definition addr_sub (a1 a2: addr) : option int64 :=
+    Some (Int64.sub a1 a2).
+
+  Definition null : addr := Int64.zero.
+
+  Lemma null_zero : forall p, of_ptr p = null -> concretize p = Int64.zero.
+  Proof. auto. Qed.
+
   Record mem' : Type := mkmem {
-    mem_contents: ZMap.t (memval*tag);  (**r [offset -> memval] *)
-    mem_access: Z -> permission;        (**r [block -> offset -> kind -> option permission] *)
-    live: list (Z*Z);
-  }.    
+    mem_contents: ZMap.t (memval*loc_tag);  (**r [offset -> memval] *)
+    (* ZMaps are total, so mem_contents is infinite, but in practice limited to the size of
+       the address space (int64). In the future it should be further restricted to model unmapped
+       regions. *)
+    mem_access: ZMap.t permission;      (**r [offset -> option permission] *)
+    stack: list (addr*addr);
+    heap: list (addr*addr)
+  }.
+
+  Definition submem : Type := mem'.
+ 
+  Definition direct_read (m: submem) (a: addr) : (memval * loc_tag) :=
+    ZMap.get (Int64.unsigned a) m.(mem_contents).
   
-  Definition mem := mem'.
+  Definition get_perm (m: submem) (a: addr) : permission :=
+    ZMap.get (Int64.unsigned a) m.(mem_access).
 
-  Lemma mkmem_ext:
-    forall cont1 cont2 acc1 acc2 live1 live2,
-      cont1=cont2 -> acc1=acc2 -> live1=live2 ->
-      mkmem cont1 acc1 live1 = mkmem cont2 acc2 live2.
-  Proof.
-    intros. subst. f_equal; apply proof_irr.
-  Qed.
+  Definition set_perm (m: submem) (a: addr) (p: permission) : submem :=
+    {|
+      mem_contents := m.(mem_contents);
+      mem_access := ZMap.set (Int64.unsigned a) p m.(mem_access);
+      stack := m.(stack);
+      heap := m.(heap)
+    |}.
 
-  (** * Validity of blocks and accesses *)
-
-  (** A block address is valid if it was previously allocated. It remains valid
-      even after being freed. *)
-
-  Definition valid_addr (m: mem) (addr: Z) :=
-    exists lo hi,
-      In (lo,hi) m.(live) /\
-        lo <= addr /\ addr < hi.
-  
-  Theorem valid_not_valid_diff:
-    forall m a a', valid_addr m a -> ~(valid_addr m a') -> a <> a'.
-  Proof.
-    intros; red; intros. subst a'. contradiction.
-  Qed.
-
-  Local Hint Resolve valid_not_valid_diff: mem.
-
-  (** Permissions *)
-
-  Definition set_perm (m: mem) (ofs: Z) (p: permission) : mem :=
-    mkmem m.(mem_contents) (fun ofs' => if ofs =? ofs' then p else m.(mem_access) ofs') m.(live).
-
-  Definition set_perm_range (m: mem) (base bound: Z) (p: permission) : mem :=
-    let size := bound - base in
-    let fix loop off m :=
-      match off with
+  Definition set_perm_range (m: submem) (base: addr) (size: Z) (p: permission) : submem :=
+    let fix loop n m :=
+      match n with
       | O => set_perm m base p
-      | S off' => set_perm (loop off' m) (base + (Z.of_nat off)) p
+      | S n' =>
+        let a := addr_off base (Int64.repr (Z.of_nat n)) in
+        set_perm (loop n' m) a p
       end in
     loop (Z.to_nat size) m.
   
-  Definition get_perm (m: mem) (ofs: Z) : permission :=
-    m.(mem_access) ofs.
-
-  Definition perm (m: mem) (ofs: Z)  (p: permission) : Prop :=
-    get_perm m ofs = p.
+  Definition perm (m: submem) (a: addr) (p: permission) : Prop :=
+    get_perm m a = p.
 
   Theorem perm_dec:
     forall m ofs p, {perm m ofs p} + {~ perm m ofs p}.
@@ -149,427 +286,336 @@ Module Mem (P:Policy).
     unfold perm; intros. eapply permission_dec.
   Defined.
 
-  Definition range_perm (m: mem) (lo hi: Z)  (p: permission) : Prop :=
-    forall ofs, lo <= ofs < hi -> perm m ofs p.
+  Definition range_perm (m: submem) (lo hi: Z) (p: permission) : Prop :=
+    forall a, lo <= a < hi -> perm m (Int64.repr a) p.
 
   Lemma range_perm_dec:
     forall m lo hi p, {range_perm m lo hi p} + {~ range_perm m lo hi p}.
   Proof.
     intros.
     induction lo using (well_founded_induction_type (Zwf_up_well_founded hi)).
-    destruct (zlt lo hi).
-    - destruct (perm_dec m lo p).
+    destruct (zlt lo hi) eqn:?.
+    - destruct (perm_dec m (Int64.repr lo) p).
       + destruct (H (lo + 1)).
         * red. lia.
-        * left; red; intros. destruct (zeq lo ofs).
-          -- congruence.
+        * left; red; intros. destruct (zeq lo a).
+          -- rewrite e in p0. congruence.
           -- apply r. lia.
         * right; red; intros. elim n. red; intros; apply H0; lia.
-      + right; red; intros. elim n. apply H0. lia.
+      + right; red; intros. elim n. apply H0.
+        lia.
     - left; red; intros. extlia.
   Defined.
   
-  Definition range_perm_neg (m: mem) (lo hi: Z) (p: permission) : Prop :=
-    forall ofs, lo <= ofs < hi -> ~ perm m ofs p.
-
+  Definition range_perm_neg (m: submem) (lo hi: Z) (p: permission) : Prop :=
+    forall a, lo <= a < hi -> ~ perm m (Int64.repr a) p.
+  (** * Operations over memory stores *)
+ 
   Lemma range_perm_neg_dec:
     forall m lo hi p, {range_perm_neg m lo hi p} + {~ range_perm_neg m lo hi p}.
   Proof.
     intros.
     induction lo using (well_founded_induction_type (Zwf_up_well_founded hi)).
     destruct (zlt lo hi).
-    - destruct (perm_dec m lo p).
+    - destruct (perm_dec m (Int64.repr lo) p).
       + right; red; intros. apply (H0 lo). lia. auto.
       + destruct (H (lo + 1)).
         * red. lia.
-        * left; red; intros. destruct (zeq lo ofs).
+        * left; red; intros. destruct (zeq lo a).
           -- congruence.
           -- apply r. lia.
         * right; red; intros. elim n0. red; intros. apply H0; lia.
     - left; red; intros. extlia.
   Defined.
-  
-  Definition allowed_access (m: mem) (chunk: memory_chunk) (ofs: Z) : Prop :=
-    range_perm_neg m ofs (ofs + size_chunk chunk) Dead.
 
-  Definition aligned_access (chunk: memory_chunk) (ofs: Z) : Prop :=
-    (align_chunk chunk | ofs).
-  
-  Lemma allowed_access_perm:
-    forall m chunk ofs,
-      allowed_access m chunk ofs ->
-      ~ perm m ofs Dead.
-  Proof.
-    intros. apply H. generalize (size_chunk_pos chunk). lia.
-  Qed.
+  Definition allowed_access (m: submem) (chunk: memory_chunk) (a: addr) : Prop :=
+    range_perm_neg m (Int64.unsigned a) ((Int64.unsigned a) + size_chunk chunk) Dead.
+
+  Definition aligned_access (chunk: memory_chunk) (a: addr) : Prop :=
+    (align_chunk chunk | (Int64.unsigned a)).
 
   Lemma allowed_access_dec:
-    forall m chunk ofs,
-      {allowed_access m chunk ofs} + {~ allowed_access m chunk ofs}.
+    forall m chunk a,
+      {allowed_access m chunk a} + {~ allowed_access m chunk a}.
   Proof.
     intros.
-    destruct (range_perm_neg_dec m ofs (ofs + size_chunk chunk) Dead).
+    destruct (range_perm_neg_dec m (Int64.unsigned a) ((Int64.unsigned a) + size_chunk chunk) Dead).
     left; auto.
     right; red; contradiction.
   Defined.
 
   Lemma aligned_access_dec:
-    forall chunk ofs,
-      {aligned_access chunk ofs} + {~ aligned_access chunk ofs}.
+    forall chunk a,
+      {aligned_access chunk a} + {~ aligned_access chunk a}.
   Proof.
-    intros. destruct (Zdivide_dec (align_chunk chunk) ofs); auto.
+    intros. destruct (Zdivide_dec (align_chunk chunk) (Int64.unsigned a)); auto.
   Qed.
-  
-(** * Operations over memory stores *)
 
-(** The initial store *)
-
-  Definition init_dead : Z -> bool := fun _ => false.
-
-  Definition empty: mem :=
-    mkmem (ZMap.init (Undef, def_tag))
-          (fun ofs => if init_dead ofs then Dead else MostlyDead)
+  Definition subempty: submem :=
+    mkmem (ZMap.init (Byte Byte.zero InitT, DefLT))
+          (ZMap.init MostlyDead)
           []
-  .
+          [].
 
-  Remark region_eq_dec :
-    forall (r1 r2:Z*Z%type),
-      {r1 = r2} + {r1 <> r2}.
-  Proof.
-    intros. decide equality; eapply Z.eq_dec.
-  Qed.
-        
-  (** Memory reads. *)
+  Definition push_stack (m: submem) (a: addr) (sz: Z) : submem :=
+    let m' := set_perm_range m a sz Live in
+    {|
+      mem_contents := m'.(mem_contents);
+      mem_access := m'.(mem_access);
+      stack := (a,addr_off a (Int64.repr sz))::m'.(stack);
+      heap := m'.(heap)
+    |}.
 
-  (** Reading N adjacent bytes in a block content. *)
+  Definition pop_stack (m: submem) : submem :=
+    match m.(stack) with
+    | [] => m
+    | (a1,a2)::stack' =>
+      let sz := Int64.unsigned (Int64.sub a2 a1) in
+      let m' := set_perm_range m a1 sz MostlyDead in
+      {|
+        mem_contents := m'.(mem_contents);
+        mem_access := m'.(mem_access);
+        stack := stack';
+        heap := m'.(heap)
+      |}
+    end.
+
+  Definition add_heap (m: submem) (a: addr) (sz: Z) : submem :=
+    let m' := set_perm_range m a sz Live in
+    {|
+      mem_contents := m'.(mem_contents);
+      mem_access := m'.(mem_access);
+      stack := m'.(stack);
+      heap := (a,addr_off a (Int64.repr sz))::m'.(heap)
+    |}.
   
-  Fixpoint getN (n: nat) (p: Z) (c: ZMap.t (memval*tag)) {struct n}: list (memval * tag) :=
+  Program Definition remove_heap (m: submem) (a1 a2: addr) : submem :=
+    let sz := Int64.unsigned (Int64.sub a2 a1) in
+    let m' := set_perm_range m a1 sz MostlyDead in
+    {|
+      mem_contents := m'.(mem_contents);
+      mem_access := m'.(mem_access);
+      stack := m'.(stack);
+      heap := List.remove _ (a1,a2) m'.(heap)
+    |}.
+    Next Obligation.
+      decide equality; apply Int64.eq_dec.
+    Defined.
+
+  Fixpoint getN (n: nat) (p: Z) (c: ZMap.t (memval*loc_tag)) {struct n}: list (memval * loc_tag) :=
     match n with
     | O => nil
     | S n' => ZMap.get p c :: getN n' (p + 1) c
     end.
-
-  (** [load chunk m ofs] perform a read in memory state [m], at address
-      [b] and offset [ofs].  It returns the value of the memory chunk
-      at that address.  [None] is returned if the accessed bytes
-      are not readable. *)
-  Definition load (chunk: memory_chunk) (m: mem) (ofs: Z): MemoryResult atom :=
-    if aligned_access_dec chunk ofs then
-      if allowed_access_dec m chunk ofs
-      then MemorySuccess (decode_val chunk (map (fun x => fst x) (getN (size_chunk_nat chunk) ofs (m.(mem_contents)))))
-      else MemoryFail "" (PrivateLoad ofs)
-    else MemoryFail "" (MisalignedLoad (align_chunk chunk) ofs).
-
-  Definition load_ltags (chunk: memory_chunk) (m: mem) (ofs: Z): MemoryResult (list tag) :=
-    if aligned_access_dec chunk ofs then
-      if allowed_access_dec m chunk ofs
-      then MemorySuccess (map (fun x => snd x) (getN (size_chunk_nat chunk) ofs (m.(mem_contents))))
-      else MemoryFail "" (PrivateLoad ofs)
-    else MemoryFail "" (MisalignedLoad (align_chunk chunk) ofs).
-
-  Definition load_all (chunk: memory_chunk) (m: mem) (ofs: Z): MemoryResult (atom * list tag) :=
-    if aligned_access_dec chunk ofs then
-      if allowed_access_dec m chunk ofs
-      then MemorySuccess (decode_val chunk
-                                     (map (fun x => fst x)
-                                          (getN (size_chunk_nat chunk)
-                                                ofs (m.(mem_contents)))),
-                           map (fun x => snd x) (getN (size_chunk_nat chunk) ofs (m.(mem_contents))))
-      else MemoryFail "" (PrivateLoad ofs)
-    else MemoryFail "" (MisalignedLoad (align_chunk chunk) ofs).
-
-  Lemma load_all_compose :
-    forall chunk m ofs a lts,
-      load_all chunk m ofs = MemorySuccess (a,lts) <->
-        load chunk m ofs = MemorySuccess a /\ load_ltags chunk m ofs = MemorySuccess lts.
-  Proof.
-    intros until lts.
-    unfold load_all; unfold load; unfold load_ltags.
-    split.
-    - destruct (aligned_access_dec chunk ofs); destruct (allowed_access_dec m chunk ofs); intro H; inv H; auto.
-    - destruct (aligned_access_dec chunk ofs); destruct (allowed_access_dec m chunk ofs); intro H; destruct H as [H1 H2]; inv H1; inv H2; auto.
-  Qed.
-
-  Lemma load_all_fail :
-    forall chunk m ofs msg failure,
-      load_all chunk m ofs = MemoryFail msg failure <->
-        load chunk m ofs = MemoryFail msg failure /\ load_ltags chunk m ofs = MemoryFail msg failure.
-  Proof.
-    intros until failure.
-    unfold load_all; unfold load; unfold load_ltags.
-    split.
-    - destruct (aligned_access_dec chunk ofs); destruct (allowed_access_dec m chunk ofs); intro H; inv H; auto.
-    - destruct (aligned_access_dec chunk ofs); destruct (allowed_access_dec m chunk ofs); intro H; destruct H as [H1 H2]; inv H1; inv H2; auto.
-  Qed. 
+ 
+  Definition load (chunk: memory_chunk) (m: submem) (a: addr):
+    Result (val * list val_tag * list loc_tag) :=
+    if aligned_access_dec chunk a then
+      if allowed_access_dec m chunk a
+      then
+        let '(v,vts) := decode_val chunk (map (fun x => fst x)
+        (getN (size_chunk_nat chunk) (Int64.unsigned a) (m.(mem_contents))) ) in
+        let lts := map (fun x => snd x)
+        (getN (size_chunk_nat chunk) (Int64.unsigned a) (m.(mem_contents))) in
+        Success (v, vts, lts)
+      else Fail (PrivateLoad (Int64.unsigned a))
+    else Fail (MisalignedLoad (align_chunk chunk) (Int64.unsigned a)).
   
-  (** [loadbytes m ofs n] reads [n] consecutive bytes starting at
-      location [(b, ofs)].  Returns [None] if the accessed locations are
-      not readable. *)
+  Definition loadbytes (m: submem) (a: addr) (n: Z): Result (list memval) :=
+    if range_perm_neg_dec m (Int64.unsigned a) ((Int64.unsigned a) + n) Dead
+    then Success (map (fun x => fst x) (getN (Z.to_nat n) (Int64.unsigned a) (m.(mem_contents))))
+    else Fail (PrivateLoad (Int64.unsigned a)).
 
-  Definition loadbytes (m: mem) (ofs n: Z): MemoryResult (list memval) :=
-    if range_perm_neg_dec m ofs (ofs + n) Dead
-    then MemorySuccess (map (fun x => fst x) (getN (Z.to_nat n) ofs (m.(mem_contents))))
-    else MemoryFail "" (PrivateLoad ofs).
-
-  Definition loadtags (m: mem) (ofs n: Z) : MemoryResult (list tag) :=
-    if range_perm_neg_dec m ofs (ofs + n) Dead
-    then MemorySuccess (map (fun x => snd x) (getN (Z.to_nat n) ofs (m.(mem_contents))))
-    else MemoryFail "" (PrivateLoad ofs).
+  Definition loadtags (m: submem) (a: addr) (n: Z) : Result (list loc_tag) :=
+    if range_perm_neg_dec m (Int64.unsigned a) ((Int64.unsigned a) + n) Dead
+    then Success (map (fun x => snd x) (getN (Z.to_nat n) (Int64.unsigned a) (m.(mem_contents))))
+    else Fail (PrivateLoad (Int64.unsigned a)).
 
   (** Memory stores. *)
 
   (** Writing N adjacent bytes in a block content. *)
 
-  Fixpoint setN (vl: list (memval*tag)) (p: Z) (c: ZMap.t (memval*tag)) {struct vl}: ZMap.t (memval*tag) :=
+  Fixpoint setN (vl: list (memval*loc_tag)) (p: Z)
+           (c: ZMap.t (memval*loc_tag)) {struct vl}: ZMap.t (memval*loc_tag) :=
     match vl with
     | nil => c
     | v :: vl' => setN vl' (p + 1) (ZMap.set p v c)
     end.
 
-  Remark setN_other:
-    forall vl c p q,
-      (forall r, p <= r < p + Z.of_nat (length vl) -> r <> q) ->
-      ZMap.get q (setN vl p c) = ZMap.get q c.
-  Proof.
-    induction vl; intros; simpl.
-    auto.
-    simpl length in H. rewrite Nat2Z.inj_succ in H.
-    transitivity (ZMap.get q (ZMap.set p a c)).
-    apply IHvl. intros. apply H. lia.
-    apply ZMap.gso. apply not_eq_sym. apply H. lia.
-  Qed.
-
-  Remark setN_outside:
-    forall vl c p q,
-      q < p \/ q >= p + Z.of_nat (length vl) ->
-      ZMap.get q (setN vl p c) = ZMap.get q c.
-  Proof.
-    intros. apply setN_other.
-    intros. lia.
-  Qed.
-
-  Remark getN_setN_same:
-    forall vl p c,
-      getN (length vl) p (setN vl p c) = vl.
-  Proof.
-    induction vl; intros; simpl.
-    auto.
-    decEq.
-    rewrite setN_outside. apply ZMap.gss. lia.
-    apply IHvl.
-  Qed.
-
-  Remark getN_exten:
-    forall c1 c2 n p,
-      (forall i, p <= i < p + Z.of_nat n -> ZMap.get i c1 = ZMap.get i c2) ->
-      getN n p c1 = getN n p c2.
-  Proof.
-    induction n; intros. auto. rewrite Nat2Z.inj_succ in H. simpl. decEq.
-    apply H. lia. apply IHn. intros. apply H. lia.
-  Qed.
-
-  Remark getN_setN_disjoint:
-    forall vl q c n p,
-      Intv.disjoint (p, p + Z.of_nat n) (q, q + Z.of_nat (length vl)) ->
-      getN n p (setN vl q c) = getN n p c.
-  Proof.
-    intros. apply getN_exten. intros. apply setN_other.
-    intros; red; intros; subst r. eelim H; eauto.
-  Qed.
-
-  Remark getN_setN_outside:
-    forall vl q c n p,
-      p + Z.of_nat n <= q \/ q + Z.of_nat (length vl) <= p ->
-      getN n p (setN vl q c) = getN n p c.
-  Proof.
-    intros. apply getN_setN_disjoint. apply Intv.disjoint_range. auto.
-  Qed.
-
-  Remark setN_default:
-    forall vl q c, fst (setN vl q c) = fst c.
-  Proof.
-    induction vl; simpl; intros. auto. rewrite IHvl. auto.
-  Qed.
-
-  (** [store chunk m ofs v] perform a write in memory state [m].
-      Value [v] is stored at address [b] and offset [ofs].
-      Return the updated memory store, or [None] if the accessed bytes
-      are not writable. *)
-  
-  Fixpoint merge_vals_tags (vs:list memval) (lts:list tag) :=
+  Fixpoint merge_vals_tags (vs:list memval) (lts:list loc_tag) :=
     match vs with
     | v::vs' =>
-        (v,hd def_tag lts)::(merge_vals_tags vs' (tl lts))
+        (v,hd DefLT lts)::(merge_vals_tags vs' (tl lts))
     | _ => []
     end.
   
-  Definition store (chunk: memory_chunk) (m: mem) (ofs: Z) (a:atom) (lts:list tag)
-    : MemoryResult mem :=
-    if aligned_access_dec chunk ofs then
-      if allowed_access_dec m chunk ofs then
-        MemorySuccess (mkmem (setN (merge_vals_tags (encode_val chunk a) lts) ofs (m.(mem_contents)))
-                             m.(mem_access) m.(live))
-      else MemoryFail "" (PrivateStore ofs)
-    else MemoryFail "" (MisalignedStore (align_chunk chunk) ofs).
+  Definition store (chunk: memory_chunk) (m: submem) (a: addr) (v:atom) (lts:list loc_tag)
+    : Result submem :=
+    if aligned_access_dec chunk a then
+      if allowed_access_dec m chunk a then
+        Success (mkmem (setN (merge_vals_tags (encode_val chunk v) lts) (Int64.unsigned a) (m.(mem_contents)))
+                             m.(mem_access) m.(stack) m.(heap))
+      else Fail (PrivateStore (Int64.unsigned a))
+    else Fail (MisalignedStore (align_chunk chunk) (Int64.unsigned a)).
 
-  Definition store_atom (chunk: memory_chunk) (m: mem) (ofs: Z) (a:atom)
-    : MemoryResult mem :=
-    if aligned_access_dec chunk ofs then
-      if allowed_access_dec m chunk ofs then
-        let lts := map snd (getN (Z.to_nat (size_chunk chunk)) ofs (m.(mem_contents))) in
-        MemorySuccess (mkmem (setN (merge_vals_tags (encode_val chunk a) lts) ofs (m.(mem_contents)))
-                             m.(mem_access) m.(live))
-      else MemoryFail "" (PrivateStore ofs)
-    else MemoryFail "" (MisalignedStore (align_chunk chunk) ofs).
+  Definition store_atom (chunk: memory_chunk) (m: submem) (a: addr) (v: atom)
+    : Result submem :=
+    if aligned_access_dec chunk a then
+      if allowed_access_dec m chunk a then
+        let lts := map snd (getN (Z.to_nat (size_chunk chunk)) (Int64.unsigned a) (m.(mem_contents))) in
+        Success (mkmem (setN (merge_vals_tags (encode_val chunk v) lts) (Int64.unsigned a) (m.(mem_contents)))
+                             m.(mem_access) m.(stack) m.(heap))
+      else Fail (PrivateStore (Int64.unsigned a))
+    else Fail (MisalignedStore (align_chunk chunk) (Int64.unsigned a)).
+
+  Definition storebytes (m: submem) (a: addr) (bytes: list memval) (lts:list loc_tag)
+    : Result submem :=
+    if range_perm_neg_dec m (Int64.unsigned a) ((Int64.unsigned a) + Z.of_nat (length bytes)) Dead then 
+      Success (mkmem
+                       (setN (merge_vals_tags bytes lts) (Int64.unsigned a) (m.(mem_contents)))
+                       m.(mem_access) m.(stack) m.(heap))
+    else Fail (PrivateStore (Int64.unsigned a)).
   
-  (** [storebytes m ofs bytes] stores the given list of bytes [bytes]
-      starting at location [(b, ofs)].  Returns updated memory state
-      or [None] if the accessed locations are not writable. *)
-  Program Definition storebytes (m: mem) (ofs: Z) (bytes: list memval) (lts:list tag)
-    : MemoryResult mem :=
-    if range_perm_neg_dec m ofs (ofs + Z.of_nat (length bytes)) Dead then
-      MemorySuccess (mkmem
-                       (setN (merge_vals_tags bytes lts) ofs (m.(mem_contents)))
-                       m.(mem_access) m.(live))
-    else MemoryFail "" (PrivateStore ofs).
+End ConcMem.
+
+Module MultiMem (Pol: Policy) : Submem SemiconcretePointer Pol.
+  Module CM := ConcMem SemiconcretePointer Pol.
+  Export CM.
+  Module BI := BI.
+  Export BI.
+  Module Genv := Genv.
+  Export Genv.
+  Export MD.
+  Export TLib.
+  Export SemiconcretePointer.
+
+  Definition addr : Type := (index * int64).
+  Definition of_ptr (p: ptr) : addr :=
+    match p with
+    | P i a => (i,a)
+    | Null => (LocInd 1%positive, Int64.zero)
+    end.
+
+  Definition addr_off (a: addr) (ofs: int64) := (fst a, Int64.add (snd a) ofs).
   
-  (** * Properties of the memory operations *)
+  Definition addr_eq (a1 a2: addr) : bool :=
+    match a1, a2 with
+    | (LocInd C, i), (LocInd C', i') => andb (peq C C') (Int64.eq i i')
+    | (ShareInd b _, i), (ShareInd b' _, i') => andb (peq b b') (Int64.eq i i')
+    | _, _ => false
+    end.
 
-  (** Properties of the empty store. *)
+  Definition addr_sub (a1 a2: addr) : option int64 :=
+    match a1, a2 with
+    | (LocInd C, a1'), (LocInd C', a2') =>
+      if (peq C C')
+      then Some (Int64.sub a1' a2')
+      else None
+    | (ShareInd b base, a1'), (ShareInd b' _, a2') =>
+      if (peq b b')
+      then Some (Int64.sub a1' a2')
+      else None
+    | _, _ => None
+    end.
 
-  Theorem perm_empty: forall ofs, ~perm empty ofs Live.
-  Proof.
-    intros. unfold perm, empty; simpl. unfold get_perm;simpl.
-    destruct (init_dead ofs); intro; discriminate.
-  Qed.
+  Definition null : addr := (LocInd 1%positive, Int64.zero).
 
-Theorem range_perm_loadbytes:
-  forall m ofs len,
-  range_perm_neg m ofs (ofs + len) Dead ->
-  exists bytes, loadbytes m ofs len = MemorySuccess bytes.
-Proof.
-  intros. econstructor. unfold loadbytes. rewrite pred_dec_true; eauto.
-Qed.
+  Lemma null_zero : forall p, of_ptr p = null -> concretize p = Int64.zero.
+  Proof. unfold null. unfold of_ptr. unfold concretize. intros. destruct p; inv H; auto. Qed.
+  
+  Record myMem := mkMem
+    {
+      comp_locals : PMap.t CM.submem;
+      shares : PMap.t CM.submem;
+      stack : list (addr*addr);
+      heap : list (addr*addr)
+    }.
+  
+  Definition submem : Type := myMem.
+  
+  Definition allowed_access (m: submem) (chunk: memory_chunk) (a: addr) : Prop :=
+    match a with
+    | (LocInd C, i) => CM.allowed_access (m.(comp_locals)#C) chunk i
+    | (ShareInd b _, i) => CM.allowed_access (m.(comp_locals)#b) chunk i
+    end.
+    
+  Parameter aligned_access : memory_chunk -> addr -> Prop.
+  
+  Parameter allowed_access_dec:
+    forall m chunk a,
+      {allowed_access m chunk a} + {~ allowed_access m chunk a}.
 
-(*Axiom range_perm_loadbytes_live:
-  forall m ofs len,
-  range_perm m ofs (ofs + len) Live ->
-  exists bytes, loadbytes m ofs len = MemorySuccess bytes.
-Axiom range_perm_loadbytes_md:
-  forall m ofs len,
-  range_perm m ofs (ofs + len) MostlyDead ->
-  exists bytes, loadbytes m ofs len = MemorySuccess bytes.*)
+  Parameter aligned_access_dec:
+    forall chunk a,
+      {aligned_access chunk a} + {~ aligned_access chunk a}.
+  
+  Definition subempty : submem :=
+    mkMem (PMap.init CM.subempty) (PMap.init CM.subempty) [] [].
+   
+  Definition direct_read (m: submem) (a: addr) : (memval * loc_tag) :=
+    match a with
+    | (LocInd C, i) => ZMap.get (Int64.unsigned i) (m.(comp_locals)#C).(mem_contents)
+    | (ShareInd b _, i) => ZMap.get (Int64.unsigned i) (m.(shares)#b).(mem_contents)
+    end.
+  
+  Definition load (chunk: memory_chunk) (m: submem) (a: addr) : Result (val * list val_tag * list loc_tag) :=
+    match a with
+    | (LocInd C, i) => CM.load chunk (m.(comp_locals)#C) i
+    | (ShareInd b _, i) => CM.load chunk (m.(shares)#b) i
+    end.
+ 
+  Definition loadbytes (m: submem) (a: addr) (num: Z) : Result (list memval) :=
+    match a with
+    | (LocInd C, i) => CM.loadbytes (m.(comp_locals)#C) i num
+    | (ShareInd b _, i) => CM.loadbytes (m.(comp_locals)#b) i num
+    end.
 
-Theorem loadbytes_range_perm:
-  forall m ofs len bytes,
-  loadbytes m ofs len = MemorySuccess bytes ->
-  range_perm_neg m ofs (ofs + len) Dead.
-Proof.
-  intros until bytes. unfold loadbytes. intros.
-  destruct (range_perm_neg_dec m ofs (ofs + len) Dead); auto.
-  congruence.
-Qed.
+  Definition loadtags (m: submem) (a: addr) (num: Z) : Result (list loc_tag) :=
+    match a with
+    | (LocInd C, i) => CM.loadtags (m.(comp_locals)#C) i num
+    | (ShareInd b _, i) => CM.loadtags (m.(comp_locals)#b) i num
+    end.
 
-Lemma getN_length:
-  forall c n p, length (getN n p c) = n.
-Proof.
-  induction n; simpl; intros. auto. decEq; auto.
-Qed.
+  Definition store (chunk: memory_chunk) (m: submem) (a: addr) (v: atom) (lts: list loc_tag) : Result submem :=
+    match a with
+    | (LocInd C, i) =>
+        match CM.store chunk (m.(comp_locals)#C) i v lts with
+        | Success cm => Success (mkMem (PMap.set C cm m.(comp_locals)) m.(shares) m.(stack) m.(heap))
+        | Fail f => Fail f
+        end
+    | (ShareInd b _, i) =>
+        match CM.store chunk (m.(shares)#b) i v lts with
+        | Success cm => Success (mkMem (PMap.set b cm m.(shares)) m.(comp_locals) m.(stack) m.(heap))
+        | Fail f => Fail f
+        end
+    end.
+    
+  Definition store_atom (chunk: memory_chunk) (m: submem) (a: addr) (v: atom) : Result submem :=
+    match a with
+    | (LocInd C, i) =>
+        match CM.store_atom chunk (m.(comp_locals)#C) i v with
+        | Success cm => Success (mkMem (PMap.set C cm m.(comp_locals)) m.(shares) m.(stack) m.(heap))
+        | Fail f => Fail f
+        end
+    | (ShareInd b _, i) =>
+        match CM.store_atom chunk (m.(shares)#b) i v with
+        | Success cm => Success (mkMem (PMap.set b cm m.(shares)) m.(comp_locals) m.(stack) m.(heap))
+        | Fail f => Fail f
+        end
+    end.
 
-Theorem loadbytes_empty:
-  forall m ofs n,
-  n <= 0 -> loadbytes m ofs n = MemorySuccess nil.
-Proof.
-  intros. unfold loadbytes. rewrite pred_dec_true. rewrite Z_to_nat_neg; auto.
-  red; intros. extlia.
-Qed.
+  Definition storebytes (m: submem) (a: addr) (mvs: list memval) (lts: list loc_tag) : Result submem :=
+    match a with
+    | (LocInd C, i) =>
+        match CM.storebytes (m.(comp_locals)#C) i mvs lts with
+        | Success cm => Success (mkMem (PMap.set C cm m.(comp_locals)) m.(shares) m.(stack) m.(heap))
+        | Fail f => Fail f
+        end
+    | (ShareInd b _, i) =>
+        match CM.storebytes (m.(shares)#b) i mvs lts with
+        | Success cm => Success (mkMem (PMap.set b cm m.(shares)) m.(comp_locals) m.(stack) m.(heap))
+        | Fail f => Fail f
+        end
+    end.    
 
-Lemma getN_concat:
-  forall c n1 n2 p,
-  getN (n1 + n2)%nat p c = getN n1 p c ++ getN n2 (p + Z.of_nat n1) c.
-Proof.
-  induction n1; intros.
-  simpl. decEq. lia.
-  rewrite Nat2Z.inj_succ. simpl. decEq.
-  replace (p + Z.succ (Z.of_nat n1)) with ((p + 1) + Z.of_nat n1) by lia.
-  auto.
-Qed.
-
-(** ** Properties related to [storebytes]. *)
-
-Theorem range_perm_storebytes:
-  forall m1 ofs bytes lts,
-  range_perm_neg m1 ofs (ofs + Z.of_nat (length bytes)) Dead ->
-  { m2 : mem | storebytes m1 ofs bytes lts = MemorySuccess m2 }.
-Proof.
-  intros. unfold storebytes.
-  destruct (range_perm_neg_dec m1 ofs (ofs + Z.of_nat (length bytes)) Dead).
-  econstructor; reflexivity.
-  contradiction.
-Defined.
-
-Section STOREBYTES.
-Variable m1: mem.
-Variable ofs: Z.
-Variable bytes: list memval.
-Variable lts: list tag.
-Variable m2: mem.
-Hypothesis STORE: storebytes m1 ofs bytes lts = MemorySuccess m2.
-
-Lemma storebytes_access: mem_access m2 = mem_access m1.
-Proof.
-  unfold storebytes in STORE.
-  destruct (range_perm_neg_dec m1 ofs (ofs + Z.of_nat (length bytes)) Dead);
-  inv STORE.
-  auto.
-Qed.
-
-Lemma storebytes_mem_contents:
-   mem_contents m2 = setN (merge_vals_tags bytes lts) ofs m1.(mem_contents).
-Proof.
-  unfold storebytes in STORE.
-  destruct (range_perm_neg_dec m1 ofs (ofs + Z.of_nat (length bytes)) Dead);
-  inv STORE.
-  auto.
-Qed.
-
-Theorem perm_storebytes_1:
-  forall ofs' p, perm m1 ofs' p -> perm m2 ofs' p.
-Proof.
-  intros. unfold perm in *. unfold get_perm in *. rewrite storebytes_access; auto.
-Qed.
-
-Theorem perm_storebytes_2:
-  forall ofs' p, perm m2 ofs' p -> perm m1 ofs' p.
-Proof.
-  intros. unfold perm in *. unfold get_perm in *. rewrite storebytes_access in H; auto.
-Qed.
-
-Local Hint Resolve perm_storebytes_1 perm_storebytes_2: mem.
-
-Theorem storebytes_range_perm:
-  range_perm_neg m1 ofs (ofs + Z.of_nat (length bytes)) Dead.
-Proof.
-  intros.
-  unfold storebytes in STORE.
-  destruct (range_perm_neg_dec m1 ofs (ofs + Z.of_nat (length bytes)) Dead);
-  inv STORE.
-  auto.
-Qed.
-
-End STOREBYTES.
-
-Lemma setN_concat:
-  forall bytes1 bytes2 ofs c,
-  setN (bytes1 ++ bytes2) ofs c = setN bytes2 (ofs + Z.of_nat (length bytes1)) (setN bytes1 ofs c).
-Proof.
-  induction bytes1; intros.
-  simpl. decEq. lia.
-  simpl length. rewrite Nat2Z.inj_succ. simpl. rewrite IHbytes1. decEq. lia.
-Qed.
-
-(** ** Properties related to [alloc]. *)
-
-Global Opaque Mem.store Mem.load Mem.storebytes Mem.loadbytes.
-
-End Mem.
+End MultiMem.

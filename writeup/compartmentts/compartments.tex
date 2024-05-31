@@ -383,13 +383,66 @@ can no longer read or write to it.
 %the memory safety policy. Instead, we take memory safety as a reference point and define safe
 %compartmentalization in terms of preserving all of these implicit properties.
 
+\paragraph{Concrete C Semantics}
+
+A program's behavior is determined by its Tagged C semantics, which is in turn derived from the
+Concrete C semantics. Let's first ignore tags and describe how the Concrete C semantics behaves
+with memory.
+
+Concrete C promises to fulfill a set of memory axioms, but the means by which it does so
+is nondeterministic. So, for example, a call to malloc may failstop (indicating that the system
+it out of memory) or it may return a pointer, with the guarantee that the block beginning at
+that pointer does not overlap with any allocated block. Subject to that guarantee, the block
+might be anywhere in the address space. This is one source of nondeterminism.
+
+The behavior of loads and stores differs depending on whether they are accessing allocated memory.
+A load or store that accesses allocated memory guarantees the usual set of properties of
+memory: a load produces the last stored value, etc. A load or store outside of allocated memory
+has fewer guarantees. It may failstop, for instance because the accessed address is reserved for
+the compiler, or it may proceed, in which case the normal properties of memory apply only up to
+a call or return, when the compiler is free to scramble unallocated memory however it sees fit.
+
+%This means that we might consider a few different classes of programs:
+%\begin{enumerate}
+%\item Programs that always have the same behavior, modulo out-of-memory stops
+%\item Programs that always have the same behavior but may failstop (non-OOM)
+%\item Programs whose behavior is fully non-deterministic
+%\end{enumerate}
+
+%Notably, valid C programs are always in category 1. So are valid PVI and PNVI programs.
+%Category 2 consists of programs that access unallocated memory, but only in a consistent way,
+%such as a program that loads a value but doesn't use it. Category 3 includes all instances in which
+%an object could be written to without a valid pointer, and read and the value used, unless
+%the same object/offset is accessed in every memory layout. Since that level of consistency
+%is generally only possible using pointer arithmetic from a valid pointer in the first place,
+%category 3 is where we find instances of pointer-forging and various probabilistic attacks.
+
+\paragraph{Isolated Semantics}
+
+Our specification for the no-sharing case is derived from a machine in which memory is
+isolated by construction. Where previously we had a single flat memory, we now have a
+map from compartments to flat memories. The state tracks at any given time which compartment
+is active.
+
+\[M \in \mathcal{M} : \mathit{comp} \rightarrow \mathit{mem}\]
+
+Regular state now extended with a compartment id and a memory map:
+
+\[\mathcal{S}(C, M, le, te \mid s \gg k \tagat \PCT)\]
+
+We adjust all of the step relation rules appropriately.
+\sna{It's unclear to me whether this semantics should have tags. Probably not, in which
+  case it really does look a lot like Concrete C.}
+
+We add one additional axiom, the {\it compatible\_alloc} axiom, which states that
+at no point during execution is an address allocated in more than one compartment.
+\sna{Without this, we will have traces that can appear in the source but not the target.
+  That's a problem if some interesting behavior only occurs in those traces (seems unlikely,
+  but maybe possible when we've used a lot of memory.)}
+
 \paragraph{Events and Traces}
 
-Compartments interact via calls and returns, and via visible loads and stores. A load or a store
-is visible if it is made via a valid pointer. To each allocation we associate a provenance
-symbol \(\phi\), and we track the provenance of every pointer within each compartment.
-Then, when a load or store is performed by a pointer of provenance \(\phi\), we record both
-\(\phi\) and the concrete address of the target object in the trace.
+Compartments interact via calls and returns, and via loads and stores.
 
 Formally, an event value is a value with an optional provenance. An event is a call, return,
 alloc, free, load, or store. An alloc records the range of addresses that are allocated and
@@ -400,22 +453,96 @@ addresses affected.
 
 \[ev ::= v | (\phi, v)\]
 \[\begin{split}
-e ::= & \mathit{call} ~ f ~ \overline{ev} \\
-| & \mathit{return} ~ ev \\
-| & \mathit{alloc} ~ \phi ~ a_0 \dots a_n \\
-| & \mathit{free} ~ \phi \\
-| & \mathit{load} ~ \phi ~ a_0 \dots a_n ~ ev \\
-| & \mathit{store} ~ \phi ~ a_0 \dots a_n ~ ev \\
+e ::= & C \gg \mathit{call} ~ f ~ \overline{ev} \\
+| & C \gg \mathit{return} ~ ev \\
+| & C \gg \mathit{alloc} ~ a_0 \dots a_n \\
+| & C \gg \mathit{free} ~ a_0 \dots a_n \\
+| & C \gg \mathit{load} ~ a_0 \dots a_n ~ ev \\
+| & C \gg \mathit{store} ~ a_0 \dots a_n ~ ev \\
 \end{split}\]
 
-A trace is a (possibly infinite) sequence of event values.
+A trace is a (possibly infinite) sequence of events.
 
 Let \(A\) and \(B\) be components such that linking them produces a complete program.
-We write the linked program \(A[B]\), and when such a program run under tag
-policy \(\rho\) produces a trace \(t\), we write \(A[B] \rightsquigarrow_\rho t\).
-We represent the ``baseline'' policy, which never failstops, with \(\bot\).
+We write the linked program \(A[B]\). Now we need to capture its traces. Execution is
+deterministic given a certain compiler/allocation strategy. We range over these with
+the metavariable \(\alpha\), and write that a particular combination of program \(A[B]\),
+\(\alpha\), and tag policy \(\rho\) produces a trace \(t\) as
+\(\alpha \vdash A[B] \rightsquigarrow_{\mathit{tag(\rho)}} t\). To write the same given
+the multi-concrete model, we write \(\alpha \vdash A[B] \rightsquigarrow_{\mathit{mc}} t\).
+Producing a trace is defined inductively
+in terms of the step function such that if \(\alpha \vdash A[B] \rightsquigarrow_X t\),
+then \(\alpha \vdash A[B] \rightsquigarrow_X s\) for any \(s\) that prefixes \(t\).
 
-\paragraph{Trace Example}
+We frequently want to talk about all possible traces of a program under a given policy
+or the multi-concrete model regardless of the memory layout. In this case we define the
+trace set \(\llbracket A[B] \rrbracket_X\) where \(X\) is \(\mathit{mc}\) or \(\mathit{tag}(\rho)\).
+
+\[\llbracket A[B] \rrbracket_X \triangleq \bigcup_{\alpha}
+\{ t \mid \alpha \vdash A[B] \rightsquigarrow_X t \}\]
+
+\paragraph{Properties and the Big Property}
+
+A property \(\pi\) is a set of traces, members of which are said to satisfy \(\pi\).
+
+A property \(\pi\) is {\em robustly satisfied (def 1)} by a compartment \(A\) under context \(X\)
+if, for all \(B\), \(\llbracket A[B] \rrbracket_X \subseteq \pi\).
+
+A policy \(\rho\) enjoys {\em robust property satisfaction (def 1)} with respect to \(ms\)
+if, for all \(A\) and all \(\pi\) robustly satisfied by \(A\) under \(ms\),
+\(A\) robustly satisfies \(\pi\) under \(tag(\rho)\).
+
+By the contrapositive, this is equivalent to: for all \(A\), \(B\), and \(t\) such that
+\(t \in \llbracket A[B] \rrbracket_{tag(\rho)}\),
+
+\paragraph{Trace Examples}
+
+\begin{figure}
+
+\begin{verbatim}
+A >> f() {
+  int* x = malloc(sizeof(int));
+  
+  return (int) x;
+}
+\end{verbatim}
+
+\[\llbracket A[B] \rrbracket =
+\{\dots \mathit{call} ~ f ~ [] \cdot \mathit{return} ~ 8*i \ldots \mid 0 \leq i \leq 2^{61}\}\]
+
+\begin{verbatim}
+A >> f() {
+  int* x = malloc(sizeof(int));
+  int* y = malloc(sizeof(int));
+  
+  return (int) x + (int) y);
+}
+\end{verbatim}
+
+\[\llbracket A[B] \rrbracket =
+\{\dots \mathit{call} ~ f ~ [] \cdot \mathit{return} ~ 8*(i+j) \ldots \mid 0 \leq i \leq 2^{61}, 0 \leq i \leq j, i \not = j\}\]
+
+\begin{verbatim}
+A >> f() {
+  int* x = malloc(sizeof(int));
+  int* y = malloc(sizeof(int));
+
+  if ((int) x < (int) y && (int) x > (int) y) {
+    return 1;
+  } else {
+    return 0;
+  }
+}
+\end{verbatim}
+
+\[\llbracket A[B] \rrbracket = \{\dots \mathit{call} ~ f ~ [] \cdot \mathit{return} ~ 0 \ldots\}\]
+
+\caption{Addresses not in Traces}
+\label{fig:traddr}
+\end{figure}
+
+
+
 
 Let's look at an example of a program and the trace it produces. In Figure \ref{fig:trexample},
 we see multiple kinds of undefined behavior, as {\tt f} has internal {\tt UB} and {\tt g} has

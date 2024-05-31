@@ -99,25 +99,27 @@ endif
 VLIB=Axioms.v Coqlib.v Intv.v Maps.v Heaps.v Lattice.v Ordered.v \
   Iteration.v Zbits.v Integers.v Archi.v IEEE754_extra.v Floats.v \
   Parmov.v UnionFind.v Wfsimpl.v \
-  Postorder.v FSetAVLplus.v IntvSets.v Decidableplus.v BoolEqual.v
+  Postorder.v FSetAVLplus.v IntvSets.v Decidableplus.v BoolEqual.v \
+  Show.v
 
 # Parts common to the front-ends and the back-end (in common/)
 
-COMMON=Errors.v AST.v Linking.v \
+COMMON=Errors.v AST.v Linking.v Encoding.v \
   Events.v Globalenvs.v Memdata.v Memory.v Allocator.v \
-  Values.v Tags.v Smallstep.v Behaviors.v Switch.v Determinism.v Unityping.v \
-  Builtins0.v Builtins1.v Builtins.v
+  AllocatorImpl.v ConcreteAllocator.v \
+  Values.v Tags.v Smallstep.v Switch.v Unityping.v \
+  Builtins0.v Builtins1.v Builtins.v Determinism.v \
 
 # C front-end modules (in cfrontend/)
 
-CFRONTEND=Ctypes.v Cop.v Csyntax.v Csem.v Ctyping.v Cstrategy.v Cexec.v \
+CFRONTEND=Ctypes.v Cop.v Csyntax.v Csem.v Ctyping.v Cexec.v \
   Initializers.v InterpreterEvents.v \
 
-# Policy definitions (in policies/)
+# Policy definitions (in policies/) Add new policy files here
+# NB Product.v is the (Cartisian) product of multiple policies
+POLICIES=NullPolicy.v PVI.v Compartments.v DoubleFree.v HeapProblem.v Product.v Omnilog.v
 
-POLICIES=NullPolicy.v PVI.v PNVI.v DoubleFree.v
-
-# Parser
+PROOFS=CexecExprSig.v CexecExprProof.v CexecProof.v Simulation.v CompartmentSem.v SemanticsProofs.v
 
 PARSER=Cabs.v Parser.v
 
@@ -142,14 +144,16 @@ FILES=$(VLIB) $(COMMON) $(CFRONTEND) $(POLICIES) $(DRIVER) $(FLOCQ) \
 
 all:
 	@test -f .depend || $(MAKE) depend
-	$(MAKE) proof
+	$(MAKE) files
 	$(MAKE) extraction
 	$(MAKE) ccomp
 ifeq ($(INSTALL_COQDEV),true)
 	$(MAKE) compcert.config
 endif
 
-proof: $(FILES:.v=.vo)
+files: $(FILES:.v=.vo)
+
+proof: files $(PROOFS:.v=.vo)
 
 # Turn off some warnings for compiling Flocq
 flocq/%.vo: COQCOPTS+=-w -compatibility-notation
@@ -256,7 +260,7 @@ cparser/Parser.v: cparser/Parser.vy
 
 depend: $(GENERATED) depend1
 
-depend1: $(FILES)
+depend1: $(FILES) $(PROOFS)
 	@echo "Analyzing Coq dependencies"
 	@$(COQDEP) $^ > .depend
 
@@ -298,7 +302,7 @@ distclean:
 	$(MAKE) clean
 	rm -f Makefile.config
 
-check-admitted: $(FILES)
+check-admitted: $(FILES) $(PROOFS)
 	@grep -w 'admit\|Admitted\|ADMITTED' $^ || echo "Nothing admitted."
 
 check-proof: $(FILES)

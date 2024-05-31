@@ -19,13 +19,15 @@
 open Camlcoq
 open Tags
 open C2C
-open Allocator
 
-module Pragma =
-        functor (Pol: Policy) (Alloc: Allocator) ->
-                struct
+module Pragma (Pol: Policy) = struct
+  module C2CPInst = C2CP (Pol)
 
-module C2CPInst = C2CP (Pol) (Alloc)
+  module Inner (I: C2CPInst.CMA.ConcAllocatorImpl) =
+    struct
+
+    module C2CPInner = C2CPInst.Inner (I)
+
 
 (* #pragma section *)
 
@@ -52,9 +54,9 @@ let re_c_ident = Str.regexp "[A-Za-z_][A-Za-z_0-9]*$"
 let process_use_section_pragma classname id =
   if id = "," || id = ";" then () else begin
     if not (Str.string_match re_c_ident id 0) then
-      C2CPInst.error "bad identifier `%s' in #pragma use_section" id;
+      C2CPInner.error "bad identifier `%s' in #pragma use_section" id;
     if not (Sections.use_section_for (intern_string id) classname) then
-      C2CPInst.error "unknown section name `%s'" classname
+      C2CPInner.error "unknown section name `%s'" classname
   end
 
 (* Parsing of pragmas *)
@@ -68,17 +70,18 @@ let process_pragma name =
       process_section_pragma classname istring ustring "" accmode;
       true
   | "section" :: _ ->
-      C2CPInst.error "ill-formed `section' pragma"; true
+      C2CPInner.error "ill-formed `section' pragma"; true
   | "use_section" :: classname :: identlist ->
-      if identlist = [] then C2CPInst.warning Diagnostics.Unnamed "empty `use_section' pragma";
+      if identlist = [] then C2CPInner.warning Diagnostics.Unnamed "empty `use_section' pragma";
       List.iter (process_use_section_pragma classname) identlist;
       true
   | "use_section" :: _ ->
-      C2CPInst.error "ill-formed `use_section' pragma"; true
+      C2CPInner.error "ill-formed `use_section' pragma"; true
   | _ ->
       false
 
 let initialize () =
-  C2CPInst.process_pragma_hook := process_pragma
+  C2CPInner.process_pragma_hook := process_pragma
 
-                end
+  end               
+end

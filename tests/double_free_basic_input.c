@@ -1,17 +1,6 @@
 /**
  * @file double_free_basic_input.c
  * @brief Most basic DoubleFree tagged policy violation for fuzzing.
- *      Looking at godbolt (I think these are in asm D, S form >.< )
- *      gcc 13.2, trunk, the free()s turn into
- *          mov     rax, QWORD PTR [rbp-8]
- *          mov     rdi, rax
- *          call    free
- *      clang x86-64 trunk (both frees)
- *          mov     rdi, qword ptr [rbp - 16]
- *          call    free@PLT
- *      compcert x86 3.12 (both frees)
- *          movl    %ebx, 0(%esp)
- *          call    free
  */
 #include <stdlib.h> 
 #include <stdio.h>

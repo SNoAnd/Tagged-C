@@ -6,11 +6,18 @@ import subprocess
 
 # track total failures
 global testsfailed 
+global testspassed
+global testsrun
 testsfailed = 0
-defaulttimeout = 1000 # default # of steps to allow to run
+testsrun = 0
+testspassed = 0
+defaulttimeout = 3000 # default # of steps to allow to run
+    # getchar eatsa lot of steps 
 # strings to reuse
 doublefree = "dfree"
 PVI = "pvi"
+dfreeXpvi = "dfxpvi"
+heapproblem = "heapproblem"
 passmsg = "\t\ttest passed"
 failmsg = "\t\ttest FAILED!"
 # after adding locations, these no longer have the same error
@@ -25,16 +32,21 @@ def runACFileWithoutInput (filename, policy, expectedoutput):
     completed_run = subprocess.run(["bash", "-c", f"../ccomp -interp -timeout {defaulttimeout} -p {policy} {filename}"],
                                    capture_output=True )
 
+    global testsrun
+    testsrun+=1
+
     # this is not fancy, but it should keep me from checking in dumb mistakes
     if (expectedoutput in completed_run.stdout or expectedoutput in completed_run.stderr):
-        print(f"{passmsg}")
+        #print(f"{passmsg}")
+        global testspassed
+        testspassed +=1
     else:
-        print(f"{failmsg}\n\t\tret code:{completed_run.returncode}\n\t\tstdoutput:\n\t\t{completed_run.stdout}\n\t\tstderr:\n{completed_run.stderr}")
+        print(f"{failmsg}\n\t\tret code:{completed_run.returncode}\n\t\tstdoutput:\n\t\t{completed_run.stdout}\n\t\tstderr:\n{completed_run.stderr}\n\t\texpected:\n\t\t{expectedoutput}\n")
         global testsfailed
         testsfailed+=1
 
 def runACFileWithInput (filename, policy, testinput, expectedoutput):
-    print(f"\n\ttesting {filename} with {policy} policy on input {testinput}")
+    print(f"\ttesting {filename} with {policy} policy on input {testinput}")
     with subprocess.Popen(["bash", "-c", f"../ccomp -interp -timeout {defaulttimeout} -p {policy} {filename}"],
                           stdout=subprocess.PIPE,
                           stdin=subprocess.PIPE,
@@ -45,18 +57,84 @@ def runACFileWithInput (filename, policy, testinput, expectedoutput):
         stdout, stderr = process.communicate(
             input=f"{testinput}\n".encode("utf-8"), timeout=10
         )
+    
+        global testsrun
+        testsrun+=1
+
         #print(stdout.decode("utf-8"))
         if ( expectedoutput in stdout or expectedoutput in stderr):
-            print(passmsg)
+            #print(passmsg)
+            global testspassed
+            testspassed +=1
         else:
-            print(f"{failmsg}\n\t\tret code:{process.returncode}\n\t\toutput:\n\t\t{stdout}\n\t\tstderr:\n\t\t{stderr}")
+            print(f"{failmsg}\n\t\tret code:{process.returncode}\n\t\toutput:\n\t\t{stdout}\n\t\tstderr:\n\t\t{stderr}\n\t\texpected:\n\t\t{expectedoutput}\n")
             global testsfailed
             testsfailed+=1
 
+# these tests should always pass, regardless of policy: IO, infra 
+def runSanityTests (policy):
+    runACFileWithoutInput("printf_test.c", policy,
+                          b'Hello World!\n')
+    runACFileWithInput("rw.c", policy, "f", b'1 f')
+
+    # there is a slight testing artifact here. You don't see the \0
+    #     when you run the test manually, but the test harness does see it
+    runACFileWithInput("test_getchar_basic.c", policy, "Hello",
+                          b'You entered H\x00. Hope it doesn\'t have a problem!')   
+    runACFileWithInput("test_getchar_loop.c", policy, "Hello", 
+                          b'You entered: Hello')
+
+def runConcreteAllocChecks(policy):
+    runACFileWithoutInput("allocator_smallestpossible.c", policy,
+                          nofault_cleanexit)
+    runACFileWithoutInput("allocator_single.c", policy,
+                          nofault_cleanexit)
+    runACFileWithoutInput("allocator_basic.c", policy,
+                          nofault_cleanexit)
+    runACFileWithoutInput("allocator_single_OOM.c", policy,
+                          nofault_cleanexit)
+
 if __name__ == '__main__':
 
-    print("beginning /tests/\n=======")
-    print("\n=======\npvi tests (without input)\n=======")
+    print("\n=======\nSanity Tests, Infrastructure (IO, Alloc) Tests\n=======")
+    # run on every policy supported 
+    # poked SNA. I dont think PVI is supposed to blow up here
+    #runSanityTests(PVI)
+    runSanityTests(doublefree)
+    runSanityTests(heapproblem)
+    # restore once PVI is fixed/sorted
+    #runSanityTests(dfreeXpvi)
+
+    # test the concrete allocator on policies that use it
+    runConcreteAllocChecks(doublefree)
+    runConcreteAllocChecks(heapproblem)
+    runConcreteAllocChecks(dfreeXpvi) # a slight lie. PVI is meant for FLAlloc
+
+    # So far theres only one that uses FLAlloc
+    runACFileWithoutInput("allocator_smallestpossible.c", PVI,
+                          nofault_cleanexit)
+    runACFileWithoutInput("allocator_single.c", PVI,
+                          nofault_cleanexit)
+    runACFileWithoutInput("allocator_basic.c", PVI,
+                          nofault_cleanexit)
+    runACFileWithoutInput("allocator_single_OOM.c", PVI,
+                          nofault_cleanexit)
+
+    print("\n=======\nMultipolicy (Product.v) without input\n=======")
+    # fail  left
+    runACFileWithoutInput("double_free_no_input.c", dfreeXpvi,
+                          b'ProdLeft||DoubleFree||FreeT detects two frees| source location double_free_no_input.c:8, location double_free_no_input.c:9\n'
+                          )
+    #fail right
+    runACFileWithoutInput("stack_load_store_ob.c", dfreeXpvi,
+                          b'ProdRight||PVI || StoreT tag_eq_dec Failure at stack_load_store_ob.c:8')
+
+    # pass both
+    runACFileWithoutInput("heap_load_store_ib.c", dfreeXpvi,
+                          nofault_cleanexit)
+
+    print("Policy Specific Tests")
+    print("\n=======\nPVI tests\n=======")
 
     runACFileWithoutInput("printf_test.c", PVI,
                           b'Hello World!\n'
@@ -70,17 +148,12 @@ if __name__ == '__main__':
     runACFileWithoutInput("stack_load_store_ob.c", PVI,
                           b'PVI || StoreT')
 
-
-    print("\n=======\ndfree tests without input\n=======")
-    runACFileWithoutInput("double_free_no_input_handlabelled.c", doublefree,
-                          b'DoubleFree||FreeT detects two frees|  location double_free_no_input_handlabelled.c:9, Unallocated, location double_free_no_input_handlabelled.c:9, location double_free_no_input_handlabelled.c:8'
-                          )
-
-    runACFileWithoutInput("printf_test.c", doublefree,
-                          b'Hello World!\n'
-                          )
     
-    print("=======\ndfree tests with input\n=======")
+    print("=======\ndfree tests \n=======")
+    
+    runACFileWithoutInput("double_free_no_input.c", doublefree,
+                          b'DoubleFree||FreeT detects two frees| source location double_free_no_input.c:8, location double_free_no_input.c:9\n'
+                          )
     # these have much messier outputs from extern calls
     #   don't use an exact output match
     #   If there is a violation, in the array
@@ -88,74 +161,132 @@ if __name__ == '__main__':
     #       3rd in array is 1st free (from the header we just tried to free)
     runACFileWithInput("test_fgets_basic.c", doublefree, 
                        "AAAA", b"Hope it doesn't have a problem!")
-
-    runACFileWithInput("rw.c", doublefree,
-                       "f", b'1 f')
-    
-    runACFileWithInput("double_free_basic_input_handlabelled.c",
-                       doublefree, "ABCD",
-                       b'DoubleFree||FreeT detects two frees|  location double_free_basic_input_handlabelled.c:17, Unallocated, location double_free_basic_input_handlabelled.c:17, location double_free_basic_input_handlabelled.c:16')
-    
-
-    # should failstop
-    runACFileWithInput("double_free_confused_cleanup_1_handlabelled.c",
-                       doublefree, "PP",
-                       b'DoubleFree||FreeT detects two frees|  location double_free_confused_cleanup_1_handlabelled.c:21, Unallocated, location double_free_confused_cleanup_1_handlabelled.c:21, location double_free_confused_cleanup_1_handlabelled.c:19')
-
-    # should not
-    runACFileWithInput("double_free_confused_cleanup_1_handlabelled.c",
-                       doublefree, "AA",
-                       nofault_cleanexit)
-    # should failstop
-    runACFileWithInput("double_free_confused_cleanup_2_handlabelled.c",
-                       doublefree, "BBB",
-                       b'DoubleFree||FreeT detects two frees|  location double_free_confused_cleanup_2_handlabelled.c:63, Unallocated, location double_free_confused_cleanup_2_handlabelled.c:63, location double_free_confused_cleanup_2_handlabelled.c:55')
-    
-    # should not
-    runACFileWithInput("double_free_confused_cleanup_2_handlabelled.c",
-                       doublefree, "AAA",
-                       nofault_cleanexit)
-    # TODO this set is more complicated. We need to detect the right double free
-    # dfree on x, but not input
-    # xx0 skips x's double free, x2x skips input's double free
-    runACFileWithInput("double_free_confused_cleanup_multi_handlabelled.c",
-                       doublefree, "220",
-                       nofault_cleanexit)
-    
-    runACFileWithInput("double_free_confused_cleanup_multi_handlabelled.c",
-                       doublefree, "222",
-                       b"DoubleFree||FreeT detects two frees|  location double_free_confused_cleanup_multi_handlabelled.c:83, Unallocated, location double_free_confused_cleanup_multi_handlabelled.c:83, location double_free_confused_cleanup_multi_handlabelled.c:81")
-
-    runACFileWithInput("double_free_confused_cleanup_multi_handlabelled.c",
-                       doublefree, "BBB",
-                       b'DoubleFree||FreeT detects two frees|  location double_free_confused_cleanup_multi_handlabelled.c:75, Unallocated, location double_free_confused_cleanup_multi_handlabelled.c:75, location double_free_confused_cleanup_multi_handlabelled.c:67')
-
-    # these two seem to be teh same, but if we skipped input's dfree, we should see different behavior for x in these two
-    runACFileWithInput("double_free_confused_cleanup_multi_handlabelled.c",
-                       doublefree, "!!!",
-                       b'DoubleFree||FreeT detects two frees|  location double_free_confused_cleanup_multi_handlabelled.c:75, Unallocated, location double_free_confused_cleanup_multi_handlabelled.c:75, location double_free_confused_cleanup_multi_handlabelled.c:69')
-
-    runACFileWithInput("double_free_confused_cleanup_multi_handlabelled.c",
-                       doublefree, "!!0",
-                       b'DoubleFree||FreeT detects two frees|  location double_free_confused_cleanup_multi_handlabelled.c:75, Unallocated, location double_free_confused_cleanup_multi_handlabelled.c:75, location double_free_confused_cleanup_multi_handlabelled.c:69')
-    
-    print("=======\nTests expected to get incorrect output but we'd like to know if that changes unexpectedly\n=======")
-    # note tests like this should change when we get the automatic location info
-    runACFileWithoutInput("double_free_no_input.c", doublefree,
-                        b'DoubleFree||FreeT detects free of unallocated memory|  double_free_no_input.c:9 Unallocated, Unallocated, Unallocated, Unallocated')
     
     runACFileWithInput("double_free_basic_input.c",
                        doublefree, "ABCD",
-                       b'DoubleFree||FreeT detects free of unallocated memory|  double_free_basic_input.c:26 Unallocated, Unallocated, Unallocated, Unallocated')
-    
+                       b'DoubleFree||FreeT detects two frees| source location double_free_basic_input.c:14, location double_free_basic_input.c:15')
+
+    # should failstop
     runACFileWithInput("double_free_confused_cleanup_1.c",
                        doublefree, "PP",
-                       b'DoubleFree||FreeT detects free of unallocated memory|  double_free_confused_cleanup_1.c:19 Unallocated, Unallocated, Unallocated, Unallocated')
+                       b'DoubleFree||FreeT detects two frees| source location double_free_confused_cleanup_1.c:18, location double_free_confused_cleanup_1.c:20')
 
+    # should not
+    runACFileWithInput("double_free_confused_cleanup_1.c",
+                       doublefree, "AA",
+                       nofault_cleanexit)
+    # should failstop
     runACFileWithInput("double_free_confused_cleanup_2.c",
                        doublefree, "BBB",
-                       b'DoubleFree||FreeT detects free of unallocated memory|  double_free_confused_cleanup_2.c:46 Unallocated, Unallocated, Unallocated, Unallocated')
-    # TODO should all the confused_clean_up multi be included?
+                       b'DoubleFree||FreeT detects two frees| source location double_free_confused_cleanup_2.c:39, location double_free_confused_cleanup_2.c:47')
 
+    # should failstop with a different dfree
+    runACFileWithInput("double_free_confused_cleanup_2.c",
+                       doublefree, "!!!",
+                       b'DoubleFree||FreeT detects two frees| source location double_free_confused_cleanup_2.c:41, location double_free_confused_cleanup_2.c:47')
+    
+    # should not
+    runACFileWithInput("double_free_confused_cleanup_2.c",
+                       doublefree, "AAA",
+                       nofault_cleanexit)
+    # This set is more complicated. We need to detect the right double free
+    # dfree on x, but not input
+    # xx0 skips x's double free, x2x skips input's double free
+    runACFileWithInput("double_free_confused_cleanup_multi.c",
+                       doublefree, "220",
+                       nofault_cleanexit)
+    
+    runACFileWithInput("double_free_confused_cleanup_multi.c",
+                       doublefree, "222",
+                       b"DoubleFree||FreeT detects two frees| source location double_free_confused_cleanup_multi.c:77, location double_free_confused_cleanup_multi.c:79")
+
+    runACFileWithInput("double_free_confused_cleanup_multi.c",
+                       doublefree, "BBB",
+                       b'DoubleFree||FreeT detects two frees| source location double_free_confused_cleanup_multi.c:63, location double_free_confused_cleanup_multi.c:71')
+
+    # these two seem to be teh same, but if we somehow missed input's dfree, we would see different behavior for x in these two
+    runACFileWithInput("double_free_confused_cleanup_multi.c",
+                       doublefree, "!!!",
+                       b'DoubleFree||FreeT detects two frees| source location double_free_confused_cleanup_multi.c:65, location double_free_confused_cleanup_multi.c:71')
+
+    runACFileWithInput("double_free_confused_cleanup_multi.c",
+                       doublefree, "!!0",
+                       b'DoubleFree||FreeT detects two frees| source location double_free_confused_cleanup_multi.c:65, location double_free_confused_cleanup_multi.c:71')
+
+    runACFileWithInput("double_free_basic_nonsensefree.c",
+                       doublefree, "hi",
+                       # old version 
+                       #b"DoubleFree||FreeT detects free of unallocated memory| source location double_free_basic_nonsensefree.c:18" )
+                       # version where the parseheader happens before freeT does 
+                       #b"ConcreteAllocator| parse_header | Header is undefined")
+                       b"DoubleFree||FreeT detects corrupted alloc header| source location double_free_basic_nonsensefree.c:18")
+    
+    print("=======\nHeap Problems Tests\n=======")
+    # heaproblem not responsible for making sure you dont OOM your heap. 
+    #      users still need to check for 0 :p 
+    # Over Reads
+    runACFileWithoutInput("heapproblem_overread_basic_nopad.c", heapproblem,
+                          b"HeapProblem|| Heap Overread| LoadT tried to read unallocated heap memory at  src location heapproblem_overread_basic_nopad.c:32")    
+    runACFileWithoutInput("heapproblem_overread_basic_pad.c", heapproblem,
+                          b"HeapProblem|| Heap Overread| LoadT read past the end into padding belonging to  heapproblem_overread_basic_pad.c:36 at heapproblem_overread_basic_pad.c:46")    
+    runACFileWithInput("heapproblem_overread_getchar_1_fault.c",
+                       heapproblem, "hello",
+                       nofault_cleanexit)
+    runACFileWithInput("heapproblem_overread_getchar_1_fault.c",
+                       heapproblem, "PIPE0000000",
+                       b'HeapProblem|| Heap Overread| LoadT tried to read unallocated heap memory at  src location heapproblem_overread_getchar_1_fault.c:67')
+    runACFileWithInput("heapproblem_overread_getchar_3_faults.c",
+                       heapproblem, "hellohihowareyou",
+                       nofault_cleanexit)
+    runACFileWithInput("heapproblem_overread_getchar_3_faults.c",
+                       heapproblem, "P0000000000",
+                       b'HeapProblem|| Heap Overread| LoadT read past the end into padding belonging to  heapproblem_overread_getchar_3_faults.c:73 at heapproblem_overread_getchar_3_faults.c:97')
+    runACFileWithInput("heapproblem_overread_getchar_3_faults.c",
+                       heapproblem, "0I000000000",
+                       b'HeapProblem|| Heap Overread| LoadT read past the end into padding belonging to  heapproblem_overread_getchar_3_faults.c:73 at heapproblem_overread_getchar_3_faults.c:112')
+    runACFileWithInput("heapproblem_overread_getchar_3_faults.c",
+                       heapproblem, "00P00000000",
+                       b'HeapProblem|| Heap Overread| LoadT tried to read allocator header belonging to  heapproblem_overread_getchar_3_faults.c:73 at heapproblem_overread_getchar_3_faults.c:123')
+    runACFileWithInput("heapproblem_overread_getchar_3_faults.c",
+                       heapproblem, "000E0000000",
+                       nofault_cleanexit)
+    # Over Writes 
+    runACFileWithoutInput("heapproblem_overwrite_basic_nopad.c", heapproblem,
+                          b"HeapProblem|| Heap Overwrite|StoreT tried to write unallocated heap memory at  src location heapproblem_overwrite_basic_nopad.c:8")    
+    runACFileWithoutInput("heapproblem_overwrite_basic_pad.c", heapproblem,
+                          b"HeapProblem|| Heap Overwrite| StoreT tried to write over heap padding belonging to  heapproblem_overwrite_basic_pad.c:6 at heapproblem_overwrite_basic_pad.c:7")    
+    runACFileWithInput("heapproblem_overwrite_getchar_1_fault.c",
+                       heapproblem, "FOOD0000000",
+                       nofault_cleanexit)
+    runACFileWithInput("heapproblem_overwrite_getchar_1_fault.c",
+                       heapproblem, "PIPE0000000",
+                       b'HeapProblem|| Heap Overwrite| StoreT tried to write over heap padding belonging to  heapproblem_overwrite_getchar_1_fault.c:42 at heapproblem_overwrite_getchar_1_fault.c:55')
+    runACFileWithInput("heapproblem_overwrite_4_faults.c",
+                       heapproblem, "hi",
+                       nofault_cleanexit)
+    runACFileWithInput("heapproblem_overwrite_4_faults.c",
+                       heapproblem, "FOOD!",
+                       nofault_cleanexit)
+    runACFileWithInput("heapproblem_overwrite_4_faults.c",
+                       heapproblem, "P000000000",
+                       b'HeapProblem|| Heap Overwrite| StoreT tried to write over heap padding belonging to  heapproblem_overwrite_4_faults.c:70 at heapproblem_overwrite_4_faults.c:83')
+    runACFileWithInput("heapproblem_overwrite_4_faults.c",
+                       heapproblem, "0I00000000",
+                       b'HeapProblem|| Heap Overwrite| StoreT tried to write over heap padding belonging to  heapproblem_overwrite_4_faults.c:70 at heapproblem_overwrite_4_faults.c:94')
+    runACFileWithInput("heapproblem_overwrite_4_faults.c",
+                       heapproblem, "00P0000000",
+                       b'HeapProblem|| Heap Overwrite| StoreT tried to write over a heap header belonging to  heapproblem_overwrite_4_faults.c:70 at heapproblem_overwrite_4_faults.c:103')
+    runACFileWithInput("heapproblem_overwrite_4_faults.c",
+                       heapproblem, "000E000000",
+                       b'HeapProblem|| Heap Overwrite| StoreT tried to write over heap padding belonging to  heapproblem_overwrite_4_faults.c:111 at heapproblem_overwrite_4_faults.c:64')
+    # dumpster diving for leftover secrets in the heap
+    # these are currently very messy in terms of logging output
+    runACFileWithoutInput("heapproblem_leftoversecret_basic.c", heapproblem,
+                          b'HeapProblem|| Potential secret disclosure| Allocated memory was read before writing. Belonging to heapproblem_leftoversecret_basic.c:75 at heapproblem_leftoversecret_basic.c:77\nbUbcM250Ej3OS')
+
+    # Mixed Heap Corruption 
+    runACFileWithInput("heapproblem_multi_faults.c",
+                       heapproblem, "hi",
+                       nofault_cleanexit)
     # end
-    print(f"\n=======\ntest suit ending. total tests failed: {testsfailed}")
+    print(f"\n=================\ntest suit ending.\n\ttotal tests run: {testsrun}\n\ttotal failed: {testsfailed}\n\ttotal passed: {testspassed}")

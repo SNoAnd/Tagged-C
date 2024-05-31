@@ -17,7 +17,6 @@ open Commandline
 open Driveraux
 open CPragmas
 open Interp
-open Allocator
 
 (* Common frontend functions between clightgen and ccomp *)
 
@@ -188,18 +187,22 @@ let init () =
     | _         -> assert false
   end
  
-module FrontendP =
-        functor (Pol: Tags.Policy) (Alloc: Allocator) -> struct
+module FrontendP (Pol: Tags.Policy) = struct
+       
+  module InterpInst = InterpP (Pol)
 
-                module InterpInst = InterpP (Pol) (Alloc)
-                module Printing = InterpInst.Printing
-                module C2CPInst = Printing.C2CPInst
-                module PragmaInst = Pragma (Pol) (Alloc)
+  module Inner (I: InterpInst.PrintCsyntax.C2CPInst.CMA.ConcAllocatorImpl) = struct
+
+    module InterpInner = InterpInst.Inner (I)
+    module Printing = InterpInner.Printing
+    module C2CPInner = Printing.C2CPInner
+    module PragmaInst = Pragma (Pol)
+    module PragmaInner = PragmaInst.Inner (I)
  
-                let init_with () =
-                Env.set_builtins C2CPInst.builtins;
-                Cutil.declare_attributes C2CPInst.attributes;
-                PragmaInst.initialize()
+  let init_with () =
+  Env.set_builtins C2CPInner.builtins;
+  Cutil.declare_attributes C2CPInner.attributes;
+  PragmaInner.initialize()
 
   (* From preprocessed C to Csyntax *)
 
@@ -217,7 +220,7 @@ module FrontendP =
     (* Save C AST if requested *)
     Cprint.print_if ast;
     (* Conversion to Csyntax *)
-    let csyntax = Timing.time "CompCert C generation" C2CPInst.convertProgram ast in
+    let csyntax = Timing.time "CompCert C generation" C2CPInner.convertProgram ast in
     (* Save CompCert C AST if requested *)
     Printing.print_if csyntax;
     csyntax
@@ -225,9 +228,47 @@ module FrontendP =
   let run_i_file sourcename preproname =
   Machine.config := Machine.compcert_interpreter !Machine.config;
   let csyntax = parse_c_file sourcename preproname in
-  InterpInst.execute csyntax
+  InterpInner.execute csyntax
+  end
 end
 
-module WithNull = FrontendP (NullPolicy.NullPolicy) (FLAllocator)
-module WithPVI = FrontendP (PVI.PVI) (FLAllocator)
-module WithDoubleFree = FrontendP (DoubleFree.DoubleFree) (ConcreteAllocator)
+(* Per Policies.md, add new policies in combination of module + desired allocator *)
+
+(* Single policies *)
+module FrontendNull = FrontendP (NullPolicy.NullPolicy)
+module NullFLAlloc = FrontendNull.InterpInst.PrintCsyntax.C2CPInst.CMA.FLAllocator
+module NullCAlloc = FrontendNull.InterpInst.PrintCsyntax.C2CPInst.CMA.ConcreteAllocator
+module WithNullF = FrontendNull.Inner (NullFLAlloc)
+module WithNullC = FrontendNull.Inner (NullCAlloc)
+
+module FrontendPVI = FrontendP (PVI.PVI)
+module PVIAlloc = FrontendPVI.InterpInst.PrintCsyntax.C2CPInst.CMA.FLAllocator
+module WithPVI = FrontendPVI.Inner (PVIAlloc)
+
+module FrontendDF = FrontendP (DoubleFree.DoubleFree)
+module DFAlloc = FrontendDF.InterpInst.PrintCsyntax.C2CPInst.CMA.ConcreteAllocator
+module WithDF = FrontendDF.Inner (DFAlloc)
+
+module FrontendHP = FrontendP (HeapProblem.HeapProblem)
+module HPAlloc = FrontendHP.InterpInst.PrintCsyntax.C2CPInst.CMA.ConcreteAllocator
+module WithHP = FrontendHP.Inner (HPAlloc)
+
+(* Multiple Policies  
+  In general, combined policies should all use (or be known to function with) 
+    the chosen allocator. The product of policies will interact with only 1 allocator.
+    Nothing checks if you paired a policy with the wrong allocator.
+
+  Yes, hardcoded combos are considered poor practice in production code.
+    Howevever, it is unclear if OCaml will tolerate this easily, and the
+    engineering effort exceeds the expected contribution to the research. 
+
+    Perhaps an ugrad or masters student would like to help in the future? *)
+module DFxHP = Product.PolProduct (DoubleFree.DoubleFree) (HeapProblem.HeapProblem)
+module FrontendDFxHP = FrontendP (DFxHP)
+module DFxHPAlloc = FrontendDFxHP.InterpInst.PrintCsyntax.C2CPInst.CMA.ConcreteAllocator
+module WithDFxHP = FrontendDFxHP.Inner (DFxHPAlloc)
+
+module DFxPVI = Product.PolProduct (PVI.PVI) (DoubleFree.DoubleFree)
+module FrontendDFxPVI = FrontendP (DFxPVI)
+module DFxPVIAlloc = FrontendDFxPVI.InterpInst.PrintCsyntax.C2CPInst.CMA.ConcreteAllocator
+module WithDFxPVI = FrontendDFxPVI.Inner (DFxPVIAlloc)

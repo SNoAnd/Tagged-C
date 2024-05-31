@@ -19,12 +19,10 @@ open Format
 open Camlcoq
 open AST
 (*open! Integers*)
-open Values
 open! Ctypes
-open Maps
 open Tags
 open PrintCsyntax
-open Allocator
+open Csem
 
 (* Configuration *)
 
@@ -36,19 +34,25 @@ let mode = ref First
 
 let timeoutMaxSteps = ref 0
 
-module InterpP =
-        functor (Pol: Policy) (Alloc: Allocator) ->
-        struct
+module InterpP (Pol: Policy) = struct 
+  module PrintCsyntax = PrintCsyntaxP (Pol)
 
-module A = Alloc (Pol)
-module Printing = PrintCsyntaxP (Pol) (Alloc)
-module Init = Printing.Init
-module Cexec = Init.Cexec
-module Csem = Cexec.InterpreterEvents.Cstrategy.Ctyping.Csem
-module Csyntax = Csem.Csyntax
-module Determinism = Csyntax.Cop.Deterministic
-module Events = Determinism.Behaviors.Smallstep.Events
-module Genv = Events.Genv
+  module Inner (I: PrintCsyntax.C2CPInst.CMA.ConcAllocatorImpl) = struct
+
+    module Printing = PrintCsyntax.Inner (I)
+    module Cexec = Printing.Cexec
+    module Deterministic = Cexec.InterpreterEvents.Deterministic
+    module Ctyping = Deterministic.Ctyping
+    module Csem = Ctyping.Csem
+    module Csyntax = Csem.Csyntax
+    module Events = Csyntax.Cop.Smallstep.Events
+    module M = Cexec.A
+    module Genv = M.Genv
+    module MD = Genv.MD
+    module Vals = Printing.Vals
+    open Vals
+
+    let s = ref Csem.Stuckstate  (* Initialize to dummy state *)
 
 (* Printing events *)
 
@@ -146,75 +150,74 @@ let print_val_list p vl =
       print_val p v1;
       List.iter (fun v -> fprintf p ",@ %a" print_val v) vl
 
-let print_tag t = Camlcoq.camlstring_of_coqstring (Pol.print_tag t)
+let print_vt t = Camlcoq.camlstring_of_coqstring (Pol.print_vt t)
+let print_ct t = Camlcoq.camlstring_of_coqstring (Pol.print_ct t)
+let print_lt t = Camlcoq.camlstring_of_coqstring (Pol.print_lt t)
 
 let print_mem p m =
   fprintf p "|";
   let rec print_at i max =
     if i <= max then
      (fprintf p " %ld " (Int32.of_int i);
-      (match (A.Mem.mem_access m) (coqint_of_camlint (Int32.of_int i)) with
-      | A.Mem.Live -> fprintf p "L"
-      | A.Mem.Dead -> fprintf p "D"
-      | A.Mem.MostlyDead -> fprintf p "/");
-      let (mv,t) = (ZMap.get (coqint_of_camlint (Int32.of_int i)) (A.Mem.mem_contents m)) in
+      let (mv,t) = M.direct_read m (coqint_of_camlint (Int32.of_int i)) in
       match mv with
-      | A.Mem.MD.Undef -> fprintf p " U @ %s|" (print_tag t); print_at (i+1) max
-      | A.Mem.MD.Byte (b,t) -> fprintf p " %lu |" (camlint_of_coqint b); print_at (i+1) max
-      | A.Mem.MD.Fragment ((v,_), q, n) -> fprintf p "| %a |" print_val v; print_at (i+(camlint_of_coqnat (Memdata.size_quantity_nat q))) max)
+      | MD.Byte (b,vt) ->
+                      fprintf p " %lu '@' %s '@' %s|" (camlint_of_coqint b) (print_vt vt) (print_lt t);
+                      print_at (i+1) max
+      | MD.Fragment ((v,vt), q, n, b) -> fprintf p "| %a '@' %s '@' %s |" print_val v (print_vt vt) (print_lt t);
+         print_at (i+(camlint_of_coqnat (Encoding.size_quantity_nat q))) max)
     else () in
-  print_at 2960 3000;
+  print_at 1000 1015;
+  fprintf p "\n";
+  print_at 2984 2999;
   fprintf p "\n"
 
 let print_failure failure =
   match failure with
-  | Memory.OtherFailure -> ""
-  | Memory.PrivateLoad ofs ->
+  | OtherFailure msg -> (Camlcoq.camlstring_of_coqstring msg)
+  | PolicyFailure msg -> (Camlcoq.camlstring_of_coqstring msg)
+  | RecoveryNotSupported -> "This policy does not support recovery-mode"
+  | PrivateLoad ofs ->
     sprintf "Private Load at address %Ld" (Camlcoq.camlint64_of_coqint ofs)
-  | Memory.PrivateStore ofs ->
+  | PrivateStore ofs ->
     sprintf "Private Store at address %Ld" (Camlcoq.camlint64_of_coqint ofs)
-  | Memory.MisalignedLoad (align,ofs) ->
+  | MisalignedLoad (align,ofs) ->
     sprintf "Misaligned Load - %Ld does not divide %Ld"
     (Camlcoq.camlint64_of_coqint align) (Camlcoq.camlint64_of_coqint ofs)
-  | Memory.MisalignedStore (align,ofs) ->
+  | MisalignedStore (align,ofs) ->
     sprintf "Misaligned Store - %Ld does not divide %Ld"
     (Camlcoq.camlint64_of_coqint align) (Camlcoq.camlint64_of_coqint ofs)
 
 let print_state p (prog, ge, s) =
   match s with
-  | Csem.State(f, pct, s, k, e, te, m) ->
+  | Csem.State(f, pstate, pct, s, k, e, te, m) ->
       Printing.print_pointer_hook := print_pointer (fst ge) e;
       fprintf p "in function %s, pct %s, statement@ @[<hv 0>%a@] \n"
               (name_of_function prog f)
-	      (print_tag pct)
+	      (print_ct pct)
               Printing.print_stmt s;
-              if !trace > 2 then print_mem p (fst m) else ()
-  | Csem.ExprState(f, l, pct, r, k, e, te, m) ->
+              if !trace > 2 then print_mem p m else ()
+  | Csem.ExprState(f, l, pstate, pct, r, k, e, te, m) ->
       Printing.print_pointer_hook := print_pointer (fst ge) e;
       fprintf p "in function %s, pct %s, expression@ @[<hv 0>%a@]"
               (name_of_function prog f)
-	      (print_tag pct)
+	      (print_ct pct)
               Printing.print_expr r
-  | Csem.Callstate(fd, l, pct, fpt, args, k, m) ->
+  | Csem.Callstate(fd, l, pstate, pct, fpt, args, k, m) ->
       Printing.print_pointer_hook := print_pointer (fst ge) Maps.PTree.empty;
       fprintf p "calling@ @[<hov 2>%s(%a)@]"
               (name_of_fundef prog fd)
               print_val_list (List.map fst args)
-  | Csem.Returnstate(pct, fd, l, res, k, m) ->
+  | Csem.Returnstate(pstate, pct, fd, l, res, k, m) ->
       Printing.print_pointer_hook := print_pointer (fst ge) Maps.PTree.empty;
       fprintf p "returning@ %a"
               print_val (fst res)
   | Csem.Stuckstate ->
       fprintf p "stuck after an undefined expression"
-  | Csem.Failstop(msg, Memory.OtherFailure, params) ->
-      fprintf p "@[failstop on policy @ %s %s@]@."
-      (String.of_seq (List.to_seq msg))
-      (String.concat "," (List.map print_tag params))
-  | Csem.Failstop(msg, failure, params) ->
-      fprintf p "@[failstop in memory @ %s %s %s@]@."
-      (String.of_seq (List.to_seq msg))
+  | Csem.Failstop(failure, logs) ->
+      fprintf p "@[failstop @ %s @]@."
       (print_failure failure)
-      (String.concat "," (List.map print_tag params))
+      (* SNA: what should we do with the log here? Print it? Dump it to a file? *)
 
 
 	(* APT: may be nicer ways to format, as comment below suggests *)
@@ -239,7 +242,7 @@ let print_state p (prog, ge, s) =
 
 (* Comparing continuations *)
 
-(*let some_expr = Csyntax.Eval((Vint Int.zero, Pol.def_tag), Tvoid)
+(*let some_expr = Csyntax.Eval((Vint Int.zero, Pol.coq_TempT), Tvoid)
 
 let rank_cont = function
   | Csem.Kstop -> 0
@@ -354,23 +357,36 @@ let compare_state s1 s2 =
 
 let (>>=) opt f = match opt with None -> None | Some arg -> f arg
 
-(* Extract a string from a global pointer *)
+(* Extract a string from a global pointer with possibility of tag failure *)
 
-let extract_string m ofs =
-  let b = Buffer.create 80 in
+let extract_string lc m ofs pct pt =
   let rec extract ofs =
-    match A.load Mint8unsigned m ofs with
-    | Memory.MemorySuccess (Vint n,_) ->
-        let c = Char.chr (Z.to_int n) in
-        if c = '\000' then begin
-          Some(Buffer.contents b)
-        end else begin
-          Buffer.add_char b c;
-          extract (Z.succ ofs)
-        end
+    match M.direct_read m ofs with
+    | (MD.Byte (n,vt), lt) ->
+      let c = Char.chr (Z.to_int n) in
+      if c = '\000' then
+        let res = fun ps ->
+          match (Pol.coq_LoadT lc pct pt vt ofs [lt] ps) with
+          | (Success vt',ps') -> (Success [c], ps')
+          | (Fail f, ps') -> (Fail f, ps')
+        in (res, 0)
+      else
+        let (res, i) = extract (Z.succ ofs) in
+        let res' = fun ps ->
+          (match (Pol.coq_LoadT lc pct pt vt ofs [lt] ps) with
+          | (Success vt',ps') ->
+            (match res ps' with
+              | (Success cs, ps'') -> (Success (c::cs), ps'')
+              | (Fail f', ps'') -> (Fail f', ps'')
+            )
+          | (Fail f, ps') -> (Fail f, ps')
+          )
+        in (res', i+1)
     | _ ->
-        None in
-  extract ofs
+      let res = fun ps ->
+        (Fail (OtherFailure ['N';'o';'t';' ';'a';' ';'b';'y';'t';'e']), ps) in
+      (res, 0)
+  in extract ofs
 
 (* Emulation of printf *)
 
@@ -389,40 +405,55 @@ external format_int32: string -> int32 -> string
 external format_int64: string -> int64 -> string
   = "caml_int64_format"
 
-let format_value m flags length conv arg =
+let ret x = (fun ps -> (Success x, ps))
+
+let mmap f x = (fun ps -> match x ps with
+                          | (Success y, ps') -> (Success (f y), ps')
+                          | (Fail failure, ps') -> (Fail failure, ps'))
+
+let format_value lc m flags length conv arg pct pt =
   match conv.[0], length, arg with
   | ('d'|'i'|'u'|'o'|'x'|'X'|'c'), (""|"h"|"hh"|"l"|"z"|"t"), Vint i ->
-      format_int32 (flags ^ conv) (camlint_of_coqint i)
+      let s = format_int32 (flags ^ conv) (camlint_of_coqint i) in
+      (ret s, String.length s)
   | ('d'|'i'|'u'|'o'|'x'|'X'|'c'), (""|"h"|"hh"|"l"|"z"|"t"), _ ->
-      "<int argument expected>"
+      let s = "<int argument expected>" in
+      (ret s, String.length s)
   | ('d'|'i'|'u'|'o'|'x'|'X'), ("ll"|"j"), Vlong i ->
-      format_int64 (flags ^ conv) (camlint64_of_coqint i)
+      let s = format_int64 (flags ^ conv) (camlint64_of_coqint i) in
+      (ret s, String.length s)
   | ('d'|'i'|'u'|'o'|'x'|'X'), ("ll"|"j"), _ ->
-      "<long long argument expected"
+      let s = "<long long argument expected" in
+      (ret s, String.length s)
   | ('f'|'e'|'E'|'g'|'G'|'a'), (""|"l"), Vfloat f ->
-      format_float (flags ^ conv) (camlfloat_of_coqfloat f)
+      let s = format_float (flags ^ conv) (camlfloat_of_coqfloat f) in
+      (ret s, String.length s)
   | ('f'|'e'|'E'|'g'|'G'|'a'), "", _ ->
-      "<float argument expected"
-  | 's', "", Vlong ofs ->
-      begin match extract_string m ofs with
-      | Some s -> s
-      | None -> "<bad string>"
-      end
+      let s = "<float argument expected>" in
+      (ret s, String.length s)
+  | 's', "", Vptr ofs ->
+      let (cs, i) = extract_string lc m ofs pct pt in
+      (mmap camlstring_of_coqstring cs, i)
   | 's', "", _ ->
-      "<pointer argument expected>"
-  | 'p', "", Vlong ofs ->
-      Printf.sprintf "<%ld>" (camlint_of_coqint ofs)
+      let s = "<pointer argument expected>" in
+      (ret s, String.length s)
+  | 'p', "", Vptr ofs ->
+      let s = Printf.sprintf "<%ld>" (camlint_of_coqint ofs) in
+      (ret s, String.length s)
   | 'p', "", Vint i ->
-      format_int32 (flags ^ "x") (camlint_of_coqint i)
-(*  | 'p', "", Vlong l ->
-      format_int64 (flags ^ "x") (camlint64_of_coqint l)
-*)
+      let s = format_int32 (flags ^ "x") (camlint_of_coqint i) in
+      (ret s, String.length s)
+  | 'p', "", Vlong l ->
+      let s = format_int64 (flags ^ "x") (camlint64_of_coqint l) in
+      (ret s, String.length s)
   | 'p', "", _ ->
-      "<int or pointer argument expected>"
+      let s = "<int or pointer argument expected>" in
+      (ret s, String.length s)
   | _, _, _ ->
-      "<unrecognized format>"
+      let s = "<unrecognized format>" in
+      (ret s, String.length s)
 
-let do_printf m fmt args =
+let do_printf lc m fmt args pct pt ps =
 
   let b = Buffer.create 80 in
   let len = String.length fmt in
@@ -435,7 +466,8 @@ let do_printf m fmt args =
     if pos < len then begin
     match opt_search_forward pos with
     | None ->
-        Buffer.add_substring b fmt pos (len - pos)
+        Buffer.add_substring b fmt pos (len - pos);
+        ret ()
     | Some pos1 ->
         Buffer.add_substring b fmt pos (pos1 - pos);
         let flags = Str.matched_group 1 fmt
@@ -450,12 +482,20 @@ let do_printf m fmt args =
           | [] ->
               Buffer.add_string b "<missing argument>";
               scan pos' []
-          | arg :: args' ->
-              Buffer.add_string b (format_value m flags length conv arg);
-              scan pos' args'
+          | (arg,pt) :: args' ->
+              let (res, i) = (format_value lc m flags length conv arg pct pt) in
+              fun ps ->
+              match res ps with
+              | (Success s, ps') ->
+                Buffer.add_string b s;
+                scan pos' args' ps'
+              | (Fail f, ps') ->
+                (Fail f, ps')
         end
-    end
-  in scan 0 args; Buffer.contents b
+    end else ret ()
+  in match scan 0 args ps with
+     | (Success (), ps') -> (Success (Buffer.contents b), ps')
+     | (Fail f, ps') -> (Fail f, ps')
 
 
 (* Emulation of fgets, with assumed stream = stdin. *)
@@ -465,9 +505,9 @@ let do_printf m fmt args =
 let store_string m ofs buff size =
   let rec store m i = 
     if i < size then (* use default value and location tags for now; this is probably bogus *)
-      (match A.store Mint8unsigned m  (Z.add ofs (Z.of_sint i))
-	  (Vint (Z.of_uint (Char.code (Bytes.get buff i))),Pol.def_tag) [Pol.def_tag] with
-      | Memory.MemorySuccess m' -> store m' (i+1)
+      (match M.store Mint8unsigned m  (Z.add ofs (Z.of_sint i))
+          (Vint (Z.of_uint (Char.code (Bytes.get buff i))),Pol.coq_TempT) [Pol.coq_DefLT] (Pol.init_state,[]) with
+      | (Success m', _) -> store m' (i+1)
       | _ -> None)
     else Some m in
   store m 0 
@@ -503,10 +543,10 @@ let do_fgets_aux size =
 let do_fgets m ofs pt size =
   match do_fgets_aux (Z.to_int size) with
     None ->
-      Some ((coq_Vnullptr,Pol.def_tag), m)
+      Some ((Vptr (Camlcoq.coqint_of_camlint64 0L),Pol.coq_TempT), m)
   | Some (buff,count) ->
       store_string m ofs buff count >>= fun m' ->
-      Some ((Vlong ofs,pt), m')
+      Some ((Vptr ofs,pt), m')
 
 (* Like eventval_of_val, but accepts static globals as well *)
 
@@ -516,6 +556,7 @@ let convert_external_arg ge v t =
   | Vfloat f -> Some (Events.EVfloat f)
   | Vsingle f -> Some (Events.EVsingle f)
   | Vlong n -> Some (Events.EVlong n)
+  | Vptr n -> Some (Events.EVlong n)
   (*| Vptr(b, ofs) ->
       Genv.invert_symbol ge b ofs >>= fun id -> Some (Events.EVptr_global(id, ofs,t))*)
   (* TODO *)
@@ -529,23 +570,38 @@ let rec convert_external_args ge vl tl =
       convert_external_args ge vl tyl >>= fun el -> Some (e1 :: el)
   | _, _ -> None
 
-let do_external_function id sg ge w args pct fpt m =
+let do_external_function lc id sg ge w args pct fpt m =
   match camlstring_of_coqstring id, args with
-  | "printf", (Vlong ofs,pt) :: args' ->
-      extract_string m ofs >>= fun fmt ->
-      let fmt' = do_printf m fmt (List.map fst args') in
-      let len = coqint_of_camlint (Int32.of_int (String.length fmt')) in
-      Format.print_string fmt';
-      flush stdout;
-      convert_external_args ge args sg.sig_args >>= fun eargs ->
-      Some((w,[Events.Event_syscall(id, eargs, Events.EVint len)]),
-          (Memory.MemorySuccess(Pol.PolicySuccess(((Vint len, Pol.def_tag), pct), m))))
-  | "fgets", (Vlong ofs,pt) :: (Vint siz,vt) :: args' ->
+  | "printf", (Vptr ofs,pt) :: args' ->
+    convert_external_args ge args sg.sig_args >>= fun eargs ->
+    let (res, len) = extract_string lc m ofs pct pt in
+      let res' = fun ps ->
+        match res ps with
+        | (Success s, ps') ->
+          let fmt = camlstring_of_coqstring s in
+          (match do_printf lc m fmt args' pct pt ps' with
+          | (Success fmt',ps'') ->
+            Format.print_string fmt';
+            flush stdout;
+            (Success(((Vint (Z.of_uint len), Pol.coq_TempT), pct), m), ps'')
+          | (Fail f, ps'') -> (Fail f, ps'')
+          )
+        | (Fail f, ps') -> (Fail f, ps')
+      in
+    let tr = [Events.Event_syscall(id, eargs, Events.EVint (Z.of_uint len))] in
+    Some((w, tr), res')
+  | "fgets", (Vptr ofs,pt) :: (Vint siz,vt) :: args' ->
       do_fgets m ofs pt siz >>= fun (p,m') ->
       convert_external_args ge args sg.sig_args >>= fun eargs ->
       convert_external_arg ge (fst p) (proj_rettype sg.sig_res) >>= fun eres -> 
-      Some((w,[Events.Event_syscall(id, eargs, eres)]),
-          (Memory.MemorySuccess(Pol.PolicySuccess((p, pct), m'))))
+      let res = fun ps -> (Success((p, pct), m'),ps) in
+      Some((w,[Events.Event_syscall(id, eargs, eres)]),res)
+  | "getchar", args' ->
+      let c = input_char stdin in
+      let v = (Vint (Z.of_uint (Char.code c)),Pol.coq_TempT) in
+      convert_external_arg ge (fst v) (proj_rettype sg.sig_res) >>= fun eres -> 
+      let res = fun ps -> (Success((v,pct),m),ps) in 
+      Some ((w,[Events.Event_syscall(id,[],eres)]),res)
   | _ ->
       None
 
@@ -554,22 +610,22 @@ let do_inline_assembly txt sg ge w args m = None
 (* Implementing external functions producing observable events *)
 
 let rec world ge m =
-  lazy (Determinism.World(world_io ge m, world_vload ge m, world_vstore ge m))
+  lazy (Deterministic.World(world_io ge m, world_vload ge m, world_vstore ge m))
 
 and world_io ge m id args =
   None
 
 and world_vload ge m chunk id ofs =
   Genv.find_symbol ge id >>=
-          fun res ->
-                match res with
-                | Genv.SymGlob(base,bound,t,gv) ->
-                        (match A.load chunk m ofs with
-                         | Memory.MemorySuccess v ->
-                           Cexec.InterpreterEvents.eventval_of_atom ge v (type_of_chunk chunk) >>= fun ev ->
-                           Some(ev, world ge m)
-                         | _ -> None)
-                | _ -> None
+    fun res ->
+    match res with
+    | Genv.SymGlob(base,bound,t,gv) ->
+      (match M.load chunk m ofs (Pol.init_state,[]) with
+       | (Success ((v,vts),lts),_) ->
+         Cexec.InterpreterEvents.eventval_of_atom ge (v,Pol.coq_EffectiveT Cabs.no_loc vts) (type_of_chunk chunk) >>= fun ev ->
+         Some(ev, world ge m)
+       | _ -> None)
+    | _ -> None
 
 and world_vstore ge m chunk id ofs ev =
   Genv.find_symbol ge id >>=
@@ -577,8 +633,8 @@ and world_vstore ge m chunk id ofs ev =
                 match res with
                 | Genv.SymGlob(base,bound,t,gv) ->
                         Cexec.InterpreterEvents.atom_of_eventval ge ev (type_of_chunk chunk) >>= fun v ->
-                        (match A.store chunk m ofs v [] with
-                         | Memory.MemorySuccess m' -> Some(world ge m')
+                         (match M.store chunk m ofs v [] (Pol.init_state,[]) with
+                         | (Success m',_) -> Some(world ge m')
                          | _ -> None)
                 | _ -> None
 
@@ -589,7 +645,7 @@ let do_event p ge time w ev =
   (* Return new world after external action *)
   match ev with
   | Events.Event_vstore(chunk, id, ofs, v) ->
-      begin match Determinism.nextworld_vstore w chunk id ofs v with
+      begin match Deterministic.nextworld_vstore w chunk id ofs v with
       | None -> assert false
       | Some w' -> w'
       end
@@ -606,31 +662,31 @@ let (|||) a b = a || b (* strict boolean or *)
 
 let is_stuck r =
   match r with
-  | Cexec.Stuckred msg -> true
+  | Cexec.Stuckred -> true
   | _ -> false
 
-let diagnose_stuck_expr p ge ce w f a kont pct l e te m =
+let diagnose_stuck_expr p ge ce w f a kont pstate pct l e te m =
   let rec diagnose k a =
   (* diagnose subexpressions first *)
   let found =
     match k, a with
-    | Csem.LV, Csyntax.Ederef(r, ty) -> diagnose Csem.RV r
-    | Csem.LV, Csyntax.Efield(r, f, ty) -> diagnose Csem.RV r
-    | Csem.RV, Csyntax.Evalof(l, ty) -> diagnose Csem.LV l
-    | Csem.RV, Csyntax.Eaddrof(l, ty) -> diagnose Csem.LV l
-    | Csem.RV, Csyntax.Eunop(op, r1, ty) -> diagnose Csem.RV r1
-    | Csem.RV, Csyntax.Ebinop(op, r1, r2, ty) -> diagnose Csem.RV r1 ||| diagnose Csem.RV r2
-    | Csem.RV, Csyntax.Ecast(r1, ty) -> diagnose Csem.RV r1
-    | Csem.RV, Csyntax.Econdition(r1, r2, r3, ty) -> diagnose Csem.RV r1
-    | Csem.RV, Csyntax.Eassign(l1, r2, ty) -> diagnose Csem.LV l1 ||| diagnose Csem.RV r2
-    | Csem.RV, Csyntax.Eassignop(op, l1, r2, tyres, ty) -> diagnose Csem.LV l1 ||| diagnose Csem.RV r2
-    | Csem.RV, Csyntax.Epostincr(id, l, ty) -> diagnose Csem.LV l
-    | Csem.RV, Csyntax.Ecomma(r1, r2, ty) -> diagnose Csem.RV r1
-    | Csem.RV, Csyntax.Eparen(r1, tycast, ty) -> diagnose Csem.RV r1
-    | Csem.RV, Csyntax.Ecall(r1, rargs, ty) -> diagnose Csem.RV r1 ||| diagnose_list rargs
+    | LV, Csyntax.Ederef(r, ty) -> diagnose RV r
+    | LV, Csyntax.Efield(r, f, ty) -> diagnose RV r
+    | RV, Csyntax.Evalof(l, ty) -> diagnose LV l
+    | RV, Csyntax.Eaddrof(l, ty) -> diagnose LV l
+    | RV, Csyntax.Eunop(op, r1, ty) -> diagnose RV r1
+    | RV, Csyntax.Ebinop(op, r1, r2, ty) -> diagnose RV r1 ||| diagnose RV r2
+    | RV, Csyntax.Ecast(r1, ty) -> diagnose RV r1
+    | RV, Csyntax.Econdition(r1, r2, r3, ty) -> diagnose RV r1
+    | RV, Csyntax.Eassign(l1, r2, ty) -> diagnose LV l1 ||| diagnose RV r2
+    | RV, Csyntax.Eassignop(op, l1, r2, tyres, ty) -> diagnose LV l1 ||| diagnose RV r2
+    | RV, Csyntax.Epostincr(id, l, ty) -> diagnose LV l
+    | RV, Csyntax.Ecomma(r1, r2, ty) -> diagnose RV r1
+    | RV, Csyntax.Eparen(r1, tycast, ty) -> diagnose RV r1
+    | RV, Csyntax.Ecall(r1, rargs, ty) -> diagnose RV r1 ||| diagnose_list rargs
     | _, _ -> false in
   if found then true else begin
-    let l = Cexec.step_expr ge ce (*do_inline_assembly*) e w k pct l a te m in
+    let l = Cexec.step_expr ge ce (*do_inline_assembly*) e w k pstate pct l a te m in
     if List.exists (fun (ctx,red) -> is_stuck red) l then begin
       Printing.print_pointer_hook := print_pointer ge e;
       fprintf p "@[<hov 2>Stuck subexpression:@ %a@]@."
@@ -642,20 +698,21 @@ let diagnose_stuck_expr p ge ce w f a kont pct l e te m =
   and diagnose_list al =
     match al with
     | Csyntax.Enil -> false
-    | Csyntax.Econs(a1, al') -> diagnose Csem.RV a1 ||| diagnose_list al'
+    | Csyntax.Econs(a1, al') -> diagnose RV a1 ||| diagnose_list al'
 
-  in diagnose Csem.RV a
+  in diagnose RV a
 
 let diagnose_stuck_state p ge ce w = function
-  | Csem.ExprState(f,l,pct,a,k,e,te,m) -> ignore(diagnose_stuck_expr p ge ce w f a k l pct e te m)
+  | Csem.ExprState(f,l,pstate,pct,a,k,e,te,m) -> ignore(diagnose_stuck_expr p ge ce w f a k l pstate pct e te m)
   | _ -> ()
 
 (* Execution of a single step.  Return list of triples
    (reduction rule, next state, next world). *)
 
-let do_step p prog ge ce time s w =
-  match Cexec.at_final_state s with
-  | Some r ->
+let do_step p prog ge ce time w =
+  match Cexec.at_final_state !s with
+  | Some (r,lg) ->
+      let _ = List.map (fun s -> Printf.eprintf "%s\n" (Camlcoq.camlstring_of_coqstring s)) lg in
       if !trace >= 1 then
         fprintf p "Time %d: program terminated (exit code = %ld)@."
                   time (camlint_of_coqint r);
@@ -664,38 +721,39 @@ let do_step p prog ge ce time s w =
       | First | Random -> exit (Int32.to_int (camlint_of_coqint r))
       end
   | None ->
-      match s with
+      match !s with
       | Csem.Stuckstate ->
         begin
           pp_set_max_boxes p 1000;
-          fprintf p "@[<hov 2>Stuck state: %a@]@." print_state (prog, (ge,ce), s);
-          diagnose_stuck_state p ge ce w s;
+          fprintf p "@[<hov 2>Stuck state: %a@]@." print_state (prog, (ge,ce), !s);
+          diagnose_stuck_state p ge ce w !s;
           fprintf p "ERROR: Undefined behavior@.";
           exit 126
         end
-      | Csem.Failstop(msg,failure,params) ->
+      | Csem.Failstop(failure,lg) ->
+        let _ = List.map (fun s -> Printf.eprintf "%s\n" (Camlcoq.camlstring_of_coqstring s)) lg in
         if !trace >= 1 then
         (* AMN This is the version without -trace, easier to consume (by fuzzer)
             goes to stderr, which also goes to stdout? *)
         (*fprintf p "@[<hov 2>Failstop on policy @ %s %s@]@."
         (String.of_seq (List.to_seq msg)) (String.concat ", " (List.map print_tag params));*)
-        eprintf "@[<hov 2>Failstop on policy @ %s %s@]@."
-        (String.of_seq (List.to_seq msg)) (String.concat ", " (List.map print_tag params));
+        eprintf "@[<hov 2>%s@]@."
+        (print_failure failure);
         exit 42 (* error*)
       | _ ->
-        let l = Cexec.do_step ge ce do_external_function (*do_inline_assembly*) w s in
+        let l = Cexec.do_step ge ce do_external_function (*do_inline_assembly*) w !s in
         List.map (fun (Cexec.TR(r, t, s')) -> (r, s', do_events p ge time w t)) l
 
 (* Exploration of a single execution. *)
 
-let rec explore_one p prog ge ce time s w =
+let rec explore_one p prog ge ce time w =
   if !trace >= 2 then
-    fprintf p "@[<hov 2>Time %d:@ %a@]@." time print_state (prog, (ge,ce), s);
+    fprintf p "@[<hov 2>Time %d:@ %a@]@." time print_state (prog, (ge,ce), !s);
   if !timeoutMaxSteps > 0 && time > !timeoutMaxSteps then
     (fprintf p "ERROR: Timeout Exceeded."; 
     exit 43);
     (*ignore (exit 43);  stops printing entirely. ignores side effects and we dont care that exit never returns *)
-  let succs = do_step p prog ge ce time s w in
+  let succs = do_step p prog ge ce time w in
   if succs <> [] then begin
     let (r, s', w') =
       match !mode with
@@ -704,7 +762,8 @@ let rec explore_one p prog ge ce time s w =
       | All -> assert false in
     if !trace >= 2 then
       fprintf p "--[%s]-->@." (camlstring_of_coqstring r);
-    explore_one p prog ge ce (time + 1) s' w'
+    (s := s';
+    explore_one p prog ge ce (time + 1) w')
   end
 
 (* Exploration of all possible executions. *)
@@ -777,7 +836,7 @@ let change_main_function p new_main_fn =
 
 let call_main3_function main_id main_ty =
   let main_var = Csyntax.Evalof(Csyntax.Evar(main_id, main_ty), main_ty) in
-  let arg1 = Csyntax.Eval((Vint(coqint_of_camlint 0l), Pol.def_tag), type_int32s) in
+  let arg1 = Csyntax.Eval((Vint(coqint_of_camlint 0l), Pol.coq_TempT), type_int32s) in
   let arg2 = arg1 in
   let body =
     Csyntax.Sreturn(Some(Csyntax.Ecall(main_var, Csyntax.Econs(arg1, Csyntax.Econs(arg2, Csyntax.Enil)), type_int32s)), Cabs.no_loc)
@@ -789,7 +848,7 @@ let call_other_main_function main_id main_ty main_ty_res =
   let main_var = Csyntax.Evalof(Csyntax.Evar(main_id, main_ty), main_ty) in
   let body =
     Csyntax.Ssequence(Csyntax.Sdo(Csyntax.Ecall(main_var, Csyntax.Enil, main_ty_res), Cabs.no_loc),
-              Csyntax.Sreturn(Some(Csyntax.Eval((Vint(coqint_of_camlint 0l),Pol.def_tag), type_int32s)), Cabs.no_loc)) in
+              Csyntax.Sreturn(Some(Csyntax.Eval((Vint(coqint_of_camlint 0l),Pol.coq_TempT), type_int32s)), Cabs.no_loc)) in
   { Csyntax.fn_return = type_int32s; Csyntax.fn_callconv = cc_default;
     Csyntax.fn_params = []; Csyntax.fn_vars = []; Csyntax.fn_body = body }
 
@@ -824,6 +883,19 @@ let fixup_main p =
              (extern_atom p.Ctypes.prog_main);
           None
 
+let read_s a =
+  match !s with
+  | Csem.State (_, _, _, _, _, _, _, m) -> Some (fst (M.direct_read m a))
+  | Csem.ExprState (_, _, _, _, _, _, _, _, m) -> Some (fst (M.direct_read m a))
+  | Csem.Callstate (_, _, _, _, _, _, _, m) -> Some (fst (M.direct_read m a))
+  | Csem.Returnstate (_, _, _, _, _, _, m) -> Some (fst (M.direct_read m a))
+  | _ -> None
+
+let parse_opt_memval mv =
+  match mv with
+  | Some (MD.Byte(b,_)) -> Camlcoq.camlstring_of_coqstring (Show.show showByte b)
+  | _ -> ""
+
 (* Execution of a whole program *)
 
 let execute prog =
@@ -831,27 +903,18 @@ let execute prog =
   let p = std_formatter in
   pp_set_max_indent p 30;
   pp_set_max_boxes p 10;
+  HeapProblemHelper.mem_reader := (fun a -> parse_opt_memval (read_s a));
   match fixup_main prog with
   | None -> exit 126
   | Some prog1 ->
-     (let wprog = world_program prog1 in
-      let wprog' = program_of_program wprog in
-      let ce = prog1.prog_comp_env in
-      match Genv.globalenv ce wprog' with
-      | Memory.MemorySuccess (wge,wm) ->
-      (*match Genv.init_mem wprog' with
-      | Mem.MemoryFail(msg) ->
-          fprintf p "ERROR: World memory state undefined@."; exit 126
-      | Mem.MemorySuccess(wm) -> *)
-       (match Cexec.do_initial_state prog1 with
-        | Some (Memory.MemorySuccess(ge, s)) ->
-           (*(match !mode with
-            | First | Random ->*)
-                explore_one p prog1 ge ce 0 s (world wge wm)
-           (*| All ->
-                explore_all p prog1 ge ce 0 [(1, s, world wge wm)])*)
-        | _ -> fprintf p "ERROR: Initial state undefined@."; exit 126)
-      | Memory.MemoryFail (msg,failure) ->
-        fprintf p "ERROR: Initial state undefined@."; exit 126)
-  
+     (let ce = prog1.prog_comp_env in
+      (match Cexec.do_initial_state prog1 with
+        | Some (ge, init) ->
+          s := init;
+          (match init with
+          | Csem.Callstate (_, _, _, _, _, _, _, m) ->
+            (explore_one p prog1 ge ce 0 (world ge m))
+          | _ -> fprintf p "ERROR: Initial state not a call@."; exit 126)
+        | _ -> fprintf p "ERROR: Initial state undefined@."; exit 126))
+  end  
 end
