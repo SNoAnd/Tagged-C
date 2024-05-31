@@ -20,6 +20,27 @@ The formal semantics are in cfrontend/CSem.v.
 
 The reference interpreter is in cfrontend/CExec.v.
 
+## Take the Tour (under development)
+
+For an interactive exploration of Tagged C, visit our <a href="https://snoand.github.io/Tagged-C">github pages site</a>.
+
+## Build Instructions
+
+First, configure Tagged C. Use the Linux amd64 architecture regardless of your actual
+architecture: there is no code gen, but other arches could behave unpredictably.
+Then run make.
+
+```./configure x86_64-linux```
+
+```make```
+
+```make proof```
+
+To execute the interpreter, run:
+
+```./ccomp -interp -p [POLICY] [NAME.C]```
+
+
 ## License
 The Tagged C development is based on CompCert, under the non-commercial
 license found in the file `LICENSE`. This development may be used
