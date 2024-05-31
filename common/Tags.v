@@ -280,7 +280,7 @@ variable access.
                     -> control_tag          (* PC tag *)
                     -> val_tag              (* Pointer tag *)
                     -> val_tag              (* Tag on value in memory (coalesced) *)
-                    -> int64                (* Location being accessed (for logging purposes only) *)
+                    -> int64                (* Location being accessed (for logging only) *)
                     -> list loc_tag         (* Location tags (one per byte) *)
 
                     -> PolicyResult         (* Outputs: *)
@@ -321,7 +321,7 @@ written.
                      -> control_tag         (* PC tag *)
                      -> val_tag             (* Pointer tag *)
                      -> val_tag             (* Tag on value to be stored *)
-                     -> int64               (* Location being stored to (for loggin purposes only) *)
+                     -> int64               (* Location being stored to (for logging only) *)
                      -> list loc_tag        (* Location tags (one per byte) *)
 
                      -> PolicyResult        (* Outputs: *)
@@ -496,8 +496,8 @@ tags, generally to clear them.
 
                        -> PolicyResult      (* Outputs: *)
                             (control_tag    (* New PC tag *)
-                             * val_tag      (* Cleared value tag *)
-                             * loc_tag)     (* Tag to be copied over all memory locations *).
+                             * val_tag      (* Value tag for cleared memory locations *)
+                             * loc_tag)     (* Location tag for cleared memory locations *).
 
 (*|
 External functions
@@ -542,8 +542,8 @@ A call to malloc@fpt(sz@vt) is structured:
                             * val_tag       (* Pointer tag *)
                             * val_tag       (* Initial tag on values in allocated block *)
                             * loc_tag       (* Tag on the location bytes in the block's header *)
-                            * loc_tag       (* Tag to be copied over all allocated memory locations *)
-                            * loc_tag).     (* Tag to be copied over any padding memory locations
+                            * loc_tag       (* Tag copied over all allocated memory locations *)
+                            * loc_tag).     (* Tag copied over any padding memory locations
                                                (needed for 8 byte alignment). *)
 
 (*|
@@ -577,7 +577,7 @@ A call to free@fpt(p@pt) is structured:
   Parameter ClearT : loc                    (* Inputs: *)
                      -> control_tag         (* PC tag *)
                      -> val_tag             (* Value tag of freed pointer *)
-                     -> int64               (* Location being cleared, for logging purposes only *)
+                     -> int64               (* Location being cleared (for logging only) *)
                      -> loc_tag             (* tag on byte within block *)
                           
                      -> PolicyResult        (* Outputs: *)
@@ -589,7 +589,7 @@ Casts
 A policy may retag a value when it is cast to a different type. Tagged C distinguishes
 casts whose target types are pointers from other casts. Casts to pointers may check the location
 tags on the memory targeted by them, if non-null. This functionality is used in the ``PNVI``
- policy, but is of questionable utility, and may be removed in the future.
+policy, but is of questionable utility, and may be removed in the future.
 |*) 
   Parameter CastToPtrT : loc                (* Inputs: *)
                          -> control_tag     (* PC tag *)

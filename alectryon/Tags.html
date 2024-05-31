@@ -1,0 +1,395 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" class="alectryon-standalone" xml:lang="en" lang="en">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="Docutils 0.20.1: https://docutils.sourceforge.io/" />
+<title>Tags.v</title>
+<link rel="stylesheet" href="alectryon.css" type="text/css" />
+<link rel="stylesheet" href="docutils_basic.css" type="text/css" />
+<link rel="stylesheet" href="pygments.css" type="text/css" />
+<script type="text/javascript" src="alectryon.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/IBM-type/0.5.4/css/ibm-type.min.css" integrity="sha512-sky5cf9Ts6FY1kstGOBHSybfKqdHR41M0Ldb0BjNiv3ifltoQIsg0zIaQ+wwdwgQ0w9vKFW7Js50lxH9vqNSSw==" crossorigin="anonymous" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/firacode/5.2.0/fira_code.min.css" integrity="sha512-MbysAYimH1hH2xYzkkMHB6MqxBqfP0megxsCLknbYqHVwXTCg9IqHbk+ZP/vnhO8UEW6PaXAkKe2vQ+SWACxxA==" crossorigin="anonymous" />
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body>
+<div class="alectryon-root alectryon-centered"><div class="document">
+
+
+<div class="section" id="the-policyresult-monad">
+<h1>The PolicyResult Monad</h1>
+<p>A <tt class="docutils literal">FailureClass</tt> distinguishes different kinds of failures, which
+can represent failstop behavior in Tagged C itself, or failstops due
+to a policy violation, identified with <tt class="docutils literal">PolicyFailure</tt></p>
+<pre class="alectryon-io highlight"><!-- Generator: Alectryon --><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Inductive</span> <span class="nf">FailureClass</span> : <span class="kt">Type</span> :=
+| MisalignedStore (alignment ofs : Z)
+| MisalignedLoad (alignment ofs : Z)
+| PrivateStore (ofs : Z)
+| PrivateLoad (ofs : Z)
+| OtherFailure (msg: string)
+| PolicyFailure (msg: string)
+| RecoveryNotSupported
+.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-wsp">
+</span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Inductive</span> <span class="nf">Result</span> (<span class="nv">A</span>: <span class="kt">Type</span>) :=
+| Success (res: A)
+| <span class="kn">Fail</span> (failure: FailureClass)
+.</span></span></pre><p><tt class="docutils literal">PolicyResult</tt> is a combination of a state monad and an exception monad,
+where the state includes a policy-specific state type and a list of string logs.</p>
+<pre class="alectryon-io highlight"><!-- Generator: Alectryon --><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Definition</span> <span class="nf">logs</span> : <span class="kt">Type</span> := list string.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-wsp">
+</span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Definition</span> <span class="nf">PolicyResult</span> (<span class="nv">T</span> <span class="nv">A</span>: <span class="kt">Type</span>) := (T*logs) -&gt; (Result A*(T*logs)).</span></span></pre></div>
+<div class="section" id="policy-modules">
+<h1>Policy Modules</h1>
+<pre class="alectryon-io highlight"><!-- Generator: Alectryon --><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Module Type</span> <span class="nf">Policy</span>.</span></span></pre><p>Tags come in three flavors:
+- value tags are associated with values and their data-flow,
+usually explicitly paired with them to form atoms
+- control tags are associated with the program's control-flow; the program's
+state carries one such tag as the program counter tag, or <tt class="docutils literal">pct</tt>
+- location tags are associated with memory locations
+(as opposed to the values stored in those locations)</p>
+<pre class="alectryon-io highlight"><!-- Generator: Alectryon --><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Parameter</span> <span class="nv">val_tag</span> : <span class="kt">Type</span>.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Parameter</span> <span class="nv">control_tag</span> : <span class="kt">Type</span>.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Parameter</span> <span class="nv">loc_tag</span> : <span class="kt">Type</span>.</span></span></pre><p>Each policy must define several tags to be used as defaults and initializers.
+<tt class="docutils literal">InitT</tt> is the tag given to a newly initialized value, while <tt class="docutils literal">TempT</tt> is given to
+values whose tag is expected to be overwritten or discarded.
+For example, a return without a given value results in a <tt class="docutils literal">Vundef</tt> value paired with <tt class="docutils literal">TempT</tt>.
+We also use <tt class="docutils literal">TempT</tt> to stand in for tags that originate outside the modeled system.</p>
+<pre class="alectryon-io highlight"><!-- Generator: Alectryon --><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Parameter</span> <span class="nv">InitT</span>   : val_tag.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Parameter</span> <span class="nv">TempT</span>   : val_tag.</span></span></pre><p><tt class="docutils literal">InitPCT</tt> is the program counter tag at execution start.</p>
+<pre class="alectryon-io highlight"><!-- Generator: Alectryon --><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Parameter</span> <span class="nv">InitPCT</span> : control_tag.</span></span></pre><p>All location tags in memory are initialized with <tt class="docutils literal">DefHT</tt> if they are in the bounds of the heap
+and <tt class="docutils literal">DefLT</tt> otherwise.</p>
+<pre class="alectryon-io highlight"><!-- Generator: Alectryon --><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Parameter</span> <span class="nv">DefLT</span>   : loc_tag.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Parameter</span> <span class="nv">DefHT</span>   : loc_tag.</span></span></pre><p><tt class="docutils literal">CallT</tt> executes at the transition from an expression state to a call state.
+It takes the PC tag at the point of the call and the tag on the function pointer,
+and returns the new PC tag.
+The PC tag will also be saved to later be used in the <tt class="docutils literal">RetT</tt> rule.</p>
+<pre class="alectryon-io highlight"><!-- Generator: Alectryon --><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Parameter</span> <span class="nv">CallT</span> : loc                     <span class="c">(* Inputs: *)</span>
+                    -&gt; control_tag          <span class="c">(* PC tag *)</span>
+                    -&gt; val_tag              <span class="c">(* Tag on function pointer being called *)</span>
+
+                    -&gt; PolicyResult         <span class="c">(* Outputs: *)</span>
+                         control_tag        <span class="c">(* New PC tag *)</span>.</span></span></pre><p>ArgT executes at the transition from an expression state to a call state,
+once for each argument being passed.</p>
+<pre class="alectryon-io highlight"><!-- Generator: Alectryon --><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Parameter</span> <span class="nv">ArgT</span> : loc                      <span class="c">(* Inputs: *)</span>
+                   -&gt; control_tag           <span class="c">(* PC tag *)</span>
+                   -&gt; val_tag               <span class="c">(* Tag on function pointer being called *)</span>
+                   -&gt; val_tag               <span class="c">(* Tag on value being passed *)</span>
+                   -&gt; nat                   <span class="c">(* Index of the argument (allows different </span>
+<span class="c">                                               arguments to be treated differently) *)</span>
+                   -&gt; type                  <span class="c">(* Type of the argument *)</span>
+
+                   -&gt; PolicyResult          <span class="c">(* Outputs: *)</span>
+                        (control_tag        <span class="c">(* New PC tag *)</span>
+                         * val_tag)         <span class="c">(* New tag on argument value *)</span>.</span></span></pre><p><tt class="docutils literal">RetT</tt> executes at the transition from a return state into the caller's context.
+It takes the PC tag at the point of the return and the one that was saved from the
+call, as well as the tag on the value being returned.</p>
+<p>Proposal: it would be useful to have the identity of the function being returned from.
+We could always accomplish the same thing by carrying that information on the PC tag,
+but it might be more convenient to access it directly.</p>
+<pre class="alectryon-io highlight"><!-- Generator: Alectryon --><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Parameter</span> <span class="nv">RetT</span> : loc                      <span class="c">(* Inputs: *)</span>
+                   -&gt; control_tag           <span class="c">(* PC tag at return time *)</span>
+                   -&gt; control_tag           <span class="c">(* Prior PC tag from before call *)</span>
+                   -&gt; val_tag               <span class="c">(* Function pointer tag from call *)</span>
+                   -&gt; val_tag               <span class="c">(* Tag on return value *)</span>
+                   -&gt; type                  <span class="c">(* Return type *)</span>
+
+                   -&gt; PolicyResult          <span class="c">(* Outputs: *)</span>
+                        (control_tag        <span class="c">(* New PC tag *)</span>
+                         * val_tag)         <span class="c">(* New tag on return value *)</span>.</span></span></pre><p>The AccessT rule is invoked anytime a variable or object is accessed. If the variable
+is private (not in memory), it will be the only rule that is invoked.</p>
+<pre class="alectryon-io highlight"><!-- Generator: Alectryon --><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Parameter</span> <span class="nv">AccessT</span> : loc                   <span class="c">(* Inputs: *)</span>
+                      -&gt; control_tag        <span class="c">(* PC tag *)</span>
+                      -&gt; val_tag            <span class="c">(* Tag on read value *)</span>
+
+                      -&gt; PolicyResult       <span class="c">(* Outputs: *)</span>
+                           val_tag          <span class="c">(* Tag on result value *)</span>.</span></span></pre><p>Loads from memory follow three steps:
+1. Since the value being loaded may take up multiple bytes in memory, each with its
+own value tag, the <tt class="docutils literal">CoalesceT</tt> rule combines these into one tag.
+2. The <tt class="docutils literal">LoadT</tt> rule checks the relationship between the tag on the pointer being accessed,
+the tag on the value being loaded, and the tags on the memory locations being accessed.
+3. <tt class="docutils literal">AccessT</tt> is invoked to determine the tag on the result value, just as in any other
+variable access.</p>
+<pre class="alectryon-io highlight"><!-- Generator: Alectryon --><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Parameter</span> <span class="nv">CoalesceT</span> : loc                 <span class="c">(* Inputs: *)</span>
+                        -&gt; list val_tag     <span class="c">(* Value tags, one per loaded byte *)</span>
+
+                        -&gt; PolicyResult     <span class="c">(* Outputs: *)</span>
+                             val_tag        <span class="c">(* Resulting val tag *)</span>.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-wsp">
+</span><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Parameter</span> <span class="nv">LoadT</span> :    loc                  <span class="c">(* Inputs: *)</span>
+                    -&gt; control_tag          <span class="c">(* PC tag *)</span>
+                    -&gt; val_tag              <span class="c">(* Pointer tag *)</span>
+                    -&gt; val_tag              <span class="c">(* Tag on value in memory (coalesced) *)</span>
+                    -&gt; int64                <span class="c">(* Location being accessed (for logging only) *)</span>
+                    -&gt; list loc_tag         <span class="c">(* Location tags (one per byte) *)</span>
+
+                    -&gt; PolicyResult         <span class="c">(* Outputs: *)</span>
+                        val_tag             <span class="c">(* Tag on result value *)</span>.</span></span></pre><p><tt class="docutils literal">AssignT</tt> is invoked when a value is written to a variable, whether private or in memory.</p>
+<pre class="alectryon-io highlight"><!-- Generator: Alectryon --><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Parameter</span> <span class="nv">AssignT</span> : loc                   <span class="c">(* Inputs: *)</span>
+                      -&gt; control_tag        <span class="c">(* PC tag *)</span>
+                      -&gt; val_tag            <span class="c">(* Tag on value to be overwritten *)</span>
+                      -&gt; val_tag            <span class="c">(* Tag on value to be written *)</span>
+
+                      -&gt; PolicyResult       <span class="c">(* Outputs: *)</span>
+                           (control_tag     <span class="c">(* New PC tag *)</span>
+                            * val_tag)      <span class="c">(* Tag on written value *)</span>.</span></span></pre><p>Just like loads, stores to memory have three steps.
+1. The <tt class="docutils literal">EffectiveT</tt> rule interprets multiple value tags in memory into
+a single effective tag which will then be fed to the <tt class="docutils literal">AssignT</tt> rule.
+Unlike <tt class="docutils literal">CoalesceT</tt>, <tt class="docutils literal">EffectiveT</tt> cannot fail, because the value associated
+with these tags is not being read or written at this time. Rather, the tags
+are being reinterpreted.
+2. <tt class="docutils literal">AssignT</tt> governs the relationship between the incoming value tag and the
+effective tag on the data being overwritten.
+3. <tt class="docutils literal">StoreT</tt> is invoked to determine the new tags on the memory locations being
+written to, based on the pointer tag, current location tags, and value being
+written.</p>
+<pre class="alectryon-io highlight"><!-- Generator: Alectryon --><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Parameter</span> <span class="nv">EffectiveT</span> : loc                <span class="c">(* Inputs: *)</span>
+                         -&gt; list val_tag    <span class="c">(* Value tags, one per overwritten byte *)</span>
+
+                                            <span class="c">(* Outputs: *)</span>
+                         -&gt; val_tag         <span class="c">(* Input to AssignT *)</span>.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-wsp">
+</span><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Parameter</span> <span class="nv">StoreT</span> : loc                    <span class="c">(* Inputs: *)</span>
+                     -&gt; control_tag         <span class="c">(* PC tag *)</span>
+                     -&gt; val_tag             <span class="c">(* Pointer tag *)</span>
+                     -&gt; val_tag             <span class="c">(* Tag on value to be stored *)</span>
+                     -&gt; int64               <span class="c">(* Location being stored to (for logging only) *)</span>
+                     -&gt; list loc_tag        <span class="c">(* Location tags (one per byte) *)</span>
+
+                     -&gt; PolicyResult        <span class="c">(* Outputs: *)</span>
+                          (control_tag      <span class="c">(* New PC tag *)</span>
+                           * val_tag        <span class="c">(* Tag on new value in memory *)</span>
+                           * list loc_tag)  <span class="c">(* New location tags *)</span>.</span></span></pre><p><tt class="docutils literal">UnopT</tt> is invoked for unary operations. It takes the identity of the operation
+as a parameter, along with the current PC tag and the tag on the operand, and it
+can update the PC tag and give a new tag to the result.</p>
+<pre class="alectryon-io highlight"><!-- Generator: Alectryon --><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Parameter</span> <span class="nv">UnopT</span> : loc                     <span class="c">(* Inputs: *)</span>
+                    -&gt; unary_operation      <span class="c">(* Operator *)</span>
+                    -&gt; control_tag          <span class="c">(* PC tag *)</span>
+                    -&gt; val_tag              <span class="c">(* Tag on input value *)</span>
+
+                    -&gt; PolicyResult         <span class="c">(* Outputs: *)</span>
+                         (control_tag       <span class="c">(* New PC tag *)</span>
+                          * val_tag)        <span class="c">(* Tag on result value *)</span>.</span></span></pre><p><tt class="docutils literal">BinopT</tt> is invoked for binary operations. It takes the identity of the operation
+as a parameter, along with the current PC tag and the tags on the operands, and it
+can update the PC tag and give a new tag to the result.</p>
+<pre class="alectryon-io highlight"><!-- Generator: Alectryon --><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Parameter</span> <span class="nv">BinopT</span> : loc                    <span class="c">(* Inputs: *)</span>
+                     -&gt; binary_operation    <span class="c">(* Operator *)</span>
+                     -&gt; control_tag         <span class="c">(* PC tag *)</span>
+                     -&gt; val_tag             <span class="c">(* Tag on left input value *)</span>
+                     -&gt; val_tag             <span class="c">(* Tag on right input value *)</span>
+
+                     -&gt; PolicyResult        <span class="c">(* Outputs: *)</span>
+                          (control_tag      <span class="c">(* New PC tag *)</span>
+                           * val_tag)       <span class="c">(* Tag on result value *)</span>.</span></span></pre><p>A numeric literal needs to be paired with a tag before it can be used.
+This is done by the <tt class="docutils literal">LiteralT</tt> rule, which only takes the PC tag.</p>
+<pre class="alectryon-io highlight"><!-- Generator: Alectryon --><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Parameter</span> <span class="nv">LiteralT</span> : loc                  <span class="c">(* Inputs: *)</span>
+                       -&gt; control_tag       <span class="c">(* PC tag *)</span>
+
+                       -&gt; PolicyResult      <span class="c">(* Outputs: *)</span>
+                            val_tag         <span class="c">(* Tag on new value *)</span>.</span></span></pre><p>When accessing a field of a struct or union, the <tt class="docutils literal">FieldT</tt> rule takes
+the tag associated with its pointer and determines the tag associated with
+the new pointer to the field. It can be specialized based on the type of
+the struct or union and the identity of the field for fine-grained control.</p>
+<pre class="alectryon-io highlight"><!-- Generator: Alectryon --><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Parameter</span> <span class="nv">FieldT</span> : loc
+                     -&gt; composite_env       <span class="c">(* Inputs: *)</span>
+                     -&gt; control_tag         <span class="c">(* PC tag *)</span>
+                     -&gt; val_tag             <span class="c">(* Tag on base pointer *)</span>
+                     -&gt; type                <span class="c">(* Type of object *)</span>
+                     -&gt; <span class="kn">ident</span>               <span class="c">(* Identity of field *)</span>
+
+                     -&gt; PolicyResult        <span class="c">(* Outputs: *)</span>
+                          val_tag           <span class="c">(* Tag on resulting pointer *)</span>.</span></span></pre></div>
+<div class="section" id="control-flow-splits-and-joins">
+<h1>Control flow splits and joins</h1>
+<p>When control flow branches, whether as the result of a conditional or loop statement
+or a conditional expression, the value that determined the result of the branch
+influences every computation that happens until the branches rejoin. Policies
+that need to track this influence do so by changing the PC tag.</p>
+<p>Conditional expressions are slightly simpler than statements, because they are
+guaranteed to rejoin once fully evaluated. The <tt class="docutils literal">ExprSplitT</tt> rule triggers
+when the branch is made (in evaluating <tt class="docutils literal">Econdition</tt>, <tt class="docutils literal">Eseqand</tt>, and <tt class="docutils literal">Eseqor</tt>
+expressions), setting a new PC tag. When the resulting expression <tt class="docutils literal">Eparen e</tt> is
+fully evaluated such that <tt class="docutils literal">e</tt> is an <tt class="docutils literal">Eval</tt> expression, <tt class="docutils literal">ExprJoinT</tt> triggers,
+setting the PC tag again and also determining the tag on the resulting atom.</p>
+<pre class="alectryon-io highlight"><!-- Generator: Alectryon --><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Parameter</span> <span class="nv">ExprSplitT</span> : loc                <span class="c">(* Inputs: *)</span>
+                         -&gt; control_tag     <span class="c">(* PC tag *)</span>
+                         -&gt; val_tag         <span class="c">(* Tag on value of branch condition *)</span>
+
+                         -&gt; PolicyResult    <span class="c">(* Outputs: *)</span>
+                              control_tag   <span class="c">(* New PC tag *)</span>.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-wsp">
+</span><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Parameter</span> <span class="nv">ExprJoinT</span> : loc                 <span class="c">(* Inputs: *)</span>
+                        -&gt; control_tag      <span class="c">(* PC tag *)</span>
+                        -&gt; val_tag          <span class="c">(* Tag on conditional expression result *)</span>
+
+                        -&gt; PolicyResult     <span class="c">(* Outputs: *)</span>
+                             (control_tag   <span class="c">(* New PC tag *)</span>
+                              * val_tag)    <span class="c">(* Tag for final value *)</span>.</span></span></pre><p>Conditional and loop statements, on the other hand, might rejoin at a point arbitrarily removed
+from where they split. In the control-flow graph of the program, the branches rejoin at the 
+immediate post-dominator of the split node. Tagged C does not calculate this directly,
+but it offers the user the ability to annotate branching statements with a label corresponding
+to their join point. This is fed to the <tt class="docutils literal">SplitT</tt> tag rule, which also takes the tag on the
+value that determines the branch, and updates the PC tag.</p>
+<pre class="alectryon-io highlight"><!-- Generator: Alectryon --><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Parameter</span> <span class="nv">SplitT</span> : loc                    <span class="c">(* Inputs: *)</span>
+                     -&gt; control_tag         <span class="c">(* PC tag *)</span>
+                     -&gt; val_tag             <span class="c">(* Tag on value of branch conditional *)</span>
+                     -&gt; option <span class="kn">ident</span>        <span class="c">(* Label of join point, if known. *)</span>
+
+                     -&gt; PolicyResult        <span class="c">(* Outputs: *)</span>
+                          control_tag       <span class="c">(* New PC tag *)</span>.</span></span></pre><p>The <tt class="docutils literal">LabelT</tt> tag rule triggers when execution steps past a given label, and updates the PC tag.
+It can be used together with the optional label given to the <tt class="docutils literal">SplitT</tt> rule to act as a
+join point for a branch.</p>
+<pre class="alectryon-io highlight"><!-- Generator: Alectryon --><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Parameter</span> <span class="nv">LabelT</span> : loc                    <span class="c">(* Inputs: *)</span>
+                     -&gt; control_tag         <span class="c">(* PC tag *)</span>
+                     -&gt; <span class="kn">ident</span>               <span class="c">(* Label name *)</span>
+
+                     -&gt; PolicyResult        <span class="c">(* Outputs: *)</span>
+                          control_tag       <span class="c">(* New PC tag *)</span>.</span></span></pre></div>
+<div class="section" id="global-identifiers">
+<h1>Global identifiers</h1>
+<p>Global variables and functions have fixed locations determined at program initialization;
+globals in memory and functions in abstract &quot;blocks.&quot; Invoking either by name retrieves its
+location from the global environment, along with a fixed tag, also determined at initialization
+via the <tt class="docutils literal">GlobalT</tt> and <tt class="docutils literal">FunT</tt> rules. <tt class="docutils literal">GlobalT</tt> also sets the initial value and location
+tags for the variables. Because they occur at initialization, these rules cannot fail.</p>
+<p>To be implemented: like local variables (below) globals should support arbitrary configurations
+of location tags.</p>
+<pre class="alectryon-io highlight"><!-- Generator: Alectryon --><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Parameter</span> <span class="nv">GlobalT</span> : composite_env         <span class="c">(* Inputs: *)</span>
+                      -&gt; <span class="kn">ident</span>              <span class="c">(* Variable name *)</span>
+                      -&gt; type               <span class="c">(* Variable type *)</span>
+
+                                            <span class="c">(* Outputs: *)</span>
+                      -&gt; val_tag            <span class="c">(* Pointer tag *)</span>
+                         * val_tag          <span class="c">(* Initial value tag *)</span>
+                         * loc_tag          <span class="c">(* Tag for each memory location *)</span>.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-wsp">
+</span><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Parameter</span> <span class="nv">FunT</span> : composite_env            <span class="c">(* Inputs: *)</span>
+                   -&gt; <span class="kn">ident</span>                 <span class="c">(* Function name *)</span>
+                   -&gt; type                  <span class="c">(* Function type signature *)</span>
+
+                                            <span class="c">(* Outputs: *)</span>
+                   -&gt; val_tag               <span class="c">(* Function pointer tag *)</span>.</span></span></pre></div>
+<div class="section" id="local-stack-allocation-and-deallocation">
+<h1>Local (Stack) allocation and deallocation</h1>
+<p>Local variables are allocated on function entry. Tagged C models their pointers as being
+tracked by a local environment, although the underlying implementation likely uses offset
+arithmetic as usual. <tt class="docutils literal">LocalT</tt> determines the pointer that corresponds to each object
+and the initial tags on its memory locations. <tt class="docutils literal">DeallocT</tt> sets the value and location
+tags, generally to clear them.</p>
+<pre class="alectryon-io highlight"><!-- Generator: Alectryon --><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Parameter</span> <span class="nv">LocalT</span> : composite_env          
+                     -&gt; loc                 <span class="c">(* Inputs: *)</span>
+                     -&gt; control_tag         <span class="c">(* PC tag *)</span>
+                     -&gt; type                <span class="c">(* Variable type *)</span>
+
+                     -&gt; PolicyResult        <span class="c">(* Outputs: *)</span>
+                          (control_tag      <span class="c">(* New PC tag *)</span>
+                           * val_tag        <span class="c">(* Pointer tag *)</span>
+                           * list loc_tag)  <span class="c">(* Tags for all memory locations *)</span>.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-wsp">
+</span><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Parameter</span> <span class="nv">DeallocT</span> : loc
+                       -&gt; composite_env     <span class="c">(* Inputs: *)</span>
+                       -&gt; control_tag       <span class="c">(* PC tag *)</span>
+                       -&gt; type              <span class="c">(* Variable type *)</span>
+
+                       -&gt; PolicyResult      <span class="c">(* Outputs: *)</span>
+                            (control_tag    <span class="c">(* New PC tag *)</span>
+                             * val_tag      <span class="c">(* Value tag for cleared memory locations *)</span>
+                             * loc_tag)     <span class="c">(* Location tag for cleared memory locations *)</span>.</span></span></pre></div>
+<div class="section" id="external-functions">
+<h1>External functions</h1>
+<p>Tagged C inherits from CompCert C a distinction between &quot;internal&quot; and &quot;external&quot; functions.
+Internal functions are deeply embedded: their bodies consist of Tagged C statements.
+External functions are shallowly embedded as relations between their entry and exit states.</p>
+<p><tt class="docutils literal">ExtCallT</tt> is the equivalent of <tt class="docutils literal">CallT</tt> but for external functions. It takes an extra
+argument of type <tt class="docutils literal">external_function</tt>, a record detailing which external function is to be called.</p>
+<p>If an external function has side-effects whose tag behaviors need to be modeled, Tagged C
+invokes a function-specific tag rule. Currently <tt class="docutils literal">malloc</tt> and <tt class="docutils literal">free</tt> use this feature.</p>
+<pre class="alectryon-io highlight"><!-- Generator: Alectryon --><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Parameter</span> <span class="nv">ExtCallT</span> : loc                  <span class="c">(* Inputs: *)</span>
+                       -&gt; external_function <span class="c">(* External function data *)</span>
+                       -&gt; control_tag       <span class="c">(* PC tag *)</span>
+                       -&gt; val_tag           <span class="c">(* Function pointer tag *)</span>
+                       -&gt; list val_tag      <span class="c">(* Tags on all arguments *)</span>
+
+                       -&gt; PolicyResult      <span class="c">(* Outputs: *)</span>
+                            control_tag     <span class="c">(* New PC tag *)</span>.</span></span></pre><p>The <tt class="docutils literal">MallocT</tt> tag rule processes the body of malloc.
+A call to malloc&#64;fpt(<a class="reference external" href="mailto:sz&#64;vt">sz&#64;vt</a>) is structured:</p>
+<pre class="alectryon-io highlight"><!-- Generator: Alectryon --><span class="alectryon-wsp">  <span class="c">(* pct -&gt; +========+ -&gt; pct&#39;   +========+    pct ---&gt; +====+</span>
+<span class="c">     fpt -&gt; |ExtCallT| -&gt; fpt -&gt; |MallocT | -&gt; pct&#39;&#39; -&gt; |RetT| -&gt; pct&#39;&#39;&#39;</span>
+<span class="c">     vt  -&gt; +========+ -&gt; vt -|  +========+ -&gt; pt ----&gt; +====+ -&gt; pt&#39;</span>
+<span class="c">                              vt1||vt2|lt1|lt2</span>
+<span class="c">                         [header@vt1][vt2.vt2.vt2...]</span>
+<span class="c">                         [lt1.lt1...][lt2.lt2.lt2...] *)</span>
+
+</span><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Parameter</span> <span class="nv">MallocT</span> : loc                   <span class="c">(* Inputs: *)</span>
+                      -&gt; control_tag        <span class="c">(* PC tag *)</span>
+                      -&gt; val_tag            <span class="c">(* Function pointer tag</span>
+<span class="c">                                               (used to distinguish versions of malloc) *)</span>
+
+                      -&gt; PolicyResult       <span class="c">(* Outputs: *)</span>
+                           (control_tag     <span class="c">(* New PC tag *)</span>
+                            * val_tag       <span class="c">(* Pointer tag *)</span>
+                            * val_tag       <span class="c">(* Initial tag on values in allocated block *)</span>
+                            * loc_tag       <span class="c">(* Tag on the location bytes in the block&#39;s header *)</span>
+                            * loc_tag       <span class="c">(* Tag copied over all allocated memory locations *)</span>
+                            * loc_tag).</span></span><span class="alectryon-wsp">     <span class="c">(* Tag copied over any padding memory locations</span>
+<span class="c">                                               (needed for 8 byte alignment). *)</span></span></pre><p>The body of <tt class="docutils literal">free</tt> is split between the <tt class="docutils literal">FreeT</tt> and <tt class="docutils literal">ClearT</tt> rules. <tt class="docutils literal">FreeT</tt> updates
+the tags on the header block of the object being freed, then <tt class="docutils literal">ClearT</tt> is invoked for each byte.
+This is generally used to clear the bytes for temporal safety.
+A call to free&#64;fpt(<a class="reference external" href="mailto:p&#64;pt">p&#64;pt</a>) is structured:</p>
+<pre class="alectryon-io highlight"><!-- Generator: Alectryon --><span class="alectryon-wsp"><span class="c">(*                                       p</span>
+<span class="c">                              [header@vt][.....(v@_).........]</span>
+<span class="c">                              [   lts   ][...................]</span>
+<span class="c">                                 vt|  |lts</span>
+<span class="c">                                   v  v</span>
+<span class="c">     pct -&gt; +========+            +=====+             +======+    pct ----&gt; +====+</span>
+<span class="c">     fpt -&gt; |ExtCallT| -&gt; pct&#39; -&gt; |FreeT| -&gt; pct&#39;&#39; -&gt; |ClearT|    pct&#39;&#39;  -&gt; |RetT| -&gt; pct&#39;&#39;&#39;</span>
+<span class="c">     pt  -&gt; +========+ -&gt; pt   -&gt; +=====+             +======+     pt ----&gt; +====+ -&gt; pt&#39;</span>
+<span class="c">                                vt1|  |lts&#39;          vt2|  |lt</span>
+<span class="c">                                   v  v                 v  v</span>
+<span class="c">                              [header&#39;@vt1][.......(v@vt2)...]</span>
+<span class="c">                              [    lts    ][lt.lt.lt.lt.lt...] *)</span>
+</span><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Parameter</span> <span class="nv">FreeT</span> : 
+                    loc                     <span class="c">(* Inputs: *)</span>
+                    -&gt; control_tag          <span class="c">(* PC tag *)</span>
+                    -&gt; val_tag              <span class="c">(* Pointer tag *)</span>
+                    -&gt; list loc_tag         <span class="c">(* Header location tags *)</span>
+                    -&gt; PolicyResult         <span class="c">(* Outputs: *)</span>
+                         (control_tag       <span class="c">(* New PC tag *)</span>
+                          * loc_tag)        <span class="c">(* New location tag for header</span>
+<span class="c">                                               (replicated to all header bytes) *)</span>.</span><span class="alectryon-wsp">       
+</span></span><span class="alectryon-wsp">
+</span><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Parameter</span> <span class="nv">ClearT</span> : loc                    <span class="c">(* Inputs: *)</span>
+                     -&gt; control_tag         <span class="c">(* PC tag *)</span>
+                     -&gt; val_tag             <span class="c">(* Value tag of freed pointer *)</span>
+                     -&gt; int64               <span class="c">(* Location being cleared (for logging only) *)</span>
+                     -&gt; loc_tag             <span class="c">(* tag on byte within block *)</span>
+
+                     -&gt; PolicyResult        <span class="c">(* Outputs: *)</span>
+                          loc_tag           <span class="c">(* Tag to be copied to byte *)</span>.</span></span></pre></div>
+<div class="section" id="casts">
+<h1>Casts</h1>
+<p>A policy may retag a value when it is cast to a different type. Tagged C distinguishes
+casts whose target types are pointers from other casts. Casts to pointers may check the location
+tags on the memory targeted by them, if non-null. This functionality is used in the <tt class="docutils literal">PNVI</tt>
+policy, but is of questionable utility, and may be removed in the future.</p>
+<pre class="alectryon-io highlight"><!-- Generator: Alectryon --><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Parameter</span> <span class="nv">CastToPtrT</span> : loc                <span class="c">(* Inputs: *)</span>
+                         -&gt; control_tag     <span class="c">(* PC tag *)</span>
+                         -&gt; val_tag         <span class="c">(* Tag on integer value *)</span>
+                         -&gt; option (list loc_tag) <span class="c">(* Tags on memory at pointer location *)</span>
+                         -&gt; type            <span class="c">(* Type cast to *)</span>
+
+                         -&gt; PolicyResult    <span class="c">(* Outputs: *)</span>
+                              val_tag       <span class="c">(* Tag on resulting pointer *)</span>.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-wsp">
+</span><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Parameter</span> <span class="nv">CastOtherT</span> : loc                <span class="c">(* Inputs: *)</span>
+                         -&gt; control_tag     <span class="c">(* PC tag *)</span>
+                         -&gt; val_tag         <span class="c">(* Tag on value *)</span>
+                         -&gt; type            <span class="c">(* Type cast to *)</span>
+
+                         -&gt; PolicyResult    <span class="c">(* Outputs: *)</span>
+                              val_tag       <span class="c">(* Tag on resulting value *)</span>.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">End</span> <span class="nf">Policy</span>.</span></span></pre></div>
+</div>
+</div></body>
+</html>
